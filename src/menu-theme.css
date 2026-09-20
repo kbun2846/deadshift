@@ -1,0 +1,193 @@
+/* Shared button theme. Typography/ink fitting lives in button-typography.js. */
+:root{--ui-accent:#e8afb9;--button-idle:#242928;--button-ink:#fff;--button-active:var(--ui-accent);--button-active-ink:#151718;--button-edge:#424846}
+#dev-code-dialog{z-index:60;background:#191c1cc9}
+#dev-code-dialog .modal-card{position:relative;width:min(390px,92vw);background:var(--button-idle);color:#eee9df;border:0;box-shadow:none;padding:32px}
+#dev-code-dialog h2{font:900 28px/1.2 Arial,sans-serif;letter-spacing:0;margin:10px 0 26px}
+#dev-code-dialog label,#dev-code-dialog p{font:700 12px/1.5 Arial,sans-serif;color:#eee9df;letter-spacing:.03em}
+#dev-code-dialog input{display:block;width:100%;margin-top:10px;padding:12px;background:#191c1c;border:1px solid #67746e;border-radius:3px;color:#fff;font:700 22px Arial,sans-serif;letter-spacing:.3em}
+#dev-code-dialog input:focus{outline:2px solid var(--ui-accent);outline-offset:2px}
+#dev-code-dialog #dev-code-error{min-height:18px;color:var(--ui-accent);margin:10px 0}
+#game #dev-code-dialog .dev-code-close{position:absolute;top:12px;right:12px;display:grid;place-items:center;width:36px;height:36px;min-height:36px;padding:9px;border:0;border-radius:3px;background:var(--ui-accent);color:#151718}
+#game #dev-code-dialog .dev-code-close:is(:hover,:focus-visible){color:#fff}
+#dev-code-dialog .dev-code-close svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:3}
+#dev-code-dialog .dev-code-hint{margin-bottom:0;opacity:.65}
+#game #weapon{transform:translateX(-50%) scale(1.1);transform-origin:50% 100%}
+/* Alternate action labels while retaining the shared stretched glyph treatment. */
+#game #pause-panel #reset,#game #pause-panel #main-menu{text-align:right}
+#game .menu-shell button{text-align:left}
+.game-version{display:block;margin-top:8px;font-size:.34em;line-height:1.2;letter-spacing:.08em;font-weight:700;color:var(--ui-accent)}
+/* Match the borderless input selector so cropped lettering meets the highlight. */
+#game .menu-shell [data-page=home]>button{border:0}
+#weapon .weapon-readout{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 7px;color:#fff;text-shadow:0 1px 3px #14221c;font-family:Arial,sans-serif}
+#weapon .weapon-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--weapon-accent)}
+#weapon .weapon-count{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+#weapon .seed-pips{gap:4px;margin:0 0 7px}
+#weapon .seed-pips.tutorial-highlight{outline-offset:3px;border-radius:3px}
+#weapon .seed-pips i{height:10px;min-width:0;border-radius:1px;box-shadow:none}
+#weapon .seed-pips i.available{background:var(--weapon-accent);border-color:#253b32}
+#weapon .seed-pips i.filled{background:#fff;border-color:var(--weapon-accent);box-shadow:none}
+#weapon .seed-pips i.spent{background:linear-gradient(to top,var(--weapon-accent) var(--refill),#1d2926cc var(--refill));border-color:#77827a80}
+#weapon .seed-pips[data-reloading="true"] i{background:linear-gradient(to top,#e1cca2 var(--refill),#1d2926cc var(--refill))}
+#weapon .weapon-status{height:13px;margin-bottom:7px;text-align:left;font:600 9px/13px Arial,sans-serif;letter-spacing:.07em;color:#e1e6df;text-shadow:0 1px 3px #14221c}
+#weapon .weapon-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;text-align:left;color:#e1e6df}
+#weapon .weapon-controls>span{display:flex;flex-direction:column;gap:3px;align-items:flex-start;font:600 8px/1.3 Arial,sans-serif;letter-spacing:.03em}
+#weapon .weapon-controls kbd{padding:0;background:none;border:0;color:var(--weapon-accent);font:700 9px/1.3 Arial,sans-serif}
+#weapon .hex-fill{stroke:var(--weapon-accent)}
+.rifle-spread{position:absolute;height:12px;pointer-events:none;z-index:4;transform-origin:center}
+.rifle-spread i{position:absolute;top:0;width:2px;height:12px;background:#fff;box-shadow:0 1px 2px #0008}
+.rifle-spread i:first-child{left:0}.rifle-spread i:last-child{right:0}
+.rifle-spread i::after{content:'';position:absolute;bottom:0;width:5px;height:2px;background:inherit}
+.rifle-spread i:last-child::after{right:0}
+.secondary-spread{opacity:.55}
+.dev-section{margin:14px 0}.dev-section>.setting{padding:12px}
+#game button,#game summary{
+ background:var(--button-idle);color:var(--button-ink);border-color:var(--button-edge);
+ transition:color .18s ease,background-color .18s ease,transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+#game button .button-label,#game .map-choice strong,#game .map-choice small{color:inherit}
+#game button:not(:disabled):focus-visible,#game summary:focus-visible{
+ background:var(--button-active);color:var(--button-active-ink);border-color:var(--button-active);
+ outline:none;box-shadow:none;
+}
+@media(hover:hover){
+ #game button:not(:disabled):hover,#game summary:hover{
+  background:var(--button-active);color:var(--button-active-ink);border-color:var(--button-active);
+ }
+}
+/* Selected controls retain pink; hover/focus changes only their text. */
+#game button:is([aria-pressed=true],[aria-selected=true]){background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}
+#game button:is([aria-pressed=true],[aria-selected=true]):focus-visible{color:#fff;text-shadow:-1px 0 var(--button-active-ink),1px 0 var(--button-active-ink),0 -1px var(--button-active-ink),0 1px var(--button-active-ink)}
+@media(hover:hover){
+ #game button:is([aria-pressed=true],[aria-selected=true]):hover{color:#fff;text-shadow:-1px 0 var(--button-active-ink),1px 0 var(--button-active-ink),0 -1px var(--button-active-ink),0 1px var(--button-active-ink)}
+}
+@media(prefers-reduced-motion:reduce){#game button,#game summary{transition:none}}
+/* Keyboard focus uses the shared pink highlight; control mode keeps its side tab. */
+#game button:focus,#game button:focus-visible,#game summary:focus,#game summary:focus-visible{outline:none;box-shadow:none}
+/* Pause navigation needs a visible current action, without a focus ring. */
+#game #pause-panel button:focus-visible{background:var(--button-active);color:var(--button-active-ink);border-color:var(--button-active)}
+#game #input-keyboard,#game #input-mobile{height:40px;min-height:40px;padding-bottom:0;text-shadow:none;-webkit-text-stroke:0}
+/* Extend outside the group so the labels keep their original cropped fit. */
+#game .input-choice{position:relative;border:0}
+#game #input-keyboard[aria-pressed=true]{border-top-left-radius:0;border-bottom-left-radius:0}
+#game #input-mobile[aria-pressed=true]{border-top-right-radius:0;border-bottom-right-radius:0}
+#game .input-choice::before,#game .input-choice::after{position:absolute;top:0;height:40px;width:16px;pointer-events:none;transition:transform .18s ease,background-color .18s ease}
+#game .input-choice:has(#input-keyboard[aria-pressed=true])::before{content:'';right:calc(100% - 1px);background:var(--ui-accent);border-radius:4px 0 0 4px}
+#game .input-choice:has(#input-mobile[aria-pressed=true])::after{content:'';left:calc(100% - 1px);background:var(--ui-accent);border-radius:0 4px 4px 0}
+@media(hover:hover){
+ #game .input-choice:has(#input-keyboard[aria-pressed=true]:hover)::before,
+ #game .input-choice:has(#input-mobile[aria-pressed=true]:hover)::after{transform:translateY(-2px)}
+}
+@media(prefers-reduced-motion:reduce){#game .input-choice::before,#game .input-choice::after{transition:none}}
+
+/* Shared, readable action/keybind grid for general and weapon controls. */
+#game select{background:var(--button-idle);color:var(--button-ink);border:1px solid var(--button-edge);transition:background-color .18s ease,color .18s ease}
+#game select:focus,#game select[data-editing=true]{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent);outline:none;box-shadow:none}
+#game select option{background:#242928;color:#fff}
+#game select option:checked{background:var(--ui-accent);color:var(--button-active-ink)}
+/* The option popup is drawn in-game so no OS blue highlight leaks through. */
+#game select[hidden],#game .menu-select-list[hidden]{display:none!important}
+#game .menu-select{display:flex;align-items:center;justify-content:space-between;gap:18px;min-width:135px;padding:8px 10px;border:1px solid var(--button-edge);border-radius:2px;background:var(--button-idle);color:var(--button-ink);font:inherit;font-size:11px;letter-spacing:0;cursor:pointer;transition:background-color .18s,color .18s}
+.menu-select::after{content:'';width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-2px) rotate(45deg)}
+#game .menu-select:is(:focus,[aria-expanded=true]){background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent);outline:none;box-shadow:none}
+#game .menu-select-list{position:fixed;z-index:70;overflow-y:auto;overscroll-behavior:contain;padding:4px;border:1px solid var(--ui-accent);border-radius:3px;background:var(--button-idle);color:var(--button-ink);box-shadow:0 8px 24px #0004;font:700 11px/1.4 Arial,Helvetica,sans-serif;letter-spacing:0;scrollbar-color:var(--ui-accent) var(--button-idle)}
+#game .menu-select-option{padding:9px 11px;min-height:34px;border-radius:2px;cursor:pointer}
+#game .menu-select-option:is([aria-selected=true],[data-highlight=true]){background:var(--ui-accent);color:var(--button-active-ink)}
+#game .menu-select-option[aria-selected=true][data-highlight=true]{color:#fff;text-shadow:-1px 0 var(--button-active-ink),1px 0 var(--button-active-ink),0 -1px var(--button-active-ink),0 1px var(--button-active-ink)}
+#game .menu-select-option[aria-disabled=true]{opacity:.4;cursor:default}
+@media(hover:hover){#game .menu-select:hover{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}}
+@media(prefers-reduced-motion:reduce){#game .menu-select{transition:none}}
+#game summary::marker{color:inherit}
+#game input{accent-color:var(--ui-accent);caret-color:currentColor}
+#game input:focus-visible{outline:1px solid var(--ui-accent);outline-offset:2px;box-shadow:none}
+#game input:not([type=checkbox]):not([type=radio]):not([type=range]):focus{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}
+#game label:has(input:is([type=checkbox],[type=radio]):focus-visible){background:var(--ui-accent);color:var(--button-active-ink)}
+#game label:has(input:is([type=checkbox],[type=radio]):focus-visible) input{accent-color:var(--button-active-ink);outline-color:var(--button-active-ink)}
+@media(hover:hover){
+ #game select:hover{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}
+ #game label:has(input:is([type=checkbox],[type=radio])):hover{background:var(--ui-accent);color:var(--button-active-ink)}
+ #game label:has(input:is([type=checkbox],[type=radio])):hover input{accent-color:var(--button-active-ink)}
+ #game input:not([type=checkbox]):not([type=radio]):not([type=range]):hover{border-color:var(--ui-accent)}
+}
+#game button .back-arrow{position:absolute;left:10px;top:-4%;height:108%;width:64px;max-width:calc(100% - 20px);display:block;pointer-events:none}
+#game button:has(>.back-arrow){width:86px;min-width:86px;justify-self:start}
+.controls-grid{width:100%;border-collapse:collapse;table-layout:fixed;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;text-align:left;color:#e6ebe8}
+.controls-grid th,.controls-grid td{padding:12px 14px;border:1px solid #3a4540;vertical-align:top;overflow-wrap:anywhere}
+.controls-grid th:first-child{width:36%}
+.controls-grid thead th{background:#35413b;color:#fff;font-size:11px;letter-spacing:.08em;font-weight:700}
+.controls-grid tbody th{font-weight:600;color:#c0d9d2}
+.controls-grid tbody tr:nth-child(odd){background:#ffffff04}
+.controls-grid td small{display:block;margin-top:5px;color:#99aaa2;font-size:11px;line-height:1.5}
+.weapon-control-entry .controls-grid{border-style:hidden}
+@media(max-width:600px){.controls-grid th,.controls-grid td{padding:10px 9px}.controls-grid{font-size:12px}}
+
+/* Keep display type on titles/buttons; instructions and counters use clean text. */
+#tutorial-guide{text-align:left;padding:20px 22px;background:#202724f5;border-color:#424c46}
+#tutorial-guide #tutorial-progress{display:block;font-family:Arial,Helvetica,sans-serif;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.08em;font-size:11px;line-height:1.5;color:#b8d9d9}
+#tutorial-guide h2{font-size:22px;line-height:1.2;letter-spacing:-.025em;margin:10px 0 14px}
+#tutorial-guide #tutorial-hint{font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:400;line-height:1.6;letter-spacing:0;white-space:pre-line;color:#dce4df;font-variant-numeric:tabular-nums}
+#tutorial-guide button{width:100%;margin-top:18px}
+#tutorial-guide #tutorial-count{margin-top:18px;height:40px;font-family:Arial,Helvetica,sans-serif;font-size:38px;font-weight:700;font-variant-numeric:tabular-nums;line-height:40px;letter-spacing:.02em;color:#c2efff;text-align:left;background:none;border:0}
+#game .menu-shell [data-page=weapons]{width:min(640px,100%)}
+.weapon-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;max-height:calc(100dvh - 200px);overflow-y:auto;padding:3px 3px 12px}
+.weapon-card{min-width:0;border:1px solid #424846;border-radius:7px;overflow:hidden;background:#242928;align-self:start}
+#game .weapon-card .weapon-choice{display:block;width:100%;height:auto;min-height:390px;margin:0;padding:0 0 18px;border:0;border-radius:0;white-space:normal;text-align:left}
+.weapon-preview{display:block;width:100%;aspect-ratio:5/6;object-fit:cover;background:#242928}
+.weapon-name{display:block;position:relative;height:40px;overflow:hidden;margin:14px 0 12px}
+.weapon-name>.button-label{position:absolute;left:10px;top:0;font:inherit;line-height:32px;white-space:nowrap;transform-origin:0 0;pointer-events:none}
+#game button .weapon-description{display:block;padding:0 12px;font-family:Arial,Helvetica,sans-serif!important;font-size:13px;font-weight:400;line-height:1.6;letter-spacing:0;text-transform:none!important;color:inherit}
+@media(max-width:480px){.weapon-options{gap:10px}.weapon-preview{aspect-ratio:4/5}#game .weapon-card .weapon-choice{min-height:330px}#game button .weapon-description{font-size:12px;padding:0 10px}.weapon-options{max-height:calc(100dvh - 170px)}}
+@media(max-height:600px){#tutorial-guide{max-height:calc(100dvh - 160px);overflow-y:auto;pointer-events:auto;padding:12px 18px}#tutorial-guide #tutorial-hint{font-size:13px;line-height:1.45}}
+
+/* Shared player health: restrained pink, with a brief trailing damage segment. */
+.health-hud{display:none;position:absolute;z-index:5;top:30px;left:50%;transform:translateX(-50%);width:clamp(220px,27vw,340px);pointer-events:none;color:var(--ui-accent);font-family:Arial,sans-serif;filter:drop-shadow(0 1px 2px #15201bc0)}
+.playing .health-hud{display:block}
+.health-readout{display:flex;align-items:baseline;justify-content:center;margin-top:9px}
+.health-number{font-size:20px;line-height:1;font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:.04em}
+.health-track{height:11px;background:#202827dc;border:1px solid #17231fcc;position:relative;border-radius:1px}
+.health-track i{position:absolute;inset:0;transform-origin:left;will-change:transform}
+.health-fill{background:var(--ui-accent)}
+.health-track .health-loss{right:auto;background:#d86c75;transform-origin:center;will-change:width,transform}
+@media(max-width:760px){.health-hud{top:88px;width:240px;max-width:70vw}}
+/* One readable font across live HUD labels, counters and cooldowns. */
+:root{--hud-font:Arial,Helvetica,sans-serif}
+#weapon,#weapon *,.health-hud,.health-hud *,.playing .mode,.playing .fps-counter,.playing .toast{font-family:var(--hud-font)!important}
+.health-number,#weapon .weapon-count,#weapon .hex-recharge-center span{font-weight:700;font-variant-numeric:tabular-nums}
+.health-hud .health-number,.damage-feedback span{font-family:Bahnschrift,'Trebuchet MS',sans-serif!important;font-weight:600}
+.damage-feedback{display:none;position:absolute;inset:0;z-index:6;pointer-events:none;overflow:hidden}
+.playing .damage-feedback{display:block}
+.damage-feedback span{position:absolute;transform:translate(-50%,-50%);color:#ed7c86;font-size:18px;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.04em;white-space:nowrap;text-shadow:0 1px 3px #24161dcc;will-change:opacity,top}
+
+/* Death uses the same dusty red as the health-loss segment. */
+body.dying #world{cursor:default}
+body.dying .health-hud,body.dying #weapon,body.dying #reticle,body.dying .rifle-spread,body.dying .touch-controls,body.dying .damage-feedback,body.dying #hit-marker,body.dying .masthead{visibility:hidden!important;pointer-events:none!important}
+#death-screen{position:absolute;inset:0;z-index:40;display:grid;place-items:center;overflow:hidden;isolation:isolate;color:#111615;background:#661f307d;backdrop-filter:blur(2px)}
+#death-screen.hidden{display:none}
+.death-wash{position:absolute;z-index:-1;left:50%;top:50%;width:max(125vw,900px);height:145dvh;animation:death-spread .48s cubic-bezier(.12,.64,.22,1) both}
+.death-wash svg{width:100%;height:100%;overflow:visible;fill:#ce3041}
+.death-satellite{transform-origin:500px 380px;animation:death-droplet .35s .05s ease-out both}
+.death-card{position:relative;isolation:isolate;display:grid;grid-template-columns:1.1fr 1fr;align-items:center;gap:clamp(24px,6vw,90px);width:min(1000px,86vw);height:86dvh;animation:death-reveal .22s both}
+#game #death-title{height:100%;width:100%;margin:0;color:#090d0c;line-height:1;text-transform:uppercase!important}
+#game #death-title svg{display:block;width:100%;height:100%;overflow:visible;fill:currentColor}
+#game #death-title text{font-family:'Arial Black',Arial,sans-serif!important;font-weight:900;text-transform:uppercase!important}
+.death-actions{min-width:0}
+#game #death-screen button{display:block;width:100%;height:46px;min-height:46px;margin:12px 0 0;background:transparent;color:#090d0c;border:0;border-radius:0;box-shadow:none;outline:none;text-align:left;font-size:34px}
+#game #death-screen button:hover,#game #death-screen button:focus-visible{background:transparent;color:var(--ui-accent);border:0;box-shadow:none;outline:none;text-shadow:-1px 0 #090d0c,1px 0 #090d0c,0 -1px #090d0c,0 1px #090d0c}
+@keyframes death-spread{0%{transform:translate(-50%,-50%) scale(.015) rotate(-5deg)}65%{transform:translate(-50%,-50%) scale(1.035) rotate(1deg)}100%{transform:translate(-50%,-50%) scale(1) rotate(0)}}
+@keyframes death-droplet{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes death-reveal{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.death-wash{animation:none;transform:translate(-50%,-50%)}.death-satellite{animation:none}.death-card{animation:death-reveal .15s both}}
+.damage-feedback span{color:#ff5266;font-weight:700;-webkit-text-stroke:.8px #251218;paint-order:stroke fill;text-shadow:0 2px 3px #080b0bf2,0 0 5px #080b0bd9;will-change:opacity,top,transform}
+.outgoing-number{text-align:center}
+.outgoing-number b{display:block;font:inherit}
+.outgoing-number small{position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);font:inherit;font-size:.65em;justify-content:center;flex-wrap:wrap;gap:3px 5px;width:max-content;max-width:180px}
+.outgoing-number em{font:inherit}
+
+.shotgun-cone{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:none;z-index:3;overflow:hidden}
+.shotgun-cone path{fill:#ffe7be08;stroke:#f8e1bc;stroke-width:1.25;stroke-opacity:.72;filter:drop-shadow(0 1px 1px #171d19)}
+#game .map-choice{position:relative;border:0}
+#game .map-choice .map-caption{display:block;height:108px;padding:0 8px;background:#484344;overflow:hidden}
+#game .map-choice .map-caption strong{display:grid;grid-template-rows:1fr 1fr;gap:0;height:108px;min-width:0;padding:0;margin:0;font-family:'Arial Black',Arial,sans-serif}
+#game .map-caption strong svg,#game .map-mode svg{display:block;width:100%;height:100%;fill:currentColor;font-family:'Arial Black',Arial,sans-serif;font-size:25px;font-weight:900}
+#game .map-choice .map-mode{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:block;width:104px;height:30px;max-width:calc(100% - 24px);margin:0;padding:0 6px;overflow:hidden;border:0;border-radius:3px;background:var(--ui-accent);color:#171d19;letter-spacing:0;text-align:center;white-space:nowrap}
+
+#game .map-choice:is(:hover,:focus-visible) .map-caption{background:var(--ui-accent);color:#171d19}

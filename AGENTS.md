@@ -1,0 +1,6 @@
+# Deadshift project instructions
+
+- Before starting any multiplayer implementation, networking, online matchmaking, or multiplayer deployment work, remind the user that **P toggles all local developer overrides** (including infinite ammo, speed, teleport, and weapon-specific cheats; invulnerability is a separate manual checkbox). The user explicitly requested this reminder before any multiplayer attempt. Do not silently carry these practice overrides into online play.
+- Do not control the user's visible game tab for testing. Use a separate hidden browser tab and leave their session alone.
+- New weapons or damage effects must carry an explicit damageType through lethal hits and define their death reaction in src/death-reactions.js. Preserve weapon drops for every death. Electricity leaves a charred fallen body; fire leaves an intact fallen skeleton; bullets leave an intact body with a head wound; ordinary explosions use directional gore scatter. Add reaction and cleanup coverage for new effects.
+- Ballast is an exception to the ordinary bullet death when the lethal burst from one attacker removes at least 85% of maximum health within 0.45 seconds: use the headless kneeling reaction with directional blood. Normal Ballast finishing hits retain the ordinary gunshot reaction.
