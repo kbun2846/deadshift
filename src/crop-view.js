@@ -19,11 +19,13 @@ export class CropView {
     }
     this.updateBeds([]);
     const pieces = [new THREE.CylinderGeometry(.018, .029, 1.45, 4).translate(0, .725, 0), new THREE.ConeGeometry(.085, .38, 4).translate(0, 1.53, 0)];
+    const lowGeometry=mergeGeometries(pieces);
     for (const side of [-1, 1]) {
       pieces.push(new THREE.ConeGeometry(.14, .8, 3).rotateZ(side * .95).translate(side * .2, .85, 0));
       pieces.push(new THREE.ConeGeometry(.1, .6, 3).rotateX(side * .9).translate(0, .5, side * .15));
     }
     const geometry = mergeGeometries(pieces); pieces.forEach(g => g.dispose());
+    this.stalkGeometry=geometry;this.lowStalkGeometry=lowGeometry;
     for (const s of cropSegments(view.map)) {
       const stalks = [];
       for (let x = -s.w / 2 + .16; x < s.w / 2; x += .39) for (let z = -s.d / 2 + .16; z < s.d / 2; z += .43) {
@@ -42,6 +44,12 @@ export class CropView {
     this.smoke = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ color: '#5b5348', transparent: true, opacity: .4, depthWrite: false }), 448);
     for (const mesh of [this.flames, this.smoke]) { mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0; view.scene.add(mesh); }
   }
+  setQuality(name){
+    // Preserve every stalk's position and height: crops still conceal entities.
+    // Low tiers omit the four decorative leaves, not the gameplay cover.
+    const geometry=name==='performance'||name==='potato'?this.lowStalkGeometry:this.stalkGeometry;
+    for(const part of this.parts.values())part.mesh.geometry=geometry;
+  }
   writeStalks(part) {
     const o = this.dummy;
     for (const [i, s] of part.stalks.entries()) {
@@ -49,7 +57,7 @@ export class CropView {
     }
     part.mesh.instanceMatrix.needsUpdate = true;
     // Bounds include leaned stalks so culling cannot remove a trampled edge.
-    part.mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Math.hypot(part.shape.w, part.shape.d) / 2 + 2);
+    part.mesh.boundingSphere ||= new THREE.Sphere(new THREE.Vector3(), Math.hypot(part.shape.w, part.shape.d) / 2 + 2);
   }
   update(sim, dt) {
     const topology=sim.crops.map(s=>s.state==='gone'?'0':'1').join('');
@@ -105,8 +113,8 @@ export class CropView {
       }
     }
     this.flames.count = flameCount; this.smoke.count = smokeCount;
-    this.flames.instanceMatrix.needsUpdate = this.smoke.instanceMatrix.needsUpdate = true;
-    if (this.flames.instanceColor) this.flames.instanceColor.needsUpdate = true;
+    if(flameCount){this.flames.instanceMatrix.needsUpdate=true;if(this.flames.instanceColor)this.flames.instanceColor.needsUpdate=true;}
+    if(smokeCount)this.smoke.instanceMatrix.needsUpdate=true;
   }
   updateBeds(crops) {
     for (const bed of this.beds.values()) {

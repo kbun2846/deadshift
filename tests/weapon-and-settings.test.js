@@ -40,8 +40,8 @@ test('orbs hit the same selected point inside a target', () => {
 
 test('one orb launches immediately and deals less damage per orb than a full volley', () => {
   const sim = new Simulation(empty()); sim.seed(); sim.launch(10, 0);
-  assert.equal(sim.shots.length, 1); assert.equal(sim.shots[0].damage, 8*1.16);
-  assert.equal(damagePerOrb(12), 24*1.16); close(12 * damagePerOrb(12), 334.08);
+  assert.equal(sim.shots.length, 1); assert.equal(sim.shots[0].damage, damagePerOrb(1));
+  close(12 * damagePerOrb(12)+explosionFor(12).damage,345);
   assert.equal(sim.ammo, 11);
 });
 
@@ -89,7 +89,7 @@ test('fence corners allow sliding without crossing or long-distance correction',
 });
 
 test('render caps produce the requested frame count independently of simulation ticks', () => {
-  for (const source of [60, 120, 144]) for (const cap of [1, 30, 60, 90, 120, 0]) {
+  for (const source of [60, 120, 144]) for (const cap of [1, 30, 45, 60, 90, 120, 0]) {
     const budget = new RenderBudget(cap); let renders = 0, elapsed = 0;
     for (let i = 0; i < source * 10; i++) { const dt = budget.tick(1 / source); if (dt) { renders++; elapsed += dt; } }
     assert.ok(Math.abs(renders - Math.min(source, cap || source) * 10) <= 1, source + '/' + cap + ': ' + renders);
@@ -99,7 +99,7 @@ test('render caps produce the requested frame count independently of simulation 
 
 test('graphics tiers change resolution, shadow work, texture detail and effect budgets', () => {
   assert.equal(validateSettings({controlHints:false}).controlHints,false);
-  assert.deepEqual(validateSettings({quality:'potato',fps:1}),{quality:'potato',fps:1,motion:true,controlHints:true,mobileOpacity:1});
+  assert.deepEqual(validateSettings({quality:'potato',fps:1}),{quality:'potato',fps:1,motion:true,controlHints:true,mobileOpacity:.4});
   assert.ok(GRAPHICS.potato.scale < GRAPHICS.performance.scale);
   assert.equal(GRAPHICS.potato.motes, 0);
   assert.ok(GRAPHICS.potato.particleCap < GRAPHICS.performance.particleCap);
@@ -108,10 +108,20 @@ test('graphics tiers change resolution, shadow work, texture detail and effect b
   assert.ok(GRAPHICS.quality.shadows > GRAPHICS.balanced.shadows);
   assert.ok(GRAPHICS.performance.texture < GRAPHICS.balanced.texture && GRAPHICS.balanced.texture < GRAPHICS.quality.texture);
   assert.ok(GRAPHICS.performance.particleCap < GRAPHICS.quality.particleCap);
-  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', fps: 60, motion: false, controlHints: true, mobileOpacity: 1 });
+  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', fps: 60, motion: false, controlHints: true, mobileOpacity: .4 });
 });
 
 test('mobile opacity accepts saved presets and rejects invalid values',()=>{
  for(const opacity of [1,.7,.4])assert.equal(validateSettings({mobileOpacity:opacity}).mobileOpacity,opacity);
- for(const opacity of [null,0,-1,2,'invalid'])assert.equal(validateSettings({mobileOpacity:opacity}).mobileOpacity,1);
+ for(const opacity of [null,0,-1,2,'invalid'])assert.equal(validateSettings({mobileOpacity:opacity}).mobileOpacity,.4);
+});
+
+test('first launch defaults to Performance on mobile and Balanced on PC, preserving saved choices',()=>{
+ assert.equal(validateSettings({}, {mobile:true}).quality,'performance');
+ assert.equal(validateSettings({}, {mobile:false}).quality,'balanced');
+ assert.equal(validateSettings(null, {mobile:true}).quality,'performance');
+ assert.equal(validateSettings({quality:'invalid'}, {mobile:true}).quality,'performance');
+ for(const quality of Object.keys(GRAPHICS))for(const mobile of [true,false]){
+  assert.equal(validateSettings({quality}, {mobile}).quality,quality);
+ }
 });

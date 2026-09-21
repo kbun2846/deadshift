@@ -26,6 +26,9 @@ export const shotgunPressurized=sim=>sim.weapon==='shotgun'&&!sim.player.dead&&s
 export function resetShotgun(sim){sim.shotgun={ammo:2,charge:0,stored:false,hold:0,trigger:false,suppress:false,reload:0,cooldown:0,pending:0,doubleCharge:0,aiming:false,spent:0};sim.shotgunPellets=[];}
 export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
  const s=sim.shotgun,p=sim.player;
+ // Only a new press on an already empty gun can request a reload.
+ // Releasing a held charge or finishing E's second shot is not a new press.
+ const emptyTrigger=!sim.dev.ammo&&s.ammo<=0&&((input.fire||input.tapFire)&&!s.trigger||input.doubleShot);
  s.aiming=!!input.aiming;s.cooldown=Math.max(0,s.cooldown-dt);
  // Pellets travel visibly; one damage result per shell/target per step.
  const hits=new Map();
@@ -81,10 +84,10 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
  }
  if(s.stored){s.hold=Math.max(0,s.hold-dt);if(!s.hold){s.charge=0;s.stored=false;}}
  if(s.pending>0){s.pending=Math.max(0,s.pending-dt);if(s.pending<1e-8){s.pending=0;fire(s.doubleCharge,SHOTGUN.doubleRecoilScale);}}
- if(input.reload&&s.ammo<2&&!s.pending&&!interruptedReload){s.reload=SHOTGUN.reload;s.charge=0;s.stored=false;s.hold=0;s.suppress=!!input.fire;sim.events.push({type:'shotgunReload',spent:s.spent,live:s.ammo});s.trigger=!!input.fire;return;}
+ if((input.reload||emptyTrigger)&&s.ammo<2&&!s.pending&&!interruptedReload&&p.hp>0){s.reload=SHOTGUN.reload;s.charge=0;s.stored=false;s.hold=0;s.suppress=!!input.fire;sim.events.push({type:'shotgunReload',spent:s.spent,live:s.ammo});s.trigger=!!input.fire;return;}
  if(sim.dev.ammo&&!s.ammo&&!s.pending){s.ammo=2;s.spent=0;}
  // An empty breech cannot build or retain charge, including Q's stored charge.
- if(s.ammo<=0){s.charge=0;s.stored=false;s.hold=0;s.trigger=false;s.suppress=false;return;}
+ if(s.ammo<=0){s.charge=0;s.stored=false;s.hold=0;s.trigger=!!input.fire;s.suppress=false;return;}
  const suppressed=s.suppress;
  if(!input.fire)s.suppress=false;
  // E snapshots the live trigger charge, including this tick, without needing Q.

@@ -112,11 +112,32 @@ test('buffed first-shell aimed midrange hits stay near 80-105; edge hits are muc
 });
 test('charging and storing require a loaded shell; empty and reloading stay uncharged',()=>{
  const s=make();s.step({doubleShot:true});ticks(s,10);assert.equal(s.shotgun.ammo,0);s.events=[];
- ticks(s,180,{fire:true,storeCharge:true});s.step({fire:false});
+ ticks(s,60,{storeCharge:true});s.step({fire:false});
  assert.equal(s.shotgun.charge,0);assert.equal(s.shotgun.stored,false);assert.equal(s.shotgun.hold,0);assert.equal(s.events.some(e=>e.type==='shotgunStored'||e.type==='shotgunShot'),false);
  s.step({reload:true});ticks(s,60,{fire:true,storeCharge:true});assert.ok(s.shotgun.reload>0);assert.equal(s.shotgun.charge,0);
  ticks(s,Math.ceil(SHOTGUN.reload*60)+1);s.step({tapFire:true});ticks(s,20);assert.equal(s.shotgun.ammo,1);
  ticks(s,120,{fire:true});s.step({fire:true,storeCharge:true});assert.equal(s.shotgun.charge,1);assert.equal(s.shotgun.stored,true);
+});
+test('empty Ballast firing inputs reload normally without duplicating reloads',()=>{
+ for(const input of [{fire:true},{tapFire:true},{doubleShot:true}]){
+  const s=make();s.shotgun.ammo=1;s.step({tapFire:true});ticks(s,20);
+  assert.equal(s.shotgun.ammo,0);assert.equal(s.shotgun.reload,0);
+  s.step(input);assert.equal(s.shotgun.reload,SHOTGUN.reload);
+  ticks(s,60,input);assert.equal(s.shotgun.ammo,0);assert.equal(s.shotgun.charge,0);
+  assert.equal(s.events.filter(e=>e.type==='shotgunReload').length,1);
+  ticks(s,110);assert.equal(s.shotgun.ammo,2);
+ }
+ const s=make();s.dev.ammo=true;s.shotgun.ammo=0;s.step({tapFire:true});
+ assert.equal(s.shotgun.reload,0);assert.equal(s.stats.launched,1);
+});
+test('Ballast does not reload from holding or releasing fire after E empties both barrels',()=>{
+ const s=make();ticks(s,120,{fire:true});s.step({fire:true,doubleShot:true});
+ ticks(s,180,{fire:true});assert.equal(s.shotgun.ammo,0);assert.equal(s.shotgun.reload,0);
+ assert.equal(s.events.filter(e=>e.type==='shotgunShot').length,2);
+ s.step({tapFire:true});assert.equal(s.shotgun.reload,0);
+ ticks(s,10);assert.equal(s.shotgun.reload,0);
+ s.step({fire:true});assert.equal(s.shotgun.reload,SHOTGUN.reload);
+ assert.equal(s.events.filter(e=>e.type==='shotgunReload').length,1);
 });
 test('double recoil begins lightly, kicks together after 50ms, and keeps single-shell E unchanged',()=>{
  for(const charge of [0,.5,1]){

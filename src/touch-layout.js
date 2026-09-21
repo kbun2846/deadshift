@@ -1,5 +1,7 @@
-export const TOUCH_LAYOUT_KEY='deadshift-touch-layout-v1';
-export const TOUCH_CONTROL_IDS=['move-stick','touch-place','touch-launch','touch-hex','touch-stream','touch-dodge','touch-extended','touch-grenade'];
+export const TOUCH_LAYOUT_KEY='deadshift-touch-layout-v2';
+export const touchOrientation=({width,height})=>width>height?'landscape':'portrait';
+export function validateTouchLayouts(value){return {portrait:validateTouchLayout(value?.portrait),landscape:validateTouchLayout(value?.landscape)};}
+export const TOUCH_CONTROL_IDS=['move-stick','seed-stick','touch-place','touch-launch','touch-hex','touch-stream','touch-dodge','touch-extended','touch-grenade'];
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 export function validateTouchLayout(value){
  const result={};
@@ -16,7 +18,13 @@ export function normalizedPosition(point,size,viewport){
  return {x:clamp((point.x-start.x)/Math.max(1,end.x-start.x),0,1),y:clamp((point.y-start.y)/Math.max(1,end.y-start.y),0,1)};
 }
 export function installTouchLayout({root,controls,actions,canEdit,onEditing}){
- let positions={};try{positions=validateTouchLayout(JSON.parse(localStorage.getItem(TOUCH_LAYOUT_KEY)));}catch{}
+ let orientation=touchOrientation({width:innerWidth,height:innerHeight}),layouts=validateTouchLayouts(null);
+ try{
+  const saved=localStorage.getItem(TOUCH_LAYOUT_KEY);
+  if(saved)layouts=validateTouchLayouts(JSON.parse(saved));
+  else layouts[orientation]=validateTouchLayout(JSON.parse(localStorage.getItem('deadshift-touch-layout-v1')));
+ }catch{}
+ let positions=layouts[orientation];
  const elements=TOUCH_CONTROL_IDS.map(id=>document.getElementById(id));
  const button=document.createElement('button');button.id='touch-layout-edit';button.className='icon-button';button.textContent='EDIT';button.setAttribute('aria-label','Edit mobile controls');button.setAttribute('aria-pressed','false');actions.prepend(button);
  const overlay=document.createElement('div');overlay.id='touch-layout-overlay';overlay.hidden=true;
@@ -25,7 +33,8 @@ export function installTouchLayout({root,controls,actions,canEdit,onEditing}){
  let editing=false,drag=null,scheduled=false;
  const viewport=()=>({width:innerWidth,height:innerHeight});
  const visible=element=>!element.hidden&&element.getClientRects().length>0;
- const save=()=>{try{localStorage.setItem(TOUCH_LAYOUT_KEY,JSON.stringify(positions));}catch{}};
+ const save=()=>{layouts[orientation]=positions;try{localStorage.setItem(TOUCH_LAYOUT_KEY,JSON.stringify(layouts));}catch{}};
+ function clearPlacement(){for(const element of elements){element.classList.remove('touch-positioned','touch-removed');for(const name of ['left','top','width','height','min-height'])element.style.removeProperty(name);}}
  function place(element){
   const p=positions[element.id];if(!p)return;
   element.classList.toggle('touch-removed',!!p.hidden);if(p.hidden)return;
@@ -38,6 +47,8 @@ export function installTouchLayout({root,controls,actions,canEdit,onEditing}){
   element.classList.add('touch-positioned');element.style.left=position.x+'px';element.style.top=position.y+'px';
  }
  function refresh(){
+  const next=touchOrientation(viewport());
+  if(next!==orientation){if(editing)finish();orientation=next;positions=layouts[orientation];clearPlacement();}
   if(document.body.dataset.controls!=='touch'){if(editing)finish();return;}
   for(const element of elements){element.classList.toggle('touch-removed',!!positions[element.id]?.hidden);if(visible(element))place(element);}
  }
@@ -63,7 +74,7 @@ export function installTouchLayout({root,controls,actions,canEdit,onEditing}){
  });
  overlay.querySelector('#touch-layout-done').onclick=finish;
  overlay.querySelector('#touch-layout-reset').onclick=()=>{
-  positions={};for(const element of elements){element.classList.remove('touch-positioned','touch-removed');for(const name of ['left','top','width','height','min-height'])element.style.removeProperty(name);}
+  positions={};clearPlacement();
   freeze();save();
  };
  controls.addEventListener('pointerdown',event=>{

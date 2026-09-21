@@ -58,14 +58,15 @@ export function makeRifle(detail=3){
 let preview;
 export function riflePreview(){
  if(preview)return preview;
- const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(600,720);renderer.setPixelRatio(1);renderer.outputColorSpace=THREE.SRGBColorSpace;
+ const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setSize(600,720);renderer.setPixelRatio(1);renderer.outputColorSpace=THREE.SRGBColorSpace;
  renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.25;
- const scene=new THREE.Scene();scene.background=new THREE.Color('#242928');scene.add(new THREE.HemisphereLight('#e1f5ff','#30332f',2.5));
+ const scene=new THREE.Scene();renderer.setClearColor(0x000000,0);scene.add(new THREE.HemisphereLight('#e1f5ff','#30332f',2.5));
  const light=new THREE.DirectionalLight('#fff1df',2.2);light.position.set(2,4,3);scene.add(light);
  const rim=new THREE.DirectionalLight('#9bdfff',.8);rim.position.set(-3,1,-2);scene.add(rim);
  const gun=makeRifle();gun.rotation.z=-.16;scene.add(gun);
  const grenade=makeGrenade(2);grenade.position.set(.27,-.25,-.13);grenade.rotation.set(.1,0,.25);scene.add(grenade);
  const camera=new THREE.PerspectiveCamera(33,600/720,.01,10);camera.position.set(1.03,.71,-1.2);camera.lookAt(0,-.03,-.075);
+ camera.zoom=1.28;camera.updateProjectionMatrix();
  renderer.render(scene,camera);preview=renderer.domElement.toDataURL();
  const materials=new Set();scene.traverse(o=>{o.geometry?.dispose();if(o.material)materials.add(o.material);});materials.forEach(m=>m.dispose());renderer.dispose();renderer.forceContextLoss();return preview;
 }

@@ -30,10 +30,27 @@ test('each ammo provides exactly 0.25 seconds (three seconds at full ammo) of st
   const startHP = sim.targets[0].hp;
   for (let i = 0; i < 320; i++) sim.stepSpray(.01);
   assert.equal(sim.ammo, 0); assert.equal(sim.spray.active, false);
-  const expected = RULES.sprayInnerDPS * (1 - .25 * (3 - .65) / RULES.sprayRange) * 12 * .25;
+  const duration=12*.25;
+  const expected = RULES.sprayInnerDPS * (1 - .25 * (3 - .65) / RULES.sprayRange) * (duration+(RULES.sprayMaxMultiplier-1)*(duration-RULES.sprayRampTime/2));
   assert.ok(Math.abs(startHP - sim.targets[0].hp - expected) < 1e-6);
   for (let i = 0; i < 300; i++) step(sim);
   assert.equal(sim.spray.active, false, 'holding C after exhaustion cannot auto-restart');
+});
+
+test('stream ramps per victim, caps, and resets after a miss, cover or release',()=>{
+ const sim=make([{id:'a',x:3,z:0},{id:'b',x:3,z:4}]);
+ for(const t of sim.targets)t.hp=t.maxHp=10000;
+ step(sim);sim.spray.warmup=0;sim.dev.ammo=true;
+ const a=sim.targets[0],b=sim.targets[1];
+ const hit=()=>{const hp=a.hp;sim.stepSpray(.1);return hp-a.hp;};
+ const first=hit();for(let i=0;i<15;i++)hit();
+ const peak=hit();assert.ok(peak>first*1.4);
+ assert.ok(Math.abs(hit()-peak)<1e-8,'damage stays capped');
+ b.z=0;const hp=b.hp;hit();assert.ok(Math.abs(hp-b.hp-first)<1e-8,'new entity starts at base');
+ a.z=4;hit();a.z=0;assert.ok(Math.abs(hit()-first)<1e-8,'leaving cone resets');
+ for(let i=0;i<5;i++)hit();sim.colliders.push({x:2,z:0,w:.2,d:2});assert.equal(hit(),0);
+ sim.colliders=[];assert.ok(Math.abs(hit()-first)<1e-8,'cover resets');
+ step(sim,{spray:false});assert.equal(sim.spray.contacts.size,0);
 });
 
 test('inner cone is stronger, outer cone weaker, outside and covered targets safe', () => {

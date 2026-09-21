@@ -1,4 +1,5 @@
 import {recordBallastDamage} from './ballast-damage.js';
+import {isPlayable,confinePlayableMovement} from './playable-area.js';
 import {resetShotgun,stepShotgun} from './shotgun.js';
 import { mapColliders, mapProps, buildingContains, buildingWalls } from './maps.js';
 import { cropSegments, cropPoint, affectCrop, cropCircle, stepCrops } from './crops.js';
@@ -6,12 +7,14 @@ import { RIFLE, resetRifle, stepRifle } from './rifle.js';
 import { resetGrenades, stepGrenades } from './grenade.js';
 
 const HEX_BASE_PULSE=150,HEX_BASE_ZAP=20;
-const boostedHexDamage=damage=>Math.round(damage*114)/100;
+const HEX_DAMAGE_MULTIPLIER=1.14*1.4;
+const boostedHexDamage=damage=>Math.round(damage*HEX_DAMAGE_MULTIPLIER*100)/100;
 export const RULES = Object.freeze({
   step: 1 / 60, speed: 7.2, acceleration: 10, braking: 14, radius: .38, keyboardAimResponse:14,
   dodgeDistance: 3.2, dodgeDuration: .24, maxStamina: 2, dodgeStaminaCost: 1, staminaDelay: .6, staminaRecharge: 1.6, dodgeHitRadius: .18, dodgeDamageMultiplier: .5,
   sprayWarmup: .2, sprayAmmoTime: .25, sprayRange: 8, sprayInnerAngle: Math.PI * 8 / 180, sprayOuterAngle: Math.PI * 22 / 180,
-  sprayInnerDPS: 140, sprayOuterDPS: 55, sprayTurnRate: Math.PI * .65, sprayRecoil: 2.8,
+  sprayInnerDPS: 196, sprayOuterDPS: 77, sprayTurnRate: Math.PI * .65, sprayRecoil: 2.8,
+  sprayRampTime: 1.5, sprayMaxMultiplier: 1.5,
   maxSeeds: 12, seedInterval: .145, seedLife: 9, driftSpeed: .72,
   orbRadius: .15,
   hexCost: 10, hexFormationTime: .55, hexSpeed: 2.4, hexRange: 12, hexPulseRadius: 1.65, hexReach: 2.3, hexPulseDamage: boostedHexDamage(HEX_BASE_PULSE), hexEdgeDamage: boostedHexDamage(HEX_BASE_ZAP), hexSpinDuration: 1, hexCooldown: 30,
@@ -20,8 +23,13 @@ export const RULES = Object.freeze({
 });
 
 // Larger volleys trade a long refill for a higher damage return per orb.
-export const ORB_DAMAGE_MULTIPLIER = 1.16;
-export const damagePerOrb = count => (count <= 1 ? 8 : Math.round(8 + 16 * ((Math.max(1, Math.min(12, count)) - 1) / 11) ** 1.5))*ORB_DAMAGE_MULTIPLIER;
+export const ORB_DAMAGE_MULTIPLIER = 1.16*(345/400);
+export const ORB_VOLLEY_TOTALS=Object.freeze([0,9.28,20.88,34.8,90,125,165,205,245,285,325,363,400].map(d=>d*(345/400)));
+export const damagePerOrb = count => {
+ const n=Math.max(1,Math.min(12,count));
+ // Above three orbs, budget direct impact + the central blast together.
+ return n<=3?Math.round(8+16*((n-1)/11)**1.5)*ORB_DAMAGE_MULTIPLIER:(ORB_VOLLEY_TOTALS[n]-explosionFor(n).damage)/n;
+};
 export const launchDistance = time => 38*time-2.4*(1-Math.exp(-time/.12));
 export function launchDuration(distance) {
   let low=0,high=distance/18+.18;
@@ -29,7 +37,7 @@ export function launchDuration(distance) {
   return Math.max(.18,high);
 }
 // Preserve the original range rounding, then apply the volley buff exactly.
-export const rangedOrbDamage = (base,distance,multiplier=ORB_DAMAGE_MULTIPLIER) => Math.round(base/multiplier*(1+.2*Math.max(0,Math.min(1,(distance-6)/18))))*multiplier;
+export const rangedOrbDamage = (base,distance,multiplier=ORB_DAMAGE_MULTIPLIER) => multiplier===0?base:Math.round(base/multiplier*(1+.2*Math.max(0,Math.min(1,(distance-6)/18))))*multiplier;
 export function hexPower(distance) {
   const maturity = Math.max(0, Math.min(1, distance / 6));
   return { radius: .28 + (RULES.hexPulseRadius - .28) * maturity,
@@ -40,13 +48,15 @@ export function hexPower(distance) {
 export function hexPulseDamageAt(power, distance) {
   if (distance > power.radius + 1e-8) return 0;
   const accuracy = Math.max(0, 1 - Math.max(0, distance) / power.radius);
-  return boostedHexDamage(Math.round(power.damage / 1.14 * (.25 + .75 * accuracy * accuracy)));
+  const baseDamage=Math.round(power.damage / HEX_DAMAGE_MULTIPLIER);
+  return boostedHexDamage(Math.round(baseDamage * (.25 + .75 * accuracy * accuracy)));
 }
 export function explosionFor(count) {
   if (count < 2) return null;
   const power = (Math.min(12, count) - 2) / 10;
+  const n=Math.min(12,count);
   const extraScale=Math.sqrt(Math.max(1,count/12));
-  return { radius: (.55 + power * 2.15) * (count >= 12 ? 1.12 : 1)*extraScale, damage: (6 + power * 54)*extraScale*1.15 };
+  return { radius: (.55 + power * 2.15) * (count >= 12 ? 1.12 : 1)*extraScale, damage: (n<=3?(6+power*54)*1.15:30+170*((n-4)/8)**1.15)*(145/200)*extraScale };
 }
 
 export function inside(point, box, padding = 0) {
@@ -142,6 +152,7 @@ export class Simulation {
     const p = this.player;
     if (!input.spray || input.dodge || p.hp <= 0 || p.dodgeRemaining > 0) {
       this.spray.active = false; this.spray.credit = 0; this.spray.exhausted = !!input.spray;
+      this.spray.contacts?.clear();
     } else if (!this.spray.active && !this.spray.exhausted && this.ammo > 0) {
       this.spray = { active: true, warmup: RULES.sprayWarmup, credit: 0, exhausted: false, effectClock: 0, volley: ++this.volley };
       this.events.push({ type: 'sprayStart', x: p.x, z: p.z });
@@ -276,6 +287,7 @@ export class Simulation {
     for (let i = 0; i < steps; i++) {
       const previousX = p.x, previousZ = p.z;
       p.x += dx / steps; p.z += dz / steps;
+      confinePlayableMovement(this.map,p,previousX,previousZ,r);
       this.confineToHex(previousX, previousZ);
       // Resolve only the local circle/rectangle penetration. In particular,
       // touching a long horizontal fence must never snap x to its far end.
@@ -326,7 +338,7 @@ export class Simulation {
         }
       }
       // A wall correction must not push the caster through the electric boundary.
-      if (!this.withinHex(p.x, p.z)) { p.x = previousX; p.z = previousZ; p.vx = p.vz = 0; }
+      if (!this.withinHex(p.x, p.z)||!isPlayable(this.map,p.x,p.z,r)) { p.x = previousX; p.z = previousZ; p.vx = p.vz = 0; }
     }
     p.x = Math.max(-this.map.width / 2 + r, Math.min(this.map.width / 2 - r, p.x));
     p.z = Math.max(-this.map.depth / 2 + r, Math.min(this.map.depth / 2 - r, p.z));
@@ -438,11 +450,12 @@ export class Simulation {
     }
     const volley = ++this.volley;
     const duration = launchDuration(Math.max(...seeds.map(s => Math.hypot(x - s.x, z - s.z))));
-    const damage = isQuickShot ? 6 : damagePerOrb(seeds.length);
+    // One roll per full volley, shared by every orb: 190–210 impact + 145 blast.
+    const damage = isQuickShot ? 6 : damagePerOrb(seeds.length)+(seeds.length===12?(Math.random()*20-10)/12:0);
     for (const s of seeds) {
       s.vx = (x - s.x) / duration; s.vz = (z - s.z) / duration;
       s.launched = true; s.age = 0; s.volley = volley; s.damage = damage;
-      s.launchX=s.x;s.launchZ=s.z;s.baseDamage=damage;s.orbDamageScale=isQuickShot?1:ORB_DAMAGE_MULTIPLIER;
+      s.launchX=s.x;s.launchZ=s.z;s.baseDamage=damage;s.orbDamageScale=isQuickShot?1:seeds.length<=3?ORB_DAMAGE_MULTIPLIER:0;
       s.wallFocus=wallFocus;
       s.phase = 'converging'; s.travelDuration = duration; s.targetX = x; s.targetZ = z;
     }
@@ -471,6 +484,7 @@ export class Simulation {
 
   stepSpray(dt) {
     const spray = this.spray; if (!spray.active) return;
+    const contacts=spray.contacts ||= new Map();
     const p = this.player;
     const warming = Math.min(dt, spray.warmup); spray.warmup = Math.max(0, spray.warmup - warming);
     let available = dt - warming, firing = 0;
@@ -493,6 +507,14 @@ export class Simulation {
       const dps = dot >= Math.cos(RULES.sprayInnerAngle) ? RULES.sprayInnerDPS : RULES.sprayOuterDPS;
       return dps * (1 - .25 * distance / RULES.sprayRange) * firing;
     };
+    const sustainedDamage=(victim,base)=>{
+      if(!base){contacts.delete(victim);return 0;}
+      const before=contacts.get(victim)||0,after=before+firing;
+      contacts.set(victim,Math.min(after,RULES.sprayRampTime));
+      // Integrate the linear ramp across this tick, including the cap crossing.
+      const integral=t=>t<=RULES.sprayRampTime?t*t/(2*RULES.sprayRampTime):t-RULES.sprayRampTime/2;
+      return base*(1+(RULES.sprayMaxMultiplier-1)*(integral(after)-integral(before))/firing);
+    };
     if (firing > 0) {
       for (const crop of this.crops) if (crop.state === 'standing') {
         const points = [cropPoint(crop, origin)];
@@ -500,14 +522,15 @@ export class Simulation {
         if (points.some(point => damageAt(point) > 0)) affectCrop(this, crop);
       }
       for (const target of this.targets) if (target.hp > 0) {
-        const damage = damageAt(target);
+        const damage = sustainedDamage(target,damageAt(target));
         if (damage) this.hit(target, { electric:true, damage, owner: p.id, volley: spray.volley, vx: p.aimX, vz: p.aimZ });
       }
       for (const prop of this.props) if (prop.hp !== null && prop.hp > 0) {
-        const damage = damageAt(prop, prop.id);
+        const damage = sustainedDamage(prop,damageAt(prop, prop.id));
         if (damage) this.hitProp(prop, { electric:true, damage, x: prop.x, z: prop.z, vx: p.aimX, vz: p.aimZ });
       }
     }
+    for(const victim of contacts.keys())if(victim.hp<=0)contacts.delete(victim);
     spray.effectClock -= dt;
     if (spray.effectClock <= 0) {
       spray.effectClock += .045;

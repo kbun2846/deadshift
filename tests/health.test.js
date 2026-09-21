@@ -35,11 +35,11 @@ test('player rejects direct self-owned shots and tracks external damage without 
   assert.equal(sim.damagePlayer(120, 'opponent'), 120); assert.equal(sim.player.hp, 380);
   assert.equal(sim.damagePlayer(999, 'opponent'), 380); assert.equal(sim.player.hp, 0);
   sim.reset(); sim.explode({ x: 0, z: 0, arrived: 12 }, 1);
-  assert.equal(sim.player.hp, RULES.playerHealth-69);
+  assert.equal(sim.player.hp, RULES.playerHealth-145);
 });
 test('own orb explosions respect falloff, cover, blast boundaries and invulnerability',()=>{
- const center=make();center.explode({x:0,z:0,arrived:12},1);assert.equal(center.player.hp,431);
- const edge=make();edge.explode({x:2,z:0,arrived:12},1);assert.ok(edge.player.hp>431&&edge.player.hp<500);
+ const center=make();center.explode({x:0,z:0,arrived:12},1);assert.equal(center.player.hp,355);
+ const edge=make();edge.explode({x:2,z:0,arrived:12},1);assert.ok(edge.player.hp>355&&edge.player.hp<500);
  const outside=make();outside.explode({x:4,z:0,arrived:12},1);assert.equal(outside.player.hp,500);
  const blocked=make();blocked.colliders.push({x:1,z:0,w:.2,d:4});blocked.explode({x:2,z:0,arrived:12},1);assert.equal(blocked.player.hp,500);
  const dev=make();dev.dev.invulnerable=true;dev.explode({x:0,z:0,arrived:12},1);assert.equal(dev.player.hp,500);

@@ -1,4 +1,6 @@
 import {migrateGameStorage} from './storage-migration.js';
+import {isPlayable} from './playable-area.js';
+import {detectedControls,createInputPreference} from './input-preference.js';
 import './mobile-controls.css';
 import {installTouchLayout} from './touch-layout.js';
 import {SHOTGUN,shotgunRange,shotgunSpread} from './shotgun.js';
@@ -21,7 +23,8 @@ import { maps } from './maps.js';
 import { Simulation, RULES } from './simulation.js';
 import { WorldView } from './renderer.js';
 import { Soundscape } from './audio.js';
-import { GRAPHICS, validateSettings, RenderBudget } from './settings.js';
+import { GRAPHICS, validateSettings, RenderBudget, AdaptiveResolution } from './settings.js';
+import {keyboardAim} from './keyboard-aim.js';
 import { overheadMapSVG } from './overhead-map.js';
 import { installDevTools } from './dev-tools.js';
 import { createDevUnlockDialog } from './dev-unlock-dialog.js';
@@ -42,9 +45,12 @@ document.title = 'DEADSHIFT ALPHA 0.3 — ' + map.name;
 document.querySelector('.brand p').textContent = map.name.toUpperCase();
 document.querySelector('.mode').textContent=map.training?'TUTORIAL':'PRACTICE';
 let settings;
-try { settings = validateSettings(JSON.parse(localStorage.getItem('deadshift-settings') || '{}')); }
-catch { settings = validateSettings(); }
+const detectedInput=detectedControls({coarsePointer:matchMedia('(pointer: coarse)').matches,hoverAvailable:matchMedia('(hover: hover)').matches});
+const deviceDefaults={mobile:detectedInput==='touch'};
+try { settings = validateSettings(JSON.parse(localStorage.getItem('deadshift-settings') || '{}'),deviceDefaults); }
+catch { settings = validateSettings({},deviceDefaults); }
 const sim = new Simulation(map), sound = new Soundscape(), budget = new RenderBudget(settings.fps);
+const adaptiveResolution = new AdaptiveResolution();
 sim.weapon=['rifle','shotgun'].includes(params.get('weapon'))?params.get('weapon'):'static';
 let rifleFiring=false,rifleAiming=false;
 const updateWeaponHUD=createWeaponHUD($('weapon'));
@@ -61,10 +67,12 @@ const spreadMarker=document.createElement('div');spreadMarker.id='rifle-spread';
 spreadMarker.className='rifle-spread';
 const secondarySpread=spreadMarker.cloneNode(true);secondarySpread.id='rifle-spread-secondary';secondarySpread.classList.add('secondary-spread');secondarySpread.hidden=true;$('game').append(secondarySpread);
 let tutorial=map.training?new Tutorial(sim.weapon):null, tutorialSaved=false, settingsOpen=false, highlightedLesson=-1, tutorialRenderKey='';
-let touchPrompts=false;
-try{touchPrompts=(localStorage.getItem('deadshift-input') || (matchMedia('(any-pointer:coarse)').matches?'touch':'keyboard'))==='touch';}catch{}
+let inputOverride=null;
+try{inputOverride=sessionStorage.getItem('deadshift-controls-override');}catch{}
+const inputPreference=createInputPreference(detectedInput,inputOverride);
+let touchPrompts=inputPreference.mode==='touch';
 let view;
-try { view = new WorldView($('world'), map); view.setQuality(settings.quality); view.motion = settings.motion; }
+try { view = new WorldView($('world'), map, settings.quality); view.motion = settings.motion; }
 catch (error) {
   $('error-message').textContent = /WebGL|context/i.test(error.message) ? 'This prototype needs WebGL 2. Try an up-to-date browser with hardware acceleration enabled.' : 'The game could not finish loading. Reload the page to try again.';
   $('error').classList.remove('hidden'); console.error(error); throw error;
@@ -301,8 +309,7 @@ function bindStick(id, type) {
   }
   element.addEventListener('pointerdown', e => {
     if (!running || stick.pointer !== null) return;
-    e.preventDefault(); if(!touchPrompts||inputMode!=='mouse')inputMode='keyboard'; stick.pointer = e.pointerId; element.setPointerCapture(e.pointerId); element.classList.add('engaged');
-    if (type === 'aim') { touch.seeding = true; pendingSeed = true; }
+    e.preventDefault(); if(type==='aim'||!touchPrompts||inputMode!=='mouse')inputMode='keyboard'; stick.pointer = e.pointerId; element.setPointerCapture(e.pointerId); element.classList.add('engaged');
     move(e);
   });
   element.addEventListener('pointermove', move);
@@ -310,7 +317,7 @@ function bindStick(id, type) {
     if (e.pointerId !== stick.pointer) return;
     stick.pointer = null; knob.style.transform = ''; element.classList.remove('engaged');
     if (type === 'move') touch.moveX = touch.moveZ = 0;
-    else { touch.aimX = touch.aimZ = 0; touch.seeding = false; }
+    else { touch.aimX = touch.aimZ = 0; }
   };
   for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) element.addEventListener(name, release);
 }
@@ -329,15 +336,19 @@ function showDevNotice(enabled){
  devNoticeTimer=setTimeout(()=>devNotice.classList.remove('visible'),1800);
 }
 const devNotice=document.createElement('div');devNotice.className='toast';devNotice.setAttribute('role','status');$('game').append(devNotice);let devNoticeTimer;
-let thumbnail='';
-if(map.id==='deadwater'){view.update(sim,0,false,0);thumbnail=view.captureMapThumbnail();try{sessionStorage.setItem('deadshift-native-thumbnail',thumbnail);}catch{}}
-else {try{thumbnail=sessionStorage.getItem('deadshift-native-thumbnail')||'';}catch{}}
+function thumbnail(){
+ try{const cached=sessionStorage.getItem('deadshift-native-thumbnail');if(cached)return cached;}catch{}
+ if(map.id!=='deadwater')return '';
+ const image=view.captureMapThumbnail();
+ try{sessionStorage.setItem('deadshift-native-thumbnail',image);}catch{}
+ return image;
+}
 const menuFlow=installMenu({$,map,thumbnail,start,openSettings,closeSettings,returnToMenu,tutorialComplete:readTutorialComplete()});
 $('overhead-image').addEventListener('click',e=>{
   if(!mapOpen||!sim.dev.teleport)return;
   const svg=$('overhead-image').querySelector('svg'),matrix=svg?.getScreenCTM();if(!matrix)return;
   const point=new DOMPoint(e.clientX,e.clientY).matrixTransform(matrix.inverse());
-  if(Math.abs(point.x)>map.width/2||Math.abs(point.y)>map.depth/2)return;
+  if(!isPlayable(map,point.x,point.y,RULES.radius))return;
   releaseInput();sim.hexOrbs=[];sim.hexSpin=null;sim.spray.active=false;
   sim.player.x=Math.max(-map.width/2+RULES.radius,Math.min(map.width/2-RULES.radius,point.x));
   sim.player.z=Math.max(-map.depth/2+RULES.radius,Math.min(map.depth/2-RULES.radius,point.y));
@@ -360,7 +371,7 @@ for (const id of ['graphics-preset', 'fps-limit','control-hints','mobile-opacity
 applySettings();
 const selectMenus=installSelectMenus($('settings-panel'));
 bindStick('move-stick', 'move'); bindStick('seed-stick', 'aim');
-$('touch-launch').addEventListener('click', () => { if (running) { pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = inputMode==='mouse'?view.aim(mouse.x,mouse.y,sim.player):null; } });
+$('touch-launch').addEventListener('click', e => { if (running) { if(e.detail>0&&(sim.weapon==='rifle'||sim.weapon==='shotgun'))return;pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = inputMode==='mouse'?view.aim(mouse.x,mouse.y,sim.player):null; } });
 window.addEventListener('resize', () => { view.resize(); dirty = true; });
 $('world').addEventListener('pointermove', e => {
   if(e.pointerType!=='mouse'&&e.pointerId===touchAimPointer&&running){e.preventDefault();setCursorTarget(e.clientX,e.clientY);inputMode='mouse';return;}
@@ -390,7 +401,7 @@ $('world').addEventListener('pointerdown', e => {
     ],{duration:260,easing:'ease-out'});
     updateReticle();
   }
-  pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = view.aim(mouse.x, mouse.y, sim.player); $('world').focus();
+  pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = keyboardAim(keys,tappedKeys).active?null:view.aim(mouse.x, mouse.y, sim.player); $('world').focus();
 });
 $('world').addEventListener('contextmenu',e=>e.preventDefault());
 bindRifleMouse($('world'),window,{
@@ -402,6 +413,7 @@ for(const type of ['pointercancel','lostpointercapture'])$('world').addEventList
 $('world').addEventListener('pointercancel',()=>{rifleFiring=false;rifleAiming=false;});
 const navigateMenu=createMenuNavigation();
 window.addEventListener('keydown', e => {
+  if(document.body.classList.contains('loading'))return;
   if(devDialog.isOpen){devDialog.keydown(e);return;}
   if(deathActive){
    if(deathMenuOpen)navigateMenu(e,deathScreen.root,()=>{});
@@ -426,7 +438,7 @@ window.addEventListener('keydown', e => {
     if(e.code==='Tab'){e.preventDefault();$('map-close').focus();}
     return;
   }
-  if (e.code === 'Escape' && !e.repeat) { e.preventDefault(); setPaused(!paused); return; }
+  if (e.code === 'Escape') { e.preventDefault(); if(!e.repeat&&started)setPaused(!paused); return; }
   if(!started)return;
   if (paused) {
     if (e.code === 'Tab') {
@@ -446,16 +458,16 @@ window.addEventListener('keydown', e => {
    return;
   }
   if (!running) return;
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
   keys.add(e.code); tappedKeys.add(e.code);
   if (e.code.startsWith('Arrow')) inputMode = 'keyboard';
-  if (e.code === 'KeyQ') { pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = inputMode === 'mouse' ? view.aim(mouse.x, mouse.y, sim.player) : null; }
+  if (e.code === 'KeyQ') { pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = inputMode === 'mouse'&&!keyboardAim(keys,tappedKeys).active ? view.aim(mouse.x, mouse.y, sim.player) : null; }
   if (e.code === 'KeyR') e.preventDefault();
 });
 window.addEventListener('keyup', e => keys.delete(e.code));
-window.addEventListener('blur', () => { releaseInput(); if (running) setPaused(true); });
-document.addEventListener('visibilitychange', () => { if (document.hidden && running) setPaused(true); });
+window.addEventListener('blur', releaseInput);
+document.addEventListener('visibilitychange', () => { if(document.hidden){releaseInput();lastTime=null;accumulator=0;} });
 
 function frame(time) {
   const dt = lastTime === null ? 0 : Math.min((time - lastTime) / 1000, .1); lastTime = time;
@@ -471,15 +483,16 @@ function frame(time) {
       const held = key => keys.has(key) || tappedKeys.has(key);
       const moveX = touch.moveX || Number(held('KeyD')) - Number(held('KeyA'));
       const moveZ = touch.moveZ || Number(held('KeyS')) - Number(held('KeyW'));
-      const manualX = touch.aimX || Number(held('ArrowRight')) - Number(held('ArrowLeft'));
-      const manualZ = touch.aimZ || Number(held('ArrowDown')) - Number(held('ArrowUp'));
+      const arrows=keyboardAim(keys,tappedKeys);
+      const manualX = touch.aimX || arrows.x;
+      const manualZ = touch.aimZ || arrows.z;
       let aimX = sim.player.aimX, aimZ = sim.player.aimZ;
       let aimPointX, aimPointZ;
       if (manualX || manualZ) { aimX = manualX; aimZ = manualZ; inputMode = 'keyboard'; }
       else if (inputMode === 'mouse') ({ aimX, aimZ, aimPointX, aimPointZ } = view.aim(mouse.x, mouse.y, sim.player));
       else if (moveX || moveZ) { aimX = moveX; aimZ = moveZ; }
       sim.step({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, smoothAim:!!(manualX||manualZ), grenade:tappedKeys.has('KeyE'), extendedReload:tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?rifleFiring:rifleFiring||pendingLaunch||(sim.weapon==='rifle'&&held('KeyQ')),tapFire:pendingLaunch&&!tappedKeys.has('KeyQ'),storeCharge:tappedKeys.has('MouseRight')||tappedKeys.has('KeyQ'),doubleShot:tappedKeys.has('KeyE'),aiming:aimingNow(),reload:tappedKeys.has('KeyR'), spray: held('KeyC'), dodge: tappedKeys.has('Space'), hex: tappedKeys.has('KeyX'), seed: held('KeyE') || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
-        launchPointX: pendingAimPoint?.aimPointX, launchPointZ: pendingAimPoint?.aimPointZ });
+        launchPointX: arrows.active?undefined:pendingAimPoint?.aimPointX, launchPointZ: arrows.active?undefined:pendingAimPoint?.aimPointZ });
       if(tutorial){tutorial.update(sim.player);if(tutorial.weapon==='static'&&tutorial.index===5&&!sim.hexOrbs.length&&!sim.hexSpin){sim.hexCooldown=0;sim.ammo=Math.max(sim.ammo,10);}if(tutorial.weapon==='rifle'&&tutorial.index===6&&!sim.grenades.length)sim.grenadeCooldown=0;if(tutorial.weapon==='rifle'&&tutorial.index===7&&!sim.rifle.reload)sim.rifle.extendedCooldown=0;updateTutorial();}
       tappedKeys.clear(); pendingQuickShot=false; pendingLaunch = pendingSeed = false; pendingAimPoint = null; accumulator -= RULES.step;
       for (const e of sim.drainEvents()) event(e);
@@ -496,9 +509,12 @@ function frame(time) {
       view.update(sim, renderDelta, running, elapsed, previousPlayer, running ? accumulator / RULES.step : 1);
       updateReticle(); dirty = false; renderedFrames++;
     }
+    if(running&&!document.hidden) view.setResolutionScale(adaptiveResolution.sample(dt,renderDelta>0,settings.quality,settings.fps));
+    else adaptiveResolution.reset();
     fpsTime += dt;
     if (fpsTime >= 1) { measuredFPS = Math.round(renderedFrames / fpsTime); fpsTime = 0; renderedFrames = 0; }
   }
+  if(paused)adaptiveResolution.reset();
   updateHealthHUD(sim);
   hudTime += dt; if (hudTime >= .08) { updateHUD(); hudTime = 0; }
   damageFeedback.update(sim,view);outgoingFeedback.update(sim,view);
@@ -533,16 +549,17 @@ function updateTutorial(){
  $('tutorial-next').textContent=!tutorial.active?'BEGIN':'CONTINUE';
  $('tutorial-title').textContent=lesson[0];
  let hint=touchPrompts&&tutorial.weapon!=='shotgun'?((tutorial.weapon==='rifle'?rifleTouchLessons:touchLessons)[tutorial.index]||lesson[1]):lesson[1];
- if(touchPrompts&&tutorial.index===0)hint=touchLessons[0]+'\n\nTouch and drag on the world to aim.\n\nTap EDIT at the top right to arrange controls below the top quarter. Drag a corner to resize, or × to remove a control. RESET LAYOUT restores them. Tap DONE to play. Your layout stays saved across weapons and future visits.';
- $('tutorial-hint').textContent=hint;$('tutorial-finish').hidden=!tutorial.complete;
+ if(touchPrompts&&tutorial.index===0)hint='Drag the left stick to move, use the AIM stick or drag on the world to aim.\n\nTap EDIT to move, resize or remove controls. Layouts save automatically; RESET restores them.';
+ $('tutorial-guide').dataset.practicing=String(practicing);
+ $('tutorial-hint').textContent=practicing?hint.split('\n\n')[0]:hint;$('tutorial-finish').hidden=!tutorial.complete;
  if(tutorial.complete&&!tutorialSaved)tutorialSaved=saveTutorialComplete(tutorial);
 }
 const touchLessons=[
- 'Drag and hold the highlighted left stick to walk.\n\nWalk five short stretches. Each stretch is two metres; your progress is shown above.',
+ 'Drag and hold the highlighted left stick to walk.\n\nKeep moving until the counter fills.',
  'Move with the left stick and tap Dodge. Repeat five times.\n\nThe two highlighted bars show stamina. Each dodge uses one charge; wait for it to refill.',
- 'Touch and drag toward the targets to aim. Hold PLACE to place five orbs, then release.\n\nThe highlighted ammo bar has twelve slots. Empty slots refill over time. Orbs reload faster when standing still. Ammo does not reload while using the C lightning stream.',
- 'Drag on the world to aim, then tap LAUNCH for a single shot.\n\nPlacing an orb before launching deals slightly more damage.\n\nFor a volley, hold PLACE to place orbs, release it, then tap LAUNCH.\n\nLand five shots or volleys. Each successful launch counts once.',
- 'Move close to a target and aim by dragging on the world. Hold STREAM to hit it with lightning, then release. Repeat five times.\n\nWatch the ammo bar and wait for a refill if it runs out.',
+ 'Touch and drag toward the targets to aim. Hold PLACE to place five orbs, then release.\n\nOrbs reload faster when standing still, except while using the lightning stream.',
+ 'Drag on the world to aim, then tap LAUNCH for a single shot.\n\nPlacing an orb before launching deals slightly more damage.\n\nFor a volley, hold PLACE to place orbs, release it, then tap LAUNCH.\n\nLand five shots or volleys. ',
+ 'Move close to a target and aim by dragging on the world. Hold STREAM to hit it with lightning, then release. Repeat five times.\n\nKeep the stream on the same target to increase damage. Watch the ammo bar and wait for a refill if it runs out.',
  'Tap PULSE to deploy. Wait for the hexagon to form, then tap PULSE again to pulse. Repeat five times.\n\nPulse before the hexagon reaches the red boundary. Training restores ammo and cooldown between attempts.',
  'Tap the highlighted map button at the top right.\n\nClose the map, then tap Continue to finish.'
 ];
@@ -569,10 +586,27 @@ function applyInputPreference(){
   touchLabel('touch-stream',rifle||shotgun?'AIM':'STREAM',rifle?'RMB / SHIFT':shotgun?'RMB':'C');
   touchLabel('touch-dodge','DODGE','SPACE');
   touchLabel('touch-place','PLACE','E');
+ $('pause').textContent=touchPrompts?'PAUSE':'ESC';$('pause').title='Pause / resume · Esc';
  $('map-toggle').textContent=touchPrompts?'MAP':'M';$('audio').textContent=touchPrompts?'SOUND':'N';
  updateTutorial();
 }
-for(const [id,value] of [['input-keyboard',false],['input-mobile',true]])$(id).onclick=()=>{touchPrompts=value;try{localStorage.setItem('deadshift-input',touchPrompts?'touch':'keyboard');}catch{}applyInputPreference();};
+for(const [id,value] of [['input-keyboard','keyboard'],['input-mobile','touch']])$(id).onclick=()=>{
+ inputPreference.select(value);touchPrompts=value==='touch';releaseInput();
+ try{sessionStorage.setItem('deadshift-controls-override',value);}catch{}
+ applyInputPreference();
+};
+function detectActiveInput(mode){
+ if(document.body.classList.contains('loading')||document.body.classList.contains('editing-touch-layout'))return;
+ if(inputPreference.observe(mode)){releaseInput();touchPrompts=mode==='touch';applyInputPreference();}
+}
+window.addEventListener('pointerdown',e=>{
+ if(e.pointerType==='touch'||e.pointerType==='pen')detectActiveInput('touch');
+ else if(e.pointerType==='mouse')detectActiveInput('keyboard');
+},true);
+window.addEventListener('keydown',e=>{
+ if(e.target.matches('input,select,textarea,[contenteditable=true]')||e.ctrlKey||e.metaKey||e.altKey)return;
+ if(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','KeyR','KeyX','KeyC','Space','Escape','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))detectActiveInput('keyboard');
+},true);
 applyInputPreference();
 $('tutorial-next').onclick=()=>{if(!tutorial.active)tutorial.begin();else tutorial.advance();releaseInput();updateTutorial();};
 $('touch-hex').onclick=()=>{if(running)tappedKeys.add(sim.weapon==='rifle'||sim.weapon==='shotgun'?'KeyR':'KeyX');};
@@ -583,14 +617,17 @@ grenadeButton.onclick=()=>{if(running&&(sim.weapon==='rifle'||sim.weapon==='shot
 extendedButton.onclick=()=>{if(running&&(sim.weapon==='rifle'||sim.weapon==='shotgun'))tappedKeys.add(sim.weapon==='shotgun'?'KeyQ':'KeyX');};
 $('touch-stream').onpointerdown=e=>{if(running){e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);if(sim.weapon==='rifle'||sim.weapon==='shotgun')rifleAiming=true;else keys.add('KeyC');}};
 for(const name of ['pointerup','pointercancel','lostpointercapture'])$('touch-stream').addEventListener(name,()=>{keys.delete('KeyC');rifleAiming=false;});
-$('touch-launch').addEventListener('pointerdown',e=>{if(running&&(sim.weapon==='rifle'||sim.weapon==='shotgun')){e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);rifleFiring=true;}});
+$('touch-launch').addEventListener('pointerdown',e=>{if(running&&(sim.weapon==='rifle'||sim.weapon==='shotgun')){e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);rifleFiring=true;pendingLaunch=true;}});
 for(const name of ['pointerup','pointercancel','lostpointercapture'])$('touch-launch').addEventListener(name,()=>{rifleFiring=false;});
 const touchLayout=installTouchLayout({root:$('game'),controls:$('touch-controls'),actions:document.querySelector('.top-actions'),
  canEdit:()=>started&&running&&!deathActive,
  onEditing:editing=>{releaseInput();running=!editing&&started&&!paused&&!deathActive;accumulator=0;sound.suspend(editing||paused);dirty=true;}
 });
 updateHUD(); requestAnimationFrame(frame);
-if(params.get('play')==='1')void start();
+export function finishLoading(){
+ if(params.get('play')==='1')void start();
+ else $('gamemodes').focus();
+}
 
 
 

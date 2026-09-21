@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {controlPosition,normalizedPosition,validateTouchLayout} from '../src/touch-layout.js';
+import {controlPosition,normalizedPosition,validateTouchLayout,validateTouchLayouts,touchOrientation} from '../src/touch-layout.js';
+
+test('portrait and landscape keep independent saved controls',()=>{
+ const layouts=validateTouchLayouts({portrait:{'touch-launch':{x:0,y:1,scale:1.2}},landscape:{'touch-launch':{x:.5,y:.7,hidden:true}}});
+ assert.equal(touchOrientation({width:390,height:844}),'portrait');
+ assert.equal(touchOrientation({width:844,height:390}),'landscape');
+ assert.equal(layouts.portrait['touch-launch'].x,0);
+ assert.equal(layouts.landscape['touch-launch'].x,.5);
+ assert.equal(layouts.portrait['touch-launch'].hidden,false);
+ assert.equal(layouts.landscape['touch-launch'].hidden,true);
+ assert.deepEqual(validateTouchLayouts(null),{portrait:{},landscape:{}});
+});
 test('controls stay below the reserved quarter and inside portrait and landscape screens',()=>{
  for(const viewport of [{width:390,height:844},{width:844,height:390}])for(const size of [{width:96,height:96},{width:128,height:88}]){
   const top=controlPosition({x:-2,y:-2},size,viewport),bottom=controlPosition({x:2,y:2},size,viewport);

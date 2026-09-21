@@ -7,7 +7,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  let selectedMap='deadwater';
  let weaponBack='maps';
  const back=()=>{if(page!=='home')show(page==='weapons'?weaponBack:page==='maps'?'modes':'home');};
- const show=name=>{page=name;document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
+ const show=name=>{if(name==='maps')loadThumbnail();page=name;document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
  $('tutorial-entry').hidden=tutorialComplete;$('tutorial-mode').hidden=false;
  $('gamemodes').onclick=()=>show('modes');$('practice-mode').onclick=()=>show('maps');
  document.querySelectorAll('.menu-back').forEach(b=>b.onclick=back);
@@ -32,8 +32,28 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   card.append(select);$('weapon-options').append(card);
   card.loadPreview=()=>{if(!picture.src)picture.src=weapon.preview();};
  }
+ const weaponList=$('weapon-options');
+ const scrollFrame=document.createElement('div');scrollFrame.className='weapon-scroll-frame';
+ weaponList.before(scrollFrame);scrollFrame.append(weaponList);
+ const scrollCue=document.createElement('span');scrollCue.className='weapon-scroll-cue';scrollCue.setAttribute('aria-hidden','true');
+ scrollCue.innerHTML='<svg viewBox="0 0 32 22"><path d="M3 3H29L16 19Z"/></svg>';scrollFrame.append(scrollCue);
+ const updateScrollCue=()=>scrollFrame.classList.toggle('has-more',weaponList.clientHeight>0&&weaponList.scrollHeight-weaponList.clientHeight-weaponList.scrollTop>3);
+ weaponList.addEventListener('scroll',updateScrollCue,{passive:true});
+ const scrollResize=new ResizeObserver(updateScrollCue);scrollResize.observe(weaponList);
+ for(const card of weaponList.children)scrollResize.observe(card);
  $('start').onclick=()=>{selectedMap=$('start').dataset.map||'deadwater';weaponBack='maps';chooseWeapons();};
- if(thumbnail){const image=document.createElement('img');image.src=thumbnail;image.alt='Top-down view of Deadwater Outpost spawn';$('map-thumbnail').replaceChildren(image);}
+ let thumbnailScheduled=false;
+ function loadThumbnail(){
+  if(!thumbnail||thumbnailScheduled)return;thumbnailScheduled=true;
+  // Let navigation paint before the one-time GPU readback.
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+   try{
+    const source=typeof thumbnail==='function'?thumbnail():thumbnail;
+    if(!source)return;
+    const image=document.createElement('img');image.src=source;image.alt='Top-down view of Deadwater Outpost spawn';$('map-thumbnail').replaceChildren(image);
+   }catch(error){thumbnailScheduled=false;console.warn('Map preview unavailable:',error);}
+  }));
+ }
  $('menu-settings').onclick=openSettings;$('pause-settings').onclick=openSettings;$('settings-back').onclick=closeSettings;
  $('main-menu').onclick=()=>{returnToMenu();show('home');$('gamemodes').focus();};$('tutorial-finish').onclick=$('main-menu').onclick;
  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{
@@ -43,10 +63,10 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  document.querySelector('[data-tab="graphics"]').click();
  const generalControls=[
   ['Move','WASD / left stick'],
-  ['Aim','Mouse / arrow keys / drag on the world','Movement sets facing when not aiming independently.'],
+  ['Aim','Mouse / arrow keys / aim stick / drag on the world','Movement sets facing when not aiming independently.'],
   ['Dodge','Space while moving / DODGE button'],
   ['Map','M / map button; M or Escape closes'],
-  ['Pause / resume','Escape / pause button'],
+  ['Pause / resume','Esc / pause button'],
   ['Restart current session','RESTART in pause menu'],
   ['Toggle sound','N / sound button'],
   ['Menu selection','Arrow keys / Tab / pointer'],

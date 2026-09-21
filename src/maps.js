@@ -2,6 +2,7 @@
 import { ROADSIDE_TYPES } from './roadside.js';
 import { addRailDepot, RAIL_TYPES } from './rail-depot.js';
 import { interiorCover } from './detailed-interiors.js';
+import {roundPlayableOutline} from './playable-area.js';
 // A building's roof footprint is independent of its physical wall colliders.
 const building = (id, x, z, w, d, height, label, color, roofColor) => ({
   id, x, z, w, d, height, label, color, roofColor, doorWidth: 2.6,
@@ -9,6 +10,8 @@ const building = (id, x, z, w, d, height, label, color, roofColor) => ({
 
 export const deadwater = {
   id: 'deadwater', name: 'Deadwater Outpost', width: 224, depth: 248,
+  // Follow the developed districts, leaving scenery beyond the playable edge.
+  playableArea:roundPlayableOutline([[-30,-124],[112,-124],[112,-17],[46,-17],[46,35],[68,56],[110,61],[110,124],[23,124],[23,101],[-15,76],[-88,76],[-112,-5],[-112,-66],[-88,-97],[-31,-85]]),
   roadBend: { start: 22, end: 46, offset: 15 },
   farmBend: { start: 48, end: 92, offset: 40 },
   sideRoads: [{ points: [[2,-27.6],[-19,-27.3],[-40,-28.2],[-65,-27.6],[-91,-28.5],[-92,-23.4],[-66,-22.7],[-41,-23.1],[-19,-22.5],[2,-22.6]] }],

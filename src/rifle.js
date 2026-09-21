@@ -17,7 +17,8 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
  const r=sim.rifle,p=sim.player;
  r.extendedCooldown=sim.dev.extendedCooldown?0:Math.max(0,r.extendedCooldown-dt);
  const finishReload=()=>{r.reload=0;r.capacity=r.reloadCapacity;r.ammo=r.capacity;sim.events.push({type:'rifleReloaded',extended:r.capacity===RIFLE.extendedMagazine});};
- if(input.fire&&!r.triggerHeld)r.burst=0;r.triggerHeld=!!input.fire;
+ const firePressed=input.fire&&!r.triggerHeld;
+ if(firePressed)r.burst=0;r.triggerHeld=!!input.fire;
  // Swept collision runs for each travelled segment, even while reloading.
  for(const bullet of sim.rifleBullets){
   const travel=Math.min(RIFLE.bulletSpeed*dt,RIFLE.maxRange-bullet.travel);
@@ -42,7 +43,8 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
  r.cooldown=Math.max(-dt,r.cooldown-dt);r.aiming=!!input.aiming;
  if(r.reload>0){r.reload=Math.max(0,r.reload-dt);if(r.reload<1e-8)finishReload();return;}
  const extended=input.extendedReload&&r.extendedCooldown<=1e-8;
- if(p.hp>0&&(extended||input.reload&&(r.ammo<r.capacity||r.capacity>RIFLE.magazine))){
+ const emptyTrigger=firePressed&&r.ammo<=0;
+ if(p.hp>0&&(extended||emptyTrigger||input.reload&&(r.ammo<r.capacity||r.capacity>RIFLE.magazine))){
   r.reloadCapacity=extended?RIFLE.extendedMagazine:RIFLE.magazine;
   if(extended)r.extendedCooldown=RIFLE.extendedCooldown;
   r.reload=RIFLE.reload;

@@ -28,6 +28,8 @@ export class InteriorVisibility {
     this.apply(root);
   }
   update(sim) {
+    if(this.lastRoom===sim.interior&&this.lastX===sim.player.x&&this.lastZ===sim.player.z)return;
+    this.lastRoom=sim.interior;this.lastX=sim.player.x;this.lastZ=sim.player.z;
     const b = sim.interior; this.count.value = 0;
     if (!b) return;
     const polygons = interiorPolygons(b,sim.player).slice(0,10);

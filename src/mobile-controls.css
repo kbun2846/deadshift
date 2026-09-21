@@ -1,66 +1,91 @@
-/* Touch controls favor generous targets and plain, uncut lettering. */
+/* Gameplay touch UI, independent of the menu's stretched button typography. */
 body[data-controls=touch] #game :where(#touch-controls,.top-actions,#touch-layout-overlay) button{
- min-height:60px;height:auto;padding:14px 18px;display:inline-flex;align-items:center;justify-content:center;
- font:700 18px/1.25 Arial,Helvetica,sans-serif!important;text-align:center;letter-spacing:.02em;overflow:visible;
+ display:inline-flex;align-items:center;justify-content:center;min-height:44px;height:auto;padding:8px;
+ font:700 14px/1.2 Arial,Helvetica,sans-serif!important;text-align:center;letter-spacing:.02em;overflow:visible;
 }
 body[data-controls=touch] #game :where(#touch-controls,.top-actions,#touch-layout-overlay) button>.button-label{
- position:static;display:block;width:auto;white-space:normal;font:inherit;line-height:inherit;
- transform:none!important;text-shadow:none;-webkit-text-stroke:0;
+ position:static;display:block;width:auto;white-space:normal;font:inherit;line-height:inherit;transform:none!important;text-shadow:none;-webkit-text-stroke:0;
 }
-body[data-controls=touch].playing:not(.paused) #touch-controls{
- left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));
- bottom:max(18px,env(safe-area-inset-bottom));align-items:flex-end;gap:12px;
+body[data-controls=touch].playing #game .masthead{
+ top:max(10px,env(safe-area-inset-top));left:12px;right:max(12px,env(safe-area-inset-right));justify-content:flex-end;
 }
+body[data-controls=touch].playing #game .masthead :is(.brand,.mode){display:none}
+body[data-controls=touch] #game .top-actions{gap:6px}
+body[data-controls=touch] #game .top-actions .icon-button{
+ width:auto;min-width:48px;height:44px;min-height:44px;padding:8px;border-radius:8px;font-size:12px!important;
+ background:#242928dd;border:1px solid #7f8a84;color:#fff;
+}
+body[data-controls=touch].playing #game .health-hud{top:70px;width:160px;max-width:none}
+body[data-controls=touch] #game .health-number{font-size:18px}
+body[data-controls=touch] #game .health-readout{margin-top:5px}
+body[data-controls=touch].playing #game .footer{display:none}
+body[data-controls=touch].playing:not(.paused) #game #touch-controls{
+ position:fixed;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));
+ bottom:calc(104px + env(safe-area-inset-bottom));display:flex;align-items:flex-end;justify-content:space-between;gap:12px;pointer-events:none;
+}
+body[data-controls=touch] #game .touch-left{display:flex;flex-direction:column;align-items:center;gap:12px;pointer-events:none}
 body[data-controls=touch] #game .touch-stick{
- flex-shrink:0;width:128px;height:128px;border:2px solid #ecede6;border-radius:50%;
- background:#182522;box-shadow:0 3px 10px #0006;opacity:var(--mobile-opacity,1);
+ flex-shrink:0;width:104px;height:104px;display:grid;place-items:center;border:2px solid #ecede6;border-radius:50%;
+ background:#182522;box-shadow:0 2px 6px #0006;opacity:var(--mobile-opacity,.4);position:relative;pointer-events:auto;touch-action:none;
 }
 body[data-controls=touch] #game .stick-knob{
- width:68px;height:68px;background:#50665e;color:white;border:1px solid #bed0c5;
- font:700 16px/1 Arial,Helvetica,sans-serif!important;letter-spacing:.03em;
+ width:54px;height:54px;background:#50665e;color:white;border:1px solid #bed0c5;
+ font:700 13px/1 Arial,sans-serif!important;letter-spacing:.03em;
 }
+body[data-controls=touch] #game .stick-label{display:none}
 body[data-controls=touch] #game .touch-stick.engaged{border-color:var(--ui-accent);opacity:1}
-body[data-controls=touch] #game .touch-right{
- display:grid;grid-template-columns:repeat(3,92px);gap:10px;max-width:none;align-items:center;
- pointer-events:none;
-}
-body[data-controls=touch] #game #seed-stick{grid-column:2/4;justify-self:end;margin-bottom:4px}
+body[data-controls=touch] #game .touch-right{display:grid;grid-template-columns:repeat(2,76px);gap:8px;max-width:none;align-items:center;pointer-events:none}
 body[data-controls=touch] #game #touch-controls button{
- width:92px;height:80px;min-height:80px;padding:7px 4px;border:2px solid #c9d6cc;border-radius:14px;
- background:#182522;color:#fff;font-size:15px!important;box-shadow:0 3px 10px #0006;
- opacity:var(--mobile-opacity,1);pointer-events:auto;touch-action:none;
+ flex-direction:column;gap:5px;width:76px;height:64px;min-height:64px;padding:6px 3px;border:1px solid #e0e8e2;border-radius:12px;
+ background:#182522;color:#fff;font-size:13px!important;box-shadow:0 2px 6px #0006;opacity:var(--mobile-opacity,.4);pointer-events:auto;touch-action:none;
 }
 body[data-controls=touch] #game #touch-controls button[hidden]{display:none}
-body[data-controls=touch] #game #touch-launch{background:var(--ui-accent);border-color:#ffe5eb;color:#1b1d1c;font-size:18px!important}
+body[data-controls=touch] #game #touch-controls #touch-launch{
+ width:104px;height:76px;min-height:76px;font-size:18px!important;background:var(--ui-accent);color:#1b1d1c;border-color:#ffe5eb;
+}
 body[data-controls=touch] #game #touch-controls button:active{background:#f4d2d9;color:#161c19;border-color:#fff;opacity:1;transform:scale(.96)}
-body[data-controls=touch] #game .icon-button{min-width:56px;min-height:52px;padding:10px 8px;font-size:13px!important}
-body[data-controls=touch] #game .top-actions{gap:8px}
-body[data-controls=touch].playing #weapon{bottom:352px}
-@media(max-width:480px){
- body[data-controls=touch] #game .touch-right{grid-template-columns:repeat(3,72px);gap:8px}
- body[data-controls=touch] #game #touch-controls button{width:72px;font-size:13px!important}
- body[data-controls=touch] #game .touch-stick{width:96px;height:96px}
- body[data-controls=touch] #game .stick-knob{width:52px;height:52px;font-size:12px!important}
- body[data-controls=touch].playing #weapon{bottom:324px}
+body[data-controls=touch] #game #touch-controls .touch-binding{
+ display:block;font:700 10px/1.2 Arial,sans-serif!important;letter-spacing:.02em;color:inherit;opacity:.85;pointer-events:none;
 }
-@media(orientation:landscape) and (max-height:600px){
- body[data-controls=touch].playing #weapon{bottom:18px;width:220px}
- body[data-controls=touch] #game .touch-stick{width:96px;height:96px}
- body[data-controls=touch] #game .touch-right{grid-template-columns:repeat(3,72px);gap:8px}
- body[data-controls=touch] #game #touch-controls button{width:72px;height:68px;min-height:68px;font-size:13px!important}
- body[data-controls=touch] #game .masthead{top:12px;left:16px;right:16px}
+/* Reserve the bottom strip for ammo, stamina and cooldowns. */
+body[data-controls=touch].playing #game #weapon{
+ left:50%;bottom:calc(12px + env(safe-area-inset-bottom));width:min(390px,calc(100vw - 32px));min-height:72px;
+ padding:8px 136px 0 0;transform:translateX(-50%);transform-origin:center bottom;
+}
+body[data-controls=touch] #game #weapon .weapon-controls{display:none}
+body[data-controls=touch] #game #weapon .dodge-stamina{margin:0 0 7px;width:60px}
+body[data-controls=touch] #game #weapon .weapon-status{margin-bottom:0;font-size:10px}
+body[data-controls=touch] #game #weapon .hex-recharge{left:auto;right:72px;top:10px;width:54px;height:54px}
+body[data-controls=touch] #game #weapon .secondary-cooldown{right:8px;top:10px}
+body[data-controls=touch] #game #weapon:not([data-weapon=rifle]){padding-right:78px}
+body[data-controls=touch] #game #weapon:not([data-weapon=rifle]) .hex-recharge{right:14px}
+body[data-controls=touch] #game #weapon .hex-range{left:calc(100% + 5px);width:5px}
+body[data-controls=touch] #game #weapon .hex-recharge-center span{font-size:18px}
+body[data-controls=touch] #game #weapon .hex-recharge.ready .hex-recharge-center span{font-size:9px;letter-spacing:0}
+body[data-controls=touch] #game #weapon .hex-recharge-center kbd{font-size:8px}
+body[data-controls=touch] #game #weapon .seed-pips{gap:3px}
+body[data-controls=touch] #game #weapon .seed-pips[data-capacity="36"]{display:grid;grid-template-columns:repeat(18,minmax(0,1fr));gap:3px}
+body[data-controls=touch] #game #tutorial-guide{top:118px;width:min(360px,calc(100vw - 24px));max-height:32dvh;padding:12px}
+body[data-controls=touch] #game #tutorial-guide #tutorial-hint{font-size:13px;line-height:1.4}
+body[data-controls=touch] #game #tutorial-guide h2{font-size:17px}
+body[data-controls=touch] #game #tutorial-guide button{height:44px;min-height:44px}
+@media(orientation:landscape){
+ body[data-controls=touch].playing #game .health-hud{left:max(20px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));width:150px;transform:none}
+ body[data-controls=touch].playing:not(.paused) #game #touch-controls{bottom:calc(16px + env(safe-area-inset-bottom))}
+ body[data-controls=touch] #game .touch-right{grid-template-columns:repeat(2,72px);gap:7px}
+ body[data-controls=touch] #game #touch-controls button{width:72px;height:58px;min-height:58px;font-size:12px!important}
+ body[data-controls=touch] #game .touch-stick{width:92px;height:92px}
+ body[data-controls=touch] #game #touch-controls #touch-launch{width:92px;height:66px;min-height:66px;font-size:16px!important}
+ body[data-controls=touch].playing #game #weapon{width:min(340px,calc(100vw - 320px));left:calc(50% - 20px);bottom:calc(12px + env(safe-area-inset-bottom))}
+ body[data-controls=touch] #game #tutorial-guide{top:62px;width:min(360px,calc(100vw - 330px));max-height:calc(100dvh - 168px);padding:10px 12px}
+ body[data-controls=touch] #game #tutorial-guide #tutorial-hint{font-size:12px;line-height:1.35}
+ body[data-controls=touch] #game #tutorial-guide #tutorial-progress{font-size:9px}
+}
+@media(max-width:350px) and (orientation:portrait){
+ body[data-controls=touch] #game .touch-right{grid-template-columns:repeat(2,68px)}
+ body[data-controls=touch] #game #touch-controls button{width:68px;font-size:12px!important}
 }
 
-body[data-controls=touch] #game .touch-left{display:flex;flex-direction:column;align-items:center;gap:18px;pointer-events:none}
-body[data-controls=touch] #game .touch-left #touch-launch{width:128px;height:88px;font-size:20px!important}
-@media(max-width:480px),(orientation:landscape) and (max-height:600px){body[data-controls=touch] #game .touch-left #touch-launch{width:96px;height:80px;font-size:18px!important}}
-
-@media(orientation:landscape){body[data-controls=touch].playing #weapon{bottom:24px}}
-@media(max-width:380px){body[data-controls=touch] #game .touch-right{grid-template-columns:repeat(3,68px)}body[data-controls=touch] #game #touch-controls .touch-right button{width:68px}}
-body[data-controls=touch] #game #audio{min-width:76px}
-body[data-controls=touch] #game #touch-controls button{flex-direction:column;gap:7px}
-body[data-controls=touch] #game #touch-controls #touch-launch{background:var(--ui-accent);color:#1b1d1c;border-color:#ffe5eb}
-body[data-controls=touch] #game #touch-controls .touch-binding{display:block;font:700 11px/1.2 Arial,Helvetica,sans-serif!important;letter-spacing:.05em;color:inherit;opacity:.8;pointer-events:none}
 /* Saved controls use viewport positions, shared by all weapon layouts. */
 body[data-controls=touch] #game #touch-controls .touch-positioned{position:fixed;margin:0;transform:none}
 #game #touch-layout-edit{display:none}
@@ -77,8 +102,10 @@ body.editing-touch-layout #game #touch-controls{z-index:30}
 body.editing-touch-layout #game #touch-controls :is(button,.touch-stick){opacity:1;outline:2px dashed #e8afb9;outline-offset:4px;cursor:grab;transition:none;touch-action:none}
 body.editing-touch-layout #game :is(#tutorial-guide,#weapon,.health-hud,#reticle,.rifle-spread,.shotgun-cone){visibility:hidden}
 @media(max-height:500px){.touch-layout-help{font-size:11px;gap:5px;max-width:calc(100% - 120px)}.touch-layout-help>strong{font-size:13px}.touch-layout-help>span{width:auto}body[data-controls=touch] #game .touch-layout-help button{min-height:36px;padding:6px 10px}}
-body[data-controls=touch] #game #seed-stick,body[data-controls=touch] #game #touch-controls .touch-removed{display:none!important}
-.touch-edit-handle{display:none}
-body.editing-touch-layout #game .touch-edit-handle{position:absolute;display:grid;place-items:center;width:32px;height:32px;border-radius:8px;background:#e8afb9;color:#171b19;border:2px solid #fff;font:700 23px/1 Arial,sans-serif!important;z-index:2;touch-action:none;pointer-events:auto}
+body[data-controls=touch] #game #touch-controls .touch-removed{display:none!important}
+body[data-controls=touch] #game #seed-stick{grid-column:1/-1;order:-1;justify-self:end}
+@media(orientation:landscape){body[data-controls=touch] #game #seed-stick{width:76px;height:76px}}
+.touch-edit-handle{display:none!important}
+body.editing-touch-layout #game .touch-edit-handle{position:absolute;display:grid!important;place-items:center;width:32px;height:32px;border-radius:8px;background:#e8afb9;color:#171b19;border:2px solid #fff;font:700 23px/1 Arial,sans-serif!important;z-index:2;touch-action:none;pointer-events:auto}
 .touch-edit-remove{top:0;right:0}.touch-edit-resize{bottom:0;right:0;cursor:nwse-resize}
 .touch-layout-help{max-height:calc(25dvh - 28px);overflow:auto}

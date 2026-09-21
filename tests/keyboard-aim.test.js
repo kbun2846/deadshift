@@ -28,3 +28,29 @@ test('mouse aim keeps its response and Static stream retains its turn limit',()=
  sim.step({aimX:-1,aimZ:0,smoothAim:true,spray:true});
  assert.ok(Math.abs(Math.atan2(sim.player.aimZ,sim.player.aimX))<=RULES.sprayTurnRate*RULES.step+1e-10);
 });
+
+import {keyboardAim} from '../src/keyboard-aim.js';
+for(const horizontal of ['ArrowLeft','ArrowRight'])for(const vertical of ['ArrowUp','ArrowDown']){
+ test(`${horizontal} + ${vertical} permits all weapons and abilities`,()=>{
+  const keys=new Set([horizontal,vertical]);
+  const aim=keyboardAim(keys);
+  const command={moveX:0,moveZ:0,aimX:aim.x,aimZ:aim.z,smoothAim:true};
+  const fresh=weapon=>{const s=make(weapon);for(let i=0;i<60;i++)s.step(command);return s;};
+  assert.equal(aim.active,true);
+  for(const key of ['KeyQ','KeyE','KeyX','KeyC','KeyR','Space','ShiftLeft']){
+   keys.add(key);assert.deepEqual(keyboardAim(keys),aim);keys.delete(key);
+  }
+  let s=fresh('static');s.step({...command,launch:true,quickShot:true});assert.ok(s.shots.some(o=>o.launched));
+  assert.ok(s.player.aimX*aim.x>0&&s.player.aimZ*aim.z>0);
+  s=fresh('static');s.step({...command,seed:true});assert.equal(s.seeds.length,1);
+  s=fresh('static');s.step({...command,hex:true});assert.ok(s.hexOrbs.length>0);
+  s=fresh('static');s.step({...command,spray:true});assert.ok(s.spray.active);
+  s=fresh('rifle');s.step({...command,fire:true,aiming:true});assert.equal(s.rifle.ammo,17);
+  s.step({...command,grenade:true});assert.ok(s.grenades.length>0);
+  s.step({...command,extendedReload:true});assert.ok(s.rifle.reload>0);
+  s=fresh('shotgun');s.step({...command,fire:true});s.step({...command,fire:false});assert.equal(s.shotgun.ammo,1);
+  s=fresh('shotgun');s.step({...command,fire:true});s.step({...command,fire:true,storeCharge:true});assert.ok(s.shotgun.stored);
+  s.step({...command,doubleShot:true,aiming:true});for(let i=0;i<6;i++)s.step(command);assert.equal(s.shotgun.ammo,0);
+  for(const weapon of ['static','rifle','shotgun']){s=fresh(weapon);s.step({...command,moveX:aim.x,moveZ:aim.z,dodge:true});assert.ok(s.player.dodgeRemaining>0);}
+ });
+}

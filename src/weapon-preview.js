@@ -4,11 +4,11 @@ import * as THREE from 'three';
 let cached;
 export function staticPreview(){
  if(cached)return cached;
- const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+ const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
  renderer.setSize(600,720);renderer.setPixelRatio(1);
  renderer.outputColorSpace=THREE.SRGBColorSpace;
  renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.25;
- const scene=new THREE.Scene();scene.background=new THREE.Color('#242928');
+ const scene=new THREE.Scene();renderer.setClearColor(0x000000,0);
  scene.add(new THREE.HemisphereLight('#e1f5ff','#30332f',2.5));
  const key=new THREE.DirectionalLight('#fff1df',2.2);key.position.set(2,4,3);scene.add(key);
  const rim=new THREE.DirectionalLight('#9bdfff',.8);rim.position.set(-3,1,-2);scene.add(rim);
@@ -76,6 +76,7 @@ export function staticPreview(){
  arc([[-.02,-.117,-.324],[-.068,-.11,-.306],[-.098,-.08,-.32],[-.129,-.044,-.291],[-.119,.008,-.272]],.0014);
  const camera=new THREE.PerspectiveCamera(33,600/720,.01,10);
  camera.position.set(.95,.65,-1.05);camera.lookAt(0,-.03,-.055);
+ camera.zoom=1.55;camera.updateProjectionMatrix();
  gun.rotation.z=-.16;
  renderer.render(scene,camera);cached=renderer.domElement.toDataURL('image/png');
  const used=new Set();scene.traverse(o=>{o.geometry?.dispose();if(o.material)used.add(o.material);});used.forEach(m=>m.dispose());renderer.dispose();renderer.forceContextLoss();

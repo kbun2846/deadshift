@@ -3,7 +3,7 @@
 export const RIFLE_QUALITY=Object.freeze({
  potato:{detail:0,radialSegments:4,sparks:0,smoke:0,impact:0,trail:false,flashCore:false},
  performance:{detail:1,radialSegments:5,sparks:1,smoke:0,impact:1,trail:true,flashCore:false},
- balanced:{detail:2,radialSegments:6,sparks:5,smoke:2,impact:3,trail:true,flashCore:true},
+ balanced:{detail:2,radialSegments:6,sparks:3,smoke:1,impact:2,trail:true,flashCore:true},
  quality:{detail:3,radialSegments:8,sparks:9,smoke:5,impact:6,trail:true,flashCore:true},
 });
 export const CASING_LIFETIME=30;

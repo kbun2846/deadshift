@@ -55,22 +55,23 @@ test('one orb has no explosion; two through twelve produce one increasingly size
   assert.equal(previousRadius, 2.7 * 1.12);
 });
 
-test('every orb blast size receives 15 percent more damage without changing radius',()=>{
+test('orb blasts increase strongly after three and reach 145 without changing radius',()=>{
  assert.equal(explosionFor(1),null);
  for(let count=2;count<=12;count++){
   const power=(count-2)/10,blast=explosionFor(count);
-  assert.ok(Math.abs(blast.damage-(6+power*54)*1.15)<1e-8);
+  if(count<=3)assert.ok(Math.abs(blast.damage-(6+power*54)*1.15*(145/200))<1e-8);
+  else assert.ok(blast.damage>(6+power*54)*1.15);
   assert.equal(blast.radius,(.55+power*2.15)*(count===12?1.12:1));
  }
- assert.equal(explosionFor(12).damage,69);
+ assert.equal(explosionFor(12).damage,145);
 });
 
 test('oversized developer volleys scale splash radius and damage with matching visual event',()=>{
  const normal=explosionFor(12),large=explosionFor(48);
  assert.equal(large.radius,normal.radius*2);assert.equal(large.damage,normal.damage*2);
- const sim=new Simulation(map({targets:[{id:'near',x:0,z:1},{id:'far',x:0,z:5},{id:'outside',x:0,z:7}]}));
+ const sim=new Simulation(map({targets:[{id:'near',x:0,z:1,maxHp:500},{id:'far',x:0,z:5,maxHp:500},{id:'outside',x:0,z:7,maxHp:500}]}));
  sim.explode({x:0,z:0,arrived:48},1);
- assert.ok(sim.targets[0].hp<sim.targets[1].hp);assert.ok(sim.targets[1].hp<100);assert.equal(sim.targets[2].hp,100);
+ assert.ok(sim.targets[0].hp<sim.targets[1].hp);assert.ok(sim.targets[1].hp<500);assert.equal(sim.targets[2].hp,500);
  const event=sim.events.find(e=>e.type==='explosion');assert.equal(event.radius,large.radius);assert.equal(event.damage,large.damage);
 });
 

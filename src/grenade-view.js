@@ -22,7 +22,7 @@ export class GrenadeView{
   const detail=this.view.qualityName==='quality'?2:this.view.qualityName==='balanced'?1:0;
   if(detail!==this.detail){this.clear();if(this.held){this.arm.remove(this.held);this.dispose(this.held);}this.held=makeGrenade(detail);this.held.position.set(0,-.035,-.04);this.arm.add(this.held);this.detail=detail;}
   const age=sim.time-sim.grenadeThrowTime,throwing=age>=0&&age<.48;
-  this.arm.visible=sim.weapon==='rifle';this.held.visible=throwing&&age<GRENADE.windup;
+  this.arm.visible=sim.weapon==='rifle'||sim.weapon==='shotgun';this.held.visible=sim.weapon==='rifle'&&throwing&&age<GRENADE.windup;
   const alive=new Set();
   for(const g of sim.grenades){
    if(!g.released)continue;alive.add(g.id);let model=this.items.get(g.id);

@@ -20,12 +20,14 @@ export function createHealthHUD(parent){
  parent.append(root);
  const number=root.querySelector('.health-number'),track=root.querySelector('.health-track'),fill=root.querySelector('.health-fill'),loss=root.querySelector('.health-loss');
  const motion=new HealthBarMotion();
+ let shownHealth=null,shownMax=null;
  return sim=>{
   const hp=Math.max(0,sim.player.hp),max=sim.player.maxHp;
   const {fraction,loss:lost,scale}=motion.update(hp,max,sim.time);
   fill.style.transform=`scaleX(${fraction})`;
   loss.style.left=`${fraction*100}%`;loss.style.width=`${lost*100}%`;loss.style.transform=`scaleY(${scale})`;
-  number.textContent=String(Math.ceil(hp));
-  track.setAttribute('aria-valuemax',String(max));track.setAttribute('aria-valuenow',String(Math.ceil(hp)));
+  const displayHealth=Math.ceil(hp);
+  if(displayHealth!==shownHealth){shownHealth=displayHealth;number.textContent=String(displayHealth);track.setAttribute('aria-valuenow',String(displayHealth));}
+  if(max!==shownMax){shownMax=max;track.setAttribute('aria-valuemax',String(max));}
  };
 }

@@ -69,9 +69,23 @@ test('cover intercepts bullets and Static abilities do not activate for rifle',(
 test('shared ammo override supports rifle; Static orb override does not refill it',()=>{
  const s=make();s.dev.ammo=true;tick(s,{fire:true},300);
  assert.equal(s.rifle.ammo,RIFLE.magazine);assert.ok(s.stats.launched>18);
- s.dev={orbs:true};tick(s,{fire:true},300);assert.equal(s.rifle.ammo,0);
+ s.dev={orbs:true};tick(s,{fire:true},200);assert.equal(s.rifle.ammo,0);
  s.dev={rifleInstantReload:true};tick(s,{reload:true});assert.equal(s.rifle.ammo,18);assert.equal(s.rifle.reload,0);
  s.dev={};tick(s,{fire:true},30);tick(s,{reload:true});assert.equal(s.rifle.reload,1.8);
+});
+test('empty rifle trigger starts one normal reload and held fire resumes afterwards',()=>{
+ const s=make();s.rifle.ammo=1;
+ tick(s,{fire:true});assert.equal(s.rifle.ammo,0);assert.equal(s.rifle.reload,0);
+ tick(s,{fire:true},180);assert.equal(s.rifle.reload,0);assert.equal(s.magazines.length,0);
+ tick(s);assert.equal(s.rifle.reload,0);
+ tick(s,{fire:true});assert.equal(s.rifle.reload,RIFLE.reload);
+ tick(s,{fire:true},108);assert.equal(s.rifle.ammo,18);
+ assert.equal(s.magazines.length,1);assert.equal(s.events.filter(e=>e.type==='rifleReload').length,1);
+ tick(s,{fire:true});assert.equal(s.rifle.ammo,17);assert.equal(s.stats.launched,2);
+ s.rifle.ammo=0;s.rifle.capacity=36;s.rifle.extendedCooldown=30;
+ tick(s);
+ tick(s,{fire:true});tick(s,{},108);
+ assert.equal(s.rifle.ammo,18);assert.equal(s.rifle.capacity,18);assert.ok(s.rifle.extendedCooldown>0);
 });
 test('rifle aiming slows walking smoothly without reducing dodge travel',()=>{
  const s=make();tick(s,{moveX:1},90);const normal=s.player.vx;

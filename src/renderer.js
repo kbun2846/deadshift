@@ -8,7 +8,7 @@ import { makeRailways, makeRailProp, RAIL_TYPES } from './rail-depot.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildingWalls, mapProps, mapColliders, localOpenings, buildingOpenings, buildingPoint } from './maps.js';
 import { inside, RULES } from './simulation.js';
-import { GRAPHICS } from './settings.js';
+import { GRAPHICS, renderPixelRatio } from './settings.js';
 import { ElectricEffects } from './electric-effects.js';
 import { makeCrops, makeLandmark, makeCobweb, makeQualityDetails, makePropDetails } from './world-details.js';
 import { SurfaceMarks } from './surface-marks.js';
@@ -24,14 +24,15 @@ import { ROADSIDE_TYPES, makeRoadside } from './roadside.js';
 import { OUTDOOR_CAMERA_HEIGHT, CAMERA_TILT, interiorCameraHeight } from './camera-framing.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
+const WHITE = new THREE.Color('#ffffff');
 const lerp = (a, b, t) => a + (b - a) * t;
 const randomGenerator = seed => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
 
 export class WorldView {
-  constructor(canvas, map) {
+  constructor(canvas, map, qualityName='balanced') {
     this.map = map; this.canvas = canvas; this.materials = new Map();
     this.interiorVisibility = new InteriorVisibility();
-    this.groundMaterials = new Set(); this.textureCache = new Map(); this.quality = GRAPHICS.balanced;
+    this.groundMaterials = new Set(); this.textureCache = new Map(); this.quality = GRAPHICS[qualityName] || GRAPHICS.balanced;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -58,10 +59,14 @@ export class WorldView {
     for (const b of map.buildings) this.makeBuilding(b);
     for (const p of mapProps(map)) this.makeProp(p);
     for (const f of map.fences) this.makeFence(f);
+    this.makePlayableEdge();
     this.cropView = new CropView(this); this.qualityDetails = makeQualityDetails(this);
     this.batch(this.static);
     // These transforms never animate. Keep quality geometry, skip rebuilding its matrices.
-    for (const root of [this.static,this.groundDetails,this.extraGroundDetails,this.qualityDetails,this.performanceDetails]) root.traverse(o=>{o.updateMatrix();o.matrixAutoUpdate=false;});
+    for (const root of [this.static,this.groundDetails,this.extraGroundDetails,this.qualityDetails,this.performanceDetails]) {
+      root.updateMatrixWorld(true);
+      root.traverse(o=>{o.matrixAutoUpdate=false;o.matrixWorldAutoUpdate=false;});
+    }
     this.player = this.makePlayer(); this.scene.add(this.player);
     this.targets = new Map();
     for (const target of map.targets) {
@@ -103,9 +108,29 @@ export class WorldView {
     this.visionOverlay = document.createElement('div'); this.visionOverlay.className = 'interior-vision';
     this.visionOverlay.setAttribute('aria-hidden', 'true'); canvas.insertAdjacentElement('afterend', this.visionOverlay);
     this.cropOverlay = document.createElement('div'); this.cropOverlay.className = 'crop-vision'; this.cropOverlay.setAttribute('aria-hidden', 'true'); canvas.insertAdjacentElement('afterend', this.cropOverlay);
-    this.setQuality('balanced');
+    this.setQuality(GRAPHICS[qualityName]?qualityName:'balanced');
     this.resize();
     this.camera.position.set(this.focus.x, this.cameraHeight, this.focus.z + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(this.focus); this.camera.updateMatrixWorld();
+  }
+
+  makePlayableEdge(){
+    const outline=this.map.playableArea;if(!outline)return;
+    // A low continuous ranch fence makes the collision edge readable. Scenery
+    // outside it stays rendered; it is not deleted or clipped by the perimeter.
+    let nextPost=0;
+    for(let i=0;i<outline.length;i++){
+      const [ax,az]=outline[i],[bx,bz]=outline[(i+1)%outline.length];
+      const length=Math.hypot(bx-ax,bz-az);
+      while(nextPost<length){
+        const t=nextPost/length;
+        this.box(ax+(bx-ax)*t,.48,az+(bz-az)*t,.14,.96,.14,'#71624f');nextPost+=5;
+      }
+      nextPost-=length;
+      for(const y of [.34,.73]){
+        const rail=this.box((ax+bx)/2,y,(az+bz)/2,.075,.075,length+.015,'#91816a');
+        rail.rotation.y=Math.atan2(bx-ax,bz-az);
+      }
+    }
   }
 
   material(color) {
@@ -148,18 +173,20 @@ export class WorldView {
   setQuality(name) {
     this.rifleView?.setQuality(name);
     this.qualityName = name; this.quality = GRAPHICS[name] || GRAPHICS.balanced;
+    this.resolutionScale=1;this.shadowClock=0;
+    this.cropView?.setQuality(name);
     const q = this.quality;
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, q.pixelRatio) * q.scale);
     this.renderer.shadowMap.enabled = q.shadows > 0;
     this.renderer.shadowMap.type = name !== 'performance' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.sun.castShadow = q.shadows > 0;
+    this.sun.shadow.autoUpdate = !q.shadowFPS;
     if (this.sun.shadow.mapSize.x !== Math.max(1, q.shadows)) {
       this.sun.shadow.map?.dispose(); this.sun.shadow.map = null;
       this.sun.shadow.mapSize.set(Math.max(1, q.shadows), Math.max(1, q.shadows));
     }
     this.sun.shadow.needsUpdate = true;
     const texture = this.terrainTexture(q.texture);
-    texture.anisotropy = Math.min(name === 'quality' ? 8 : name === 'balanced' ? 8 : 1, this.renderer.capabilities.getMaxAnisotropy());
+    texture.anisotropy = Math.min(name === 'quality' ? 8 : name === 'balanced' ? 2 : 1, this.renderer.capabilities.getMaxAnisotropy());
     texture.needsUpdate = true;
     const groundRelief = name === 'quality' ? this.reliefTexture('sand') : null;
     const woodRelief = name === 'quality' ? this.reliefTexture('wood') : null;
@@ -818,13 +845,20 @@ export class WorldView {
 
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
+    this.renderer.setPixelRatio(renderPixelRatio(this.quality,devicePixelRatio,w,h)*(this.resolutionScale||1));
     this.renderer.setSize(w, h); this.camera.aspect = w / h;
     this.camera.fov = w / h < 1.2 ? 49 : 40; this.camera.updateProjectionMatrix();
   }
 
+  setResolutionScale(scale){
+    if(Math.abs((this.resolutionScale||1)-scale)<.001)return;
+    this.resolutionScale=scale;this.resize();
+  }
+
   aim(clientX, clientY, player) {
     const rect = this.canvas.getBoundingClientRect();
-    this.raycaster.setFromCamera(new THREE.Vector2((clientX - rect.left) / rect.width * 2 - 1, -(clientY - rect.top) / rect.height * 2 + 1), this.camera);
+    this.aimNDC ||= new THREE.Vector2();
+    this.raycaster.setFromCamera(this.aimNDC.set((clientX - rect.left) / rect.width * 2 - 1, -(clientY - rect.top) / rect.height * 2 + 1), this.camera);
     if (this.raycaster.ray.intersectPlane(this.aimPlane, this.aimHit)) {
       this.cursorWorld.copy(this.aimHit);
       return { aimX: this.aimHit.x - player.x, aimZ: this.aimHit.z - player.z, aimPointX: this.aimHit.x, aimPointZ: this.aimHit.z };
@@ -833,7 +867,8 @@ export class WorldView {
   }
 
   screenPoint(x, z, y = .72) {
-    const p = new THREE.Vector3(x, y, z).project(this.camera);
+    this.screenVector ||= new THREE.Vector3();
+    const p = this.screenVector.set(x, y, z).project(this.camera);
     return { x: (p.x * .5 + .5) * innerWidth, y: (-p.y * .5 + .5) * innerHeight };
   }
 
@@ -1083,7 +1118,12 @@ export class WorldView {
     const shakeX = this.motion ? Math.sin(elapsed * 91) * (this.shake+pressureShake) * .65 : 0;
     const shakeZ = this.motion ? Math.cos(elapsed * 77) * (this.shake+pressureShake) * .5 : 0;
     const fx = this.focus.x + shakeX + (this.motion && !cameraRoom ? this.kick.x : 0), fz = this.focus.z + shakeZ + (this.motion && !cameraRoom ? this.kick.z : 0);
-    this.sun.position.set(fx - 24, 40, fz - 18); this.sun.target.position.set(fx, 0, fz);
+    this.shadowClock=(this.shadowClock||0)+dt;
+    if(!this.quality.shadowFPS||this.sun.shadow.needsUpdate||this.shadowClock>=1/this.quality.shadowFPS){
+      this.sun.position.set(fx - 24, 40, fz - 18); this.sun.target.position.set(fx, 0, fz);
+      this.sun.shadow.needsUpdate=true;
+      this.shadowClock=this.quality.shadowFPS?this.shadowClock%(1/this.quality.shadowFPS):0;
+    }
     this.camera.position.set(fx, this.cameraHeight, fz + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(fx, 0, fz); this.camera.updateMatrixWorld();
     for (const roof of this.roofs) {
       const desired = sim.roofId === roof.id ? .095 : 1;
@@ -1154,6 +1194,9 @@ export class WorldView {
       g.userData.trail.position.z = -Math.min(.7, s.age * 15.5);
       const electricity = g.userData.electricity, points = electricity.geometry.attributes.position;
       const arcs = this.qualityName === 'performance' || this.qualityName === 'potato' ? 1 : this.qualityName === 'quality' ? 5 : 3;
+      const electricTick=Math.floor(elapsed*18);
+      if(g.userData.electricTick!==electricTick||g.userData.arcCount!==arcs){
+      g.userData.electricTick=electricTick;g.userData.arcCount=arcs;
       let vertex = 0;
       for (let arc = 0; arc < arcs; arc++) for (let j = 0; j < 6; j++) for (const k of [j, j + 1]) {
         const tick = Math.floor(elapsed * 18), phase = s.id * 2.7 + arc * 2.1 + tick * .7;
@@ -1161,6 +1204,7 @@ export class WorldView {
         points.setXYZ(vertex++, Math.cos(angle) * radius, Math.sin(angle) * radius * Math.cos(arc + .5), Math.sin(angle) * radius * Math.sin(arc + .5));
       }
       electricity.geometry.setDrawRange(0, vertex); points.needsUpdate = true;
+      }
       electricity.scale.setScalar(s.launched ? 1.3 : lifeScale);
     }
     for (const [id, g] of this.shots) if (!present.has(id)) { this.scene.remove(g); g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); this.shots.delete(id); }
@@ -1173,8 +1217,8 @@ export class WorldView {
     }
     this.rings = this.rings.filter(r => { if (r.age < .4) return true; r.mesh.removeFromParent(); r.mesh.geometry.dispose(); r.mesh.material.dispose(); return false; });
     const positions = this.motes.geometry.attributes.position.array;
-    for (let i = 0; i < positions.length; i += 3) { positions[i] += dt * .42; positions[i + 2] += dt * .12; if (positions[i] > 38) positions[i] = -38; }
-    this.motes.geometry.attributes.position.needsUpdate = true;
+    for (let i = 0; i < this.quality.motes * 3; i += 3) { positions[i] += dt * .42; positions[i + 2] += dt * .12; if (positions[i] > 38) positions[i] = -38; }
+    if(this.quality.motes)this.motes.geometry.attributes.position.needsUpdate = true;
     this.updateAmbient(sim, dt, elapsed);
     if(active)this.surfaceMarks.flush(2);
     this.render();
@@ -1295,9 +1339,9 @@ export class WorldView {
       const scale = p.size * Math.max(0, p.debris ? Math.min(1, p.life / .6) : p.life / p.maxLife);
       this.dummy.scale.set(scale * (p.stretch || 1), scale * (p.debris ? .55 : 1), scale); this.dummy.updateMatrix();
       this.particlePool[p.material].setMatrixAt(index, this.dummy.matrix);
-      if (p.tint) this.particlePool[p.material].setColorAt(index, p.tint);
+      this.particlePool[p.material].setColorAt(index, p.tint || WHITE);
     }
-    this.particlePool.forEach((mesh, i) => { mesh.count = Math.min(counts[i], 240); mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; });
+    this.particlePool.forEach((mesh, i) => { mesh.count = Math.min(counts[i], 240); if(mesh.count){mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;} });
   }
 
   reset(sim) {

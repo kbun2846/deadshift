@@ -31,13 +31,13 @@ export function makeShotgun(detail=2){
 let cached;
 export function shotgunPreview(){
  if(cached)return cached;
- const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(600,720);renderer.setPixelRatio(1);renderer.outputColorSpace=THREE.SRGBColorSpace;
+ const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setSize(600,720);renderer.setPixelRatio(1);renderer.outputColorSpace=THREE.SRGBColorSpace;
  renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.25;
- const scene=new THREE.Scene();scene.background=new THREE.Color('#242928');scene.add(new THREE.HemisphereLight('#e1f5ff','#30332f',2.5));const light=new THREE.DirectionalLight('#fff1df',2.2);light.position.set(2,4,3);scene.add(light);
+ const scene=new THREE.Scene();renderer.setClearColor(0x000000,0);scene.add(new THREE.HemisphereLight('#e1f5ff','#30332f',2.5));const light=new THREE.DirectionalLight('#fff1df',2.2);light.position.set(2,4,3);scene.add(light);
  const rim=new THREE.DirectionalLight('#9bdfff',.8);rim.position.set(-3,1,-2);scene.add(rim);
  const gun=makeShotgun(3);gun.userData.barrels.rotation.x=-.98;gun.rotation.set(.12,0,-.16);scene.add(gun);
  for(const shell of gun.userData.shells)shell.position.z+=.085;
  // Front three-quarter view: open action, twin muzzles and the stock all in frame.
- const camera=new THREE.OrthographicCamera(-.48,.48,.576,-.576,.01,10);camera.position.set(1.4,.65,-1.2);camera.lookAt(0,-.13,-.005);renderer.render(scene,camera);cached=renderer.domElement.toDataURL();
+ const camera=new THREE.OrthographicCamera(-.48,.48,.576,-.576,.01,10);camera.position.set(1.4,.65,-1.2);camera.lookAt(0,-.13,-.005);camera.zoom=1.4;camera.updateProjectionMatrix();renderer.render(scene,camera);cached=renderer.domElement.toDataURL();
  const materials=new Set();scene.traverse(n=>{n.geometry?.dispose();if(n.material)materials.add(n.material);});materials.forEach(m=>m.dispose());renderer.dispose();renderer.forceContextLoss();return cached;
 }
