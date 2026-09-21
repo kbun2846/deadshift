@@ -1,3 +1,4 @@
+import {bindTouchAction} from './touch-action.js';
 import {migrateGameStorage} from './storage-migration.js';
 import {isPlayable} from './playable-area.js';
 import {detectedControls,createInputPreference} from './input-preference.js';
@@ -114,6 +115,7 @@ let pendingAimPoint = null;
 let inputMode = 'keyboard', dirty = true, hudTime = 0, fpsTime = 0, renderedFrames = 0, measuredFPS = 0;
 let markerRemaining = 0;
 const keys = new Set(), tappedKeys = new Set();
+const touchActionResets=[];
 const aimingNow=()=>weaponAiming(sim.weapon,rifleAiming,keys);
 let previousPlayer = { ...sim.player };
 const mouse = { x: innerWidth * .7, y: innerHeight * .5 };
@@ -152,6 +154,7 @@ function returnToMenu(){
 }
 
 function releaseInput() {
+  for(const reset of touchActionResets)reset();
   touchAimPointer=null;
   rifleFiring=false;rifleAiming=false;sim.shotgun.trigger=false;sim.shotgun.suppress=false;
   keys.clear(); tappedKeys.clear(); pendingQuickShot=false; pendingSeed = false; pendingLaunch = false; pendingAimPoint = null;
@@ -358,12 +361,12 @@ $('overhead-image').addEventListener('click',e=>{
   $('overhead-image').innerHTML=overheadMapSVG(map,view,sim.player);
 });
 
-$('pause').addEventListener('click', () => {if(mapOpen)toggleMap();else setPaused(!paused);});
-$('map-toggle').addEventListener('click',toggleMap);
+bindTouchAction($('pause'),{press:()=>{if(mapOpen)toggleMap();else setPaused(!paused);}});
+bindTouchAction($('map-toggle'),{press:toggleMap});
 $('map-close').addEventListener('click',toggleMap);
 $('resume').addEventListener('click', () => setPaused(false));
 $('reset').addEventListener('click', () => { reset(); setPaused(false); });
-$('audio').addEventListener('click', toggleAudio);
+bindTouchAction($('audio'),{press:toggleAudio});
 $('graphics-preset').value = settings.quality; $('fps-limit').value = String(settings.fps);
 $('control-hints').checked=settings.controlHints;
 $('mobile-opacity').value=String(settings.mobileOpacity);
@@ -371,7 +374,6 @@ for (const id of ['graphics-preset', 'fps-limit','control-hints','mobile-opacity
 applySettings();
 const selectMenus=installSelectMenus($('settings-panel'));
 bindStick('move-stick', 'move'); bindStick('seed-stick', 'aim');
-$('touch-launch').addEventListener('click', e => { if (running) { if(e.detail>0&&(sim.weapon==='rifle'||sim.weapon==='shotgun'))return;pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = inputMode==='mouse'?view.aim(mouse.x,mouse.y,sim.player):null; } });
 window.addEventListener('resize', () => { view.resize(); dirty = true; });
 $('world').addEventListener('pointermove', e => {
   if(e.pointerType!=='mouse'&&e.pointerId===touchAimPointer&&running){e.preventDefault();setCursorTarget(e.clientX,e.clientY);inputMode='mouse';return;}
@@ -609,16 +611,19 @@ window.addEventListener('keydown',e=>{
 },true);
 applyInputPreference();
 $('tutorial-next').onclick=()=>{if(!tutorial.active)tutorial.begin();else tutorial.advance();releaseInput();updateTutorial();};
-$('touch-hex').onclick=()=>{if(running)tappedKeys.add(sim.weapon==='rifle'||sim.weapon==='shotgun'?'KeyR':'KeyX');};
-$('touch-dodge').onclick=()=>{if(running)tappedKeys.add('Space');};
-placeButton.onpointerdown=e=>{if(running){e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);keys.add('KeyE');}};
-for(const type of ['pointerup','pointercancel','lostpointercapture'])placeButton.addEventListener(type,()=>keys.delete('KeyE'));
-grenadeButton.onclick=()=>{if(running&&(sim.weapon==='rifle'||sim.weapon==='shotgun'))tappedKeys.add('KeyE');};
-extendedButton.onclick=()=>{if(running&&(sim.weapon==='rifle'||sim.weapon==='shotgun'))tappedKeys.add(sim.weapon==='shotgun'?'KeyQ':'KeyX');};
-$('touch-stream').onpointerdown=e=>{if(running){e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);if(sim.weapon==='rifle'||sim.weapon==='shotgun')rifleAiming=true;else keys.add('KeyC');}};
-for(const name of ['pointerup','pointercancel','lostpointercapture'])$('touch-stream').addEventListener(name,()=>{keys.delete('KeyC');rifleAiming=false;});
-$('touch-launch').addEventListener('pointerdown',e=>{if(running&&(sim.weapon==='rifle'||sim.weapon==='shotgun')){e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);rifleFiring=true;pendingLaunch=true;}});
-for(const name of ['pointerup','pointercancel','lostpointercapture'])$('touch-launch').addEventListener(name,()=>{rifleFiring=false;});
+const bindAction=(element,press,release)=>touchActionResets.push(bindTouchAction(element,{enabled:()=>running,press,release}));
+bindAction($('touch-hex'),()=>tappedKeys.add(sim.weapon==='static'?'KeyX':'KeyR'));
+bindAction($('touch-dodge'),()=>tappedKeys.add('Space'));
+bindAction(placeButton,()=>{touch.seeding=true;pendingSeed=true;},()=>{touch.seeding=false;});
+bindAction(grenadeButton,()=>{if(sim.weapon!=='static')tappedKeys.add('KeyE');});
+bindAction(extendedButton,()=>tappedKeys.add(sim.weapon==='shotgun'?'KeyQ':'KeyX'));
+bindAction($('touch-stream'),()=>{if(sim.weapon==='static')keys.add('KeyC');else rifleAiming=true;},()=>{keys.delete('KeyC');rifleAiming=false;});
+bindAction($('touch-launch'),()=>{
+ pendingLaunch=true;pendingQuickShot=true;
+ const stickAim=!!(touch.aimX||touch.aimZ)||sticks.get('aim')?.pointer!==null;
+ pendingAimPoint=inputMode==='mouse'&&!stickAim&&!keyboardAim(keys,tappedKeys).active?view.aim(mouse.x,mouse.y,sim.player):null;
+ if(sim.weapon!=='static')rifleFiring=true;
+},()=>{rifleFiring=false;});
 const touchLayout=installTouchLayout({root:$('game'),controls:$('touch-controls'),actions:document.querySelector('.top-actions'),
  canEdit:()=>started&&running&&!deathActive,
  onEditing:editing=>{releaseInput();running=!editing&&started&&!paused&&!deathActive;accumulator=0;sound.suspend(editing||paused);dirty=true;}

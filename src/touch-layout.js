@@ -1,3 +1,4 @@
+import {bindTouchAction} from './touch-action.js';
 export const TOUCH_LAYOUT_KEY='deadshift-touch-layout-v2';
 export const touchOrientation=({width,height})=>width>height?'landscape':'portrait';
 export function validateTouchLayouts(value){return {portrait:validateTouchLayout(value?.portrait),landscape:validateTouchLayout(value?.landscape)};}
@@ -63,7 +64,7 @@ export function installTouchLayout({root,controls,actions,canEdit,onEditing}){
   if(!editing)return;
   drag=null;editing=false;save();overlay.hidden=true;document.body.classList.remove('editing-touch-layout');button.setAttribute('aria-pressed','false');onEditing(false);
  }
- button.addEventListener('click',()=>{
+ bindTouchAction(button,{press:()=>{
   if(editing){finish();return;}
   if(document.body.dataset.controls!=='touch'||!canEdit())return;
   freeze();editing=true;document.body.classList.add('editing-touch-layout');overlay.hidden=false;button.setAttribute('aria-pressed','true');onEditing(true);
@@ -71,7 +72,7 @@ export function installTouchLayout({root,controls,actions,canEdit,onEditing}){
    if(element.querySelector('.touch-edit-handle'))continue;
    for(const [action,label] of [['remove','×'],['resize','↘']]){const handle=document.createElement('span');handle.className='touch-edit-handle touch-edit-'+action;handle.dataset.layoutAction=action;handle.textContent=label;handle.setAttribute('aria-label',action+' control');element.append(handle);}
   }
- });
+ }});
  overlay.querySelector('#touch-layout-done').onclick=finish;
  overlay.querySelector('#touch-layout-reset').onclick=()=>{
   positions={};clearPlacement();
