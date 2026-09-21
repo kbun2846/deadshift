@@ -1,4 +1,4 @@
-deadshift alpha v0.4 is a minimalist top down shooter, playable on mobile or pc
+deadshift alpha v0.4 is a minimalist top down shooter with distinct weapons and explosive combat, playable on mobile or pc
 
 - three distinct weapons
 - weapon tutorials
