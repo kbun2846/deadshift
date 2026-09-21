@@ -41,7 +41,7 @@ const map = import.meta.env.DEV && params.get('start') === 'farm' && selectedMap
   ? { ...selectedMap, spawn: { x: selectedMap.crops[0].x - selectedMap.crops[0].w / 2 + 2, z: selectedMap.crops[0].z - selectedMap.crops[0].d / 2 - 3 } }
   : landmarkStart ? { ...selectedMap, spawn: { x: landmarkStart.x, z: landmarkStart.z + 6 } }
   : roomStart ? { ...selectedMap, spawn: { x: roomStart.x, z: roomStart.z } } : selectedMap;
-document.title = 'DEADSHIFT ALPHA 0.3 — ' + map.name;
+document.title = 'DEADSHIFT ALPHA v0.4 — ' + map.name;
 document.querySelector('.brand p').textContent = map.name.toUpperCase();
 document.querySelector('.mode').textContent=map.training?'TUTORIAL':'PRACTICE';
 let settings;
