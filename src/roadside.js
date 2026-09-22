@@ -7,7 +7,15 @@ export const ROADSIDE_TYPES = {
   rockRidge: { w:7,d:4,health:null,blocksSight:true,collisionBoxes:[[-1.7,0,2.8,2.4],[1.2,.8,2.7,2.2]] },
   freightScreen: { w:5,d:3,health:null,blocksSight:true,collisionBoxes:[[-1,0,2.5,1.7],[1.2,.5,1.6,1.6]] },
   freightWreck: { w:5,d:3,health:null, collisionBoxes:[[-.4,0,3.4,1.8],[2,1.3,1.1,1.1]] },
-  coachStop: { w:5,d:4,health:null, collisionBoxes:[[0,-1.3,5,.3],[-2.3,0,.3,3],[2.3,0,.3,3],[0,-.7,3.5,.65]] },
+  // Posts and a back wall, matching what is actually drawn. The two full-length
+  // side boxes it used to carry were invisible walls: the model has never had
+  // sides, so the shelter could only be entered from the front for no reason
+  // the player could see.
+  // The bench is pushed back tight against the wall and kept thin: at its
+  // drawn depth it left a five-millimetre gap against the player radius, so
+  // the inside of the shelter was technically enterable and practically not.
+  coachStop: { w:5,d:4,health:null, collisionBoxes:[[0,-1.3,4.9,.28],[0,-.82,3.5,.5],
+    [-2.3,-1.3,.32,.32],[-2.3,1.3,.32,.32],[2.3,-1.3,.32,.32],[2.3,1.3,.32,.32]] },
   loadingPlatform: { w:5,d:3,health:null, collisionBoxes:[[0,0,4.8,2.6],[2.5,1.9,1.8,.9]] },
   wateringStation: { w:5,d:3,health:null, collisionBoxes:[[-1,0,2.6,1.3],[1.6,-.4,1.4,1.4]] },
   culvert: { w:12,d:4,health:null, collisionBoxes:[[-5,0,1.5,3.5],[5,0,1.5,3.5]] },
@@ -16,6 +24,14 @@ export const ROADSIDE_TYPES = {
   checkpoint: { w:14,d:2,health:null, collisionBoxes:[[-5.7,0,3.4,.75],[5.7,0,3.4,.75]] },
   repairStation: { w:5,d:3,health:null, collisionBoxes:[[-.5,0,2.5,1],[1.5,1,1.5,1.4]] },
   graveyard: { w:6,d:6,health:null, collisionBoxes:[[-2.8,0,.2,5.6],[2.8,0,.2,5.6],[0,-2.8,5.6,.2],[-1.8,2.8,2,.2],[1.8,2.8,2,.2],[1.3,-1.5,1,1],[-1.2,0,.7,.4],[1.2,.5,.7,.4],[-1.2,-1.7,.7,.4]] },
+  // Three pieces of hard cover with nothing else to say. They exist to be
+  // crouched behind: a broken run of wall, a braced barricade and a raised
+  // tank. Each is a bent or broken line rather than a straight one, so it
+  // gives a flank to work rather than a wall to stand behind, and none of them
+  // is destructible — a fight should not be able to delete its own cover.
+  sandbags: { w:3.4,d:1.5,health:null, collisionBoxes:[[-.85,-.3,1.8,.75],[.9,.35,1.7,.75]] },
+  plankBarricade: { w:3,d:1.1,health:null, collisionBoxes:[[-.7,0,1.7,.4],[.85,.3,1.4,.4]] },
+  waterTank: { w:3.1,d:3.1,health:null,blocksSight:true, collisionBoxes:[[0,0,2.2,2.2],[.86,.95,.62,.5]] },
 };
 
 export function makeRoadside(view, p, g) {
@@ -73,7 +89,24 @@ export function makeRoadside(view, p, g) {
     for(const x of [-2.3,2.3])for(const z of [-1.3,1.3])box(x,1.45,z,.15,2.9,.15,dark);
     for(let i=0;i<5;i++)box(0,.38+i*.38,-1.3,4.7,.3,.1,i%2?wood:faded);
     // Missing roof boards and a bench clearly read as a disused roadside shelter.
-    for(let i=0;i<12;i++){if(i===3||i===9)continue;const plank=box(-2.3+i*.42,3,0,.39,.12,3.3, i%3? '#7c8070':'#8e8c76');plank.rotation.x=.1;}
+    // Four of the survivors have gone: two snapped short and dropped off their
+    // purlin, one slid sideways and one is hanging on at an angle. A roof of
+    // identically pitched planks with two gaps reads as unfinished; a roof with
+    // broken ones reads as abandoned.
+    const BROKEN={1:{drop:-.09,pitch:-.34,roll:.12,span:2.1,slide:.5},
+      5:{drop:-.05,pitch:.42,roll:-.16,span:3.3,slide:0},
+      7:{drop:-.14,pitch:.08,roll:.3,span:1.6,slide:-.75},
+      10:{drop:-.02,pitch:.1,roll:.05,span:2.6,slide:.35}};
+    for(let i=0;i<12;i++){
+      if(i===3||i===9)continue;
+      const b=BROKEN[i];
+      const plank=box(-2.3+i*.42,3+(b?b.drop:0),b?b.slide:0,.39,.12,b?b.span:3.3, i%3? '#7c8070':'#8e8c76');
+      plank.rotation.set(b?b.pitch:.1,0,b?b.roll:0);
+    }
+    // The pieces that came off, lying on the ground under the gaps.
+    for(const [x,z,angle] of [[-1.1,1.5,.5],[1.5,-.2,-1.1]]){
+      const fallen=box(x,.06,z,.38,.11,1.5,'#7c8070');fallen.rotation.set(.04,angle,.03);
+    }
     box(0,.58,-.7,3.5,.15,.65,faded);box(0,1.02,-1,3.5,.45,.08,wood);
     for(const x of [-1.4,1.4])box(x,.28,-.7,.15,.55,.5,dark);
     box(-2,2.4,1.3,.4,.52,.08,iron);box(-2,2.4,1.36,.22,.3,.015,'#c0a66d');
@@ -122,6 +155,40 @@ export function makeRoadside(view, p, g) {
     for(let i=0;i<5;i++)box(1.5,.16+i*.16,1,1.5,.14,1.3,i%2?dark:wood);
     box(-.5,1.12,0,.45,.1,.12,iron);box(-.32,1.16,.05,.12,.13,.24,iron);
     for(const x of [-2,2])box(x,.65,-1.3,.12,1.3,.12,dark);box(0,1,-1.3,4,.12,.12,wood);
+  }else if(p.type==='sandbags'){
+    // Two short courses offset from each other, sacks sagging onto the one
+    // below. Low enough to shoot over standing, high enough to break a line.
+    for(const [ox,oz,count] of [[-.85,-.3,5],[.9,.35,5]]){
+      for(let row=0;row<2;row++)for(let i=0;i<count-row;i++){
+        const x=ox-(count-row-1)*.18+i*.36,y=.14+row*.24;
+        const sack=box(x,y,oz+(row?.05:0),.4,.23,.62,i%2?'#a89a78':'#94886a');
+        sack.rotation.set(Math.sin(i*3+row)*.05,Math.sin(i*7)*.12,Math.cos(i*5)*.06);
+      }
+      box(ox,.03,oz,count*.38,.05,.78,'#7f7358');
+    }
+  }else if(p.type==='plankBarricade'){
+    // An X-braced hoarding thrown up across a gap, one wing kicked back.
+    for(const [ox,oz,angle] of [[-.7,0,0],[.85,.3,.34]]){
+      const wing=new THREE.Group();wing.position.set(ox,0,oz);wing.rotation.y=angle;g.add(wing);
+      for(let i=0;i<3;i++)box(0,.28+i*.28,0,1.7,.2,.11,i%2?wood:faded,wing);
+      for(const brace of [-1,1]){const bar=box(0,.5,.075,1.95,.13,.07,dark,wing);bar.rotation.z=brace*.52;}
+      for(const x of [-.78,.78])box(x,.42,-.02,.16,.95,.16,dark,wing);
+      box(.55,.06,.3,.9,.08,.34,faded,wing);
+    }
+    // Offcuts and a spare post left where the barricade was thrown together.
+    for(const [x,z,angle] of [[-1.35,.55,.4],[1.6,-.35,-.9],[.1,.7,.15]]){
+      const offcut=box(x,.05,z,.95,.09,.2,faded);offcut.rotation.y=angle;
+    }
+    box(-1.5,.3,-.3,.15,.6,.15,dark);
+  }else if(p.type==='waterTank'){
+    // A tank up on stubby legs: the one piece here that blocks a sightline.
+    for(const x of [-.85,.85])for(const z of [-.85,.85])box(x,.32,z,.19,.64,.19,dark);
+    box(0,.66,0,2.1,.12,2.1,wood);
+    const drum=cyl(0,1.32,0,1.08,1.28,'#8e9384',g,12);drum.receiveShadow=true;
+    for(const y of [.82,1.86])cyl(0,y,0,1.11,.1,iron,g,12);
+    cyl(0,1.99,0,.86,.12,'#7e8374',g,12);
+    box(1.02,.5,.62,.13,1,.13,iron);box(.86,.16,.9,.5,.1,.62,'#6f7365');
+    for(let i=0;i<3;i++)box(-1.05,1.1+i*.3,.4+i*.06,.05,.24,.05,'#6a6e60');
   }else if(p.type==='graveyard'){
     rail(-2.8,0,5.6,'z');rail(2.8,0,5.6,'z');rail(0,-2.8,5.6);rail(-1.8,2.8,2);rail(1.8,2.8,2);
     for(const [x,z] of [[-1.2,-1.7],[-1.2,0],[1.2,.5]]){
@@ -132,5 +199,8 @@ export function makeRoadside(view, p, g) {
     box(1.3,.16,-1.5,1,.32,1,stone);box(1.3,.95,-1.5,.6,1.5,.5,'#a09177');box(1.3,1.78,-1.5,.78,.15,.66,stone);
   }
   // Sparse chips and fasteners on timber; no labels or ornamental clutter.
-  g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
+  // Posts, markers and crates keep their silhouette; the fasteners scattered over
+  // them are below a shadow texel and only cost draws.
+  g.traverse(o=>{if(o.isMesh)o.receiveShadow=true;});
+  view.shadowBySize(g,.2);
 }

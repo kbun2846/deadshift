@@ -2,14 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bindRifleMouse,weaponAiming} from '../src/rifle-input.js';
 
-test('Nominal keyboard aim and pointer aim release independently',()=>{
+test('Shift aims in on every weapon, and releases independently of the pointer',()=>{
  const keys=new Set(['ShiftLeft']);
- assert.equal(weaponAiming('rifle',false,keys),true);
- assert.equal(weaponAiming('shotgun',false,keys),false);
- assert.equal(weaponAiming('static',false,keys),false);
- keys.clear();assert.equal(weaponAiming('rifle',true,keys),true);
- assert.equal(weaponAiming('rifle',false,keys),false);
- keys.add('ShiftRight');assert.equal(weaponAiming('rifle',false,keys),true);
+ for(const weapon of ['rifle','shotgun','static'])
+  assert.equal(weaponAiming(weapon,false,keys),true,`${weapon} should aim on Shift`);
+ keys.clear();
+ for(const weapon of ['rifle','shotgun','static']){
+  assert.equal(weaponAiming(weapon,true,keys),true,`${weapon} should aim on the pointer`);
+  assert.equal(weaponAiming(weapon,false,keys),false,`${weapon} should stop aiming when both are released`);
+ }
+ keys.add('ShiftRight');
+ assert.equal(weaponAiming('rifle',false,keys),true,'either Shift key works');
 });
 test('aim and fire work in either mouse-button order and release independently',()=>{
  const surface=new EventTarget(),windowTarget=new EventTarget();let state,shots=0,enabled=true;

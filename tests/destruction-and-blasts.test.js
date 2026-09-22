@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Simulation, explosionFor, segmentBox, RULES } from '../src/simulation.js';
+import { Simulation, explosionFor, splashFalloff, SPLASH, segmentBox, RULES } from '../src/simulation.js';
 import { deadwater, mapColliders, PROP_TYPES } from '../src/maps.js';
 
 const map = extra => ({ width: 100, depth: 100, spawn: { x: 0, z: 0 }, buildings: [], props: [], fences: [], targets: [], ...extra });
@@ -149,4 +149,34 @@ test('quick shot creates and immediately launches one orb, spending one ammo',()
 test('quick shot dry fires without ammo and regular launch commands still need placed orbs',()=>{
  const sim=new Simulation(map());sim.ammo=0;sim.launch(6,0,true);assert.equal(sim.shots.length,0);assert.ok(sim.events.some(e=>e.type==='cock'));
  sim.ammo=12;sim.launch(6,0);assert.equal(sim.shots.length,0);
+});
+
+test('splash lands a little harder at the core and the rim than it used to',()=>{
+ // The shape the curve replaced: full at the centre, a quarter at the rim.
+ const previous=(distance,radius)=>1-.75*distance/radius;
+ for(const count of [4,8,12]){
+  const {radius}=explosionFor(count);
+  for(const fraction of [0,.25,.5,.75,1]){
+   const distance=radius*fraction;
+   const now=splashFalloff(distance,radius,count),before=previous(distance,radius);
+   assert.ok(now>=before,`${count} orbs at ${fraction*100}% fell from ${before} to ${now}`);
+   assert.ok(now<=before*1.25+1e-9,`${count} orbs at ${fraction*100}% rose too far, ${before} to ${now}`);
+  }
+ }
+});
+
+test('the core bonus belongs to heavy volleys, the rim bonus to all of them',()=>{
+ const {radius}=explosionFor(12);
+ // A small volley gains nothing at its centre.
+ assert.ok(Math.abs(splashFalloff(0,radius,4)-1)<1e-9,'four orbs should still land flat at the core');
+ assert.ok(splashFalloff(0,radius,12)>splashFalloff(0,radius,8),'and a full volley more than a partial one');
+ assert.ok(splashFalloff(0,radius,8)>splashFalloff(0,radius,4));
+ // The rim is lifted whatever the size.
+ for(const count of [2,4,8,12])assert.ok(splashFalloff(radius,radius,count)>=SPLASH.edge-1e-9);
+});
+
+test('splash still stops dead at the blast boundary',()=>{
+ const {radius}=explosionFor(12);
+ assert.equal(splashFalloff(radius*1.001,radius,12),0);
+ assert.equal(splashFalloff(5,0,12),0,'a blast with no radius reaches nothing');
 });

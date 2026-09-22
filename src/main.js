@@ -9,14 +9,16 @@ import {createOutgoingFeedback} from './outgoing-feedback.js';
 import { createMenuNavigation } from './menu-navigation.js';
 import { installSelectMenus } from './select-menu.js';
 import { readTutorialComplete, saveTutorialComplete } from './tutorial-progress.js';
-import { rifleSpread, RIFLE } from './rifle.js';
+import { rifleSpread, rifleAim, RIFLE_MUZZLE, RIFLE } from './rifle.js';
 import { bindAbilityCooldown, addAbilityCooldown } from './ability-cooldown.js';
 import { createWeaponHUD } from './weapon-hud.js';
 import { createHealthHUD } from './health-hud.js';
+import { createPerfReadout } from './perf-readout.js';
 import { createDamageFeedback } from './damage-feedback.js';
 import { createDeathScreen, DEATH_MENU_DELAY } from './death-screen.js';
 import { bindRifleMouse, weaponAiming } from './rifle-input.js';
 import { advanceAimCursor } from './aim-cursor.js';
+import { createAimDamping, aimsByPoint } from './aim-damping.js';
 import { GRENADE } from './grenade.js';
 import { tutorialMapFor, Tutorial, rifleTouchLessons } from './tutorial.js';
 import { installMenu } from './menu.js';
@@ -24,10 +26,11 @@ import { maps } from './maps.js';
 import { Simulation, RULES } from './simulation.js';
 import { WorldView } from './renderer.js';
 import { Soundscape } from './audio.js';
-import { GRAPHICS, validateSettings, RenderBudget, AdaptiveResolution } from './settings.js';
+import { GRAPHICS, validateSettings, RenderBudget, AdaptiveResolution, fpsToSlider, fpsFromSlider, fpsLabel, snapFps, FPS_STOPS, FPS_MIN, FPS_UNCAPPED_SLIDER, VOLUME_CHANNELS, isDemanding} from './settings.js';
 import {keyboardAim} from './keyboard-aim.js';
 import { overheadMapSVG } from './overhead-map.js';
 import { installDevTools } from './dev-tools.js';
+import { createDevWindow } from './dev-window.js';
 import { createDevUnlockDialog } from './dev-unlock-dialog.js';
 
 const $ = id => document.getElementById(id);
@@ -56,9 +59,12 @@ sim.weapon=['rifle','shotgun'].includes(params.get('weapon'))?params.get('weapon
 let rifleFiring=false,rifleAiming=false;
 const updateWeaponHUD=createWeaponHUD($('weapon'));
 const updateHealthHUD=createHealthHUD($('game'));
+const perfReadout=createPerfReadout(document.querySelector('.masthead'));
 const damageFeedback=createDamageFeedback($('game'));
 const outgoingFeedback=createOutgoingFeedback($('game'));
-const cone=document.createElementNS('http://www.w3.org/2000/svg','svg');cone.classList.add('shotgun-cone');cone.innerHTML='<path/>'; $('game').append(cone);
+const cone=document.createElementNS('http://www.w3.org/2000/svg','svg');cone.classList.add('aim-cone');
+// Two layers: the filled danger zone inside the spread, and the guide edges.
+cone.innerHTML='<path class="cone-zone"/><path class="cone-edges"/>'; $('game').append(cone);
 const updatePrimaryCooldown=bindAbilityCooldown($('hex-recharge'));
 const extendedCooldownUI=addAbilityCooldown($('weapon'),'extended-recharge');
 const extendedButton=document.createElement('button');extendedButton.id='touch-extended';extendedButton.textContent='X';extendedButton.setAttribute('aria-label','Load 36-round magazine');document.querySelector('.touch-right').append(extendedButton);
@@ -113,19 +119,23 @@ function toggleMap() {
 let pendingLaunch = false, pendingSeed = false, pendingQuickShot=false;
 let pendingAimPoint = null;
 let inputMode = 'keyboard', dirty = true, hudTime = 0, fpsTime = 0, renderedFrames = 0, measuredFPS = 0;
-let markerRemaining = 0;
+let markerRemaining = 0, coneFlicker = 0;
 const keys = new Set(), tappedKeys = new Set();
 const touchActionResets=[];
 const aimingNow=()=>weaponAiming(sim.weapon,rifleAiming,keys);
+const aimDamping=createAimDamping();
 let previousPlayer = { ...sim.player };
 const mouse = { x: innerWidth * .7, y: innerHeight * .5 };
 const cursorTarget={...mouse};
-function setCursorTarget(x,y){cursorTarget.x=x;cursorTarget.y=y;if(sim.weapon!=='rifle'){mouse.x=x;mouse.y=y;}}
+// Smoothed weapons steer the rendered cursor; the rest snap straight to it.
+const smoothedCursor=()=>sim.weapon==='rifle'||sim.weapon==='static';
+function setCursorTarget(x,y){cursorTarget.x=x;cursorTarget.y=y;if(!smoothedCursor()){mouse.x=x;mouse.y=y;}}
 const touch = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, seeding: false };
 let touchAimPointer=null;
 const sticks = new Map();
 
 view.onClatter = type => sound.clatter(type);
+view.birds.onFlap = flight => sound.wingbeat(flight.name);
 
 async function start(weapon=sim.weapon) {
   if (started) return;
@@ -142,6 +152,7 @@ async function start(weapon=sim.weapon) {
 }
 
 function returnToMenu(){
+  perfReadout.reset();devWindow.hide();
   running=false;started=false;paused=false;mapOpen=false;mapWasPaused=false;settingsOpen=false;
   releaseInput();reset();sound.suspend(true);
   document.body.classList.remove('playing','paused');
@@ -181,13 +192,35 @@ function reset() {
 
 function toggleAudio() {
   sound.setEnabled(!sound.enabled); $('audio').classList.toggle('muted', !sound.enabled);
+  $('mute-all')?.setAttribute('aria-pressed', String(!sound.enabled));
+  if($('mute-all'))$('mute-all').textContent=sound.enabled?'MUTE ALL':'UNMUTE ALL';
   $('audio').setAttribute('aria-label', sound.enabled ? 'Mute sound' : 'Unmute sound');
   $('audio').title = (sound.enabled ? 'Mute' : 'Unmute') + ' sound · N';
 }
 
+function applyVolume(){
+  for(const channel of VOLUME_CHANNELS){
+    const slider=$('volume-'+channel);
+    settings.volume[channel]=Number(slider.value)/100;
+    $('volume-'+channel+'-value').textContent=Math.round(settings.volume[channel]*100)+'%';
+    slider.style.setProperty('--fill',slider.value+'%');
+    slider.setAttribute('aria-valuetext',Math.round(settings.volume[channel]*100)+' percent');
+  }
+  sound.setVolumes(settings.volume);
+  try { localStorage.setItem('deadshift-settings', JSON.stringify(settings)); } catch { /* Incognito still plays normally. */ }
+}
+
 function applySettings() {
   settings.quality = $('graphics-preset').value;
-  settings.fps = Number($('fps-limit').value);
+  // Weighted stops: near one of the common rates the handle is pulled onto it,
+  // and outside that pull it settles wherever it was let go.
+  const settled = snapFps($('fps-limit').value);
+  if (String(settled) !== $('fps-limit').value) $('fps-limit').value = String(settled);
+  settings.fps = fpsFromSlider(settled);
+  $('fps-limit-value').textContent = fpsLabel(settings.fps);
+  $('fps-limit').setAttribute('aria-valuetext', fpsLabel(settings.fps));
+  // Paint the travelled part of the track; the thumb pseudo-element cannot.
+  $('fps-limit').style.setProperty('--fill', sliderFraction(settled) * 100 + '%');
   settings.controlHints=$('control-hints').checked;
   settings.mobileOpacity=Number($('mobile-opacity').value);
   document.body.style.setProperty('--mobile-opacity',settings.mobileOpacity);
@@ -195,13 +228,22 @@ function applySettings() {
   if (view.qualityName !== settings.quality) view.setQuality(settings.quality);
   view.motion = settings.motion; budget.fps = settings.fps;
   $('graphics-description').textContent = GRAPHICS[settings.quality].description;
-  $('graphics-warning').classList.toggle('hidden', settings.quality !== 'quality');
+  $('graphics-warning').classList.toggle('hidden', !isDemanding(settings.quality));
   try { localStorage.setItem('deadshift-settings', JSON.stringify(settings)); } catch { /* Incognito still plays normally. */ }
   dirty = true; updateHUD();
 }
 
 function updateReticle() {
-  cone.style.display=running&&sim.weapon==='shotgun'&&!sim.player.dead?'block':'none';
+  const coneWeapon=sim.weapon==='shotgun'||sim.weapon==='rifle';
+  cone.style.display=running&&coneWeapon&&!sim.player.dead?'block':'none';
+  cone.classList.toggle('firing',coneFlicker>0);
+  // The zone is a statement about what this shot would cover, so an empty or
+  // mid-reload breech has nothing to say. The guide edges stay up regardless.
+  // Same rule for the rifle: no round chambered, or a magazine on the way in,
+  // and the zone goes out.
+  cone.classList.toggle('unloaded',sim.weapon==='shotgun'
+   ? !(sim.shotgun.ammo>0)
+   : !(sim.rifle.ammo>0&&sim.rifle.reload<=0));
   if(sim.weapon==='shotgun'){
    const p=sim.player,range=shotgunRange(sim.shotgun.charge),angle=Math.atan2(p.aimZ,p.aimX),spread=shotgunSpread(aimingNow());
    const muzzleX=view.player.position.x+p.aimX*.96-p.aimZ*.20,muzzleZ=view.player.position.z+p.aimZ*.96+p.aimX*.20;
@@ -211,7 +253,10 @@ function updateReticle() {
    const nearEnd=view.screenPoint(muzzleX+Math.cos(angle+spread)*guideStart,muzzleZ+Math.sin(angle+spread)*guideStart,.77);
    const farLeft=view.screenPoint(muzzleX+Math.cos(angle-spread)*range,muzzleZ+Math.sin(angle-spread)*range,.77);
    const farRight=view.screenPoint(muzzleX+Math.cos(angle+spread)*range,muzzleZ+Math.sin(angle+spread)*range,.77);
-   cone.setAttribute('viewBox',`0 0 ${innerWidth} ${innerHeight}`);cone.querySelector('path').setAttribute('d',`M${origin.x},${origin.y} L${farLeft.x},${farLeft.y} M${nearEnd.x},${nearEnd.y} L${farRight.x},${farRight.y}`);
+   cone.setAttribute('viewBox',`0 0 ${innerWidth} ${innerHeight}`);
+   cone.querySelector('.cone-edges').setAttribute('d',`M${origin.x},${origin.y} L${farLeft.x},${farLeft.y} M${nearEnd.x},${nearEnd.y} L${farRight.x},${farRight.y}`);
+   // The same quad the edges bound, closed so it can carry a fill.
+   cone.querySelector('.cone-zone').setAttribute('d',`M${origin.x},${origin.y} L${farLeft.x},${farLeft.y} L${farRight.x},${farRight.y} L${nearEnd.x},${nearEnd.y} Z`);
   }
 
   const p = sim.player;
@@ -220,27 +265,64 @@ function updateReticle() {
   spreadMarker.hidden=secondarySpread.hidden=sim.weapon!=='rifle'||!running;
   if(!spreadMarker.hidden){
    const ax=p.aimPointX??p.x+p.aimX*7,az=p.aimPointZ??p.z+p.aimZ*7;
-   const distance=Math.hypot(ax-p.x,az-p.z),error=Math.tan(rifleSpread(distance,Math.hypot(p.vx,p.vz),aimingNow()))*distance;
-   const center=view.screenPoint(ax,az),edge=view.screenPoint(ax-p.aimZ*error,az+p.aimX*error),origin=view.screenPoint(p.x,p.z);
-   spreadMarker.style.left=point.x+'px';spreadMarker.style.top=point.y+'px';
-   spreadMarker.style.width=Math.max(8,Math.hypot(edge.x-center.x,edge.y-center.y)*2)+'px';
-   spreadMarker.style.transform=`translate(-50%,-50%) rotate(${Math.atan2(point.y-origin.y,point.x-origin.x)+Math.PI/2}rad)`;
+   const distance=Math.hypot(ax-p.x,az-p.z),speed=Math.hypot(p.vx,p.vz);
+   // One ray, fixed by where the cursor is: from the muzzle, laid on the
+   // convergence point. Both brackets are read off that same ray at their own
+   // distances, so each shows the band bullets actually fall in there.
+   // The convergence floor belongs to the barrel alone — applying it to the
+   // bracket too is what dragged the near one out to arm's length.
+   const aim=rifleAim(p,distance),spread=rifleSpread(distance,speed,aimingNow());
+   const dirX=Math.cos(aim.angle),dirZ=Math.sin(aim.angle),perpX=-dirZ,perpZ=dirX;
+   // One helper for both the brackets and the zone: the centre of the band at
+   // a given range, and the two world points its edges sit on.
+   const band=range=>{
+    const travel=Math.max(.35,range-RIFLE_MUZZLE.forward);
+    const cx=aim.x+dirX*travel,cz=aim.z+dirZ*travel,error=Math.tan(spread)*travel;
+    return {cx,cz,error};
+   };
+   const guide=range=>{
+    const {cx,cz,error}=band(range);
+    const center=view.screenPoint(cx,cz);
+    const edge=view.screenPoint(cx+perpX*error,cz+perpZ*error);
+    return {center,width:Math.max(8,Math.hypot(edge.x-center.x,edge.y-center.y)*2),
+     angle:Math.atan2(edge.y-center.y,edge.x-center.x)};
+   };
+   const near=guide(distance);
+   spreadMarker.style.left=near.center.x+'px';spreadMarker.style.top=near.center.y+'px';
+   spreadMarker.style.width=near.width+'px';
+   spreadMarker.style.transform=`translate(-50%,-50%) rotate(${near.angle}rad)`;
    let otherDistance=distance<9?Math.max(13,distance+7):Math.max(2.5,Math.min(6,distance*.4));
-   let other=view.screenPoint(p.x+p.aimX*otherDistance,p.z+p.aimZ*otherDistance);
+   let far=guide(otherDistance);
    // Keep the far guide inside the viewport, including narrow portrait screens.
-   for(let i=0;i<12&&(other.x<20||other.x>innerWidth-20||other.y<20||other.y>innerHeight-20);i++){
-    otherDistance*=.88;other=view.screenPoint(p.x+p.aimX*otherDistance,p.z+p.aimZ*otherDistance);
+   for(let i=0;i<12&&(far.center.x<20||far.center.x>innerWidth-20||far.center.y<20||far.center.y>innerHeight-20);i++){
+    otherDistance*=.88;far=guide(otherDistance);
    }
-   const otherError=Math.tan(rifleSpread(otherDistance,Math.hypot(p.vx,p.vz),aimingNow()))*otherDistance;
-   const otherEdge=view.screenPoint(p.x+p.aimX*otherDistance-p.aimZ*otherError,p.z+p.aimZ*otherDistance+p.aimX*otherError);
-   secondarySpread.style.left=other.x+'px';secondarySpread.style.top=other.y+'px';
-   secondarySpread.style.width=Math.max(8,Math.hypot(otherEdge.x-other.x,otherEdge.y-other.y)*2)+'px';
-   secondarySpread.style.transform=`translate(-50%,-50%) rotate(${Math.atan2(other.y-origin.y,other.x-origin.x)-Math.PI/2}rad)`;
+   secondarySpread.style.left=far.center.x+'px';secondarySpread.style.top=far.center.y+'px';
+   secondarySpread.style.width=far.width+'px';
+   secondarySpread.style.transform=`translate(-50%,-50%) rotate(${far.angle}rad)`;
+   // The ground this shot can land on, the same statement the Ballast cone
+   // makes and drawn off the same ray the brackets are. It spans the two
+   // brackets and nothing beyond them: each one caps an end of the band, so
+   // the red says "between these", not "everything in front of you".
+   const flank=range=>{
+    const {cx,cz,error}=band(range);
+    return [view.screenPoint(cx-perpX*error,cz-perpZ*error,.77),
+            view.screenPoint(cx+perpX*error,cz+perpZ*error,.77)];
+   };
+   const [nl,nr]=flank(Math.min(distance,otherDistance));
+   const [fl,fr]=flank(Math.max(distance,otherDistance));
+   cone.setAttribute('viewBox',`0 0 ${innerWidth} ${innerHeight}`);
+   cone.querySelector('.cone-zone').setAttribute('d',
+    `M${nl.x},${nl.y} L${fl.x},${fl.y} L${fr.x},${fr.y} L${nr.x},${nr.y} Z`);
+   // The brackets are the rifle's guide; it needs no drawn cone edges.
+   cone.querySelector('.cone-edges').setAttribute('d','');
   }
 }
 
 function updateHUD() {
-  updateHealthHUD(sim);
+  // The health bar has its own per-frame update in the frame loop, because the
+  // tremble needs every frame; calling it again on the 80ms HUD tick was pure
+  // duplication.
   const rifle=sim.weapon==='rifle';
   updateWeaponHUD(sim,touchPrompts);$('hex-recharge').classList.remove('hidden');
   spreadMarker.hidden=secondarySpread.hidden=!rifle||!running;
@@ -286,6 +368,13 @@ function updateHUD() {
 }
 
 function event(e) {
+  // The danger zone blinks out on the shot itself: the cone is a warning, and
+  // once the shell is away there is nothing left to warn about for a moment.
+  // Both cones blink off on the shot, so the zone reads as a statement about
+  // the next round rather than a light left on. The rifle's is shorter: it
+  // fires six times a second and a long blink would just look like flicker.
+  if(e.type==='shotgunShot')coneFlicker=.12;
+  if(e.type==='rifleShot')coneFlicker=.055;
   if(e.type==='playerDamage')damageFeedback.add(e.damage,sim.time);
   if(e.type==='outgoingDamage')outgoingFeedback.add(e,sim.time);
   if(tutorial){tutorial.event(e,sim);updateTutorial();}
@@ -326,7 +415,32 @@ function bindStick(id, type) {
 }
 
 $('world').tabIndex = 0;
-const devTools=installDevTools(sim,$('settings-developer'),()=>{dirty=true;updateHUD();});
+const spawnBird=()=>view.birds.spawnNext(view.focus,view.birdView())?.name;
+function showDevEntry(unlocked){
+ $('dev-open').hidden=!unlocked;
+ if(!unlocked)closeDevPanel();
+}
+function closeDevPanel(){
+ $('dev-panel').classList.add('hidden');
+ $('settings-panel').classList.remove('with-dev');
+ $('dev-open').setAttribute('aria-expanded','false');
+}
+const devTools=installDevTools(sim,$('dev-panel'),()=>{dirty=true;updateHUD();},{
+ spawnBird,
+ onUnlock:()=>showDevEntry(true),
+ onLock:()=>showDevEntry(false),
+});
+$('dev-open').onclick=()=>{
+ const opening=$('dev-panel').classList.contains('hidden');
+ $('dev-panel').classList.toggle('hidden',!opening);
+ $('settings-panel').classList.toggle('with-dev',opening);
+ $('dev-open').setAttribute('aria-expanded',String(opening));
+ if(opening)$('dev-panel').querySelector('select,input,button')?.focus();
+};
+const devWindow=createDevWindow($('game'),{sim,spawnBird,
+ quality:()=>settings.quality,
+ setQuality:name=>{$('graphics-preset').value=name;applySettings();},
+ changed:()=>{dirty=true;updateHUD();devTools.syncSpeed();}});
 const devDialog=createDevUnlockDialog($('game'),{
  unlock:code=>devTools.unlock(code),
  open:()=>{setPaused(true);$('pause-panel').classList.add('hidden');},
@@ -367,14 +481,35 @@ $('map-close').addEventListener('click',toggleMap);
 $('resume').addEventListener('click', () => setPaused(false));
 $('reset').addEventListener('click', () => { reset(); setPaused(false); });
 bindTouchAction($('audio'),{press:toggleAudio});
-$('graphics-preset').value = settings.quality; $('fps-limit').value = String(settings.fps);
+const sliderFraction = at => (Number(at) - FPS_MIN) / (FPS_UNCAPPED_SLIDER - FPS_MIN);
+// One prong per weighted stop, positioned on the same scale as the handle.
+$('fps-limit-ticks').replaceChildren(...FPS_STOPS.map(stop => {
+  const prong = document.createElement('i');
+  prong.style.left = sliderFraction(stop) * 100 + '%';
+  prong.title = fpsLabel(stop);
+  return prong;
+}));
+$('graphics-preset').value = settings.quality; $('fps-limit').value = String(fpsToSlider(settings.fps));
 $('control-hints').checked=settings.controlHints;
 $('mobile-opacity').value=String(settings.mobileOpacity);
 for (const id of ['graphics-preset', 'fps-limit','control-hints','mobile-opacity']) $(id).addEventListener('change', applySettings);
+// The slider needs to read live while dragged, not only on release.
+$('fps-limit').addEventListener('input', applySettings);
 applySettings();
 const selectMenus=installSelectMenus($('settings-panel'));
+for(const channel of VOLUME_CHANNELS){
+ const slider=$('volume-'+channel);
+ slider.value=String(Math.round(settings.volume[channel]*100));
+ slider.addEventListener('input',applyVolume);
+ slider.addEventListener('change',applyVolume);
+}
+$('mute-all').onclick=toggleAudio;
+applyVolume();
 bindStick('move-stick', 'move'); bindStick('seed-stick', 'aim');
 window.addEventListener('resize', () => { view.resize(); dirty = true; });
+// The cached canvas rect is in page coordinates, so a scroll moves it even
+// though nothing resized.
+window.addEventListener('scroll', () => { view.cachedRect = null; }, { passive: true });
 $('world').addEventListener('pointermove', e => {
   if(e.pointerType!=='mouse'&&e.pointerId===touchAimPointer&&running){e.preventDefault();setCursorTarget(e.clientX,e.clientY);inputMode='mouse';return;}
   if (e.pointerType !== 'mouse') return;
@@ -452,11 +587,12 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (e.code === 'KeyN' && !e.repeat) toggleAudio();
+  if(e.code==='KeyO'&&!e.repeat&&devTools.isUnlocked()){e.preventDefault();devWindow.toggle();return;}
   if(e.code==='KeyP'&&!e.repeat){
    e.preventDefault();
    if(!running)return;
    const enabled=devTools.toggleAll();
-   if(enabled===null)devDialog.show();else showDevNotice(enabled);
+   if(enabled===null)devDialog.show();else {showDevNotice(enabled);devWindow.sync();}
    return;
   }
   if (!running) return;
@@ -476,12 +612,13 @@ function frame(time) {
   if (!paused) {
     elapsed += dt;
     if (markerRemaining > 0) { markerRemaining -= dt; if (markerRemaining <= 0) $('hit-marker').classList.remove('show'); }
+    if (coneFlicker > 0) coneFlicker -= dt;
   }
   if (running) {
     accumulator += dt;
     while (running && accumulator >= RULES.step) {
       previousPlayer = { ...sim.player };
-      if(sim.weapon==='rifle'&&inputMode==='mouse')advanceAimCursor(mouse,cursorTarget,RULES.step,aimingNow());
+      if(smoothedCursor()&&inputMode==='mouse')advanceAimCursor(mouse,cursorTarget,RULES.step,aimingNow(),sim.weapon);
       const held = key => keys.has(key) || tappedKeys.has(key);
       const moveX = touch.moveX || Number(held('KeyD')) - Number(held('KeyA'));
       const moveZ = touch.moveZ || Number(held('KeyS')) - Number(held('KeyW'));
@@ -490,10 +627,18 @@ function frame(time) {
       const manualZ = touch.aimZ || arrows.z;
       let aimX = sim.player.aimX, aimZ = sim.player.aimZ;
       let aimPointX, aimPointZ;
-      if (manualX || manualZ) { aimX = manualX; aimZ = manualZ; inputMode = 'keyboard'; }
-      else if (inputMode === 'mouse') ({ aimX, aimZ, aimPointX, aimPointZ } = view.aim(mouse.x, mouse.y, sim.player));
-      else if (moveX || moveZ) { aimX = moveX; aimZ = moveZ; }
-      sim.step({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, smoothAim:!!(manualX||manualZ), grenade:tappedKeys.has('KeyE'), extendedReload:tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?rifleFiring:rifleFiring||pendingLaunch||(sim.weapon==='rifle'&&held('KeyQ')),tapFire:pendingLaunch&&!tappedKeys.has('KeyQ'),storeCharge:tappedKeys.has('MouseRight')||tappedKeys.has('KeyQ'),doubleShot:tappedKeys.has('KeyE'),aiming:aimingNow(),reload:tappedKeys.has('KeyR'), spray: held('KeyC'), dodge: tappedKeys.has('Space'), hex: tappedKeys.has('KeyX'), seed: held('KeyE') || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
+      // Arrow aiming latches inputMode to 'keyboard' until the mouse moves again,
+      // so releasing the arrows hands aim to this movement fallback. It is just as
+      // digital as the arrows: without easing it snaps between the eight WASD
+      // compass points and the walk loses its turn.
+      let digitalAim = !!(manualX || manualZ);
+      if (digitalAim) { aimX = manualX; aimZ = manualZ; inputMode = 'keyboard'; }
+      else if (inputMode === 'mouse') {
+        const cursorAim = view.aim(mouse.x, mouse.y, sim.player);
+        ({ aimX, aimZ, aimPointX, aimPointZ } = aimsByPoint(sim.weapon) ? aimDamping.apply(cursorAim, sim.player) : cursorAim);
+      }
+      else if (moveX || moveZ) { aimX = moveX; aimZ = moveZ; digitalAim = true; }
+      sim.step({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, smoothAim:digitalAim, grenade:tappedKeys.has('KeyE'), extendedReload:tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?rifleFiring:rifleFiring||pendingLaunch||(sim.weapon==='rifle'&&held('KeyQ')),tapFire:pendingLaunch&&!tappedKeys.has('KeyQ'),storeCharge:tappedKeys.has('MouseRight')||tappedKeys.has('KeyQ'),doubleShot:tappedKeys.has('KeyE'),aiming:aimingNow(),reload:tappedKeys.has('KeyR'), spray: held('KeyC'), dodge: tappedKeys.has('Space'), hex: tappedKeys.has('KeyX'), seed: held('KeyE') || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
         launchPointX: arrows.active?undefined:pendingAimPoint?.aimPointX, launchPointZ: arrows.active?undefined:pendingAimPoint?.aimPointZ });
       if(tutorial){tutorial.update(sim.player);if(tutorial.weapon==='static'&&tutorial.index===5&&!sim.hexOrbs.length&&!sim.hexSpin){sim.hexCooldown=0;sim.ammo=Math.max(sim.ammo,10);}if(tutorial.weapon==='rifle'&&tutorial.index===6&&!sim.grenades.length)sim.grenadeCooldown=0;if(tutorial.weapon==='rifle'&&tutorial.index===7&&!sim.rifle.reload)sim.rifle.extendedCooldown=0;updateTutorial();}
       tappedKeys.clear(); pendingQuickShot=false; pendingLaunch = pendingSeed = false; pendingAimPoint = null; accumulator -= RULES.step;
@@ -517,6 +662,7 @@ function frame(time) {
     if (fpsTime >= 1) { measuredFPS = Math.round(renderedFrames / fpsTime); fpsTime = 0; renderedFrames = 0; }
   }
   if(paused)adaptiveResolution.reset();
+  perfReadout.update(started && !paused ? dt : 0, measuredFPS);
   updateHealthHUD(sim);
   hudTime += dt; if (hudTime >= .08) { updateHUD(); hudTime = 0; }
   damageFeedback.update(sim,view);outgoingFeedback.update(sim,view);

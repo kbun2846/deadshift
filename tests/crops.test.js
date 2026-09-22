@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation } from '../src/simulation.js';
 import { cropSegments, affectCrop, stepCrops } from '../src/crops.js';
-import { deadwater, mapColliders } from '../src/maps.js';
+import { deadwater, mapColliders, mapProps, PROP_TYPES, BROKEN_CRATE_SHARE, crateIsBroken } from '../src/maps.js';
 const map = { width: 80, depth: 80, spawn: { x: -10, z: 0 }, buildings: [], props: [], targets: [], fences: [], crops: [{ id: 'test', x: 0, z: 0, w: 14, d: 16, visibility: 4.2 }] };
 const clear = () => true;
 test('56 varied crop sections tile the field exactly and have reciprocal neighbors', () => {
@@ -59,24 +59,32 @@ test('remote farm has only one nearby house and sparse solid cover across the ex
   const f = deadwater.crops[0]; assert.ok(Math.hypot(f.x, f.z) > 120);
   assert.deepEqual(deadwater.buildings.filter(b => Math.hypot(b.x - f.x, b.z - f.z) < 40).map(b => b.id), ['farmhouse']);
   const props = deadwater.props.filter(p => ['deadTree', 'stump', 'boulder'].includes(p.type));
-  assert.ok(props.length > 10 && props.length < 20);
+  // Natural cover is a minority of the map's solid cover — the built pieces
+  // carry most of it — and every one of these is a real non-destructible box.
+  const cover = deadwater.props.filter(p => PROP_TYPES[p.type].health === null);
+  assert.ok(props.length > 10, `only ${props.length} natural cover props`);
+  assert.ok(props.length < cover.length * .45, `${props.length} of ${cover.length} cover props are natural`);
   const colliders = mapColliders(deadwater);
   for (const p of props) assert.ok(colliders.some(c => c.x === p.x && c.z === p.z && !c.destructible));
+  // Nothing within the farm's own field, so the crops stay walkable cover.
+  const field = deadwater.crops[0];
+  for (const p of cover) assert.ok(Math.abs(p.x - field.x) > field.w / 2 || Math.abs(p.z - field.z) > field.d / 2,
+    `${p.type} at ${p.x},${p.z} sits inside the crop field`);
 });
 
 
-test('fire deals exactly 10 health per second to the player and targets, including self-lit fire and dodging', () => {
+test('fire deals exactly 25 health per second to the player and targets, including self-lit fire and dodging', () => {
   const sim = new Simulation(map), s = sim.crops[0];
   sim.player.x = s.x; sim.player.z = s.z; sim.player.dodgeRemaining = 1;
   sim.targets = [{ id: 'fire-target', x: s.x, z: s.z, hp: 100, maxHp: 100, flash: 0 }];
   affectCrop(sim, s);
   for (let i = 0; i < 60; i++) stepCrops(sim, 1 / 60, () => false);
-  assert.ok(Math.abs(sim.player.hp - 490) < 1e-8);
-  assert.ok(Math.abs(sim.targets[0].hp - 90) < 1e-8);
+  assert.ok(Math.abs(sim.player.hp - 475) < 1e-8);
+  assert.ok(Math.abs(sim.targets[0].hp - 75) < 1e-8);
   sim.player.x = -30; sim.targets[0].z = 30;
   stepCrops(sim, 1, () => false);
-  assert.ok(Math.abs(sim.player.hp - 490) < 1e-8);
-  assert.ok(Math.abs(sim.targets[0].hp - 90) < 1e-8);
+  assert.ok(Math.abs(sim.player.hp - 475) < 1e-8);
+  assert.ok(Math.abs(sim.targets[0].hp - 75) < 1e-8);
 });
 
 test('burning boundaries do not stack damage and only remaining fire time causes damage', () => {
@@ -84,10 +92,10 @@ test('burning boundaries do not stack damage and only remaining fire time causes
   sim.player.x = a.x + a.w / 2; sim.player.z = a.z;
   affectCrop(sim, a); affectCrop(sim, b);
   stepCrops(sim, .25, () => false);
-  assert.equal(sim.player.hp, 497.5);
+  assert.equal(sim.player.hp, 493.75);
   a.burnAge = b.burnAge = 7.9;
   stepCrops(sim, .5, () => false);
-  assert.ok(Math.abs(sim.player.hp - 496.5) < 1e-8);
+  assert.ok(Math.abs(sim.player.hp - 491.25) < 1e-8);
   const hp = sim.player.hp; stepCrops(sim, 1, () => false); assert.equal(sim.player.hp, hp);
 });
 
@@ -103,3 +111,25 @@ test('fire kills fragile dummies once, scorch grows gradually, and electricity p
   assert.equal(sim.stats.bestVolley, 0);
 });
 
+
+test('broken crates are a stable minority, and only crates are ever broken',()=>{
+ const props=mapProps(deadwater);
+ const crates=props.filter(p=>p.type==='crate');
+ const broken=crates.filter(p=>p.broken);
+ assert.ok(broken.length>0,'some crates should already have given way');
+ assert.ok(broken.length<crates.length*.45,`${broken.length} of ${crates.length} crates are broken`);
+ assert.ok(Math.abs(broken.length/crates.length-BROKEN_CRATE_SHARE)<.18,
+  `${(broken.length/crates.length*100).toFixed(0)}% broken against a ${BROKEN_CRATE_SHARE*100}% target`);
+ assert.equal(props.filter(p=>p.type!=='crate'&&p.broken).length,0,'nothing but a crate can be broken');
+ // Derived from position, so the same crates are broken on every run.
+ assert.deepEqual(mapProps(deadwater).filter(p=>p.broken).map(p=>p.id),broken.map(p=>p.id));
+ // And it stays purely cosmetic: same footprint, same health, same cover.
+ for(const p of broken){
+  assert.equal(p.health,PROP_TYPES.crate.health);
+  assert.equal(p.w,PROP_TYPES.crate.w);assert.equal(p.d,PROP_TYPES.crate.d);
+ }
+ // Overridable per prop, both ways.
+ assert.equal(crateIsBroken({type:'crate',x:0,z:0,broken:true},0),true);
+ assert.equal(crateIsBroken({type:'crate',x:0,z:0,broken:false},0),false);
+ assert.equal(crateIsBroken({type:'barrel',x:0,z:0},0),false);
+});

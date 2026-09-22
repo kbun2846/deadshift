@@ -1,10 +1,34 @@
 // Baseline conventional weapon: metres, seconds, damage per bullet.
-export const RIFLE=Object.freeze({interval:.18,magazine:18,extendedMagazine:36,extendedCooldown:60,reload:1.8,damage:20,minDamage:14,effectiveRange:10,falloffEnd:22,maxRange:55,magazineLife:30,bulletSpeed:90,aimMoveMultiplier:.55,maxStamina:3});
+export const RIFLE=Object.freeze({interval:.18,magazine:18,extendedMagazine:36,extendedCooldown:60,reload:1.8,damage:20,minDamage:14,effectiveRange:10,falloffEnd:22,maxRange:55,magazineLife:30,bulletSpeed:90,aimMoveMultiplier:.55,maxStamina:3,stationaryStamina:1.3});
 export const rifleDamage=distance=>RIFLE.damage-(RIFLE.damage-RIFLE.minDamage)*Math.max(0,Math.min(1,(distance-RIFLE.effectiveRange)/(RIFLE.falloffEnd-RIFLE.effectiveRange)));
 export function rifleSpread(distance,speed=0,aiming=false){
  // Angular error is independent of cursor depth. The HUD projects this cone
  // at the cursor; a close cursor cannot tighten shots that keep travelling.
  return (aiming?.054:.105)*(1+.7*Math.min(1,speed/7.2));
+}
+// Where the barrel actually is: a metre out in front of the player and a
+// hand's width to one side, which is why a shot fired parallel to the player's
+// centreline never passes through the crosshair.
+export const RIFLE_MUZZLE=Object.freeze({forward:.96,lateral:.27});
+export const rifleMuzzle=p=>({
+ x:p.x+p.aimX*RIFLE_MUZZLE.forward-p.aimZ*RIFLE_MUZZLE.lateral,
+ z:p.z+p.aimZ*RIFLE_MUZZLE.forward+p.aimX*RIFLE_MUZZLE.lateral,
+});
+// The barrel is never laid on a point closer than this. Converging on a cursor
+// sitting on the player's own feet would rake the shot several degrees across
+// the screen; holding the floor here keeps the worst tilt inside a couple of
+// degrees, which is centimetres at the ranges where it could miss.
+export const RIFLE_CONVERGE=8;
+// The one piece of geometry the shot and the guide must agree on: where the
+// barrel sits, which way it is laid, and how far the convergence point is from
+// the muzzle. Spread is angular about this ray, so the guide drawn from it is
+// exactly the band the bullets fall in.
+export function rifleAim(p,aimDistance){
+ const reach=Math.max(Number.isFinite(aimDistance)?aimDistance:RIFLE_CONVERGE,RIFLE_CONVERGE);
+ const {x,z}=rifleMuzzle(p);
+ const targetX=p.x+p.aimX*reach,targetZ=p.z+p.aimZ*reach;
+ const dx=targetX-x,dz=targetZ-z,range=Math.hypot(dx,dz)||1e-6;
+ return {x,z,targetX,targetZ,range,angle:Math.atan2(dz,dx)};
 }
 export function rifleShotError(sample){
  // Shift the old center-heavy sample toward both flanks of the SAME cone.
@@ -58,8 +82,13 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
  if(!sim.dev.ammo)r.ammo--;sim.stats.launched++;
  const distance=Math.hypot(p.aimPointX-p.x,p.aimPointZ-p.z);
  const spread=rifleSpread(distance,Math.hypot(p.vx,p.vz),r.aiming);
- const x=p.x+p.aimX*.96-p.aimZ*.27,z=p.z+p.aimZ*.96+p.aimX*.27;
- const angle=Math.atan2(p.aimZ,p.aimX)+rifleShotError(Math.random()-Math.random())*spread;
+ // The barrel is laid on the convergence point rather than run parallel to the
+ // player. Fired parallel, every bullet passed a fixed offset to one side of
+ // the crosshair no matter how tight the spread was — which is what made even
+ // aimed shots look like they were leaving the guide.
+ const aim=rifleAim(p,distance);
+ const x=aim.x,z=aim.z;
+ const angle=aim.angle+rifleShotError(Math.random()-Math.random())*spread;
  const dx=Math.cos(angle),dz=Math.sin(angle);
  // Include the player-to-muzzle segment so the barrel cannot shoot through cover.
  const blocked=sim.colliders.some(b=>!b.playerOnly&&segmentBox(p.x,p.z,x,z,b)!==null);

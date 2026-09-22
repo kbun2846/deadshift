@@ -8,10 +8,12 @@ import { makeRailways, makeRailProp, RAIL_TYPES } from './rail-depot.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildingWalls, mapProps, mapColliders, localOpenings, buildingOpenings, buildingPoint } from './maps.js';
 import { inside, RULES } from './simulation.js';
-import { GRAPHICS, renderPixelRatio } from './settings.js';
+import { GRAPHICS, renderPixelRatio, isDemanding } from './settings.js';
 import { ElectricEffects } from './electric-effects.js';
-import { makeCrops, makeLandmark, makeCobweb, makeQualityDetails, makePropDetails } from './world-details.js';
+import { makeLandmark, makeCobweb, makeQualityDetails, makePropDetails } from './world-details.js';
 import { SurfaceMarks } from './surface-marks.js';
+import { DustTrail, FOOTFALL_PARTICLES, IMPACT_PARTICLES, kickedDust, debrisDust, CLUTTER_BURST, throwsDust } from './dust-trail.js';
+import { Birds } from './birds.js';
 import { CropView } from './crop-view.js';
 import { cropAt, cropEntityVisible, cropImmersion } from './crops.js';
 import { InteriorVisibility } from './interior-visibility.js';
@@ -24,6 +26,17 @@ import { ROADSIDE_TYPES, makeRoadside } from './roadside.js';
 import { OUTDOOR_CAMERA_HEIGHT, CAMERA_TILT, interiorCameraHeight } from './camera-framing.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
+// Reused every frame by the beam pass rather than allocated per beam.
+const BEAM_DELTA = new THREE.Vector3(), BEAM_DIR = new THREE.Vector3();
+// walkingDustColor's return value is immediately cloned or lerped by its
+// callers, so one scratch colour serves the crop-bed branch.
+const DUST_SAMPLE = new THREE.Color();
+// Fired clay, for the shard particles a broken pot throws.
+const CLAY_SHARD = new THREE.Color('#b3735a');
+// Prebuilt so the break path allocates nothing.
+const CLUTTER_SHARDS = new Map(Object.entries(CLUTTER_BURST).map(([type, hex]) => [type, new THREE.Color(hex)]));
+// The whole floor-clutter family shares these, so the pieces batch together.
+const CLUTTER_CLAY = '#9c6346', CLUTTER_DARK = '#6d5a41', CLUTTER_SEAT = '#8d7454';
 const WHITE = new THREE.Color('#ffffff');
 const lerp = (a, b, t) => a + (b - a) * t;
 const randomGenerator = seed => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
@@ -33,7 +46,7 @@ export class WorldView {
     this.map = map; this.canvas = canvas; this.materials = new Map();
     this.interiorVisibility = new InteriorVisibility();
     this.groundMaterials = new Set(); this.textureCache = new Map(); this.quality = GRAPHICS[qualityName] || GRAPHICS.balanced;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.quality.antialias === true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -49,8 +62,16 @@ export class WorldView {
     const sun = new THREE.DirectionalLight('#fff0cc', 2.5);
     sun.position.set(-24, 40, -18); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -48, right: 48, top: 44, bottom: -44, near: 1, far: 120 });
-    sun.shadow.normalBias = .035; sun.shadow.bias = -.00015; sun.shadow.radius = 3;
+    // Fitted to the ground the overhead camera can actually frame. At height 29
+    // with a 40-degree fov and the standard tilt that is roughly 38m by 26m;
+    // the previous 52x48 box covered 2.2x that, so well over half the shadow
+    // pass was drawing casters for ground nobody could see. The sun sits a
+    // fixed 50m from its target, so near/far can bracket that tightly instead
+    // of spanning 89m, which spreads the depth range over 60m and lets the
+    // biases come down. Tightening the box also multiplies texel density by
+    // 2.2x, which is what pays for the cheaper filters below.
+    Object.assign(sun.shadow.camera, { left: -21, right: 21, top: 15, bottom: -15, near: 20, far: 82 });
+    sun.shadow.normalBias = .02; sun.shadow.bias = -.00008; sun.shadow.radius = 1;
     this.scene.add(sun, sun.target); this.sun = sun;
     this.static = new THREE.Group(); this.scene.add(this.static);
     this.propDetails = []; this.roofs = []; this.tumbleweeds = []; this.props = new Map();
@@ -61,7 +82,20 @@ export class WorldView {
     for (const f of map.fences) this.makeFence(f);
     this.makePlayableEdge();
     this.cropView = new CropView(this); this.qualityDetails = makeQualityDetails(this);
+    // Anything whose silhouette is smaller than a shadow texel from this camera
+    // contributes nothing to the map but is still binned, transformed and drawn
+    // every shadow update. This has to run before the merge, because castShadow
+    // is part of the batch key. Individual builders already opt their own
+    // clutter out; this is the safety net for everything that did not.
+    this.shadowBySize(this.static, .34);
     this.batch(this.static);
+    // `material.transparent` is part of three's program cache key, so the roof
+    // fade now needs two variants of every roof material. Compiling the second
+    // one lazily would stall the frame the player first walks into a building,
+    // which is exactly the wrong moment. Warm both here, behind the loading
+    // screen, which also warms every other program in the scene and removes
+    // the usual first-frame hitches.
+    this.warmPrograms();
     // These transforms never animate. Keep quality geometry, skip rebuilding its matrices.
     for (const root of [this.static,this.groundDetails,this.extraGroundDetails,this.qualityDetails,this.performanceDetails]) {
       root.updateMatrixWorld(true);
@@ -83,10 +117,17 @@ export class WorldView {
     this.trailMaterial = new THREE.MeshBasicMaterial({ color: '#a1ffe0', transparent: true, opacity: .75 });
     this.orbElectricMaterial = new THREE.LineBasicMaterial({ color: '#e0fff5', transparent: true, opacity: .8, depthWrite: false, toneMapped: false });
     this.particleGeo = new THREE.BoxGeometry(1, 1, 1);
-    this.particleMaterials = ['#c99b65', '#edcf8c', '#fff4d0', '#a75436', '#788568', '#a68a60', '#696c58', '#ffffff'].map(color => new THREE.MeshBasicMaterial({ color, transparent: true }));
+    // Not transparent: particles fade by scaling to zero, never by writing
+    // opacity, so `transparent: true` only bought them a place in the blended
+    // queue — sorted every frame, drawn after all opaque geometry, and unable
+    // to depth-reject anything. Eight pools of 240 boxes is up to 1920 blended
+    // quads during a break, on the exact frame you would notice a hitch.
+    this.particleMaterials = ['#c99b65', '#edcf8c', '#fff4d0', '#a75436', '#788568', '#a68a60', '#696c58', '#ffffff'].map(color => new THREE.MeshBasicMaterial({ color }));
     this.particlePool = this.particleMaterials.map(m => {
       const mesh = new THREE.InstancedMesh(this.particleGeo, m, 240); mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled = false; this.scene.add(mesh); return mesh;
     });
+    this.dustTrail = new DustTrail(this.scene);
+    this.birds = new Birds(this.scene);
     this.dummy = new THREE.Object3D(); this.dustClock = 0; this.stepClock = 0; this.windClock = 0;
     this.footprints = []; this.footDistance = 0; this.footSide = 1;
     this.lastFootPosition = { ...map.spawn };
@@ -106,6 +147,7 @@ export class WorldView {
     this.makeAmbient();
     this.surfaceMarks = new SurfaceMarks(this);
     this.visionOverlay = document.createElement('div'); this.visionOverlay.className = 'interior-vision';
+    this.visionOverlay.dataset.quality = qualityName;
     this.visionOverlay.setAttribute('aria-hidden', 'true'); canvas.insertAdjacentElement('afterend', this.visionOverlay);
     this.cropOverlay = document.createElement('div'); this.cropOverlay.className = 'crop-vision'; this.cropOverlay.setAttribute('aria-hidden', 'true'); canvas.insertAdjacentElement('afterend', this.cropOverlay);
     this.setQuality(GRAPHICS[qualityName]?qualityName:'balanced');
@@ -141,6 +183,26 @@ export class WorldView {
     const m = new THREE.Mesh(geometry, typeof color === 'string' ? this.material(color) : color);
     m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; parent.add(m); return m;
   }
+  // Ground clutter is smaller than one shadow texel from the overhead camera, so
+  // its contribution is invisible while its draw cost is not. Call before batch():
+  // the merge key includes castShadow, so flipping it afterwards has no effect.
+  noShadows(root) { root?.traverse(o => { if (o.isMesh) o.castShadow = false; }); return root; }
+
+  // Keeps readable silhouettes (posts, markers, crates) casting while dropping
+  // the chips and fasteners scattered over them. It only ever takes casting
+  // away: assigning the test outright would silently re-enable everything an
+  // earlier noShadows() had switched off, which is exactly what happened when
+  // this was applied to the whole static group — interior furniture under a
+  // closed roof went back into the shadow pass.
+  shadowBySize(root, minRadius = .2) {
+    root?.traverse(o => {
+      if (!o.isMesh || !o.castShadow) return;
+      o.geometry.computeBoundingSphere();
+      if ((o.geometry.boundingSphere?.radius ?? 0) < minRadius) o.castShadow = false;
+    });
+    return root;
+  }
+
   box(x, y, z, w, h, d, color, parent) { return this.mesh(new THREE.BoxGeometry(w, h, d), color, x, y, z, parent); }
   cylinder(x, y, z, radius, height, color, parent, segments = 10, top = radius) { return this.mesh(new THREE.CylinderGeometry(top, radius, height, segments), color, x, y, z, parent); }
   flat(x, z, w, d, color, y = .012) {
@@ -177,7 +239,13 @@ export class WorldView {
     this.cropView?.setQuality(name);
     const q = this.quality;
     this.renderer.shadowMap.enabled = q.shadows > 0;
-    this.renderer.shadowMap.type = name !== 'performance' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    // PCF_SOFT costs 20 depth-compare fetches per shaded fragment and PCF costs
+    // 17, against 1 for the basic path — and every opaque object in the scene
+    // sets receiveShadow, so that lands on the whole screen, ground included.
+    // The tighter shadow box above more than doubled texel density, so the
+    // phone tiers can drop a filter level and still look sharper than before.
+    this.renderer.shadowMap.type = isDemanding(name) ? THREE.PCFSoftShadowMap
+      : name === 'balanced' ? THREE.PCFShadowMap : THREE.BasicShadowMap;
     this.sun.castShadow = q.shadows > 0;
     this.sun.shadow.autoUpdate = !q.shadowFPS;
     if (this.sun.shadow.mapSize.x !== Math.max(1, q.shadows)) {
@@ -186,31 +254,44 @@ export class WorldView {
     }
     this.sun.shadow.needsUpdate = true;
     const texture = this.terrainTexture(q.texture);
-    texture.anisotropy = Math.min(name === 'quality' ? 8 : name === 'balanced' ? 2 : 1, this.renderer.capabilities.getMaxAnisotropy());
+    texture.anisotropy = Math.min(q.anisotropy ?? 2, this.renderer.capabilities.getMaxAnisotropy());
     texture.needsUpdate = true;
-    const groundRelief = name === 'quality' ? this.reliefTexture('sand') : null;
-    const woodRelief = name === 'quality' ? this.reliefTexture('wood') : null;
+    // A bump map is one extra texture fetch on surfaces that are already being
+    // shaded, so the sand grain is affordable a tier lower than the wood grain,
+    // which would touch every building face as well as the ground.
+    const groundRelief = q.relief ? this.reliefTexture('sand') : null;
+    const woodRelief = q.relief === 'full' ? this.reliefTexture('wood') : null;
     this.groundMaterials.forEach(m => { m.map = name === 'potato' ? null : texture; m.bumpMap = groundRelief; m.bumpScale = .075; m.needsUpdate = true; });
     for (const roof of this.roofs) for (const m of roof.materials) { m.bumpMap = woodRelief; m.bumpScale = .035; m.roughness = .88; m.needsUpdate = true; }
     const timberColors = new Set(['#917655','#ad9470','#66543f','#9b8161','#b59971','#967b58','#ab8e65',...this.map.buildings.map(b=>b.color)]);
     for (const [color,m] of this.materials) if (timberColors.has(color) && !this.groundMaterials.has(m)) { m.bumpMap=woodRelief; m.bumpScale=.035; m.needsUpdate=true; }
-    this.scene.traverse(o => { if (o.isMesh && o.material) o.material.needsUpdate = true; });
+    // Materials are shared across thousands of meshes; flag each one once so a
+    // preset change queues one recompile per program instead of per mesh.
+    const recompiled = new Set();
+    this.scene.traverse(o => {
+      if (!o.isMesh || !o.material) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material])
+        if (m && !recompiled.has(m)) { recompiled.add(m); m.needsUpdate = true; }
+    });
     this.motes.geometry.setDrawRange(0, q.motes);
     this.fxLight.visible = q.light;
-    this.groundDetails.visible = name === 'balanced' || name === 'quality';
+    this.groundDetails.visible = name === 'balanced' || isDemanding(name);
     this.performanceDetails.visible = name !== 'potato';
-    this.propDetails.forEach(g => { g.visible = name === 'quality'; });
-    this.extraGroundDetails.visible = name === 'quality'; this.qualityDetails.visible = name === 'quality';
+    this.propDetails.forEach(g => { g.visible = isDemanding(name); });
+    this.extraGroundDetails.visible = isDemanding(name); this.qualityDetails.visible = isDemanding(name);
     this.footMesh.material.uniforms.relief.value = q.shadows > 0 ? 1 : 0;
     for (const [i, marks] of this.sandMarks.entries()) {
       marks.visible = name !== 'potato';
-      marks.material.opacity = name === 'quality' ? (i ? .25 : .3) : name === 'balanced' ? (i ? .25 : .3) : .09;
-      const fraction = name === 'quality' ? 1 : name === 'balanced' ? 1 : .3;
+      marks.material.opacity = isDemanding(name) ? (i ? .25 : .3) : name === 'balanced' ? (i ? .25 : .3) : .09;
+      const fraction = isDemanding(name) ? 1 : name === 'balanced' ? 1 : .3;
       marks.geometry.setDrawRange(0, Math.floor(marks.geometry.attributes.position.count * fraction / 2) * 2);
     }
     for (const beam of this.beams.values()) beam.halo.visible = q.glow;
     this.particles.length = Math.min(this.particles.length, q.particleCap);
     this.electric.setQuality(name);
+    this.dustTrail?.setQuality(name);
+    this.birds?.setQuality(name);
+    if (this.visionOverlay) this.visionOverlay.dataset.quality = name;
     this.resize();
   }
 
@@ -267,7 +348,9 @@ export class WorldView {
 
   makeTerrain() {
     const { map } = this;
-    this.terrainUV(this.box(0, -.28, 0, map.width + 60, .5, map.depth + 60, map.palette.ground));
+    // The ground casts onto nothing, and its bounding sphere covers the map, so
+    // it can never be culled out of a shadow update.
+    this.terrainUV(this.noShadows(this.box(0, -.28, 0, map.width + 60, .5, map.depth + 60, map.palette.ground)));
     if(map.training){
       this.roadProfile=[{z:-30,left:0,right:0},{z:30,left:0,right:0}];this.sandMarks=[];
       for(const key of ['groundDetails','extraGroundDetails','performanceDetails']){this[key]=new THREE.Group();this.scene.add(this[key]);}
@@ -470,6 +553,7 @@ export class WorldView {
         stone.scale.y = .45; stone.rotation.y = random() * 6;
       }
     }
+    this.noShadows(base); this.noShadows(extra); this.noShadows(sparse);
     this.batch(base); this.batch(extra); this.batch(sparse);
     base.userData.patches = Math.min(330, patches); extra.userData.patches = Math.max(0, patches - 330);
   }
@@ -477,7 +561,7 @@ export class WorldView {
   makeGrass(x, z, rand) {
     for (let k = 0; k < 4; k++) {
       const m = this.box(x + (rand() - .5) * .35, .13, z + (rand() - .5) * .25, .035, .25 + rand() * .2, .035, '#a69665');
-      m.rotation.z = (rand() - .5) * 1.4;
+      m.rotation.z = (rand() - .5) * 1.4; m.castShadow = false;
     }
   }
   makeCactus(x, z, scale = 1, parent = this.static) {
@@ -563,17 +647,31 @@ export class WorldView {
     }
     this.box(b.x, b.height + .8, b.z, .18, .12, b.d + 1.15, trimMat, roof);
     this.box(b.x, b.height - .08, b.z + b.d / 2 + .22, b.w + .4, .55, .22, '#9f805c');
+    // Shingles and corrugations stand 3-4cm proud of the panel carrying them, and
+    // that panel already casts the whole roof. Re-drawing every tile into the
+    // shadow map is the single largest source of wasted casters per building.
+    for (const layer of roof.children) for (const tile of layer.children) this.noShadows(tile);
     this.batch(roof);
     // Thin raised roof layers should not produce shadow-map striping on each other.
     roof.traverse(m => { if (m.isMesh) m.receiveShadow = false; });
-    this.roofs.push({ ...b, group: roof, materials: roofMaterials, opacity: 1 });
+    // Captured after the batch: these are the merged meshes that actually came
+    // out as casters. The roof fade toggles exactly these, because traversing
+    // the whole group undid the noShadows() above on the first frame and put
+    // every shingle batch back into the shadow pass.
+    const casters = [];
+    roof.traverse(m => { if (m.isMesh && m.castShadow) casters.push(m); });
+    this.roofs.push({ ...b, group: roof, casters, materials: roofMaterials, opacity: 1 });
+    const beforeInterior = new Set(this.static.children);
     if(b.interiorStyle) makeDetailedInterior(this,b);
     else {
       this.box(b.x, .4, b.z - b.d / 2 + 1.1, b.w - (b.finish==='plaster'?3.5:2), .8, .65, b.trim || '#987853');
       for (const sx of [-1, 1]) this.cylinder(b.x + sx * (b.finish==='vertical'?1.5:2), .28, b.z - b.d / 2 + 2.2, .32, .56, b.trim || '#7d6a50');
     }
     if (!b.cargo) makeInteriorDetails(this,b);
-    else {
+    // Furniture and interior trim sit under a closed roof, so the sun driving the
+    // shadow map never reaches them. Their casters are draw cost with no pixels.
+    for (const child of this.static.children) if (!beforeInterior.has(child)) this.noShadows(child);
+    if (b.cargo) {
       for(const side of [-1,1]) {
         for(const z of [-b.d*.3,b.d*.3]) {
           const wheel=this.cylinder(b.x+side*(b.w/2+.08),.4,b.z+z,.43,.18,'#484e48',this.static,10);wheel.rotation.z=Math.PI/2;
@@ -616,6 +714,23 @@ export class WorldView {
       this.cylinder(0, .5, 0, .46, 1, '#9c7d58', g, 10, .41);
       for (const y of [.2, .77]) this.cylinder(0, y, 0, .465, .09, '#696c58', g, 10);
       this.cylinder(0, 1.006, 0, .34, .015, '#b6996f', g, 10);
+    } else if (p.type === 'crate' && p.broken) {
+      // Half a crate: the lid and one wall gone, the inside open to the sky,
+      // and the planks that came off lying beside it. Same palette and the
+      // same flat boxes as a whole crate, so it reads as the same object with
+      // less of it left rather than as a different prop.
+      const wall = .54;
+      this.box(0, .05, 0, 1.15, .1, 1.15, '#8a6f4b', g);
+      for (const [x, z, w, d] of [[0, -.53, 1.15, .1], [-.53, 0, .1, 1.15], [.53, .09, .1, .98]])
+        this.box(x, wall / 2 + .1, z, w, wall, d, '#b39468', g);
+      // What is left of the fourth wall, snapped off part way up.
+      this.box(.14, .27, .53, .48, .34, .1, '#a8895f', g);
+      for (const [x, z, w, d] of [[0, -.53, 1.2, .13], [-.53, 0, .13, 1.2]])
+        this.box(x, wall + .13, z, w, .06, d, '#98784f', g);
+      // Debris keeps to the footprint so it never reads as cover that is not there.
+      for (const [x, z, angle, length] of [[.36, .46, .42, .62], [-.1, .44, -1.15, .5], [.3, -.26, .18, .44]]) {
+        const plank = this.box(x, .04, z, length, .07, .15, '#957954', g); plank.rotation.y = angle;
+      }
     } else if (p.type === 'crate') {
       this.box(0, .58, 0, 1.15, 1.16, 1.15, '#b39468', g);
       for (const side of [-1, 1]) { this.box(side * .5, 1.19, 0, .1, .06, 1.16, '#98784f', g); this.box(0, .58, side * .59, 1.15, .1, .035, '#957954', g); }
@@ -657,6 +772,51 @@ export class WorldView {
         const branch = this.cylinder(side * .24, .3, side * .11, .065, .46, '#9e8867', g, 5, .03);
         branch.rotation.z = side * .8; branch.rotation.x = side * .6;
       }
+    } else if (p.type === 'pot' || p.type === 'pottedPlant') {
+      // Read from directly overhead, a pot is a ring with a dark hole in it.
+      // The first version was a solid clay lump, which from this camera is
+      // indistinguishable from a stone. The opening is what names the object,
+      // so the silhouette is built outward from it: narrow foot, wide belly,
+      // flared rim, and a recessed dark void in the middle. Still only the two
+      // family colours, so it batches with the rest of the clutter.
+      const clay = CLUTTER_CLAY, dark = CLUTTER_DARK;
+      this.cylinder(0, .04, 0, .15, .08, clay, g, 8, .19);
+      this.cylinder(0, .22, 0, .26, .3, clay, g, 8, .22);
+      // Painted band round the belly: pottery, not a boulder.
+      this.cylinder(0, .26, 0, .265, .05, dark, g, 8);
+      // Flared rim, then the mouth sunk into it.
+      this.cylinder(0, .42, 0, .23, .08, clay, g, 8, .28);
+      this.cylinder(0, .45, 0, .2, .03, dark, g, 8);
+      // Two lugs at the rim, which is what tells you it was made to be carried.
+      for (const side of [-1, 1]) {
+        const lug = this.box(side * .26, .4, 0, .09, .08, .14, clay, g);
+        lug.rotation.z = side * .25;
+      }
+      if (p.type === 'pottedPlant') {
+        // Dry soil heaped just under the rim, then a dead stem: the plant is
+        // what fills the hole, so the pot still reads as a pot.
+        this.cylinder(0, .44, 0, .19, .05, dark, g, 8, .17);
+        const stem = this.box(0, .72, 0, .05, .56, .05, dark, g); stem.rotation.z = .12;
+        for (let i = 0; i < 3; i++) {
+          const a = i * 2.4;
+          const twig = this.box(Math.cos(a) * .1, .82 + i * .14, Math.sin(a) * .1, .28, .032, .032, dark, g);
+          twig.rotation.set(Math.sin(a) * .4, a, .55 + i * .16);
+        }
+      }
+    } else if (p.type === 'brokenChair') {
+      // Three legs and a cracked back, tipped onto whichever side lost its leg.
+      const seat = CLUTTER_SEAT, dark = CLUTTER_DARK;
+      const tipped = new THREE.Group(); tipped.rotation.z = .34; tipped.position.y = .04; g.add(tipped);
+      this.box(0, .42, 0, .5, .06, .48, seat, tipped);
+      for (const [x, z] of [[-.2, -.19], [.2, -.19], [.2, .19]])
+        this.box(x, .21, z, .06, .42, .06, dark, tipped);
+      // The stump of the fourth, snapped off short.
+      this.box(-.2, .38, .19, .06, .14, .06, dark, tipped);
+      for (const x of [-.2, .2]) this.box(x, .72, .21, .06, .54, .06, dark, tipped);
+      for (const y of [.62, .86]) this.box(0, y, .21, .46, .07, .045, seat, tipped);
+      // The broken leg, on the floor beside it.
+      const leg = this.box(.34, .035, -.3, .42, .06, .06, dark, g);
+      leg.rotation.set(0, .7, 0);
     } else if (p.type === 'cactus') this.makeCactus(0, 0, p.scale || 1, g);
     if (p.health !== null) { this.batch(g); this.propDetails.push(makePropDetails(this, p, g)); }
   }
@@ -707,7 +867,7 @@ export class WorldView {
     const tick=Math.floor(time*14);
     if(tick===gun.userData.crackleTick)return;
     gun.userData.crackleTick=tick;
-    const count=this.qualityName==='potato'?1:this.qualityName==='quality'?3:2;
+    const count=this.qualityName==='potato'?1:isDemanding(this.qualityName)?3:2;
     const positions=arc.geometry.attributes.position;
     let offset=0;
     for(let strand=0;strand<count;strand++){
@@ -737,7 +897,6 @@ export class WorldView {
       for (const y of [.85, 1.17]) this.box(0, y, .175, .45, .035, .025, '#77694e', board);
       const disk = this.mesh(new THREE.SphereGeometry(.095, 7, 5), '#9a6350', 0, 1.1, .2, board); disk.scale.z = .2;
       g.userData.disk = disk;
-      this.makeHealthBar(g);
       return g;
     }
     this.box(0, .47, 0, .13, .9, .13, '#907552', board);
@@ -747,20 +906,21 @@ export class WorldView {
     this.cylinder(0, .08, 0, .41, .016, moving ? '#6e8880' : '#b87552', face, 20);
     this.cylinder(0, .096, 0, .27, .018, '#ede0bc', face, 20);
     this.cylinder(0, .109, 0, .13, .02, '#ab5438', face, 16);
-    this.makeHealthBar(g); return g;
+    return g;
   }
 
-  makeHealthBar(parent) {
-    const bar = new THREE.Group(); bar.position.set(0, .15, .95); parent.add(bar);
-    const back = new THREE.Mesh(new THREE.PlaneGeometry(.86, .085), new THREE.MeshBasicMaterial({ color: '#252c28', transparent: true, opacity: .85, depthWrite: false, toneMapped: false }));
-    const fill = new THREE.Mesh(new THREE.PlaneGeometry(.78, .045), new THREE.MeshBasicMaterial({ color: '#c1e1ce', transparent: true, depthWrite: false, toneMapped: false }));
-    back.renderOrder = 10; fill.renderOrder = 11;
-    fill.position.z = .005; bar.add(back, fill); parent.userData.health = { bar, fill };
-  }
+  // Floating health bars over targets were replaced by the outgoing damage
+  // numbers. The builder is gone rather than left hidden: it was four meshes
+  // and two materials per target that nothing could ever show.
 
   makeAmbient() {
-    const rand = randomGenerator(132); const points = new Float32Array(140 * 3);
-    for (let i = 0; i < 140; i++) { points[i * 3] = (rand() - .5) * 65; points[i * 3 + 1] = .3 + rand() * 4; points[i * 3 + 2] = (rand() - .5) * 60; }
+    // Sized to the greediest preset rather than a hard-coded 140: Quality asks
+    // for 190 and was silently drawing 140 of them while the update loop wrote
+    // fifty elements past the end of the buffer.
+    const rand = randomGenerator(132);
+    const moteCap = Math.max(...Object.values(GRAPHICS).map(q => q.motes));
+    const points = new Float32Array(moteCap * 3);
+    for (let i = 0; i < moteCap; i++) { points[i * 3] = (rand() - .5) * 65; points[i * 3 + 1] = .3 + rand() * 4; points[i * 3 + 2] = (rand() - .5) * 60; }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(points, 3));
     this.motes = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#fff1c6', size: .045, transparent: true, opacity: .6, depthWrite: false })); this.scene.add(this.motes);
     this.ambientClock = 3;
@@ -774,6 +934,12 @@ export class WorldView {
       ctx.fillStyle=gradient;ctx.fillRect(x-r,y-r,r*2,r*2);
     }
     const dustTexture=new THREE.CanvasTexture(dustCanvas);dustTexture.colorSpace=THREE.SRGBColorSpace;
+    // Each of these covers a fifth to a quarter of the screen, and they
+    // overlap: three of them is roughly two thirds of a full-screen blended
+    // pass, which is what the comment above was trying to avoid. On a tiler
+    // every blended layer is a read-modify-write of the tile with no early
+    // depth rejection, so the phone tiers get fewer of them and the scene fog
+    // carries the haze instead.
     this.dustWisps=Array.from({length:3},(_,i)=>{
       const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:dustTexture,transparent:true,opacity:0,depthWrite:false,depthTest:true}));
       sprite.scale.set(15+i*3,6+i,1);this.resetDustWisp(sprite,i);this.scene.add(sprite);return sprite;
@@ -809,9 +975,14 @@ export class WorldView {
     const bare = this.qualityName === 'potato';
     for (const t of this.tumbleweeds) t.visible = !bare;
     if (bare) { for (const wisp of this.dustWisps) wisp.visible = false; return; }
+    // How many of the big blended haze sprites this preset can afford. One is
+    // enough to read as moving air; three is most of a full-screen blend.
+    const wisps = this.qualityName === 'performance' ? 1 : this.qualityName === 'balanced' ? 2 : 3;
+    for (let i = wisps; i < this.dustWisps.length; i++) this.dustWisps[i].visible = false;
     const halfHeight=Math.tan(this.camera.fov*Math.PI/360)*this.camera.position.distanceTo(this.focus);
     const halfWidth=halfHeight*this.camera.aspect;
-    for(const wisp of this.dustWisps){
+    for(const [index,wisp] of this.dustWisps.entries()){
+      if(index>=wisps)continue;
       let drift=wisp.userData.drift;drift.age+=dt;
       if(drift.age>=drift.life){this.resetDustWisp(wisp);drift=wisp.userData.drift;}
       const phase=drift.age/drift.life;
@@ -820,6 +991,21 @@ export class WorldView {
       wisp.material.opacity=.27*Math.sin(phase*Math.PI)**2;
       wisp.visible=!sim.interior;
     }
+    // Weather on its own clock: an occasional sheet of sand driven across the
+    // open ground downwind, skipped indoors where there is no wind to carry it.
+    this.gustClock = (this.gustClock ?? 5) - dt;
+    if (this.gustClock <= 0) {
+      this.gustClock = 6 + Math.random() * 7;
+      if (!sim.interior) {
+        const heading = .9 + (Math.random() - .5) * .7;
+        const across = Math.random() * Math.PI * 2, reach = 9 + Math.random() * 11;
+        this.dustTrail.gust(this.focus.x + Math.cos(across) * reach, this.focus.z + Math.sin(across) * reach,
+          Math.cos(heading), Math.sin(heading), this.kickedDustColor(this.focus.x, this.focus.z));
+      }
+    }
+    // Purely cosmetic overflights, hidden while a roof is between them and the
+    // player. They take no part in the simulation.
+    this.birds.update(dt, this.focus, this.birdView(), !!sim.interior);
     this.ambientClock -= dt;
     const cap = this.qualityName === 'performance' ? 4 : 7;
     if (this.ambientClock <= 0) {
@@ -843,20 +1029,55 @@ export class WorldView {
     });
   }
 
+  // Memoised per room and aspect: the fit is pure and both inputs change rarely.
+  roomHeight(room) {
+    if (this.roomFit?.room !== room || this.roomFit.aspect !== this.camera.aspect)
+      this.roomFit = { room, aspect: this.camera.aspect, height: interiorCameraHeight(room, this.camera.aspect) };
+    return this.roomFit.height;
+  }
+
+  // Compile every program the scene will need, including the blended variant
+  // of each roof material, before gameplay starts.
+  warmPrograms() {
+    const compile = () => { try { this.renderer.compile(this.scene, this.camera); } catch { /* A warm-up failure is not a reason to refuse to start. */ } };
+    compile();
+    const roofMaterials = this.roofs.flatMap(r => r.materials);
+    if (!roofMaterials.length) return;
+    for (const m of roofMaterials) m.transparent = true;
+    compile();
+    for (const m of roofMaterials) m.transparent = false;
+  }
+
   resize() {
+    this.cachedRect = null;
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setPixelRatio(renderPixelRatio(this.quality,devicePixelRatio,w,h)*(this.resolutionScale||1));
     this.renderer.setSize(w, h); this.camera.aspect = w / h;
     this.camera.fov = w / h < 1.2 ? 49 : 40; this.camera.updateProjectionMatrix();
   }
 
+  // What the birds need to size and pace a crossing: how far the view reaches
+  // at their altitude, which depends on the live camera rather than a constant.
+  // The map extent travels with the view so a crossing can be laid past the
+  // world rather than past the screen: a player who walks after a bird sees it
+  // leave, instead of watching it stop existing over open ground.
+  birdView() { return { height: this.cameraHeight, fov: this.camera.fov, aspect: this.camera.aspect,
+    extent: Math.hypot(this.map.width, this.map.depth) / 2 }; }
+
   setResolutionScale(scale){
     if(Math.abs((this.resolutionScale||1)-scale)<.001)return;
     this.resolutionScale=scale;this.resize();
   }
 
+  // Cached because aim() runs once per simulation step, and the HUD writes
+  // styles in the same frame: reading the rect there forced a synchronous
+  // layout every step. Invalidated on resize and on scroll.
+  canvasRect() {
+    return this.cachedRect ||= this.canvas.getBoundingClientRect();
+  }
+
   aim(clientX, clientY, player) {
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.canvasRect();
     this.aimNDC ||= new THREE.Vector2();
     this.raycaster.setFromCamera(this.aimNDC.set((clientX - rect.left) / rect.width * 2 - 1, -(clientY - rect.top) / rect.height * 2 + 1), this.camera);
     if (this.raycaster.ray.intersectPlane(this.aimPlane, this.aimHit)) {
@@ -888,8 +1109,18 @@ export class WorldView {
       const f = bed.field, size = bed.canvas.width;
       const px = Math.min(size - 1, Math.max(0, Math.floor((x - f.x + f.w / 2) / f.w * size)));
       const py = Math.min(size - 1, Math.max(0, Math.floor((z - f.z + f.d / 2) / f.d * size)));
-      const data = bed.canvas.getContext('2d').getImageData(px, py, 1, 1).data;
-      return new THREE.Color(`rgb(${data[0]},${data[1]},${data[2]})`);
+      // getImageData flushes the 2D canvas, and this is reached every frame of
+      // a dash across the field. Cached per pixel, which is as fine-grained as
+      // the bed's own canvas gets; cleared when the bed is redrawn.
+      bed.sampled ||= new Map();
+      const key = px * size + py;
+      let hex = bed.sampled.get(key);
+      if (hex === undefined) {
+        const data = bed.canvas.getContext('2d').getImageData(px, py, 1, 1).data;
+        hex = (data[0] << 16) | (data[1] << 8) | data[2];
+        bed.sampled.set(key, hex);
+      }
+      return DUST_SAMPLE.setHex(hex);
     }
     const road = this.roadEdges(z);
     let onRoad = (x >= road.left && x <= road.right) || this.onSideRoad(x,z);
@@ -902,6 +1133,35 @@ export class WorldView {
       onRoad ||= inLane;
     }
     return new THREE.Color(onRoad ? this.map.palette.road : this.map.palette.ground);
+  }
+
+  kickedDustColor(x, z) { return kickedDust(this.walkingDustColor(x, z)); }
+
+  // Tier multipliers for one-off effects, so the top two presets read richer
+  // without changing what the low tiers were tuned to afford.
+  get impactDetail() { return IMPACT_PARTICLES[this.qualityName] ?? 1; }
+
+  // Smoke, as opposed to dust: slower, larger, lifting rather than settling,
+  // and drifting the way the dash was going. Shares the particle pool and the
+  // preset's cap, so Potato and Performance simply get fewer of them.
+  smoke(x, z, dirX = 0, dirZ = 0, tint = null) {
+    const count = Math.max(1, Math.round(9 * this.quality.effects));
+    for (let i = 0; i < count && this.particles.length < this.quality.particleCap; i++) {
+      const drift = .5 + Math.random() * 1.5, spread = (Math.random() - .5) * 1.6;
+      const life = 1.1 + Math.random() * .8;
+      this.particles.push({
+        x: x + dirX * (Math.random() * 1.2) - dirZ * spread * .4,
+        z: z + dirZ * (Math.random() * 1.2) + dirX * spread * .4,
+        y: .2 + Math.random() * .4,
+        vx: dirX * drift - dirZ * spread, vz: dirZ * drift + dirX * spread,
+        vy: .55 + Math.random() * .7,
+        life, maxLife: life, size: .2 + Math.random() * .26,
+        // The white pool when tinted, so the instance colour is the colour.
+        material: tint ? 7 : 0,
+        tint: tint?.clone().multiplyScalar(.78 + Math.random() * .3),
+        angle: Math.random() * 6.28, spin: (Math.random() - .5) * 1.4, stretch: 1,
+      });
+    }
   }
 
   burst(x, z, count, type = 'dust', tint = null) {
@@ -935,21 +1195,51 @@ export class WorldView {
       this.fxLight.color.set('#9cdfff'); this.fxLight.position.copy(this.staticMuzzle); this.fxLight.intensity = e.firing ? 12 : 3;
     }
     if (e.type.startsWith('hex')) { this.electric.event(e); if (e.type === 'hexPulse') { this.shake = Math.max(this.shake, .2); this.fxLight.color.set('#b8ecff'); this.fxLight.position.set(e.nodes[0].originX, 1.3, e.nodes[0].originZ); this.fxLight.intensity = 35; } }
-    if (e.type === 'dodge') this.burst(e.x, e.z, 12, 'dust', this.walkingDustColor(e.x, e.z));
+    if (e.type === 'dodge') {
+      this.burst(e.x, e.z, 12 * (FOOTFALL_PARTICLES[this.qualityName] ?? 1), 'dust', this.kickedDustColor(e.x, e.z));
+      this.dustTrail.dashStart();
+    }
     if (e.type === 'impactMark') this.surfaceMarks.enqueue('bullet',e);
     if (e.type === 'seed') this.burst(e.x, e.z, 2, 'hit');
     if (e.type === 'launch') {
       this.burst(e.x, e.z, 9, 'dust');
-      for (const path of e.paths) this.addBeam(path, .016 + e.count * .0007);
+      // An orb still sitting at the gun leaves from the muzzle. The gun is
+      // carried off to one side, so a trail drawn from the launch point comes
+      // out of the player's chest; orbs parked out in the world keep theirs.
+      const muzzle = this.staticMuzzle, atGun = path => Math.hypot(path.x - e.x, path.z - e.z) <= 1.15 && muzzle.lengthSq() > 0;
+      for (const path of e.paths) this.addBeam(atGun(path) ? { ...path, x: muzzle.x, z: muzzle.z } : path, .016 + e.count * .0007);
       this.fxLight.color.set('#9bffe1'); this.fxLight.position.set(e.x, 1.2, e.z); this.fxLight.intensity = 8 + e.count * 1.5;
     }
-    if (e.type === 'pointImpact') { this.burst(e.x, e.z, 6, 'hit'); }
+    if (e.type === 'pointImpact') { this.burst(e.x, e.z, 6 * this.impactDetail, 'hit'); }
     if (e.type === 'explosion') this.electric.event({ type: 'convergence', x: e.x, z: e.z, radius: e.radius * .6 });
-    if (e.type === 'propHit') this.burst(e.x, e.z, 6, 'dust');
+    if (e.type === 'propHit') this.burst(e.x, e.z, 6 * this.impactDetail, 'dust');
     if (e.type === 'propBreak') {
       const prop = this.props.get(e.id); if (prop) prop.visible = false;
-      this.breakProp(e); this.burst(e.x, e.z, 7, 'dust');
-      this.shake = Math.max(this.shake, .035);
+      this.breakProp(e);
+      // Small clutter is not heavy enough to raise dust and was never bedded in
+      // the ground: a pot bursts into clay, not into a cloud. It gets a spray
+      // in its own colour and nothing from the dust or smoke systems.
+      if (!throwsDust(e.propType)) {
+        const shard = CLUTTER_SHARDS.get(e.propType);
+        this.burst(e.x, e.z, (e.dashed ? 14 : 9) * this.impactDetail, 'hit', shard);
+        this.shake = Math.max(this.shake, e.dashed ? .03 : .012);
+        return;
+      }
+      // Debris throws its own haze, so the break settles instead of vanishing —
+      // and the haze is coloured by what broke, not only by the ground it stood
+      // on: green pulp off a cactus, a dirty grey off a barrel.
+      const dust = debrisDust(this.kickedDustColor(e.x, e.z), e.propType);
+      this.burst(e.x, e.z, (e.dashed ? 16 : 7) * this.impactDetail, 'dust', dust);
+      this.dustTrail.land(e.x, e.z, dust, e.directionX, e.directionZ);
+      if (e.dashed) {
+        // A body's worth of momentum drags the cloud through the wreck rather
+        // than leaving it where the object stood: a short gust down the dash,
+        // a second skid beyond it, and a heavier kick at the point of contact.
+        this.dustTrail.gust(e.x, e.z, e.directionX, e.directionZ, dust, 3.4);
+        this.dustTrail.land(e.x + e.directionX * 1.5, e.z + e.directionZ * 1.5, dust, e.directionX, e.directionZ);
+        this.smoke(e.x, e.z, e.directionX, e.directionZ, dust);
+        this.shake = Math.max(this.shake, .075);
+      } else this.shake = Math.max(this.shake, .035);
     }
     if (e.type === 'explosion') this.explosion(e);
     if (e.type === 'trailEnd') {
@@ -964,12 +1254,15 @@ export class WorldView {
       } else this.burst(e.x, e.z, e.type === 'kill' ? 34 : 9, e.type);
       if (e.type === 'kill') {
         this.shake = Math.max(this.shake, .1);
-        const m = new THREE.Mesh(new THREE.RingGeometry(.45, .49, 32), new THREE.MeshBasicMaterial({ color: '#fae8be', transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false }));
+        // Shared geometry; each ring still needs its own material because they
+        // fade on independent clocks.
+        this.killRingGeo ||= new THREE.RingGeometry(.45, .49, 32);
+        const m = new THREE.Mesh(this.killRingGeo, new THREE.MeshBasicMaterial({ color: '#fae8be', transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false }));
         m.rotation.x = -Math.PI / 2; m.position.set(e.x, .12, e.z); this.scene.add(m); this.rings.push({ mesh: m, age: 0 });
       }
     }
-    if (e.type === 'wall') this.burst(e.x, e.z, e.launched ? 5 : 2, 'dust');
-    if (e.type === 'respawn') this.burst(e.x, e.z, 8, 'dust');
+    if (e.type === 'wall') this.burst(e.x, e.z, (e.launched ? 5 : 2) * this.impactDetail, 'dust');
+    if (e.type === 'respawn') this.burst(e.x, e.z, 8 * this.impactDetail, 'dust');
   }
 
   addBeam(path, width) {
@@ -986,30 +1279,55 @@ export class WorldView {
 
   breakProp(e) {
     const plant = e.propType === 'cactus', barrel = e.propType === 'barrel';
-    const angle = Math.atan2(e.directionZ, e.directionX), count = Math.round((plant ? 9 : 14) * (this.qualityName === 'quality' ? 2.5 : .5 + this.quality.effects * .5));
+    // Small floor clutter throws a handful of pieces, not a barrel's worth, and
+    // they are shards rather than staves: shorter, squarer and lower.
+    const clay = e.propType === 'pot' || e.propType === 'pottedPlant';
+    const little = clay || e.propType === 'brokenChair';
+    // Walked through rather than shot: more of it, thrown harder and kept in a
+    // tighter fan along the dash, because the player's own body did it.
+    const dashed = !!e.dashed, force = dashed ? 1.55 : 1, fan = dashed ? 1.1 : 1.7;
+    const angle = Math.atan2(e.directionZ, e.directionX);
+    const count = Math.round((plant ? 9 : little ? 7 : 14) * (dashed ? 1.7 : 1) * (isDemanding(this.qualityName) ? 2.5 : .5 + this.quality.effects * .5));
     for (let i = 0; i < count && this.particles.length < this.quality.particleCap; i++) {
-      const direction = angle + (Math.random() - .5) * 1.7, speed = 1.7 + Math.random() * 3.2;
-      const size = (.12 + Math.random() * .11) * e.scale, life = 1.8 + Math.random() * 1.1;
-      this.particles.push({ x: e.x + (Math.random() - .5) * .65, z: e.z + (Math.random() - .5) * .5,
-        y: (.25 + Math.random() * (plant ? 1.8 : .9)) * e.scale,
-        vx: Math.cos(direction) * speed, vz: Math.sin(direction) * speed, vy: 1.4 + Math.random() * 3,
-        life, maxLife: life, size, material: plant ? 4 : barrel && i % 4 === 0 ? 6 : e.propType === 'hay' ? 1 : 5,
-        angle: Math.random() * 6.28, spin: (Math.random() - .5) * 12, stretch: plant ? 1.8 : 2.8,
-        debris: true, bounces: 0, sound: plant ? 'plant' : 'wood' });
+      const direction = angle + (Math.random() - .5) * fan, speed = (1.7 + Math.random() * 3.2) * force * (little ? .8 : 1);
+      const size = (little ? .06 + Math.random() * .06 : .12 + Math.random() * .11) * e.scale;
+      const life = 1.8 + Math.random() * 1.1;
+      this.particles.push({ x: e.x + (Math.random() - .5) * (little ? .3 : .65), z: e.z + (Math.random() - .5) * (little ? .3 : .5),
+        y: (little ? .18 + Math.random() * .3 : .25 + Math.random() * (plant ? 1.8 : .9)) * e.scale,
+        vx: Math.cos(direction) * speed, vz: Math.sin(direction) * speed, vy: (1.4 + Math.random() * 3) * (little ? .8 : 1),
+        life, maxLife: life, size,
+        // Clay is tinted off the white pool so the shards read as fired clay
+        // rather than as pale timber.
+        material: plant ? 4 : barrel && i % 4 === 0 ? 6 : e.propType === 'hay' ? 1 : clay ? 7 : 5,
+        tint: clay ? CLAY_SHARD.clone().multiplyScalar(.82 + Math.random() * .34) : undefined,
+        angle: Math.random() * 6.28, spin: (Math.random() - .5) * (little ? 18 : 12),
+        stretch: plant ? 1.8 : little ? 1.3 : 2.8,
+        debris: true, bounces: 0, sound: plant ? 'plant' : clay ? 'clay' : 'wood' });
     }
   }
 
   explosion(e) {
     this.surfaceMarks.enqueue('explosion',e);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(.88, 1, 40), new THREE.MeshBasicMaterial({ color: '#ffe2a0', transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false }));
+    // One ring geometry for the lifetime of the view: it was rebuilt, uploaded
+    // and thrown away on every explosion.
+    this.blastRingGeo ||= new THREE.RingGeometry(.88, 1, 40);
+    const ring = new THREE.Mesh(this.blastRingGeo, new THREE.MeshBasicMaterial({ color: '#ffe2a0', transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2; ring.position.set(e.x, .09, e.z); ring.scale.setScalar(.1); this.scene.add(ring);
     const core = new THREE.Mesh(this.smokeGeo, new THREE.MeshBasicMaterial({ color: '#fff3c3', transparent: true, opacity: 1, depthWrite: false, toneMapped: false }));
     core.position.set(e.x, .7, e.z); core.scale.setScalar(e.radius * .4); core.renderOrder = 1; this.scene.add(core);
     // Keep the readable fireball on every preset; quality adds extra rolling lobes.
-    const smoke = [], count = Math.min(this.qualityName==='quality'?36:20,Math.max(4, Math.round(4 + e.count * .55 * this.quality.effects)));
+    const smoke = [], count = Math.min(isDemanding(this.qualityName)?36:20,Math.max(4, Math.round(4 + e.count * .55 * this.quality.effects)));
+    // Every puff in a blast fades on the same curve — only position and scale
+    // differ — so the blast needs four materials, not two per puff. At 36 puffs
+    // on Quality that was 72 fresh materials per explosion, each one a uniform
+    // clone and a new program-cache key.
+    const Smoke = isDemanding(this.qualityName) ? THREE.MeshStandardMaterial : THREE.MeshBasicMaterial;
+    const smokeMaterials = ['#484640', '#81786b'].map(color => new Smoke({ color, transparent: true, opacity: .65, depthWrite: false }));
+    const flameMaterials = ['#ffbd42', '#ff731b'].map(color => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1, depthWrite: false, toneMapped: false }));
     for (let i = 0; i < count; i++) {
-      const mesh = new THREE.Mesh(this.smokeGeo, new (this.qualityName === 'quality' ? THREE.MeshStandardMaterial : THREE.MeshBasicMaterial)({ color: i % 2 ? '#81786b' : '#484640', transparent: true, opacity: .65, depthWrite: false }));
-      const flame = new THREE.Mesh(this.smokeGeo, new THREE.MeshBasicMaterial({ color: i % 2 ? '#ff731b' : '#ffbd42', transparent: true, opacity: 1, depthWrite: false, toneMapped: false }));
+      const lane = i % 2;
+      const mesh = new THREE.Mesh(this.smokeGeo, smokeMaterials[lane]);
+      const flame = new THREE.Mesh(this.smokeGeo, flameMaterials[lane]);
       const angle = i / count * Math.PI * 2 + Math.random() * .4;
       for (const puff of [mesh, flame]) {
         puff.position.set(e.x, .3, e.z); puff.scale.setScalar(.08);
@@ -1017,8 +1335,8 @@ export class WorldView {
       }
       smoke.push({ mesh, flame, dx: Math.cos(angle), dz: Math.sin(angle), size: .3 + Math.random() * .16 });
     }
-    this.blasts.push({ x: e.x, z: e.z, radius: e.radius, ring, core, smoke, age: 0 });
-    this.burst(e.x, e.z, this.qualityName === 'quality' ? 25 + e.count * 7 : 5 + e.count * 2, 'hit');
+    this.blasts.push({ x: e.x, z: e.z, radius: e.radius, ring, core, smoke, materials: [...smokeMaterials, ...flameMaterials], age: 0 });
+    this.burst(e.x, e.z, isDemanding(this.qualityName) ? 25 + e.count * 7 : 5 + e.count * 2, 'hit');
     this.shake = Math.max(this.shake, Math.min(1.1,.15 + e.count * .045)); this.shakeDecay = 8;
     this.fxLight.color.set('#ff9e42'); this.fxLight.position.set(e.x, 1.5, e.z); this.fxLight.intensity = Math.min(120,15 + e.count * 4);
   }
@@ -1031,15 +1349,18 @@ export class WorldView {
       b.ring.material.opacity = .9 * (1 - progress);
       b.core.scale.setScalar(b.radius * (.4 + Math.min(1, b.age / .1) * .35));
       b.core.material.opacity = Math.max(0, 1 - b.age / .18); b.core.visible = b.age < .18;
+      // Opacity is a property of the blast, not of each puff, so it is written
+      // to the four shared materials once instead of once per puff per frame.
+      const fire = Math.min(1, b.age / .09), fade = Math.max(0, 1 - Math.max(0, b.age - .14) / .32);
+      const haze = .65 * Math.min(1, b.age / .12) * Math.max(0, 1 - b.age / 1.8);
+      for (let i = 0; i < 2; i++) { b.materials[i].opacity = haze; b.materials[i + 2].opacity = fade; }
       for (const puff of b.smoke) {
         const spread = b.radius * (.16 + Math.min(b.age, 1) * .38);
         puff.mesh.position.set(b.x + puff.dx * spread + b.age * .23, .45 + b.age * .8, b.z + puff.dz * spread);
         puff.mesh.scale.setScalar(b.radius * puff.size * (.8 + b.age * .55));
-        puff.mesh.material.opacity = .65 * Math.min(1, b.age / .12) * Math.max(0, 1 - b.age / 1.8);
-        const fire = Math.min(1, b.age / .09), fade = Math.max(0, 1 - Math.max(0, b.age - .14) / .32);
         puff.flame.position.set(b.x + puff.dx * b.radius * fire * .4, .5 + b.age * 1.8, b.z + puff.dz * b.radius * fire * .4);
         puff.flame.scale.setScalar(b.radius * puff.size * (1 + fire * .65) * Math.sqrt(fade));
-        puff.flame.material.opacity = fade; puff.flame.visible = fade > 0;
+        puff.flame.visible = fade > 0;
       }
       if (b.age < 1.8) return true;
       this.disposeBlast(b); return false;
@@ -1047,21 +1368,28 @@ export class WorldView {
   }
 
   disposeBlast(b) {
-    b.ring.removeFromParent(); b.ring.geometry.dispose(); b.ring.material.dispose();
+    // The ring geometry is shared and outlives the blast; the four puff
+    // materials are the blast's own and are disposed once, not per puff.
+    b.ring.removeFromParent(); b.ring.material.dispose();
     b.core.removeFromParent(); b.core.material.dispose();
-    for (const p of b.smoke) for (const mesh of [p.mesh, p.flame]) { mesh.removeFromParent(); mesh.material.dispose(); }
+    for (const p of b.smoke) for (const mesh of [p.mesh, p.flame]) mesh.removeFromParent();
+    for (const m of b.materials) m.dispose();
   }
 
   updateBeams(sim, dt) {
+    // Indexed once instead of a linear scan per beam: a twelve-orb volley made
+    // this O(beams x shots), a hundred-odd comparisons a frame for nothing.
+    const live = this.beams.size ? new Map(sim.shots.map(s => [s.id, s])) : null;
     for (const [id, b] of this.beams) {
-      const shot = sim.shots.find(s => s.id === id);
+      const shot = live.get(id);
       if (shot && !b.finished) { b.endX = shot.x; b.endZ = shot.z; }
       if (b.finished) b.age += dt;
       if (b.age > .62) {
         b.core.removeFromParent(); b.halo.removeFromParent(); b.core.material.dispose(); b.halo.material.dispose();
         b.arc.removeFromParent(); b.arc.geometry.dispose(); b.arc.material.dispose(); this.beams.delete(id); continue;
       }
-      const delta = new THREE.Vector3(b.endX - b.startX, 0, b.endZ - b.startZ), length = delta.length();
+      // Scratch vectors: one per beam per frame otherwise.
+      const delta = BEAM_DELTA.set(b.endX - b.startX, 0, b.endZ - b.startZ), length = delta.length();
       const opacity = 1 - Math.max(0, b.age - .1) / .52;
       const arcPoints = b.arc.geometry.attributes.position;
       const px = length ? -delta.z / length : 0, pz = length ? delta.x / length : 0;
@@ -1072,9 +1400,9 @@ export class WorldView {
         arcPoints.setXYZ(i, lerp(b.startX, b.endX, t) + px * offset, .74 + offset * .45, lerp(b.startZ, b.endZ, t) + pz * offset);
       }
       arcPoints.needsUpdate = true; b.arc.material.opacity = Math.max(0, opacity * .8); b.arc.visible = length > .05;
-      for (const [mesh, scale] of [[b.core, 1], [b.halo, this.qualityName === 'quality' ? 9 : 5]]) {
+      for (const [mesh, scale] of [[b.core, 1], [b.halo, isDemanding(this.qualityName) ? 9 : 5]]) {
         mesh.position.set((b.startX + b.endX) / 2, .72, (b.startZ + b.endZ) / 2);
-        if (length > .0001) mesh.quaternion.setFromUnitVectors(UP, delta.clone().normalize());
+        if (length > .0001) mesh.quaternion.setFromUnitVectors(UP, BEAM_DIR.copy(delta).normalize());
         mesh.scale.set(b.width * scale, Math.max(.001, length), b.width * scale);
         mesh.material.opacity = Math.max(0, opacity * (scale === 1 ? .98 : .12));
       }
@@ -1112,7 +1440,7 @@ export class WorldView {
     const deathCamera=this.deathView?.active?this.deathView.cameraFrame():null;
     this.focus.x = deathCamera?deathCamera.x:lerp(this.focus.x, cameraRoom && !cameraRoom.followCamera ? cameraRoom.x : renderX, blend);
     this.focus.z = deathCamera?deathCamera.z:lerp(this.focus.z, cameraRoom && !cameraRoom.followCamera ? cameraRoom.z : renderZ, blend);
-    this.cameraHeight = deathCamera?deathCamera.height:lerp(this.cameraHeight, cameraRoom ? interiorCameraHeight(cameraRoom, this.camera.aspect) : OUTDOOR_CAMERA_HEIGHT, 1 - Math.exp(-5.7 * dt));
+    this.cameraHeight = deathCamera?deathCamera.height:lerp(this.cameraHeight, cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT, 1 - Math.exp(-5.7 * dt));
     this.kick.multiplyScalar(Math.exp(-15 * dt)); this.shake *= Math.exp(-this.shakeDecay * dt);
     const pressureShake=this.shotgunView?.pressure.shake||0;
     const shakeX = this.motion ? Math.sin(elapsed * 91) * (this.shake+pressureShake) * .65 : 0;
@@ -1128,10 +1456,16 @@ export class WorldView {
     for (const roof of this.roofs) {
       const desired = sim.roofId === roof.id ? .095 : 1;
       roof.opacity = lerp(roof.opacity, desired, 1 - Math.exp(-8 * dt));
-      for (const m of roof.materials) { m.opacity = roof.opacity; m.depthWrite = roof.opacity > .98; }
+      // Leaving these permanently transparent meant the largest, topmost
+      // surface in a top-down frame was blended at alpha 1 and drawn after all
+      // opaque geometry — so every floor, wall and counter under a visible roof
+      // was fully shaded and then painted over, with no chance of being
+      // occluded. Opaque whenever it is actually opaque.
+      const blended = roof.opacity < .995;
+      for (const m of roof.materials) { m.opacity = roof.opacity; m.depthWrite = roof.opacity > .98; m.transparent = blended; }
       const castsShadow=roof.opacity>.5;
       if(roof.castsShadow!==castsShadow){
-        roof.group.traverse(o => { if(o.isMesh)o.castShadow=castsShadow; });
+        for(const m of roof.casters)m.castShadow=castsShadow;
         roof.castsShadow=castsShadow;
       }
     }
@@ -1146,9 +1480,6 @@ export class WorldView {
       if (t.hp <= 0 && g.userData.marks) this.surfaceMarks.clearFor(g.userData.marks);
       g.userData.board.rotation.z = t.flash > 0 ? Math.sin(t.flash * 65) * .13 : 0;
       g.userData.board.scale.setScalar(t.flash > 0 ? 1 + t.flash * .3 : 1);
-      const { bar, fill } = g.userData.health, fraction = Math.max(0, t.hp / t.maxHp);
-      bar.visible = false; bar.quaternion.copy(this.camera.quaternion);
-      fill.scale.x = fraction; fill.position.x = -.39 * (1 - fraction);
     }
     for (const prop of sim.props) {
       const g = this.props.get(prop.id); if (!g) continue;
@@ -1183,7 +1514,7 @@ export class WorldView {
         g.scale.setScalar(.08+.92*growth+Math.sin(forming*Math.PI)*.13);
       }
       g.visible = true; // The existing fragment mask clips even partially visible orbs.
-      g.userData.aura.visible = s.hex || (!s.launched&&s.age<.23) || this.qualityName === 'quality';
+      g.userData.aura.visible = s.hex || (!s.launched&&s.age<.23) || isDemanding(this.qualityName);
       g.userData.aura.material.opacity = s.hex ? .3+Math.sin(elapsed*45+s.id)*.12 : .09 + Math.sin(elapsed * 16 + s.id) * .035+(!s.launched?Math.max(0,1-s.age/.23)*.4:0);
       if(s.hex)g.userData.aura.scale.setScalar(2.2+Math.sin(elapsed*34+s.id)*.35);
       g.userData.orb.material = s.launched ? this.shotMaterial : this.seedMaterial;
@@ -1193,7 +1524,7 @@ export class WorldView {
       g.userData.trail.scale.set(1, 1, Math.min(1.4, s.age * 31));
       g.userData.trail.position.z = -Math.min(.7, s.age * 15.5);
       const electricity = g.userData.electricity, points = electricity.geometry.attributes.position;
-      const arcs = this.qualityName === 'performance' || this.qualityName === 'potato' ? 1 : this.qualityName === 'quality' ? 5 : 3;
+      const arcs = this.qualityName === 'performance' || this.qualityName === 'potato' ? 1 : isDemanding(this.qualityName) ? 5 : 3;
       const electricTick=Math.floor(elapsed*18);
       if(g.userData.electricTick!==electricTick||g.userData.arcCount!==arcs){
       g.userData.electricTick=electricTick;g.userData.arcCount=arcs;
@@ -1209,15 +1540,33 @@ export class WorldView {
     }
     for (const [id, g] of this.shots) if (!present.has(id)) { this.scene.remove(g); g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); this.shots.delete(id); }
     this.updateBeams(sim, dt); this.fxLight.intensity *= Math.exp(-12 * dt);
-    if (active && speed > 1) { this.stepClock += dt; if (this.stepClock > .085) { this.burst(p.x, p.z, 2, 'dust', this.walkingDustColor(p.x, p.z)); this.stepClock = 0; } }
+    const dashing = p.dodgeRemaining > 0;
+    if (active && speed > 1) {
+      this.stepClock += dt;
+      if (this.stepClock > .085) {
+        const heading = speed > 1e-6 ? [p.vx / speed, p.vz / speed] : [0, 0];
+        this.burst(p.x, p.z, 2 * (FOOTFALL_PARTICLES[this.qualityName] ?? 1), 'dust', this.kickedDustColor(p.x, p.z));
+        // The haze marks the ground just left behind, not the foot in the air.
+        if (!dashing) this.dustTrail.step(renderX, renderZ, this.kickedDustColor(p.x, p.z), heading[0], heading[1]);
+        this.stepClock = 0;
+      }
+    }
+    // Sampled every frame of the dodge, so the streak follows the path actually
+    // taken and ends where the player ended, wall slide included.
+    if (active && dashing) this.dustTrail.dash(renderX, renderZ, this.kickedDustColor(p.x, p.z), dt, p.dodgeX, p.dodgeZ);
+    if (active && this.wasDashing && !dashing) this.dustTrail.land(renderX, renderZ, this.kickedDustColor(p.x, p.z), p.dodgeX, p.dodgeZ);
+    this.wasDashing = dashing;
+    this.dustTrail.update(dt);
     this.cropView.update(sim, dt);
     this.updateParticles(dt); this.updateBlasts(dt);this.electric.updateAftershocks(dt,sim); this.electric.drift(sim.seeds,sim.player,sim.colliders,dt); this.electric.charge(sim.hexOrbs,dt,sim.player); this.electric.syncSpin(sim.hexSpin,sim.player,dt); this.electric.update(dt); this.electric.boundary(sim.hexOrbs);
     for (const ring of this.rings) {
       ring.age += dt; ring.mesh.scale.setScalar(1 + ring.age * 8); ring.mesh.material.opacity = Math.max(0, 1 - ring.age * 2.5);
     }
-    this.rings = this.rings.filter(r => { if (r.age < .4) return true; r.mesh.removeFromParent(); r.mesh.geometry.dispose(); r.mesh.material.dispose(); return false; });
+    // The geometry is shared across rings now, so only the material goes.
+    this.rings = this.rings.filter(r => { if (r.age < .4) return true; r.mesh.removeFromParent(); r.mesh.material.dispose(); return false; });
     const positions = this.motes.geometry.attributes.position.array;
-    for (let i = 0; i < this.quality.motes * 3; i += 3) { positions[i] += dt * .42; positions[i + 2] += dt * .12; if (positions[i] > 38) positions[i] = -38; }
+    const drawn = Math.min(this.quality.motes * 3, positions.length);
+    for (let i = 0; i < drawn; i += 3) { positions[i] += dt * .42; positions[i + 2] += dt * .12; if (positions[i] > 38) positions[i] = -38; }
     if(this.quality.motes)this.motes.geometry.attributes.position.needsUpdate = true;
     this.updateAmbient(sim, dt, elapsed);
     if(active)this.surfaceMarks.flush(2);
@@ -1265,14 +1614,22 @@ export class WorldView {
 
   updateVision(sim) {
     const immersion=cropImmersion(sim.crops,sim.player,RULES.radius),crop=immersion?.crop;
-    this.cropOverlay.style.display = crop ? 'block' : 'none';
+    const cropDisplay = crop ? 'block' : 'none';
+    // Writing an unchanged display value still invalidates style on every frame.
+    if (this.cropDisplay !== cropDisplay) { this.cropDisplay = cropDisplay; this.cropOverlay.style.display = cropDisplay; }
+    if (!crop) this.cropMaskKey = null;
     if (crop) {
       this.cropOverlay.style.opacity=immersion.entryOpacity;
       const c = this.screenPoint(sim.player.x, sim.player.z, .7), edge = this.screenPoint(sim.player.x + crop.visibility, sim.player.z, .7);
       const radius = Math.abs(edge.x - c.x);
       this.cropOverlay.style.background = `radial-gradient(ellipse ${radius*1.25}px ${radius*1.14}px at ${c.x}px ${c.y}px, transparent 18%, rgba(0,0,0,.12) 32%, rgba(0,0,0,.42) 50%, rgba(0,0,0,.76) 70%, rgba(0,0,0,.95) 88%, #000 100%)`;
-      if(immersion.outerOpacity>=1)this.cropOverlay.style.maskImage='none';
-      else {
+      if(immersion.outerOpacity>=1){this.cropOverlay.style.maskImage='none';this.cropMaskKey='none';}
+      // Two full-viewport SVG filters (erode + blur) rebuilt from a data URI is the
+      // most expensive thing a frame can do on a phone. The silhouette is soft and
+      // slow-moving, so a 20Hz ceiling is invisible while the gradient above still
+      // tracks the player every frame.
+      else if(!(this.cropMaskClock>this.effectTime)){
+        this.cropMaskClock=this.effectTime+.05;this.cropMaskKey=null;
         const polygons=immersion.sections.map(s=>projectVisionPolygon([{x:s.x-s.w/2,z:s.z-s.d/2},{x:s.x+s.w/2,z:s.z-s.d/2},{x:s.x+s.w/2,z:s.z+s.d/2},{x:s.x-s.w/2,z:s.z+s.d/2}],this.camera,innerWidth,innerHeight));
         const shapes=polygons.filter(p=>p.length>=3).map(p=>`<polygon fill="white" stroke="white" stroke-width="1.5" points="${p.map(v=>`${v.x.toFixed(1)},${v.y.toFixed(1)}`).join(' ')}"/>`).join('');
         const feather=Math.max(28,radius*.32);
@@ -1281,10 +1638,27 @@ export class WorldView {
       }
     }
     const room = sim.interior;
-    this.visionOverlay.style.display = room ? 'block' : 'none';
+    const visionDisplay = room ? 'block' : 'none';
+    // Gated the same way the crop overlay beside it is: writing an unchanged
+    // display value still invalidates style on every frame.
+    if (this.visionDisplay !== visionDisplay) {
+      this.visionDisplay = visionDisplay;
+      this.visionOverlay.style.display = visionDisplay;
+    }
+    if (!room) this.visionMaskClock = 0;
     if (!room) { this.visionMaskKey=null; return; }
-    const maskKey=[room.id,sim.player.x,sim.player.z,innerWidth,innerHeight,...this.camera.matrixWorld.elements,...this.camera.projectionMatrix.elements].join(',');
+    // Two full-viewport SVG filters (erode + blur) rebuilt from a data URI is the
+    // most expensive thing a frame can do on a phone — the same cost the crop
+    // mask is already capped for. The doorway cones are soft and slow, so a 20Hz
+    // ceiling is invisible, and the key is quantised so sub-pixel camera drift
+    // does not count as movement. Entering a building is where this bites: the
+    // overlay switches on at exactly the moment the camera is also blending.
+    const quantise=(value,step)=>Math.round(value/step);
+    const maskKey=[room.id,quantise(sim.player.x,.05),quantise(sim.player.z,.05),innerWidth,innerHeight,
+      ...this.camera.matrixWorld.elements.map(e=>quantise(e,.01)),...this.camera.projectionMatrix.elements.map(e=>quantise(e,.01))].join(',');
     if(this.visionMaskKey===maskKey)return;
+    if(this.visionMaskClock>this.effectTime&&this.visionMaskKey)return;
+    this.visionMaskClock=this.effectTime+.05;
     this.visionMaskKey=maskKey;
     const polygons = interiorPolygons(room,sim.player).map(points=>projectVisionPolygon(points,this.camera,innerWidth,innerHeight));
     const holes = polygons.filter(points=>points.length>=3).map(points => '<polygon fill="black" points="' + points.map(p =>
@@ -1351,7 +1725,7 @@ export class WorldView {
     for(const g of this.targets.values()){g.userData.coverHiddenTime=0;g.visible=true;}
     this.cameraHeight = OUTDOOR_CAMERA_HEIGHT;
     this.cropView.reset();
-    this.electric.clear(); this.surfaceMarks.clear();
+    this.electric.clear(); this.surfaceMarks.clear(); this.dustTrail.clear(); this.birds.clear();
     this.footprints.length = 0; this.footMesh.count = 0; this.footDistance = 0; this.lastFootPosition = { ...sim.player };
     this.focus.set(sim.player.x, 0, sim.player.z); this.kick.set(0, 0, 0); this.shake = 0; this.particles.length = 0;
     for (const g of this.shots.values()) { this.scene.remove(g); g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); } this.shots.clear();

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Simulation} from '../src/simulation.js';
-import {RIFLE,rifleDamage,rifleSpread,rifleShotError} from '../src/rifle.js';
+import {RIFLE,rifleDamage,rifleSpread,rifleShotError,rifleAim,rifleMuzzle,RIFLE_CONVERGE} from '../src/rifle.js';
 const make=(extra={})=>{const s=new Simulation({id:'test',width:120,depth:120,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[],...extra});s.weapon='rifle';return s;};
 const tick=(s,input={},n=1)=>{for(let i=0;i<n;i++)s.step({aimX:1,aimZ:0,aimPointX:10,aimPointZ:0,...input});};
 test('rifle fires once on tap, repeats at cadence, and stops at empty magazine',()=>{
@@ -23,18 +23,41 @@ test('rifle damage and accuracy improve predictably with range, stance and aim',
  assert.equal(rifleSpread(10,0,true),.054);assert.equal(rifleSpread(10),.105);
  const s=make({targets:[{id:'a',x:5,z:0}]});tick(s,{fire:true,aiming:true});assert.equal(s.targets[0].hp,100);tick(s,{},5);assert.equal(s.targets[0].hp,80);
 });
-test('close cursor cannot improve long-range accuracy or skew barrel direction',()=>{
+test('a clean shot passes through what the crosshair is over, from the muzzle',()=>{
  const old=Math.random;
  try{
   Math.random=()=>.5;
   for(const distance of [.01,.5,1,1.1,2,10,30]){
    const s=make();tick(s,{fire:true,aimPointX:distance});
-   assert.equal(s.rifleBullets[0].dx,1);assert.equal(s.rifleBullets[0].dz,0);
+   const b=s.rifleBullets[0],p=s.player;
+   const muzzle=rifleMuzzle(p),aim=rifleAim(p,Math.max(0,distance));
+   // Fired from the barrel, not the player's centre.
+   assert.ok(Math.abs(b.x-muzzle.x)<1e-9&&Math.abs(b.z-muzzle.z)<1e-9,'the shot did not leave the muzzle');
+   // And laid on the convergence point, so a zero-error shot goes through it.
+   const t=(aim.targetX-b.x)/b.dx;
+   assert.ok(Math.abs(b.z+b.dz*t-aim.targetZ)<1e-9,
+    `at ${distance}m the shot passed ${(b.z+b.dz*t-aim.targetZ).toFixed(3)}m off the aim point`);
+   assert.ok(Math.abs(Math.hypot(b.dx,b.dz)-1)<1e-9,'heading is a unit vector');
   }
-  let n=0;Math.random=()=>n++%2?.25:.75;
-  const a=make(),b=make();tick(a,{fire:true,aimPointX:.1});tick(b,{fire:true,aimPointX:30});
-  assert.equal(a.rifleBullets[0].dz,b.rifleBullets[0].dz);
  }finally{Math.random=old;}
+});
+test('cursor depth changes where the barrel is laid, never how tight the group is',()=>{
+ const old=Math.random;
+ try{
+  const fire=distance=>{let n=0;Math.random=()=>n++%2?.25:.75;const s=make();tick(s,{fire:true,aimPointX:distance});
+   const b=s.rifleBullets[0],aim=rifleAim(s.player,distance);
+   return Math.atan2(b.dz,b.dx)-aim.angle;};
+  // The error a given roll produces is angular and identical at any depth: a
+  // close cursor buys no accuracy, it only points the barrel somewhere else.
+  assert.ok(Math.abs(fire(.1)-fire(30))<1e-12,'a close cursor tightened the group');
+ }finally{Math.random=old;}
+});
+test('the convergence floor keeps a cursor underfoot from raking the shot',()=>{
+ const p={x:0,z:0,aimX:1,aimZ:0};
+ const worst=Math.abs(rifleAim(p,0).angle);
+ assert.ok(worst<.04,`a cursor on the player's own feet raked the barrel ${worst.toFixed(3)}rad`);
+ assert.equal(rifleAim(p,2).angle,rifleAim(p,0).angle,'anything inside the floor is treated alike');
+ assert.ok(Math.abs(rifleAim(p,40).angle)<worst,'and the rake shrinks as the aim point goes out');
 });
 test('shots favor both sides equally without widening bloom or excluding center shots',()=>{
  let centered=0,flanks=0,total=0,sum=0;
@@ -49,16 +72,22 @@ test('shots favor both sides equally without widening bloom or excluding center 
  assert.ok(flanks/total>.54&&flanks/total<.58);
  assert.equal(rifleShotError(0),0);assert.equal(rifleShotError(1),1);assert.equal(rifleShotError(-1),-1);
 });
-test('side-weighted shots keep a straight heading and identical spread for near and far cursors',()=>{
+test('side-weighted shots keep a straight heading and the same spread at any cursor depth',()=>{
  const old=Math.random;
  try{
   const fireAt=distance=>{let n=0;Math.random=()=>n++%2?.25:.5;const s=make();tick(s,{fire:true,aimPointX:distance});return s;};
   const near=fireAt(.1),far=fireAt(30);
   const shot=near.rifleBullets[0],heading={dx:shot.dx,dz:shot.dz};
-  assert.ok(Math.abs(Math.atan2(shot.dz,shot.dx)-.105*.5)<1e-8);
+  // The roll lands the same angular error on the barrel either way.
+  for(const [s,distance] of [[near,.1],[far,30]]){
+   const b=s.rifleBullets[0];
+   assert.ok(Math.abs(Math.atan2(b.dz,b.dx)-rifleAim(s.player,distance).angle-.105*.5)<1e-8);
+  }
+  // Once fired a bullet flies straight, and both carry the same speed: the
+  // headings differ only because the barrels were laid on different points.
   tick(near,{},10);tick(far,{},10);
   assert.equal(shot.dx,heading.dx);assert.equal(shot.dz,heading.dz);
-  assert.equal(shot.x,far.rifleBullets[0].x);assert.equal(shot.z,far.rifleBullets[0].z);
+  assert.ok(Math.abs(shot.travel-far.rifleBullets[0].travel)<1e-9,'the two shots travelled different distances');
  }finally{Math.random=old;}
 });
 test('cover intercepts bullets and Static abilities do not activate for rifle',()=>{
@@ -94,7 +123,10 @@ test('rifle aiming slows walking smoothly without reducing dodge travel',()=>{
  tick(s,{moveX:1},90);assert.ok(Math.abs(s.player.vx-normal)<.001);
  const a=make(),b=make();tick(a,{moveX:1,dodge:true});tick(b,{moveX:1,dodge:true,aiming:true});
  tick(a,{moveX:1},10);tick(b,{moveX:1,aiming:true},10);assert.equal(a.player.x,b.player.x);
- const staticGun=make();staticGun.weapon='static';tick(staticGun,{moveX:1,aiming:true},90);assert.ok(Math.abs(staticGun.player.vx-normal)<.001);
+ // Aiming in is a whole-arsenal action now, so Static slows with the rest.
+ const staticGun=make();staticGun.weapon='static';tick(staticGun,{moveX:1,aiming:true},90);
+ assert.ok(Math.abs(staticGun.player.vx-normal*RIFLE.aimMoveMultiplier)<.001,
+  `Static walked at ${staticGun.player.vx.toFixed(2)} while aiming`);
 });
 test('Nominal has three dodge charges and Static retains two',()=>{
  const s=make();s.reset();assert.equal(s.maxStamina,3);assert.equal(s.player.stamina,3);

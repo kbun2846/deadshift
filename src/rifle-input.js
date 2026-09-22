@@ -1,6 +1,9 @@
 // Mouse events report each button transition; pointerdown only reports the
 // first pressed button, so it cannot handle aim + fire by itself.
-export const weaponAiming=(weapon,pointerAiming,keys)=>pointerAiming||(weapon==='rifle'&&(keys.has('ShiftLeft')||keys.has('ShiftRight')));
+// Shift is aim-in for every weapon. The pointer's own aim button still works;
+// the weapon argument is kept because callers pass it and a future weapon may
+// want to opt out.
+export const weaponAiming=(weapon,pointerAiming,keys)=>pointerAiming||keys.has('ShiftLeft')||keys.has('ShiftRight');
 export function bindRifleMouse(surface,windowTarget,{enabled,state,fire,aim,store}){
  surface.addEventListener('mousedown',e=>{
   if(!enabled())return;e.preventDefault();state(!!(e.buttons&1),!!(e.buttons&2));

@@ -38,7 +38,14 @@ export class InteriorVisibility {
   }
   apply(root) {
     root?.traverse(o => {
-      for (const m of [...(Array.isArray(o.material) ? o.material : [o.material]),o.customDepthMaterial,o.customDistanceMaterial]) {
+      // The overwhelmingly common case is a single already-patched material, so
+      // take it without building any array. This runs over every particle,
+      // beam and effect group every frame — a couple of hundred throwaway
+      // arrays a frame during an explosion, purely to then skip them all.
+      const single = o.material;
+      if (single && !Array.isArray(single) && this.materials.has(single)
+        && !o.customDepthMaterial && !o.customDistanceMaterial) return;
+      for (const m of [...(Array.isArray(single) ? single : [single]),o.customDepthMaterial,o.customDistanceMaterial]) {
         if (!m || this.materials.has(m) || m.isShaderMaterial) continue;
         this.materials.add(m);
         const before = m.onBeforeCompile, cache = m.customProgramCacheKey.bind(m);

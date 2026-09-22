@@ -5,7 +5,11 @@ export function roundPlayableOutline(anchors,rounding=14){
   const a=anchors[(i+anchors.length-1)%anchors.length],b=anchors[i],c=anchors[(i+1)%anchors.length];
   const ab=Math.hypot(b[0]-a[0],b[1]-a[1]),bc=Math.hypot(c[0]-b[0],c[1]-b[1]);
   const trim=Math.min(rounding,ab*.35,bc*.35);
-  const enter=b.map((v,j)=>v+(a[j]-v)*trim/ab),leave=b.map((v,j)=>v+(c[j]-v)*trim/bc);
+  // A repeated anchor gives a zero-length leg; dividing by it turns the whole
+  // outline to NaN, which is a silently unplayable map rather than an error.
+  // Treat a degenerate corner as un-rounded instead.
+  const lead=ab>1e-9?trim/ab:0,tail=bc>1e-9?trim/bc:0;
+  const enter=b.map((v,j)=>v+(a[j]-v)*lead),leave=b.map((v,j)=>v+(c[j]-v)*tail);
   for(let step=0;step<=12;step++){
    const t=step/12,u=1-t;
    outline.push(b.map((v,j)=>u*u*enter[j]+2*u*t*v+t*t*leave[j]));

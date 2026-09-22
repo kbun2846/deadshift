@@ -56,15 +56,19 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  }
  $('menu-settings').onclick=openSettings;$('pause-settings').onclick=openSettings;$('settings-back').onclick=closeSettings;
  $('main-menu').onclick=()=>{returnToMenu();show('home');$('gamemodes').focus();};$('tutorial-finish').onclick=$('main-menu').onclick;
- document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('[data-tab]').forEach(t=>t.setAttribute('aria-selected',String(t===b)));
-  for(const id of ['graphics','controls','developer'])$('settings-'+id).hidden=id!==b.dataset.tab;
- });
- document.querySelector('[data-tab="graphics"]').click();
+ const tabs=[...document.querySelectorAll('.settings-tabs [data-tab]')];
+ const openTab=name=>{
+  for(const tab of tabs)tab.setAttribute('aria-selected',String(tab.dataset.tab===name));
+  for(const tab of tabs)$('settings-'+tab.dataset.tab).hidden=tab.dataset.tab!==name;
+  $('settings-panel').dataset.tab=name;
+ };
+ for(const tab of tabs)tab.onclick=()=>openTab(tab.dataset.tab);
+ openTab('graphics');
  const generalControls=[
   ['Move','WASD / left stick'],
   ['Aim','Mouse / arrow keys / aim stick / drag on the world','Movement sets facing when not aiming independently.'],
-  ['Dodge','Space while moving / DODGE button'],
+  ['Aim in','Shift / right mouse button','Works on every weapon: tightens the shot and slows the walk.'],
+  ['Dodge','Space / DODGE button','Rolls the way you are moving, or the way you are facing when standing still. Goes through breakable scenery.'],
   ['Map','M / map button; M or Escape closes'],
   ['Pause / resume','Esc / pause button'],
   ['Restart current session','RESTART in pause menu'],
@@ -73,8 +77,6 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   ['Change setting','Left / right arrows','Up/down moves between settings. E enters editing; arrows change the value and E or Q finishes.'],
   ['Confirm / open controls','E / Enter / click / tap','On a weapon dropdown, right opens and left closes.'],
   ['Back','Q / Escape'],
-  ['Developer teleport','Click / tap destination on map','Requires developer teleport to be enabled.'],
-  ['Toggle all developer overrides','P','Enter code 1919 when prompted. Q, Esc, or × cancels. Toggles shared and weapon-specific overrides together; invincibility is controlled separately.'],
  ];
  const weaponControls=[{name:'Static',controls:[
   ['Place orbs','Hold E / hold PLACE'],
@@ -88,5 +90,17 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   $('settings-controls').innerHTML='<h3 class="controls-heading">General</h3>'+list(generalControls)+'<h3 class="controls-heading">Weapons</h3><div class="weapon-control-list">'+weaponControls.map(weapon=>'<details class="weapon-control-entry"><summary>'+weapon.name+'</summary>'+list(weapon.controls)+'</details>').join('')+'</div>';
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">SHOW HUD CONTROL HINTS<input id="control-hints" type="checkbox" checked/></label>');
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting select-setting">MOBILE BUTTON OPACITY<select id="mobile-opacity"><option value="1">Solid · 100%</option><option value="0.7">Medium · 70%</option><option value="0.4">Faint · 40%</option></select></label>');
- return {back};
+ const channels=[
+  ['master','MASTER','Everything, including the mute bound to N.'],
+  ['ambient','AMBIENT','Wind, dust and the birds overhead.'],
+  ['weapons','WEAPONS','Fire, reloads, charges and abilities.'],
+  ['effects','EFFECTS','Impacts, breakage, footsteps and blasts.'],
+ ];
+ $('settings-audio').innerHTML='<div class="settings-heading">MIX</div>'+channels.map(([key,label,note])=>
+  '<label class="setting slider-setting">'+label+'<span class="slider-field"><span class="slider-track">'+
+  '<input id="volume-'+key+'" class="volume-slider" type="range" min="0" max="100" step="1" aria-label="'+label.toLowerCase()+' volume"></span>'+
+  '<output class="slider-value" id="volume-'+key+'-value" for="volume-'+key+'"></output></span></label>'+
+  '<p class="settings-note">'+note+'</p>').join('')+
+  '<button type="button" id="mute-all" class="secondary" aria-pressed="false">MUTE ALL</button>';
+ return {back,openTab};
 }

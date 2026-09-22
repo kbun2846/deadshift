@@ -1,5 +1,5 @@
 // Deterministic, irregular tiles: simulation owns burning and removal, not graphics.
-export const CROP_FIRE = Object.freeze({ duration: 8, spreadDelay: 1.5, damagePerSecond: 10 });
+export const CROP_FIRE = Object.freeze({ duration: 8, spreadDelay: 1.5, damagePerSecond: 25 });
 export function cropAt(crops, point) {
   return crops.find(s => s.state !== 'gone' && Math.abs(point.x - s.x) <= s.w / 2 + 1e-8 && Math.abs(point.z - s.z) <= s.d / 2 + 1e-8) || null;
 }

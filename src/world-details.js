@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isPlayable } from './playable-area.js';
 
 export function makeQualityDetails(view) {
   const all = new THREE.Group(); view.scene.add(all);
@@ -36,7 +37,51 @@ export function makeQualityDetails(view) {
       scratch.rotation.y = Math.sin(i * 11) * .3;
     }
     for (let x = -b.w / 2 + .6; x < b.w / 2; x += .6) view.box(x, .074, 0, .012, .005, b.d - .4, '#887152', g);
+    // Sand drifts against the windward wall, the side the sun rig comes from.
+    // Height wanders along the run so the pile reads as weather, not as trim.
+    for (let z = -b.d / 2 + .5, i = 0; z < b.d / 2 - .3; z += .82, i++) {
+      const depth = .1 + (Math.sin(i * 2.7) * .5 + .5) * .09;
+      const drift = view.box(-b.w / 2 - .19, depth / 2, z, .46, depth, .78, i % 3 ? '#9d8a68' : '#a89572', g);
+      drift.rotation.z = .1 + Math.sin(i * 5) * .05;
+    }
+    // Shingles that have come off the pitch and landed at the foot of the wall.
+    for (let i = 0; i < 5; i++) {
+      const side = i % 2 ? 1 : -1;
+      const tile = view.box(side * (b.w / 2 + .5 + (i % 3) * .3), .025, Math.sin(i * 11) * (b.d / 2 - .8), .5, .035, .32, i % 2 ? '#8c7a5e' : '#7d6c53', g);
+      tile.rotation.set(Math.sin(i * 3) * .09, i * 1.7, Math.cos(i * 4) * .07);
+    }
   }
+  // Wheel ruts worn down the length of the street. Two lanes at a cart's track
+  // width, following the same profile the road surface is built from, so they
+  // bend with it instead of cutting across the verge.
+  const ruts = [];
+  for (let i = 1; i < view.roadProfile.length; i++) {
+    const a = view.roadProfile[i - 1], b = view.roadProfile[i];
+    for (const lane of [-1, 1]) {
+      const wobble = Math.sin(i * .9) * .12;
+      ruts.push(new THREE.Vector3((a.left + a.right) / 2 + lane * 1.18 + wobble, .046, a.z),
+        new THREE.Vector3((b.left + b.right) / 2 + lane * 1.18 + wobble, .046, b.z));
+    }
+  }
+  all.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(ruts),
+    new THREE.LineBasicMaterial({ color: '#6b5843', transparent: true, opacity: .32 })));
+  // Slack wire strung between fence posts, sagging in a shallow catenary. The
+  // posts already read as a boundary; the wire is what makes it look maintained.
+  const wire = [];
+  for (const f of view.map.fences || []) {
+    const isX = f.axis === 'x', panels = Math.ceil(f.length / 2.5), span = f.length / panels;
+    for (let panel = 0; panel < panels; panel++) {
+      const start = -f.length / 2 + panel * span;
+      const height = u => { const k = (u - start) / span - .5; return .99 - (.25 - k * k) * .42; };
+      for (let seg = 0; seg < 5; seg++) {
+        const u0 = start + span * seg / 5, u1 = start + span * (seg + 1) / 5;
+        wire.push(new THREE.Vector3(f.x + (isX ? u0 : 0), height(u0), f.z + (isX ? 0 : u0)),
+          new THREE.Vector3(f.x + (isX ? u1 : 0), height(u1), f.z + (isX ? 0 : u1)));
+      }
+    }
+  }
+  if (wire.length) all.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wire),
+    new THREE.LineBasicMaterial({ color: '#7c7161', transparent: true, opacity: .42 })));
   // Individual pebbles and dried flowers at the road shoulder, never another road surface.
   for (let i = 0; i < 250; i++) {
     const z = (i / 249 - .5) * view.map.depth, edge = view.roadEdges(z), side = i % 2 ? 1 : -1;
@@ -55,7 +100,153 @@ export function makeQualityDetails(view) {
       if(i%3===0){const stone=view.mesh(new THREE.DodecahedronGeometry(.075), '#a08d6a',x+.15,.035,z,all);stone.scale.y=.45;}
     }
   }
-  view.batch(all); return all;
+  // Sand ripples across the open ground, laid as short arcs perpendicular to
+  // the prevailing wind. Drawn well clear of the street and of every building,
+  // so the eye reads weather rather than a pattern laid over the town.
+  const ripples = [];
+  for (let i = 0; i < 620; i++) {
+    const a = i * 2.399, radius = 18 + (i / 620) * (Math.min(view.map.width, view.map.depth) * .45);
+    const x = Math.cos(a) * radius, z = Math.sin(a) * radius * .9;
+    if (!isPlayable(view.map, x, z, 4)) continue;
+    const edge = view.roadEdges(z);
+    if ((x > edge.left - 5 && x < edge.right + 5) || view.onSideRoad(x, z, 5)) continue;
+    if (view.map.buildings.some(b => Math.abs(x - b.x) < b.w / 2 + 5 && Math.abs(z - b.z) < b.d / 2 + 5)) continue;
+    const lean = .35 + Math.sin(i * 13) * .22, length = .5 + (Math.sin(i * 7) * .5 + .5) * 1.1;
+    for (let seg = 0; seg < 3; seg++) {
+      const t0 = seg / 3 - .5, t1 = (seg + 1) / 3 - .5;
+      const bow = .16 * (1 - 4 * t0 * t0), bow1 = .16 * (1 - 4 * t1 * t1);
+      ripples.push(new THREE.Vector3(x + Math.cos(lean) * length * t0 - Math.sin(lean) * bow, .035, z + Math.sin(lean) * length * t0 + Math.cos(lean) * bow),
+        new THREE.Vector3(x + Math.cos(lean) * length * t1 - Math.sin(lean) * bow1, .035, z + Math.sin(lean) * length * t1 + Math.cos(lean) * bow1));
+    }
+  }
+  if (ripples.length) all.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(ripples),
+    new THREE.LineBasicMaterial({ color: '#8d7857', transparent: true, opacity: .26 })));
+  // Worn paths from each doorway out to the street: a strip of pale, scuffed
+  // ground where the boots have gone, fading as it leaves the threshold.
+  for (const b of view.map.buildings) {
+    for (const side of b.doors || []) {
+      const local = side === 'front' ? [0, b.d / 2] : side === 'back' ? [0, -b.d / 2] : [side === 'left' ? -b.w / 2 : b.w / 2, 0];
+      const out = side === 'front' ? [0, 1] : side === 'back' ? [0, -1] : [side === 'left' ? -1 : 1, 0];
+      const c = Math.cos(b.angle || 0), sn = Math.sin(b.angle || 0);
+      const px = b.x + local[0] * c + local[1] * sn, pz = b.z - local[0] * sn + local[1] * c;
+      const dx = out[0] * c + out[1] * sn, dz = -out[0] * sn + out[1] * c;
+      // One continuous ribbon, not a row of patches. Laid as separate quads
+      // this read as a stack of offset slabs with visible corners and seams —
+      // the eye picks out the rectangles, not the path. A single tapering
+      // strip built from the centreline has no internal edges at all, and it
+      // is one draw call instead of eight.
+      //
+      // Where it reaches the street it merges rather than butting into it. A
+      // desire line does not meet a road at a right angle and stop: it bends
+      // to run with the traffic for the last couple of metres, narrows to
+      // nothing, and loses its colour into the road surface as the two wear
+      // together. So the centreline is steered toward the road heading, the
+      // width tapers to a point at the kerb, and a short blended tongue
+      // overlaps the tip where the ruts take over.
+      const MERGE = 3.4, STEPS = 14;
+      const spine = [];
+      let cx = px, cz = pz, heading = Math.atan2(dx, dz), merged = 0;
+      for (let step = 0; step <= STEPS; step++) {
+        const t = step / STEPS;
+        const edge = view.roadEdges(cz);
+        const mid = (edge.left + edge.right) / 2;
+        const toRoad = cx < mid ? edge.left - cx : cx - edge.right;
+        if (toRoad < -.2) break;
+        // 0 out in the open, 1 at the kerb.
+        const merge = Math.max(0, Math.min(1, 1 - toRoad / MERGE));
+        merged = Math.max(merged, merge);
+        // Swing from "out of the doorway" toward "along the street", and
+        // wander a little so it is a footpath rather than a ruler line.
+        const along = cx < mid ? Math.PI : 0;
+        const want = heading + Math.atan2(Math.sin(along - heading), Math.cos(along - heading)) * merge * .5;
+        heading = want + Math.sin(step * 1.7 + b.w) * .05 * (1 - merge);
+        // Widest a stride out from the door, tapering to a point at the kerb.
+        const width = (1.45 - t * .5) * (1 - merge) * Math.min(1, .35 + t * 4);
+        spine.push({ x: cx, z: cz, heading, width, merge });
+        const advance = .52;
+        cx += Math.sin(heading) * advance; cz += Math.cos(heading) * advance;
+      }
+      if (spine.length > 2) {
+        const ribbon = (points, lift, color) => {
+          const shape = new THREE.Shape();
+          const side = (point, s) => [point.x + Math.cos(point.heading) * point.width * .5 * s,
+            point.z - Math.sin(point.heading) * point.width * .5 * s];
+          const [sx, sz] = side(points[0], -1);
+          shape.moveTo(sx, sz);
+          for (let i = 1; i < points.length; i++) { const [x, z] = side(points[i], -1); shape.lineTo(x, z); }
+          for (let i = points.length - 1; i >= 0; i--) { const [x, z] = side(points[i], 1); shape.lineTo(x, z); }
+          shape.closePath();
+          const geometry = new THREE.ShapeGeometry(shape);
+          geometry.rotateX(Math.PI / 2);
+          const mesh = new THREE.Mesh(geometry, view.material(color));
+          mesh.position.y = lift; mesh.castShadow = false; mesh.receiveShadow = true;
+          all.add(mesh);
+        };
+        ribbon(spine, .038, '#98835f');
+        // The last stretch again in a road-blended colour, so the tip dissolves
+        // into the carriageway instead of ending on a line.
+        const tongue = spine.filter(pt => pt.merge > .12);
+        if (tongue.length > 2) {
+          const road = new THREE.Color(view.map.palette.road);
+          const blend = new THREE.Color('#98835f').lerp(road, .6);
+          ribbon(tongue.map(pt => ({ ...pt, width: pt.width * .92 })), .0395, '#' + blend.getHexString());
+        }
+      }
+    }
+  }
+  // Handbills nailed to the street-facing walls, curling at one corner.
+  for (const b of view.map.buildings) {
+    const g = new THREE.Group(); g.position.set(b.x, 0, b.z); g.rotation.y = b.angle || 0; all.add(g);
+    for (let i = 0; i < 3; i++) {
+      const x = Math.sin(i * 23 + b.w) * (b.w / 2 - 1.4);
+      if (Math.abs(x) < 1.9) continue;
+      const y = 1.95 + (i % 2) * .34;
+      const bill = view.box(x, y, b.d / 2 + .215, .34, .46, .012, i % 2 ? '#c9bd9b' : '#bdb08c', g);
+      bill.rotation.z = Math.sin(i * 5) * .07;
+      view.box(x + .13, y + .2, b.d / 2 + .225, .1, .12, .012, '#b0a381', g).rotation.z = .5;
+      for (const corner of [-1, 1]) view.box(x + corner * .13, y + .21, b.d / 2 + .225, .022, .022, .016, '#5f5949', g);
+    }
+  }
+  // Broken glass under the boarded windows, and the nails that boarded them.
+  for (const b of view.map.buildings) {
+    const g = new THREE.Group(); g.position.set(b.x, 0, b.z); g.rotation.y = b.angle || 0; all.add(g);
+    for (const w of (b.windows || []).filter(w => w.boarded)) {
+      const along = w.side === 'front' || w.side === 'back' ? [w.offset, (w.side === 'front' ? 1 : -1) * (b.d / 2 + .3)] : [(w.side === 'left' ? -1 : 1) * (b.w / 2 + .3), w.offset];
+      for (let i = 0; i < 9; i++) {
+        const shard = view.mesh(new THREE.TetrahedronGeometry(.045 + i % 3 * .016), i % 2 ? '#cfe0dc' : '#b6c9c6',
+          along[0] + Math.sin(i * 17) * .7, .028, along[1] + Math.cos(i * 11) * .34, g);
+        shard.rotation.set(i * .7, i * 1.3, i * .4); shard.scale.y = .45;
+      }
+    }
+  }
+  // Tumbleweed and torn sacking snagged against the windward side of fences.
+  for (const f of view.map.fences || []) {
+    const isX = f.axis === 'x';
+    for (let i = 0; i < 2; i++) {
+      const along = (Math.sin(i * 31 + f.length) * .35) * f.length;
+      const x = f.x + (isX ? along : -.34), z = f.z + (isX ? -.34 : along);
+      const snag = view.mesh(new THREE.IcosahedronGeometry(.3 + i * .07, 0), '#a2905f', x, .26, z, all);
+      snag.scale.set(1, .72, 1); snag.rotation.set(.2, i * 2.1, .15);
+      const cloth = view.box(x + (isX ? .3 : 0), .2, z + (isX ? 0 : .3), isX ? .5 : .1, .34, isX ? .1 : .5, '#9d9276', all);
+      cloth.rotation.set(.12, 0, Math.sin(i) * .2);
+    }
+  }
+  // Hoofprints tracking the wheel ruts. Laid as fore-and-hind pairs along a
+  // lane rather than sprinkled: scattered singles read as litter on the road,
+  // and only a repeating pair reads as an animal having walked up it. Kept
+  // close to the road's own colour so they are a texture, not a set of marks.
+  for (let stride = 0; stride < 90; stride++) {
+    const row = view.roadProfile[stride % view.roadProfile.length];
+    const lane = stride % 2 ? 1 : -1;
+    const z = row.z + (stride * 2.3) % 4.6;
+    const x = (row.left + row.right) / 2 + lane * (1.18 + Math.sin(stride * 1.7) * .22);
+    for (const [ahead, side] of [[0, -.09], [.34, .07]]) {
+      const print = view.box(x + side, .048, z + ahead, .12, .004, .16,
+        stride % 3 ? '#87714f' : '#7d6a4b', all);
+      print.rotation.y = Math.sin(stride * 7 + ahead) * .14;
+    }
+  }
+  view.noShadows(all); view.batch(all); return all;
 }
 
 export function makePropDetails(view, p, parent) {
@@ -83,30 +274,7 @@ export function makePropDetails(view, p, parent) {
     }
   }
   if (points.length) g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: p.type === 'cactus' ? '#acb18b' : '#66563e', transparent: true, opacity: .48 })));
-  view.batch(g); return g;
-}
-
-export function makeCrops(view) {
-  for (const field of view.map.crops || []) {
-    const group = new THREE.Group(); view.scene.add(group);
-    // Discrete stalks and irregular row ends leave soil visible between rows.
-    for (let row = 0, x = field.x - field.w / 2 + .45; x < field.x + field.w / 2; row++, x += .9) {
-      for (let n = 0, z = field.z - field.d / 2 + .4; z < field.z + field.d / 2; n++, z += .72) {
-        const noise = Math.sin(row * 43.7 + n * 17.3) * .5 + .5;
-        if (noise < .08) continue;
-        const xx = x + (noise - .5) * .22, zz = z + Math.sin(n * 5 + row) * .14;
-        const h = 1.3 + noise * .5;
-        view.box(xx, h / 2, zz, .035, h, .035, '#a99b63', group);
-        for (const side of [-1, 1]) {
-          const leaf = view.mesh(new THREE.ConeGeometry(.14, .65, 3), row % 3 ? '#929263' : '#a7a16a', xx + side * .16, h * .57, zz, group);
-          leaf.rotation.z = side * .85; leaf.rotation.y = noise * 2;
-        }
-        const ear = view.mesh(new THREE.ConeGeometry(.065, .32, 4), '#c0b17c', xx, h, zz, group);
-        ear.rotation.z = (noise - .5) * .25;
-      }
-    }
-    view.batch(group);
-  }
+  view.noShadows(g); view.batch(g); return g;
 }
 
 export function makeLandmark(view, p, group) {

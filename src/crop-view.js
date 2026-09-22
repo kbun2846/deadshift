@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { cropSegments, CROP_FIRE } from './crops.js';
+import { isDemanding } from './settings.js';
 
 // Dense instanced stalks retain individual footprints without thousands of draw calls.
 export class CropView {
@@ -98,7 +99,7 @@ export class CropView {
         if (changed) this.writeStalks(part);
       }
       if (s.state !== 'burning' || Math.hypot(s.x - sim.player.x, s.z - sim.player.z) > 45) continue;
-      const count = this.view.qualityName === 'quality' ? 12 : this.view.qualityName === 'potato' ? 2 : this.view.qualityName === 'performance' ? 5 : 8;
+      const count = isDemanding(this.view.qualityName) ? 12 : this.view.qualityName === 'potato' ? 2 : this.view.qualityName === 'performance' ? 5 : 8;
       const fade = Math.min(1, s.burnAge * 6) * Math.min(1, (CROP_FIRE.duration - s.burnAge) * 3);
       for (let i = 0; i < count; i++) {
         const seed = index * 71 + i * 13, phase = (sim.time * 1.9 + i * .37) % 1;
@@ -122,6 +123,8 @@ export class CropView {
       const signature = sections.map(s => s.state+Math.round((s.scorch || 0) * 24)).join(',');
       if (signature === bed.signature) continue;
       bed.signature = signature;
+      // The dust sampler caches pixels off this canvas; a redraw invalidates it.
+      bed.sampled?.clear();
       const ctx = bed.canvas.getContext('2d'), f = bed.field, size = bed.canvas.width;
       ctx.clearRect(0,0,size,size);
       if(!bed.base){

@@ -42,7 +42,7 @@ export class DeathView{
    streak.position.set(.9+i*.25,.002,Math.sin(i*2.4+pattern.width)*(.12+i*.07));
    streak.scale.set(.36-i*.05,.11-i*.017,1);this.pool.add(streak);
   }
-  const count={potato:16,performance:28,balanced:52,quality:80}[view.qualityName]||52;
+  const count={potato:16,performance:28,balanced:52,quality:80,extreme:80}[view.qualityName]||52;
   this.dropGeometry=new THREE.IcosahedronGeometry(1,0);this.drops=new THREE.InstancedMesh(this.dropGeometry,this.material,count);this.drops.frustumCulled=false;view.scene.add(this.drops);
   this.dummy=new THREE.Object3D();this.particles=[];
   for(let i=0;i<count;i++){

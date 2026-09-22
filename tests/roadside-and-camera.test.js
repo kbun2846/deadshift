@@ -9,7 +9,19 @@ import { InteriorVisibility } from '../src/interior-visibility.js';
 import { Simulation } from '../src/simulation.js';
 
 test('roadside landmarks and outdoor cover have finite geometry and solid cover pieces', () => {
-  assert.equal(Object.keys(ROADSIDE_TYPES).length, 14);
+  assert.equal(Object.keys(ROADSIDE_TYPES).length, 17);
+  // The three cover-only pieces exist to be crouched behind, so their boxes
+  // must genuinely be solid and must not be a single straight wall.
+  for (const type of ['sandbags','plankBarricade','waterTank']) {
+    const t = ROADSIDE_TYPES[type];
+    assert.equal(t.health, null, `${type} must not be destructible`);
+    assert.ok(t.collisionBoxes.length >= 1, type);
+    assert.ok(t.collisionBoxes.every(([,,w,d]) => w > 0 && d > 0), type);
+  }
+  for (const type of ['sandbags','plankBarricade']) {
+    const [a, b] = ROADSIDE_TYPES[type].collisionBoxes;
+    assert.ok(Math.abs(a[1] - b[1]) > .2, `${type} should be a bent line, not a flat wall`);
+  }
   const view = Object.create(WorldView.prototype); view.materials = new Map(); view.static = new THREE.Group();
   for (const type of Object.keys(ROADSIDE_TYPES)) {
     const group = new THREE.Group(); makeRoadside(view, { type }, group);

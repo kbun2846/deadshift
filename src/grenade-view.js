@@ -1,12 +1,16 @@
 import * as THREE from 'three';
 import {makeGrenade} from './grenade-model.js';
 import {GRENADE} from './grenade.js';
+import { isDemanding } from './settings.js';
 export class GrenadeView{
  constructor(view){
   this.view=view;this.items=new Map();this.detail=-1;
   this.rangeMarker=new THREE.Group();
-  for(const [width,depth,color,opacity,order]of [[1.5,.13,'#172319',.65,90],[1.36,.055,'#c6d797',.85,91]]){
-   const line=new THREE.Mesh(new THREE.PlaneGeometry(width,depth),new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthTest:false,depthWrite:false,toneMapped:false}));
+  // A thin solid red line, not a translucent band: the throw either reaches or
+  // it does not, so the marker states a hard limit. The dark backing is what
+  // keeps it legible against pale sand, and is opaque for the same reason.
+  for(const [width,depth,color,opacity,order]of [[1.5,.075,'#2a0c10',1,90],[1.36,.028,'#ff1f33',1,91]]){
+   const line=new THREE.Mesh(new THREE.PlaneGeometry(width,depth),new THREE.MeshBasicMaterial({color,transparent:opacity<1,opacity,depthTest:false,depthWrite:false,toneMapped:false}));
    line.rotation.x=-Math.PI/2;line.renderOrder=order;this.rangeMarker.add(line);
   }
   view.scene.add(this.rangeMarker);
@@ -19,7 +23,7 @@ export class GrenadeView{
   this.rangeMarker.visible=sim.weapon==='rifle'&&!sim.player.dead;
   this.rangeMarker.position.set(this.view.player.position.x+p.aimX*GRENADE.range,.08,this.view.player.position.z+p.aimZ*GRENADE.range);
   this.rangeMarker.rotation.y=Math.atan2(p.aimX,p.aimZ);
-  const detail=this.view.qualityName==='quality'?2:this.view.qualityName==='balanced'?1:0;
+  const detail=isDemanding(this.view.qualityName)?2:this.view.qualityName==='balanced'?1:0;
   if(detail!==this.detail){this.clear();if(this.held){this.arm.remove(this.held);this.dispose(this.held);}this.held=makeGrenade(detail);this.held.position.set(0,-.035,-.04);this.arm.add(this.held);this.detail=detail;}
   const age=sim.time-sim.grenadeThrowTime,throwing=age>=0&&age<.48;
   this.arm.visible=sim.weapon==='rifle'||sim.weapon==='shotgun';this.held.visible=sim.weapon==='rifle'&&throwing&&age<GRENADE.windup;

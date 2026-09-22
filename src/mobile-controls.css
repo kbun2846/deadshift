@@ -15,7 +15,7 @@ body[data-controls=touch] #game .top-actions .icon-button{
  width:auto;min-width:48px;height:44px;min-height:44px;padding:8px;border-radius:8px;font-size:12px!important;
  background:#242928dd;border:1px solid #7f8a84;color:#fff;
 }
-body[data-controls=touch].playing #game .health-hud{top:70px;width:160px;max-width:none}
+body[data-controls=touch].playing #game .health-hud{top:86px;width:160px;max-width:none}
 body[data-controls=touch] #game .health-number{font-size:18px}
 body[data-controls=touch] #game .health-readout{margin-top:5px}
 body[data-controls=touch].playing #game .footer{display:none}
@@ -100,7 +100,7 @@ body.editing-touch-layout #game .masthead{z-index:32}
 body.editing-touch-layout #game .masthead :is(.brand,.mode),body.editing-touch-layout #game .top-actions>button:not(#touch-layout-edit){visibility:hidden;pointer-events:none}
 body.editing-touch-layout #game #touch-controls{z-index:30}
 body.editing-touch-layout #game #touch-controls :is(button,.touch-stick){opacity:1;outline:2px dashed #e8afb9;outline-offset:4px;cursor:grab;transition:none;touch-action:none}
-body.editing-touch-layout #game :is(#tutorial-guide,#weapon,.health-hud,#reticle,.rifle-spread,.shotgun-cone){visibility:hidden}
+body.editing-touch-layout #game :is(#tutorial-guide,#weapon,.health-hud,#reticle,.rifle-spread,.aim-cone){visibility:hidden}
 @media(max-height:500px){.touch-layout-help{font-size:11px;gap:5px;max-width:calc(100% - 120px)}.touch-layout-help>strong{font-size:13px}.touch-layout-help>span{width:auto}body[data-controls=touch] #game .touch-layout-help button{min-height:36px;padding:6px 10px}}
 body[data-controls=touch] #game #touch-controls .touch-removed{display:none!important}
 body[data-controls=touch] #game #seed-stick{grid-column:1/-1;order:-1;justify-self:end}

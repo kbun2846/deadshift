@@ -31,7 +31,7 @@ test('both hands track rifle grips; off hand releases to throw and re-grips afte
  sim.weapon='static';view.update(sim);assert.equal(view.pose.root.visible,false);
 });
 test('all presets keep projectiles and casings while scaling model and cosmetic budgets',()=>{
- const {view,host,sim}=setup();let previous=0;
+ const {view,host,sim}=setup();let previous=0,previousDetail=-1;
  sim.rifleBullets=[{id:1,x:3,z:0,dx:1,dz:0,travel:3}];view.shot();
  const sceneCount=host.scene.children.length;
  for(const [name,q]of Object.entries(RIFLE_QUALITY)){
@@ -40,7 +40,12 @@ test('all presets keep projectiles and casings while scaling model and cosmetic 
   assert.equal(view.casings.geometry.parameters.radialSegments,q.radialSegments);
   assert.equal(host.scene.children.length,sceneCount);
   const model=makeRifle(q.detail),triangles=model.children.reduce((sum,o)=>sum+o.geometry.index.count/3,0);
-  assert.ok(triangles>previous);previous=triangles;assert.ok(model.children.length<=15);
+  // The ladder never goes down, and buys more geometry whenever the detail
+  // level actually rises. Tiers that share a detail level — Extreme sits on
+  // Quality's budget for now — share the model.
+  if(q.detail>previousDetail)assert.ok(triangles>previous,`${name} did not add geometry`);
+  else assert.equal(triangles,previous,`${name} should share the previous model`);
+  previous=triangles;previousDetail=q.detail;assert.ok(model.children.length<=15);
   assert.equal(view.bullets.geometry.type,'LatheGeometry');
  }
 });

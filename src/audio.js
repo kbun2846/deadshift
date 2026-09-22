@@ -1,14 +1,44 @@
 // Small synthesized sounds: no downloads, sample assets, or audio before a gesture.
 export class Soundscape {
-  constructor() { this.context = null; this.enabled = true; this.lastStep = 0; this.lastHit = 0; this.flights = new Set(); }
+  constructor() {
+    this.context = null; this.enabled = true; this.lastStep = 0; this.lastHit = 0; this.flights = new Set();
+    // Mixer levels survive until audio actually starts, which cannot happen
+    // before a gesture; they are applied to the graph the moment it exists.
+    this.volume = { master: .6, ambient: .8, weapons: 1, effects: 1 };
+    // Which bus an untagged sound lands on. Set for the span of one event so
+    // individual emitters do not each need to name their channel.
+    this.currentBus = 'effects';
+  }
+
+  // Gain node for a channel, or the master while the graph is still being built.
+  busFor(name) { return this.buses?.[name ?? this.currentBus] ?? this.master; }
+
+  setVolumes(mix = {}) {
+    for (const channel of ['master', 'ambient', 'weapons', 'effects']) {
+      const level = Number(mix[channel]);
+      if (Number.isFinite(level)) this.volume[channel] = Math.min(1, Math.max(0, level));
+    }
+    if (!this.context) return;
+    const now = this.context.currentTime;
+    this.master.gain.setTargetAtTime(this.enabled ? this.volume.master : 0, now, .03);
+    for (const channel of ['ambient', 'weapons', 'effects'])
+      this.buses[channel].gain.setTargetAtTime(this.volume[channel], now, .03);
+  }
 
   async start() {
     if (!this.context) {
       this.context = new (window.AudioContext || window.webkitAudioContext)();
       const ctx = this.context;
-      this.master = ctx.createGain(); this.master.gain.value = this.enabled ? .6 : 0;
+      this.master = ctx.createGain(); this.master.gain.value = this.enabled ? this.volume.master : 0;
       const limiter = ctx.createDynamicsCompressor(); limiter.threshold.value = -12; limiter.ratio.value = 5;
       this.master.connect(limiter); limiter.connect(ctx.destination);
+      // One bus per channel between the sources and the master, so a slider is
+      // a single gain change rather than a rule every emitter has to remember.
+      this.buses = {};
+      for (const channel of ['ambient', 'weapons', 'effects']) {
+        const bus = ctx.createGain(); bus.gain.value = this.volume[channel];
+        bus.connect(this.master); this.buses[channel] = bus;
+      }
       this.noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate);
       const data = this.noiseBuffer.getChannelData(0);
       let last = 0;
@@ -19,14 +49,14 @@ export class Soundscape {
       const noise = ctx.createBufferSource(); noise.buffer = this.noiseBuffer; noise.loop = true;
       const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 550;
       this.wind = ctx.createGain(); this.wind.gain.value = .09;
-      noise.connect(filter); filter.connect(this.wind); this.wind.connect(this.master); noise.start();
+      noise.connect(filter); filter.connect(this.wind); this.wind.connect(this.buses.ambient); noise.start();
       const lfo = ctx.createOscillator(); lfo.frequency.value = .11;
       const depth = ctx.createGain(); depth.gain.value = .03; lfo.connect(depth); depth.connect(this.wind.gain); lfo.start();
     }
     await this.context.resume();
   }
 
-  setEnabled(enabled) { this.enabled = enabled; if (this.context) this.master.gain.setTargetAtTime(enabled ? .6 : 0, this.context.currentTime, .03); }
+  setEnabled(enabled) { this.enabled = enabled; if (this.context) this.master.gain.setTargetAtTime(enabled ? this.volume.master : 0, this.context.currentTime, .03); }
   suspend(paused) { if (!this.context) return; if (paused) void this.context.suspend(); else void this.context.resume(); }
 
   startFlight(e) {
@@ -39,7 +69,7 @@ export class Soundscape {
     tone.type='sine';tone.frequency.setValueAtTime(170,now);
     tone.frequency.exponentialRampToValueAtTime(850,now+duration);
     gain.gain.setValueAtTime(.0001,now);gain.gain.linearRampToValueAtTime(.028+Math.sqrt(e.paths.length/12)*.023,now+.018);
-    tone.connect(gain);gain.connect(this.master);
+    tone.connect(gain);gain.connect(this.busFor('weapons'));
     hiss.buffer=this.impactBuffer;hiss.loop=true;filter.type='bandpass';filter.Q.value=.75;
     filter.frequency.setValueAtTime(1700,now);filter.frequency.exponentialRampToValueAtTime(3800,now+duration);
     hissGain.gain.setValueAtTime(.045,now);
@@ -65,7 +95,13 @@ export class Soundscape {
 
   clearFlights() { for(const voice of this.flights)this.stopFlight(voice); this.hexAudioStage=null;this.hexReturnUntil=0;this.hexAudioNext=0; }
 
+  // The hex state machine runs outside event dispatch, so it names its channel.
   updateHex(sim) {
+    this.currentBus = 'weapons';
+    try { return this.hexVoice(sim); } finally { this.currentBus = 'effects'; }
+  }
+
+  hexVoice(sim) {
     const time=sim.time;
     if(this.hexAudioStage==='spin'&&!sim.hexSpin)this.hexReturnUntil=time+.6;
     const stage=sim.hexSpin?'spin':sim.hexOrbs.length?'charge':time<(this.hexReturnUntil||0)?'return':null;
@@ -88,34 +124,36 @@ export class Soundscape {
     }
   }
 
-  tone(start, end, duration, volume, type = 'sine', delay = 0) {
+  tone(start, end, duration, volume, type = 'sine', delay = 0, bus) {
     if (!this.context || !this.enabled || this.context.state !== 'running') return;
     const ctx = this.context, now = ctx.currentTime + delay;
     const osc = ctx.createOscillator(), gain = ctx.createGain(); osc.type = type;
     osc.frequency.setValueAtTime(start, now); osc.frequency.exponentialRampToValueAtTime(Math.max(20, end), now + duration);
     gain.gain.setValueAtTime(.0001, now); gain.gain.exponentialRampToValueAtTime(volume, now + .006); gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
-    osc.connect(gain); gain.connect(this.master); osc.start(now); osc.stop(now + duration + .02);
+    osc.connect(gain); gain.connect(this.busFor(bus)); osc.start(now); osc.stop(now + duration + .02);
     osc.onended = () => { osc.disconnect(); gain.disconnect(); };
   }
 
-  noise(duration, volume, frequency = 700) {
+  noise(duration, volume, frequency = 700, bus) {
     if (!this.context || !this.enabled || this.context.state !== 'running') return;
     const ctx = this.context, now = ctx.currentTime;
     const noise = ctx.createBufferSource(); noise.buffer = this.noiseBuffer;
     const filter = ctx.createBiquadFilter(); filter.type = 'highpass'; filter.frequency.value = frequency;
     const gain = ctx.createGain(); gain.gain.setValueAtTime(volume, now); gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
-    noise.connect(filter); filter.connect(gain); gain.connect(this.master); noise.start(now, Math.random()); noise.stop(now + duration);
+    noise.connect(filter); filter.connect(gain); gain.connect(this.busFor(bus)); noise.start(now, Math.random()); noise.stop(now + duration);
     noise.onended = () => { noise.disconnect(); filter.disconnect(); gain.disconnect(); };
   }
 
-  impact(duration, volume, frequency) {
+  // `delay` comes last so the existing three- and four-argument calls are
+  // untouched; tone() takes its delay earlier for the same reason.
+  impact(duration, volume, frequency, bus, delay = 0) {
     if (!this.context || !this.enabled || this.context.state !== 'running') return;
-    const ctx = this.context, now = ctx.currentTime;
+    const ctx = this.context, now = ctx.currentTime + Math.max(0, delay);
     const source = ctx.createBufferSource(); source.buffer = this.impactBuffer;
     const filter = ctx.createBiquadFilter(); filter.type = 'bandpass'; filter.frequency.value = frequency; filter.Q.value = .7;
     const gain = ctx.createGain(); gain.gain.setValueAtTime(.0001, now);
     gain.gain.exponentialRampToValueAtTime(volume, now + .003); gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
-    source.connect(filter); filter.connect(gain); gain.connect(this.master); source.start(now, Math.random() * .5); source.stop(now + duration);
+    source.connect(filter); filter.connect(gain); gain.connect(this.busFor(bus)); source.start(now, Math.random() * .5); source.stop(now + duration);
     source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
   }
 
@@ -128,7 +166,7 @@ export class Soundscape {
     // A fast pressure crack, then a short decaying report; no pitched oscillator.
     gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(.20,now+.001);
     gain.gain.exponentialRampToValueAtTime(.055,now+.013);gain.gain.exponentialRampToValueAtTime(.0001,now+.105);
-    source.connect(high);high.connect(low);low.connect(gain);gain.connect(this.master);
+    source.connect(high);high.connect(low);low.connect(gain);gain.connect(this.busFor('weapons'));
     source.start(now,Math.random()*.5);source.stop(now+.11);
     source.onended=()=>{source.disconnect();high.disconnect();low.disconnect();gain.disconnect();};
     this.impact(.07,.11,380);
@@ -151,7 +189,17 @@ export class Soundscape {
     this.impact(.085,.045,2900);
   }
 
+  // Sounds a weapon makes, as opposed to sounds the world makes.
+  static WEAPON_EVENTS = new Set(['shotgunShot','shotgunReload','shotgunReloaded','shotgunStored',
+    'rifleShot','rifleReload','cock','grenadeWindup','grenadeThrow',
+    'sprayStart','sprayArc','hexDeploy','hexPulse','hexZap','hexFizzle','seed','launch']);
+
   event(e) {
+    this.currentBus = Soundscape.WEAPON_EVENTS.has(e.type) ? 'weapons' : 'effects';
+    try { this.dispatch(e); } finally { this.currentBus = 'effects'; }
+  }
+
+  dispatch(e) {
     if(e.type==='outgoingDamage'){
       const now=this.context?.currentTime??0;
       if(now-(this.lastDamageDing??-1)>.065){this.tone(1250,1190,.075,.032,'sine');this.tone(1875,1785,.055,.012,'sine',.012);this.lastDamageDing=now;}return;
@@ -176,7 +224,7 @@ export class Soundscape {
       this.impact(.065, e.firing ? .21 : .055, 1900);
       this.tone(e.firing ? 850 : 420, 170, .07, e.firing ? .08 : .025, 'sawtooth');
     }
-    if (e.type === 'dodge') { this.noise(.12, .13, 750); this.tone(130, 65, .09, .04, 'triangle'); }
+    if (e.type === 'dodge') this.dodgeWhoosh();
     if (e.type === 'hexZap') {
       const now = this.context?.currentTime ?? 0;
       if (now - (this.lastZap ?? -1) > .04) {
@@ -216,6 +264,16 @@ export class Soundscape {
       const now = this.context?.currentTime ?? 0;
       if (now - (this.lastBreak ?? -1) < .028) return;
       this.lastBreak = now;
+      if (e.propType === 'pot' || e.propType === 'pottedPlant') { this.pottery(e.dashed, e.propType === 'pottedPlant'); return; }
+      if (e.dashed) { this.dashSmash(e.propType); return; }
+      if (e.propType === 'brokenChair') {
+        // Dry joinery giving way: a crack, then the sticks landing.
+        this.impact(.05, .17, 2600); this.tone(340, 150, .06, .05, 'triangle');
+        this.impact(.04, .09, 1500, 'effects', .04);
+        for (let i = 0; i < 3; i++) this.impact(.03, .045, 900 + i * 400, 'effects', .07 + i * .05);
+        if (e.dashed) { this.impact(.09, .24, 430); this.tone(104, 44, .2, .1, 'triangle'); }
+        return;
+      }
       if (e.propType === 'barrel') {
         this.impact(.095, .19, 1100); this.tone(125, 65, .15, .1, 'triangle');
         this.tone(520, 360, .13, .04); this.tone(760, 520, .09, .02, 'sine', .032);
@@ -241,10 +299,102 @@ export class Soundscape {
     }
   }
 
+  // Pottery, which sounds like nothing else in the game: a hard ceramic ping
+  // rather than a thud, then the shards. The ping is a pair of high, close
+  // partials with almost no decay — clay is stiff and thin, so it rings and
+  // stops. Every other break here is a filtered noise burst with a low body
+  // under it, which is why they all read as wood or metal.
+  pottery(dashed = false, planted = false) {
+    const now = this.context?.currentTime ?? 0;
+    if (now - (this.lastPot ?? -1) < .03) return;
+    this.lastPot = now;
+    // The break itself: two inharmonic partials, struck and gone.
+    this.tone(2350, 1780, .045, .055, 'sine');
+    this.tone(3120, 2460, .035, .032, 'sine', .004);
+    this.tone(1480, 1180, .06, .04, 'triangle', .002);
+    // The crack: a short, bright, dry burst, not a woody snap.
+    this.impact(.035, .22, 3400);
+    this.impact(.055, .12, 2100);
+    // Just enough body that it sits on the floor rather than in the air.
+    this.tone(196, 132, .09, .035, 'sine', .01);
+    // The shards, scattering and settling. Randomised so two pots in a row
+    // never land identically.
+    for (let i = 0; i < 5; i++) {
+      const delay = .05 + i * .042 + Math.random() * .03;
+      this.impact(.022, .05 - i * .006, 2600 + Math.random() * 1700, 'effects', delay);
+      if (i < 3) this.tone(1900 + Math.random() * 900, 1300, .03, .018, 'sine', delay);
+    }
+    // A planted pot spills dry soil and brittle stems with it.
+    if (planted) { this.noise(.22, .07, 2400, 'effects'); this.impact(.07, .05, 1200, 'effects', .05); }
+    // Walked through rather than shot: the body arrives first.
+    if (dashed) { this.impact(.08, .2, 460); this.tone(98, 42, .17, .07, 'triangle'); this.noise(.24, .05, 760, 'effects'); }
+  }
+
+  // The dash reads as one stride's worth of effort rather than a separate
+  // effect: the same filtered-noise scuff as a footfall and the same low
+  // triangle under it, only longer, swept downward and given a scrape of grit
+  // on the tail. Played over the footfalls it sits with them instead of
+  // cutting across them.
+  dodgeWhoosh() {
+    this.noise(.2, .15, 620, 'effects');
+    this.noise(.1, .07, 1500, 'effects');
+    this.tone(150, 58, .17, .05, 'triangle');
+    this.tone(88, 42, .13, .035, 'sine', .035);
+    // The grit that gets kicked out behind the heel.
+    this.noise(.13, .05, 2600, 'effects');
+  }
+
+  // Dashing through something: the body arriving first, then the thing coming
+  // apart around it. A low thump lands before the debris, which is what makes
+  // it read as the player doing the breaking rather than a shot landing.
+  dashSmash(propType) {
+    const plant = propType === 'cactus' || propType === 'hay';
+    // Contact: the shoulder, not the projectile.
+    this.impact(.09, .3, 420);
+    this.tone(108, 46, .22, .13, 'triangle');
+    this.tone(64, 32, .26, .07, 'sine', .01);
+    if (plant) {
+      this.impact(.14, .12, 1500, 'effects');
+      this.noise(.16, .07, 2300, 'effects');
+      this.tone(210, 80, .11, .04, 'triangle', .03);
+    } else {
+      // Staves letting go, then the pieces landing a beat later.
+      this.impact(.1, .26, 1500);
+      this.tone(230, 120, .08, .06, 'triangle', .02);
+      this.tone(520, 300, .07, .03, 'triangle', .05);
+      // The pieces landing, a beat behind the break. Written out rather than
+      // routed through clatter(), which is rate-limited for debris showers and
+      // would swallow these.
+      for (let i = 0; i < 3; i++) {
+        this.impact(.035, .05, 1300 + i * 520, 'effects', .09 + i * .055);
+        this.tone(200 + i * 70, 90, .04, .022, 'triangle', .09 + i * .055);
+      }
+    }
+    // The dust that comes up afterwards, under everything else.
+    this.noise(.3, .06, 700, 'effects');
+  }
+
+  // Barely there: a breath of air, no pitch. A bird crossing overhead should be
+  // noticed at the edge of hearing, never mixed as an event.
+  wingbeat(species='finch'){
+   const now=this.context?.currentTime??0;
+   if(now-(this.lastWing||0)<.07)return;
+   this.lastWing=now;
+   const heavy=species==='vulture'||species==='crow';
+   this.noise(heavy?.12:.07,heavy?.016:.0105,heavy?520:1050,'ambient');
+   if(heavy)this.impact(.06,.006,190,'ambient');
+  }
   clatter(type) {
     const now = this.context?.currentTime ?? 0;
     if (now - (this.lastClatter || 0) < .055) return;
     this.lastClatter = now;
+    // A clay shard landing tings; a stave thuds. Same rate limit, different
+    // material, so a pot breaking keeps sounding like pottery as it settles.
+    if (type === 'clay') {
+      this.impact(.018, .028, 3000 + Math.random() * 1600);
+      this.tone(2100 + Math.random() * 800, 1500, .028, .016, 'sine');
+      return;
+    }
     this.impact(.03, type === 'plant' ? .013 : .035, 1100 + Math.random() * 800);
     if (type !== 'plant') this.tone(170 + Math.random() * 100, 75, .045, .028, 'triangle');
   }

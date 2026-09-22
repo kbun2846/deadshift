@@ -8,7 +8,10 @@ export function createMenuNavigation(){
   if(editing&&(!root.contains(editing)||document.activeElement!==editing||!visible(editing))){editing.removeAttribute('data-editing');editing=null;}
   const key=event.code,active=document.activeElement;
   if(root.contains(active)&&selectMenuFor(active)?.handleKey(event))return true;
-  if(active?.matches('input:not([type=checkbox]):not([type=radio]),textarea')&&key!=='Escape')return false;
+  // A range slider steps natively on horizontal arrows. Vertical arrows must
+  // still move between rows or the slider would trap keyboard focus.
+  if(active?.matches('input[type=range]')&&['ArrowLeft','ArrowRight'].includes(key))return false;
+  if(active?.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea')&&key!=='Escape')return false;
   if(!['KeyE','Enter','KeyQ','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(key))return false;
   event.preventDefault();
   if(event.repeat&&!key.startsWith('Arrow'))return true;
@@ -37,6 +40,31 @@ export function createMenuNavigation(){
     target?.focus();target?.scrollIntoView({block:'nearest'});return true;
    }
    const delta=key==='ArrowUp'||key==='ArrowLeft'?-1:1;
+   // The settings tab bar is one row: left and right move between sections,
+   // up and down drop into the panel the selected tab opened.
+   const tabBar=active?.closest('.settings-tabs');
+   if(tabBar&&root.contains(tabBar)){
+    const tabs=[...tabBar.querySelectorAll('button')].filter(visible);
+    if(key==='ArrowLeft'||key==='ArrowRight'){
+     const next=tabs[Math.max(0,Math.min(tabs.length-1,tabs.indexOf(active)+delta))];
+     next.focus();if(next.dataset.tab)next.click();
+     return true;
+    }
+    if(key==='ArrowDown'){
+     const body=root.querySelector('.settings-body');
+     const first=[...(body?.querySelectorAll('button,summary,select,input,[role=combobox]')||[])].filter(visible)[0];
+     if(first){first.focus();first.scrollIntoView({block:'nearest'});return true;}
+    }
+   }
+   // Coming back up out of the panel lands on the selected tab.
+   if(key==='ArrowUp'&&active?.closest('.settings-body')){
+    const body=active.closest('.settings-body');
+    const items=[...body.querySelectorAll('button,summary,select,input,a[href],[role=combobox]')].filter(visible);
+    if(items.indexOf(active)<=0){
+     const selected=root.querySelector('.settings-tabs [aria-selected=true]')||root.querySelector('.settings-tabs button');
+     if(selected){selected.focus();return true;}
+    }
+   }
    if(root.contains(active)&&(key==='ArrowLeft'||key==='ArrowRight')){
     if(active.tagName==='SELECT'){
      active.selectedIndex=Math.max(0,Math.min(active.options.length-1,active.selectedIndex+delta));

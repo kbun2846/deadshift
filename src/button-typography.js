@@ -25,7 +25,9 @@ export function installButtonTypography(root){
    // Fit actual letter ink, with the same slight edge crop as menu labels.
    svg.setAttribute('viewBox',`${box.x} ${Number(text.getAttribute('y'))-metrics.actualBoundingBoxAscent+inkHeight*.02} ${box.width} ${inkHeight*.96}`);
   }
-  for(const button of root.querySelectorAll('button:not(.map-choice)')){
+  // The stretched, cropped lettering is the game's display voice. Developer
+  // controls are not part of that surface, so they keep ordinary UI text.
+  for(const button of root.querySelectorAll('button:not(.map-choice):not(.plain-text):not(.dev-tools button):not(.dev-window button)')){
    if(!tracked.has(button)){tracked.add(button);resize.observe(button);}
    if(button.childNodes.length&&[...button.childNodes].every(n=>n.nodeType===Node.TEXT_NODE)){
     const label=document.createElement('span');label.className='button-label';label.textContent=button.textContent;button.replaceChildren(label);

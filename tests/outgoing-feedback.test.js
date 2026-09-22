@@ -46,8 +46,13 @@ test('one-shot sound extends the normal kill chime and hit ding remains restrain
  const sound=new Soundscape(),tones=[];sound.tone=(...args)=>tones.push(args);sound.impact=()=>{};sound.noise=()=>{};
  sound.event({type:'kill'});const ordinary=tones.length;tones.length=0;sound.event({type:'kill',oneShot:true});assert.ok(tones.length>ordinary);tones.length=0;sound.event({type:'outgoingDamage'});assert.equal(tones.length,2);assert.ok(tones.every(t=>t[3]<.05));
 });
-test('outgoing numbers report full entity damage but never show for destructible props',()=>{
- const s=make(),t={id:'target',hp:100,maxHp:100,x:2,z:0};s.hit(t,{damage:300,volley:9});assert.equal(t.hp,0);assert.equal(s.events.find(e=>e.type==='outgoingDamage').damage,300);
+test('outgoing numbers report the health actually lost, and never show for destructible props',()=>{
+ const s=make(),t={id:'target',hp:100,maxHp:100,x:2,z:0};s.hit(t,{damage:300,volley:9});assert.equal(t.hp,0);
+ // Overkill is clamped: the number on screen is never larger than the health
+ // the target had to give, which is the promise the HUD makes.
+ assert.equal(s.events.find(e=>e.type==='outgoingDamage').damage,100);
+ s.events=[];const u={id:'u',hp:100,maxHp:100,x:2,z:0};s.hit(u,{damage:40,volley:10});
+ assert.equal(s.events.find(e=>e.type==='outgoingDamage').damage,40,'a non-fatal hit still reports in full');
  for(const type of ['crate','barrel','cactus']){
   s.events=[];const prop={id:type,hp:20,x:3,z:0,type};
   s.hitProp(prop,{damage:5,x:3,z:0});assert.equal(prop.hp,15);

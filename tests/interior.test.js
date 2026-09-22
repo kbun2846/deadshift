@@ -51,7 +51,10 @@ test('the road-facing saloon window passes bullets but blocks walking', () => {
   assert.equal(sim.canAimAt(-4, -8), true);
   sim.seed(); sim.launch(-4, -8); step(sim, 35);
   const end = sim.events.find(e => e.type === 'trailEnd');
-  assert.ok(Math.abs(end.x + 4) < 1e-6 && Math.abs(end.z + 8) < 1e-6);
+  // The orb passes through the aim point and stops an overshoot beyond it, on
+  // the same ray: the window does not stop it and nothing clamps it short.
+  assert.ok(Math.abs(end.x - (-4 + RULES.launchOvershoot)) < 1e-6 && Math.abs(end.z + 8) < 1e-6,
+    `orb ended at ${end.x.toFixed(3)}, ${end.z.toFixed(3)}`);
   step(sim, 90, { moveX: 1 }); assert.ok(sim.player.x <= -7 - .19 - RULES.radius + .001);
   assert.equal(sim.roofId, 'saloon');
 });
@@ -84,3 +87,4 @@ test('spread orbs converge together on an angled wall and splash cannot reach th
  assert.equal(sim.targets[0].hp,100);
  assert.ok(sim.events.some(e=>e.type==='explosion'&&e.count===3));
 });
+

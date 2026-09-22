@@ -18,7 +18,7 @@ export const RULES = Object.freeze({
   maxSeeds: 12, seedInterval: .145, seedLife: 9, driftSpeed: .72,
   orbRadius: .15,
   hexCost: 10, hexFormationTime: .55, hexSpeed: 2.4, hexRange: 12, hexPulseRadius: 1.65, hexReach: 2.3, hexPulseDamage: boostedHexDamage(HEX_BASE_PULSE), hexEdgeDamage: boostedHexDamage(HEX_BASE_ZAP), hexSpinDuration: 1, hexCooldown: 30,
-  launchSpeed: 31, launchLife: 1.8, playerHealth: 500, targetHealth: 100, dummyHealth: 75, targetRespawn: 4.5,
+  launchSpeed: 31, launchLife: 1.8, launchOvershoot: .55, interceptCorridor: 1.1, playerHealth: 500, targetHealth: 100, dummyHealth: 75, targetRespawn: 4.5,
   rechargeDelay: .8, rechargeInterval: .65, stationaryRecharge: 1.25 * 1.18, focusDistance: 7,
 });
 
@@ -51,6 +51,17 @@ export function hexPulseDamageAt(power, distance) {
   const baseDamage=Math.round(power.damage / HEX_DAMAGE_MULTIPLIER);
   return boostedHexDamage(Math.round(baseDamage * (.25 + .75 * accuracy * accuracy)));
 }
+// Splash shape, kept separate from the blast's total so the volley budget the
+// damage curve is built on stays exactly where it was. `edge` is the fraction
+// still landing at the rim, and `heavyCore` is the extra a large volley adds at
+// the centre — a heavy shot should feel heavier where it actually lands.
+export const SPLASH = Object.freeze({ edge: .28, heavyCore: .06, heavyFrom: 4, heavyFull: 12 });
+export function splashFalloff(distance, radius, count = 0) {
+  if (!(radius > 0) || distance > radius) return 0;
+  const heavy = Math.max(0, Math.min(1, (count - SPLASH.heavyFrom) / (SPLASH.heavyFull - SPLASH.heavyFrom)));
+  return (1 - (1 - SPLASH.edge) * distance / radius) * (1 + SPLASH.heavyCore * heavy);
+}
+
 export function explosionFor(count) {
   if (count < 2) return null;
   const power = (Math.min(12, count) - 2) / 10;
@@ -102,7 +113,11 @@ export class Simulation {
     resetGrenades(this);
     this.time = 0; this.serial = 0; this.volley = 0; this.shots = []; this.hexOrbs = []; this.hexSpin = null; this.hexCooldown = 0; this.events = [];
     this.player = { id: 'local', team: 0, ...this.map.spawn, vx: 0, vz: 0, aimX: 1, aimZ: 0, hp: RULES.playerHealth, maxHp: RULES.playerHealth,
-      dodgeRemaining: 0, stamina: this.maxStamina, staminaWait: 0, dodgeX: 0, dodgeZ: 0, dead:false, blastVX:0, blastVZ:0, ballastLaunch:false };
+      dodgeRemaining: 0, stamina: 0, staminaWait: 0, dodgeX: 0, dodgeZ: 0, dead:false, blastVX:0, blastVZ:0, ballastLaunch:false };
+    // Filled after the player exists, because maxStamina reads this.weapon and
+    // the constructor calls reset() before any weapon has been chosen — which
+    // is why a fresh Nominal sim used to start on two charges instead of three.
+    this.player.stamina = this.maxStamina;
     this.targets = this.map.targets.map(t => {
       const maxHp = t.maxHp ?? (t.kind === 'dummy' ? RULES.dummyHealth : RULES.targetHealth);
       return { ...t, baseX: t.x, spawnX: t.x, spawnZ: t.z, hp: maxHp, maxHp, respawn: 0, flash: 0 };
@@ -118,6 +133,10 @@ export class Simulation {
 
   get seeds() { return this.shots.filter(s => !s.launched); }
   get maxStamina(){return this.weapon==='shotgun'?1:this.weapon==='rifle'?RIFLE.maxStamina:RULES.maxStamina;}
+  // Nominal has no self-movement of its own, so holding a position is the one
+  // thing it trades for. Standing still pays it back in dodges, matching the
+  // stationary bonus Static already gets on its ammo pool.
+  get staminaRate(){return this.weapon==='rifle'&&Math.hypot(this.player.vx,this.player.vz)<.15?RIFLE.stationaryStamina:1;}
   get rechargeRate() { return Math.hypot(this.player.vx, this.player.vz) < .15 ? RULES.stationaryRecharge : 1; }
   get rechargeInterval() { return RULES.rechargeInterval / (this.firstRefill ? 1.4 : 1); }
   get interior() { return this.map.buildings.find(b => buildingContains(b, this.player)) || null; }
@@ -160,14 +179,18 @@ export class Simulation {
     const wasDodging = p.dodgeRemaining > 0;
     p.dodgeRemaining = Math.max(0, p.dodgeRemaining - dt);
     const staminaWaiting = Math.min(dt, p.staminaWait); p.staminaWait -= staminaWaiting;
-    p.stamina = Math.min(this.maxStamina, p.stamina + (dt - staminaWaiting) / RULES.staminaRecharge);
+    p.stamina = Math.min(this.maxStamina, p.stamina + (dt - staminaWaiting) * this.staminaRate / RULES.staminaRecharge);
     const length = Math.hypot(input.moveX || 0, input.moveZ || 0);
     const ix = length ? (input.moveX || 0) / Math.max(1, length) : 0;
     const iz = length ? (input.moveZ || 0) / Math.max(1, length) : 0;
-    const moveSpeed=RULES.speed*((this.weapon==='rifle'||this.weapon==='shotgun')&&input.aiming?RIFLE.aimMoveMultiplier:1);
+    const moveSpeed=RULES.speed*(input.aiming?RIFLE.aimMoveMultiplier:1);
     if (wasDodging && !p.dodgeRemaining) { p.vx = ix * moveSpeed; p.vz = iz * moveSpeed; }
     if (input.dodge && !p.dodgeRemaining && p.stamina + 1e-8 >= RULES.dodgeStaminaCost && p.hp > 0) {
-      const speed = Math.hypot(p.vx, p.vz), dx = length ? ix : speed > .5 ? p.vx / speed : 0, dz = length ? iz : speed > .5 ? p.vz / speed : 0;
+      // Movement input first, then whatever momentum is left, and failing both
+      // the way the player is facing: standing still and hitting dodge used to
+      // do nothing at all, which reads as the input being dropped.
+      const speed = Math.hypot(p.vx, p.vz);
+      const dx = length ? ix : speed > .5 ? p.vx / speed : p.aimX, dz = length ? iz : speed > .5 ? p.vz / speed : p.aimZ;
       const magnitude = Math.hypot(dx, dz);
       if (magnitude > .01) {
         p.dodgeX = dx / magnitude; p.dodgeZ = dz / magnitude;
@@ -232,24 +255,55 @@ export class Simulation {
         const speed=(38-20*Math.exp(-t/.12))/launchDistance(s.travelDuration);
         s.vx=(s.targetX-s.launchX)*speed;s.vz=(s.targetZ-s.launchZ)*speed;
       }
-      let first = 2, target = null, prop = null;
+      let first = 2, target = null, prop = null, aimedTarget = false;
+      // Breakable scenery does not stop a launched orb outright: the orb pays
+      // for it out of a pierce budget worth one orb. Clearing something costs
+      // its remaining health, so a barrel is punched through and the orb carries
+      // on lighter. What it can no longer pay for in full takes whatever is left
+      // and stops it there. Nearest first, so the order is the order it meets them.
+      const pierced = s.launched ? [] : null;
+      const seen = s.launched ? new Set() : null;
       for (const box of this.colliders) {
         if (box.playerOnly) continue;
-        const aimedInside = s.launched && box.destructible && inside({ x: s.targetX, z: s.targetZ }, box);
-        if (aimedInside && s.age + 1e-8 < s.travelDuration) continue;
-        const t = aimedInside ? 1 : segmentBox(s.x, s.z, nx, nz, box, .09);
+        if (s.launched && box.destructible) {
+          const t = segmentBox(s.x, s.z, nx, nz, box, .09);
+          // A prop can carry several collision boxes; the nearest one is its contact.
+          if (t !== null && !seen.has(box.propId)) { seen.add(box.propId); pierced.push({ t, id: box.propId }); }
+          continue;
+        }
+        const t = segmentBox(s.x, s.z, nx, nz, box, .09);
         if (t !== null && t < first) { first = t; target = null; prop = this.props.find(p => p.id === box.propId) || null; }
       }
       for (const candidate of this.targets) {
         if (candidate.hp <= 0) continue;
-        const aimedInside = s.launched && Math.hypot(s.targetX - candidate.x, s.targetZ - candidate.z) <= .66;
+        // Intent is measured against the aim point, not the overshot one.
+        const aimedInside = s.launched && Math.hypot(s.focusX - candidate.x, s.focusZ - candidate.z) <= .66;
         if (aimedInside && s.age + 1e-8 < s.travelDuration) continue;
         const t = aimedInside ? 1 : segmentCircle(s.x, s.z, nx, nz, candidate.x, candidate.z, .66);
-        if (t !== null && t < first) { first = t; target = candidate; prop = null; }
+        if (t !== null && t < first) { first = t; target = candidate; prop = null; aimedTarget = aimedInside; }
       }
-      if (first <= 1) {
+      let spent = null;
+      if (pierced) {
+        pierced.sort((a, b) => a.t - b.t);
+        for (const { t, id } of pierced) {
+          if (t >= first) break;
+          const broken = this.props.find(item => item.id === id);
+          if (!broken || broken.hp <= 0) continue;
+          const paid = Math.min(s.pierceBudget, broken.hp);
+          const stops = broken.hp > s.pierceBudget;
+          this.hitProp(broken, { electric: true, damage: paid, x: broken.x, z: broken.z, vx: s.vx, vz: s.vz });
+          s.pierceBudget -= paid;
+          if (stops || s.pierceBudget <= 1e-8) { spent = t; break; }
+        }
+      }
+      // Out of budget: the orb ends at the thing it could not get through.
+      if (spent !== null) {
+        s.x += (nx - s.x) * spent; s.z += (nz - s.z) * spent;
+        s.dead = true;
+        this.events.push({ type: 'impactMark', x: s.x, z: s.z, vx: s.vx, vz: s.vz });
+      } else if (first <= 1) {
         s.x += (nx - s.x) * first; s.z += (nz - s.z) * first;
-        if(s.launched && s.baseDamage!==undefined)s.damage=rangedOrbDamage(s.baseDamage,Math.hypot(s.x-s.launchX,s.z-s.launchZ),s.orbDamageScale);
+        if (s.launched) s.damage = aimedTarget ? this.orbVolleyDamage(s) : s.strayDamage;
         s.dead = true;
         if (s.launched) this.events.push({ type: 'impactMark', x: s.x, z: s.z, vx: s.vx, vz: s.vz });
         if (target && s.launched) this.hit(target, s);
@@ -281,6 +335,40 @@ export class Simulation {
     for (const id of this.volleyKills.keys()) if (!this.shots.some(s => s.volley === id)) this.volleyKills.delete(id);
   }
 
+  // Anything breakable the player actually reaches comes apart. The same
+  // overlap test the collision passes use, so it breaks exactly what it would
+  // otherwise have bounced off — never something it merely passed near.
+  //
+  // `underfoot` is the walking case: floor clutter is stepped through and
+  // crushed, because a pot that a running body passes straight through and
+  // leaves standing reads as scenery painted on the floor. Solid scenery is
+  // only broken by a dash, which is the deliberate act.
+  crushDodged(underfoot = false) {
+    const p = this.player, r = RULES.radius;
+    let hit = null;
+    for (const b of this.colliders) {
+      if (!b.destructible) continue;
+      if (underfoot && !b.walkOver) continue;
+      if (Math.abs(p.x - b.x) > b.w / 2 + r || Math.abs(p.z - b.z) > b.d / 2 + r) continue;
+      const angle = b.localW !== undefined ? (b.angle || 0) : 0, c = Math.cos(angle), s = Math.sin(angle);
+      const px = (p.x - b.x) * c - (p.z - b.z) * s, pz = (p.x - b.x) * s + (p.z - b.z) * c;
+      const left = -(b.localW ?? b.w) / 2, top = -(b.localD ?? b.d) / 2;
+      const cx = Math.max(left, Math.min(-left, px)), cz = Math.max(top, Math.min(-top, pz));
+      if (Math.hypot(px - cx, pz - cz) >= r - 1e-8) continue;
+      const prop = this.props.find(v => v.id === b.propId);
+      if (prop && prop.hp !== null && prop.hp > 0) { hit = prop; break; }
+    }
+    if (!hit) return;
+    // Thrown the way the player was going, not away from the impact point: the
+    // player is the thing doing the breaking, and the debris follows them
+    // through. Walking uses velocity; a dash uses the committed roll heading,
+    // which is steadier than the velocity it produces.
+    const [ax, az] = underfoot ? [p.vx, p.vz] : [p.dodgeX, p.dodgeZ];
+    const length = Math.hypot(ax, az) || 1;
+    this.hitProp(hit, { damage: hit.hp, x: hit.x, z: hit.z,
+      vx: ax / length, vz: az / length, dashed: !underfoot });
+  }
+
   movePlayer(dx, dz) {
     const p = this.player, r = RULES.radius;
     const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / (r * .5)));
@@ -289,6 +377,12 @@ export class Simulation {
       p.x += dx / steps; p.z += dz / steps;
       confinePlayableMovement(this.map,p,previousX,previousZ,r);
       this.confineToHex(previousX, previousZ);
+      // Resolved before the collision passes: a dodge takes the scenery with
+      // it instead of stopping on it, so the roll keeps the line the player
+      // committed to. Solid cover is untouched and still stops them dead.
+      // Floor clutter breaks under an ordinary stride as well.
+      if (p.dodgeRemaining > 0) this.crushDodged();
+      else if (p.hp > 0) this.crushDodged(true);
       // Resolve only the local circle/rectangle penetration. In particular,
       // touching a long horizontal fence must never snap x to its far end.
       for (let pass = 0; pass < 3; pass++) {
@@ -304,6 +398,8 @@ export class Simulation {
           if(inward<0){p.vx-=inward*nx;p.vz-=inward*nz;}
         }
         for (const b of this.colliders) {
+        // Floor clutter is stepped over, not walked into.
+        if(b.walkOver)continue;
         if(Math.abs(p.x-b.x)>b.w/2+r || Math.abs(p.z-b.z)>b.d/2+r)continue;
         const angle=b.localW!==undefined?(b.angle||0):0,c=Math.cos(angle),s=Math.sin(angle);
         const px=(p.x-b.x)*c-(p.z-b.z)*s,pz=(p.x-b.x)*s+(p.z-b.z)*c;
@@ -449,22 +545,99 @@ export class Simulation {
       }
     }
     const volley = ++this.volley;
-    const duration = launchDuration(Math.max(...seeds.map(s => Math.hypot(x - s.x, z - s.z))));
-    // One roll per full volley, shared by every orb: 190–210 impact + 145 blast.
-    const damage = isQuickShot ? 6 : damagePerOrb(seeds.length)+(seeds.length===12?(Math.random()*20-10)/12:0);
+    // Orbs are thrown slightly past the aim point, so they travel through what
+    // was pointed at instead of stopping against its near face. Only the
+    // convergence point moves; the blast still centres on the cursor, and a
+    // shot already clamped to a wall face is left exactly where it was.
+    const overshootFrom = (fx, fz) => {
+      const reach = Math.hypot(fx - p.x, fz - p.z);
+      if (wallFocus || reach <= 1e-6) return { x: fx, z: fz };
+      let tx = fx + (fx - p.x) / reach * RULES.launchOvershoot;
+      let tz = fz + (fz - p.z) / reach * RULES.launchOvershoot;
+      // Never overshoot through solid cover standing just behind the target.
+      let clear = 1;
+      for (const box of this.colliders) {
+        if (box.playerOnly || box.destructible) continue;
+        const t = segmentBox(fx, fz, tx, tz, box, .1);
+        if (t !== null) clear = Math.min(clear, Math.max(0, t - .00001));
+      }
+      return { x: fx + (tx - fx) * clear, z: fz + (tz - fz) * clear };
+    };
+    let travel = overshootFrom(x, z);
+    // A volley thrown past a target still meets it: every orb's path crosses it
+    // on the way in, so that crossing is where the volley belongs. Re-focus on
+    // the earliest one so the orbs converge there and it takes the combined
+    // impact and blast, instead of each orb clipping it for a stray apiece.
+    // Only when nothing was aimed at in the first place, and only for a target
+    // the caster can actually see.
+    const aimedAt = this.targets.some(t => t.hp > 0 && Math.hypot(x - t.x, z - t.z) <= .66);
+    const aimDistance = Math.hypot(x - p.x, z - p.z);
+    if (!aimedAt && aimDistance > 1e-6) {
+      // "Thrown past" means on the line of fire, between the caster and the aim
+      // point. Orbs parked beside a target cross it whichever way they are then
+      // thrown, so a crossing alone is not evidence the volley was aimed
+      // through anything: the target has to stand in the way from here.
+      const dirX = (x - p.x) / aimDistance, dirZ = (z - p.z) / aimDistance;
+      let intercept = null;
+      for (const candidate of this.targets) {
+        if (candidate.hp <= 0) continue;
+        const toX = candidate.x - p.x, toZ = candidate.z - p.z;
+        const along = toX * dirX + toZ * dirZ;
+        if (along <= 0 || along >= aimDistance) continue;
+        if (Math.abs(toX * dirZ - toZ * dirX) > RULES.interceptCorridor) continue;
+        if (this.colliders.some(b => !b.playerOnly && !b.destructible && segmentBox(p.x, p.z, candidate.x, candidate.z, b) !== null)) continue;
+        let earliest = Infinity, crossing = 0;
+        for (const seed of seeds) {
+          const t = segmentCircle(seed.x, seed.z, travel.x, travel.z, candidate.x, candidate.z, .66);
+          if (t !== null) { crossing++; earliest = Math.min(earliest, t); }
+        }
+        if (crossing && along < (intercept?.along ?? Infinity)) intercept = { candidate, earliest, along };
+      }
+      if (intercept) {
+        x = intercept.candidate.x; z = intercept.candidate.z;
+        travel = overshootFrom(x, z);
+      }
+    }
+    const travelX = travel.x, travelZ = travel.z;
+    const duration = launchDuration(Math.max(...seeds.map(s => Math.hypot(travelX - s.x, travelZ - s.z))));
     for (const s of seeds) {
-      s.vx = (x - s.x) / duration; s.vz = (z - s.z) / duration;
-      s.launched = true; s.age = 0; s.volley = volley; s.damage = damage;
-      s.launchX=s.x;s.launchZ=s.z;s.baseDamage=damage;s.orbDamageScale=isQuickShot?1:seeds.length<=3?ORB_DAMAGE_MULTIPLIER:0;
+      s.vx = (travelX - s.x) / duration; s.vz = (travelZ - s.z) / duration;
+      s.launched = true; s.age = 0; s.volley = volley;
+      s.launchX=s.x;s.launchZ=s.z;
+      // A stray is worth one orb, whatever the volley behind it was worth.
+      s.strayDamage = isQuickShot ? 6 : damagePerOrb(1);
+      s.damage = s.strayDamage; s.quickShot = isQuickShot;
+      // Spent on breakable scenery, never on the target it was aimed at.
+      s.pierceBudget = s.strayDamage;
       s.wallFocus=wallFocus;
-      s.phase = 'converging'; s.travelDuration = duration; s.targetX = x; s.targetZ = z;
+      // The aim point decides intent; the travel point decides where it flies.
+      s.focusX = x; s.focusZ = z;
+      s.phase = 'converging'; s.travelDuration = duration; s.targetX = travelX; s.targetZ = travelZ;
     }
     this.stats.launched += seeds.length; this.seedCooldown = .15;
     this.rechargeWait = RULES.rechargeDelay; this.rechargeProgress = 0;
     this.volleyKills.set(volley, 0);
     this.volleys.set(volley, { x, z, remaining: seeds.length, arrived: 0 });
     this.events.push({ type: 'launch', x: p.x, z: p.z, count: seeds.length, aimX: p.aimX, aimZ: p.aimZ,
-      duration, focusX: x, focusZ: z, paths: seeds.map(s => ({ id: s.id, x: s.x, z: s.z })), damage: damage * seeds.length });
+      duration, focusX: x, focusZ: z, travelX, travelZ, paths: seeds.map(s => ({ id: s.id, x: s.x, z: s.z })),
+      // Best case for this volley: what it is worth if every orb lands.
+      damage: (isQuickShot ? 6 : damagePerOrb(seeds.length)) * seeds.length });
+  }
+
+  // A volley is worth what lands, not what was fired. The count is taken once,
+  // on the first arrival: orbs stopped short are already dead and excluded, and
+  // every orb of the volley then shares that same figure.
+  orbVolleyDamage(shot) {
+    const volley = this.volleys.get(shot.volley);
+    if (!volley) return shot.strayDamage;
+    if (shot.quickShot) return 6;
+    if (volley.landed === undefined) {
+      volley.landed = Math.max(1, volley.remaining);
+      volley.roll = volley.landed === 12 ? (Math.random() * 20 - 10) / 12 : 0;
+    }
+    const base = damagePerOrb(volley.landed) + volley.roll;
+    const scale = volley.landed <= 3 ? ORB_DAMAGE_MULTIPLIER : 0;
+    return rangedOrbDamage(base, Math.hypot(shot.x - shot.launchX, shot.z - shot.launchZ), scale);
   }
 
   recharge(dt) {
@@ -701,8 +874,12 @@ export class Simulation {
     const fullHealth=target.hp>=target.maxHp-1e-8;
     if(fullHealth||target.oneShotVolley!==shot.volley||this.time-(target.oneShotAt??-1)>.15){target.oneShotEligible=fullHealth;target.oneShotVolley=shot.volley;target.oneShotAt=this.time;}
     const oneShot=fullHealth&&shot.damage>=target.hp||shot.volley!=null&&target.oneShotEligible&&target.oneShotVolley===shot.volley&&this.time-target.oneShotAt<=.15;
+    // What landed, not what was fired: overkill must not reach the HUD, which
+    // promises a figure no larger than the health actually lost. The player
+    // side already clamped; the target side did not.
+    const dealt = Math.min(target.hp, shot.damage);
     target.hp = Math.max(0, target.hp - shot.damage);
-    if(!shot.environmental)this.events.push({type:'outgoingDamage',damage:shot.damage,hp:target.hp,maxHp:target.maxHp,x:target.x,z:target.z,id:target.id,volley:shot.volley});
+    if(!shot.environmental)this.events.push({type:'outgoingDamage',damage:dealt,hp:target.hp,maxHp:target.maxHp,x:target.x,z:target.z,id:target.id,volley:shot.volley});
     if (!shot.environmental) { target.flash = .16; this.stats.hits++; }
     const killed = target.hp <= 0;
     if (killed) {
@@ -744,7 +921,10 @@ export class Simulation {
   applyBlastKnockback(x,z,radius,strength,coreRadius=0){
     const p=this.player;if(p.dead||p.hp<=0||strength<=0)return;
     const dx=p.x-x,dz=p.z-z,distance=Math.hypot(dx,dz);if(distance>radius)return;
-    const falloff=1-.85*Math.max(0,(distance-coreRadius)/(radius-coreRadius));
+    // A core as wide as the blast leaves no falloff band to interpolate over;
+    // dividing by it would make the impulse NaN and throw the player nowhere.
+    const band=radius-coreRadius;
+    const falloff=1-.85*(band>1e-9?Math.max(0,(distance-coreRadius)/band):0);
     const impulse=strength*falloff*8;
     p.blastVX+=(distance>1e-6?dx/distance:-p.aimX)*impulse;
     p.blastVZ+=(distance>1e-6?dz/distance:-p.aimZ)*impulse;
@@ -768,7 +948,7 @@ export class Simulation {
       this.stats.propsDestroyed++;
     }
     this.events.push({ type: prop.hp === 0 ? 'propBreak' : 'propHit', id: prop.id,
-      electric:!!shot.electric, propType: prop.type, x: prop.hp === 0 ? prop.x : shot.x, z: prop.hp === 0 ? prop.z : shot.z,
+      electric:!!shot.electric, dashed:!!shot.dashed, propType: prop.type, x: prop.hp === 0 ? prop.x : shot.x, z: prop.hp === 0 ? prop.z : shot.z,
       directionX: shot.vx || 0, directionZ: shot.vz || 0, scale: prop.scale || 1 });
   }
 
@@ -781,7 +961,7 @@ export class Simulation {
       const distance = Math.hypot(victim.x - x, victim.z - z);
       if (distance > blast.radius) return 0;
       if (cover.some(box => !box.playerOnly && box.propId !== propId && segmentBox(x, z, victim.x, victim.z, box) !== null)) return 0;
-      return Math.max(1, Math.round(blast.damage * (1 - .75 * distance / blast.radius)));
+      return Math.max(1, Math.round(blast.damage * splashFalloff(distance, blast.radius, volley.arrived)));
     };
     const selfDamage=damageAt(this.player,null);
     if(selfDamage){

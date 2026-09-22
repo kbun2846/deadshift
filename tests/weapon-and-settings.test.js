@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation, RULES, damagePerOrb, explosionFor } from '../src/simulation.js';
 import { deadwater } from '../src/maps.js';
-import { GRAPHICS, RenderBudget, validateSettings } from '../src/settings.js';
+import { GRAPHICS, RenderBudget, validateSettings, DEFAULT_SETTINGS } from '../src/settings.js';
 
 const empty = () => ({ width: 100, depth: 100, spawn: { x: 0, z: 0 }, buildings: [], props: [], fences: [], targets: [] });
 const command = extra => ({ moveX: 0, moveZ: 0, aimX: 1, aimZ: 0, ...extra });
@@ -33,7 +33,10 @@ test('orbs hit the same selected point inside a target', () => {
   sim.launch(4.1, 2.1); step(sim, 60);
   const ends = sim.events.filter(e => e.type === 'trailEnd');
   assert.equal(ends.length, 4);
-  for (const end of ends) { close(end.x, 4.1); close(end.z, 2.1); }
+  // They still meet at one point; that point now sits an overshoot past the aim.
+  const reach = Math.hypot(4.1, 2.1), overshoot = RULES.launchOvershoot;
+  const meetX = 4.1 + 4.1 / reach * overshoot, meetZ = 2.1 + 2.1 / reach * overshoot;
+  for (const end of ends) { close(end.x, meetX); close(end.z, meetZ); }
   const splash = Math.round(explosionFor(4).damage * (1 - .75 * Math.hypot(.1, .1) / explosionFor(4).radius));
   close(sim.targets[0].hp, 100 - 4 * damagePerOrb(4) - splash);
 });
@@ -99,16 +102,22 @@ test('render caps produce the requested frame count independently of simulation 
 
 test('graphics tiers change resolution, shadow work, texture detail and effect budgets', () => {
   assert.equal(validateSettings({controlHints:false}).controlHints,false);
-  assert.deepEqual(validateSettings({quality:'potato',fps:1}),{quality:'potato',fps:1,motion:true,controlHints:true,mobileOpacity:.4});
+  assert.deepEqual(validateSettings({quality:'potato',fps:1}),{quality:'potato',fps:1,motion:true,controlHints:true,mobileOpacity:.4,volume:{...DEFAULT_SETTINGS.volume}});
   assert.ok(GRAPHICS.potato.scale < GRAPHICS.performance.scale);
   assert.equal(GRAPHICS.potato.motes, 0);
   assert.ok(GRAPHICS.potato.particleCap < GRAPHICS.performance.particleCap);
   assert.ok(GRAPHICS.performance.scale < GRAPHICS.balanced.scale);
-  assert.equal(GRAPHICS.performance.shadows, 0);
+  assert.equal(GRAPHICS.potato.shadows, 0);
+  assert.ok(GRAPHICS.performance.shadows > 0 && GRAPHICS.performance.shadows < GRAPHICS.balanced.shadows);
   assert.ok(GRAPHICS.quality.shadows > GRAPHICS.balanced.shadows);
+  // Multisampling is a context flag chosen once, so the lower tiers spend the
+  // same budget on render scale instead.
+  assert.equal(GRAPHICS.potato.antialias, false);
+  assert.equal(GRAPHICS.performance.antialias, false);
+  assert.ok(GRAPHICS.balanced.antialias && GRAPHICS.quality.antialias);
   assert.ok(GRAPHICS.performance.texture < GRAPHICS.balanced.texture && GRAPHICS.balanced.texture < GRAPHICS.quality.texture);
   assert.ok(GRAPHICS.performance.particleCap < GRAPHICS.quality.particleCap);
-  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', fps: 60, motion: false, controlHints: true, mobileOpacity: .4 });
+  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', fps: 60, motion: false, controlHints: true, mobileOpacity: .4, volume: {...DEFAULT_SETTINGS.volume} });
 });
 
 test('mobile opacity accepts saved presets and rejects invalid values',()=>{

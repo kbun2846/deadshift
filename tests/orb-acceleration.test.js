@@ -1,16 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Simulation,launchDistance,launchDuration,rangedOrbDamage,damagePerOrb,explosionFor,ORB_VOLLEY_TOTALS,ORB_DAMAGE_MULTIPLIER} from '../src/simulation.js';
+import {Simulation,launchDistance,launchDuration,rangedOrbDamage,damagePerOrb,explosionFor,splashFalloff,ORB_VOLLEY_TOTALS,ORB_DAMAGE_MULTIPLIER} from '../src/simulation.js';
 const map={width:100,depth:100,spawn:{x:0,z:0},buildings:[],props:[],fences:[],targets:[]};
 test('small volleys scale down proportionally and quick shot stays unchanged',()=>{
  for(let count=1;count<=3;count++){
   const oldBase=count===1?8:Math.round(8+16*((count-1)/11)**1.5);
-  const sim=new Simulation(map);for(let i=0;i<count;i++)sim.seed();sim.launch(20,0);
-  assert.ok(sim.shots.every(s=>s.damage===oldBase*ORB_DAMAGE_MULTIPLIER));
   for(const distance of [0,6,12,18,24,40]){
    const oldDamage=Math.round(oldBase*(1+.2*Math.max(0,Math.min(1,(distance-6)/18))));
    assert.equal(rangedOrbDamage(damagePerOrb(count),distance),oldDamage*ORB_DAMAGE_MULTIPLIER);
   }
+  // Damage is settled on arrival now, so an orb in flight carries only what a
+  // stray is worth; the volley figure appears when it lands on its target.
+  const sim=new Simulation({...map,targets:[{id:'a',x:5,z:0,maxHp:1000}]});
+  for(let i=0;i<count;i++)sim.seed();
+  sim.launch(5,0);
+  assert.ok(sim.shots.every(s=>s.damage===damagePerOrb(1)),`volley of ${count} baked its damage in early`);
+  for(let i=0;i<120;i++)sim.step({});
+  const landed=sim.events.filter(e=>e.type==='outgoingDamage').slice(0,count);
+  assert.equal(landed.length,count,`all ${count} orbs should reach the target`);
+  for(const hit of landed)assert.ok(Math.abs(hit.damage-oldBase*ORB_DAMAGE_MULTIPLIER)<1e-6,
+   `each landed orb of ${count} should be worth ${oldBase*ORB_DAMAGE_MULTIPLIER}, got ${hit.damage}`);
  }
  const quick=new Simulation(map);quick.launch(20,0,true);quick.step({});
  assert.equal(quick.shots[0].damage,6);
@@ -36,9 +45,14 @@ test('combined volley budgets ramp after three and full hits vary from 335 to 35
   t.mock.method(Math,'random',()=>roll);
   const sim=new Simulation({...map,targets:[{id:'center',x:distance,z:0,maxHp:1000}]});
   for(let i=0;i<12;i++)sim.seed();sim.launch(distance,0);
-  assert.ok(sim.shots.every(s=>s.orbDamageScale===0));
+  // A full volley in flight is still only worth a stray apiece until it lands.
+  assert.ok(sim.shots.every(s=>s.damage===damagePerOrb(1)));
   for(let i=0;i<120;i++)sim.step({});
-  assert.ok(Math.abs((1000-sim.targets[0].hp)-(335+20*roll))<1e-6);
+  // The band rises by the heavy core the blast now adds at its centre.
+  const bump=Math.round(explosionFor(12).damage*splashFalloff(0,explosionFor(12).radius,12))-explosionFor(12).damage;
+  assert.ok(Math.abs((1000-sim.targets[0].hp)-(335+bump+20*roll))<1e-6,
+   `dealt ${1000-sim.targets[0].hp}, expected ${335+bump+20*roll}`);
+  assert.ok(bump>0&&bump<explosionFor(12).damage*.1,'the increase should be slight');
   assert.equal(sim.events.find(e=>e.type==='explosion').damage,145);
   t.mock.restoreAll();
  }

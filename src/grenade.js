@@ -11,7 +11,12 @@ export function stepGrenades(sim,input,dt,segmentBox){
   const targetX=Math.max(-sim.map.width/2+.2,Math.min(sim.map.width/2-.2,p.x+dx*scale));
   const targetZ=Math.max(-sim.map.depth/2+.2,Math.min(sim.map.depth/2-.2,p.z+dz*scale));
   const travel=Math.hypot(targetX-x,targetZ-z);
-  sim.grenades.push({id:++sim.serial,x,z,y:.85,startX:x,startZ:z,targetX,targetZ,age:0,flight:Math.min(.95,.32+travel*.04),arc:Math.min(3.1,1+travel*.15,sim.interior?Math.max(.3,sim.interior.height-1.2):4),released:false,blocked:false});
+  // Two ids on purpose. `id` is serial identity, which the renderer keys its
+ // model map by; `volley` comes from the shared volley counter, which is what
+ // the one-shot bookkeeping and the merged damage numbers group on. Reusing
+ // the serial for both let a grenade collide with an unrelated rifle bullet's
+ // volley and be read as a single shot.
+ sim.grenades.push({id:++sim.serial,volley:++sim.volley,x,z,y:.85,startX:x,startZ:z,targetX,targetZ,age:0,flight:Math.min(.95,.32+travel*.04),arc:Math.min(3.1,1+travel*.15,sim.interior?Math.max(.3,sim.interior.height-1.2):4),released:false,blocked:false});
   sim.grenadeCooldown=GRENADE.cooldown;sim.grenadeThrowTime=sim.time;
   sim.events.push({type:'grenadeWindup',x:p.x,z:p.z});
  }
@@ -34,11 +39,11 @@ export function stepGrenades(sim,input,dt,segmentBox){
    const damage=grenadeDamage(Math.hypot(victim.x-g.x,victim.z-g.z));
    return damage&&!cover.some(b=>!b.playerOnly&&b.propId!==propId&&segmentBox(g.x,g.z,victim.x,victim.z,b)!==null)?damage:0;
   };
-  for(const target of sim.targets){const damage=target.hp>0?damageAt(target):0;if(damage)sim.hit(target,{damage,volley:g.id,vx:target.x-g.x,vz:target.z-g.z});}
+  for(const target of sim.targets){const damage=target.hp>0?damageAt(target):0;if(damage)sim.hit(target,{damage,volley:g.volley,vx:target.x-g.x,vz:target.z-g.z});}
   for(const prop of sim.props){const damage=prop.hp>0?damageAt(prop,prop.id):0;if(damage)sim.hitProp(prop,{damage,x:prop.x,z:prop.z,vx:prop.x-g.x,vz:prop.z-g.z});}
   const selfDamage=damageAt(p);if(selfDamage){sim.damagePlayer(selfDamage,p.id,false,true,{x:p.x-g.x,z:p.z-g.z},'explosion');sim.applyBlastKnockback(g.x,g.z,GRENADE.radius,2.8,GRENADE.coreRadius);}
   cropCircle(sim,g,GRENADE.radius,false,(a,b)=>!cover.some(c=>!c.playerOnly&&segmentBox(a.x,a.z,b.x,b.z,c)!==null));
-  sim.volleyKills.delete(g.id);g.dead=true;
+  sim.volleyKills.delete(g.volley);g.dead=true;
   sim.events.push({type:'grenadeExplosion',id:g.id,x:g.x,z:g.z,radius:GRENADE.radius,count:12,damage:GRENADE.damage});
  }
  sim.grenades=sim.grenades.filter(g=>!g.dead);

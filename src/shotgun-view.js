@@ -15,7 +15,7 @@ export class ShotgunView{
   const core=new THREE.Mesh(new THREE.ConeGeometry(.15,.72,6),new THREE.MeshBasicMaterial({color:'#fff5d6',toneMapped:false}));core.position.y=.04;this.flash.add(core);
  }
  event(e){const sim=this.view.lastSim;if(e.type==='shotgunShot'){this.lastShot=sim.time;this.charge=e.charge;
-  const p=sim.player,c=e.charge||0,budget=({potato:6,performance:9,balanced:16,quality:22}[this.view.qualityName]||9),count=Math.ceil(budget*(1+c*.9));
+  const p=sim.player,c=e.charge||0,budget=({potato:6,performance:9,balanced:16,quality:22,extreme:22}[this.view.qualityName]||9),count=Math.ceil(budget*(1+c*.9));
   for(let i=0;i<count;i++){const side=(Math.random()-.5)*(1+c),speed=1+Math.random()*(2+c*2);this.particles.push({born:sim.time,x:e.x,z:e.z,dx:p.aimX*speed-p.aimZ*side,dz:p.aimZ*speed+p.aimX*side,vy:.3+Math.random(),life:i%3===1?.14+c*.10:.40+Math.random()*.35+c*.3,flame:i%3===1,smoke:i%3===0,scale:1.3+c*1.1,angle:Math.random()*6.28});}
   }
  if(e.type==='shotgunReload'){this.lastReload=sim.time;this.toEject=e.spent;this.ejected=false;}}

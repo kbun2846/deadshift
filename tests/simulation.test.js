@@ -56,7 +56,10 @@ test('releasing input brings motion smoothly to rest', () => {
 });
 
 test('walls block movement while allowing tangential sliding', () => {
-  const sim = new Simulation(empty({ props: [{ type: 'crate', x: 2, z: 0 }] }));
+  // Heading pinned: this is a test of the collision solver, not of the map's
+  // heading policy, and a rotated crate is a corner the player slides around
+  // rather than a wall they stop against.
+  const sim = new Simulation(empty({ props: [{ type: 'crate', x: 2, z: 0, angle: 0 }] }));
   step(sim, 40, { moveX: 1 });
   assert.ok(sim.player.x <= 2 - 1.25 / 2 - RULES.radius + .0001);
   step(sim, 12, { moveX: 1, moveZ: 1 }); assert.ok(sim.player.z > .4);
@@ -71,10 +74,15 @@ test('seed capacity is bounded and seeded shots drift slowly', () => {
 test('each orb travels straight from its position to the captured cursor point', () => {
   const sim = new Simulation(empty()); step(sim, 80, { seed: true, moveZ: 1 });
   const before = sim.seeds.map(s => ({ ...s })); assert.ok(before.length > 5);
+  const origin = { x: sim.player.x, z: sim.player.z };
   sim.launch(5, -4);
   for (const [i, s] of sim.shots.entries()) {
     close(s.x, before[i].x); close(s.z, before[i].z);
-    close(s.x + s.vx * s.travelDuration, 5); close(s.z + s.vz * s.travelDuration, -4);
+    // Straight from where it sat to the convergence point, which is the aim
+    // point carried an overshoot further along the ray from the player.
+    const reach = Math.hypot(5 - origin.x, -4 - origin.z);
+    close(s.x + s.vx * s.travelDuration, 5 + (5 - origin.x) / reach * RULES.launchOvershoot);
+    close(s.z + s.vz * s.travelDuration, -4 + (-4 - origin.z) / reach * RULES.launchOvershoot);
     assert.equal(s.owner, 'local'); assert.equal(s.team, 0); assert.equal(s.launched, true);
   }
   assert.equal(sim.seeds.length, 0);
@@ -98,12 +106,22 @@ test('continuous collision detects thin walls and small targets', () => {
   assert.equal(segmentBox(0, 5, 30, 5, { x: 15, z: 0, w: .1, d: 3 }), null);
 });
 
-test('cover takes precedence over a target behind it', () => {
+test('a launched orb clears breakable cover and carries on to the target', () => {
   const sim = new Simulation(empty({ targets: [{ id: 'a', x: 5, z: 0 }], props: [{ type: 'crate', x: 3, z: 0 }] }));
   sim.seed(); sim.launch(5, 0); step(sim, 30);
-  assert.equal(sim.targets[0].hp, RULES.targetHealth); assert.equal(sim.shots.length, 0);
-  assert.equal(sim.props[0].hp, sim.props[0].health - damagePerOrb(1));
-  assert.ok(sim.events.some(e => e.type === 'propHit'));
+  // The crate is destroyed on the way through rather than absorbing the shot,
+  // and the target behind it still takes the orb.
+  assert.equal(sim.props[0].hp, 0);
+  assert.ok(sim.events.some(e => e.type === 'propBreak'));
+  assert.ok(sim.targets[0].hp < RULES.targetHealth, 'the orb must reach the target');
+  assert.equal(sim.shots.length, 0);
+});
+
+test('solid cover still stops a launched orb dead', () => {
+  const sim = new Simulation(empty({ targets: [{ id: 'a', x: 5, z: 0 }], props: [{ type: 'boulder', x: 3, z: 0 }] }));
+  sim.seed(); sim.launch(5, 0); step(sim, 30);
+  assert.equal(sim.targets[0].hp, RULES.targetHealth, 'an indestructible prop must block');
+  assert.equal(sim.shots.length, 0);
 });
 
 test('a volley can destroy a target, score once, and target respawns', () => {

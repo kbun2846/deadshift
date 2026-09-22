@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { interiorCover } from './detailed-interiors.js';
 
 // Set dressing only: portal geometry and gameplay colliders remain owned by maps.js.
 const THEMES = {
@@ -126,5 +127,90 @@ export function makeInteriorDetails(view,b) {
   for(let i=0;i<14;i++){
     const x=(i%2?left:right)+(rand(i+300)-.5)*.6,z=(rand(i+320)-.5)*(b.d-1.4);
     const chip=box(x,.089,z,.04+rand(i+340)*.12,.009,.12+rand(i+360)*.3,dark);chip.rotation.y=rand(i+380)*5;
+  }
+
+  // Four things every room of this period would have, chosen because each one
+  // reads from directly overhead — which is the only view the player gets.
+  //
+  // None of it is placed blind. The room already has a furniture layout that
+  // gameplay cover is built from, plus this file's own dressing, and dropping
+  // a shelf onto a wall that already carries one is how you get two objects
+  // occupying the same metre. Every piece below picks the first candidate slot
+  // that is clear of the existing layout, the doorway lane and anything placed
+  // before it, and is simply skipped when the room has no room for it.
+  const taken = interiorCover(b).map(p => ({ x: p.x, z: p.z, w: p.w, d: p.d }));
+  // The generic rooms get their counter straight from makeBuilding.
+  if (!b.interiorStyle) taken.push({ x: 0, z: -b.d / 2 + 1.1, w: b.w - 2, d: .65 });
+  // This file's own broken chair and corner litter, already placed above.
+  taken.push({ x: b.w / 2 - 1.15, z: -b.d / 2 + 1.3, w: 1.1, d: 1 });
+  taken.push({ x: -b.w / 2 + .85, z: -b.d / 2 + .85, w: 1.4, d: 1.2 });
+  // The doorway and the lane in front of it stay clear.
+  taken.push({ x: 0, z: b.d / 2 - 1.2, w: (b.doorWidth || 2.6) + 1.4, d: 2.8 });
+  const free = (x, z, w, d) => Math.abs(x) + w / 2 < b.w / 2 - .15 && Math.abs(z) + d / 2 < b.d / 2 - .15
+    && !taken.some(t => Math.abs(x - t.x) < (w + t.w) / 2 + .25 && Math.abs(z - t.z) < (d + t.d) / 2 + .25);
+  const claim = (candidates, w, d) => {
+    for (const [x, z] of candidates) if (free(x, z, w, d)) { taken.push({ x, z, w, d }); return [x, z]; }
+    return null;
+  };
+
+  // A lamp hung from a ceiling joist: a dark cord and a pale shade, the one
+  // detail that is unmistakably a fixture rather than something on the floor.
+  // It hangs over open floor, so it only avoids the doorway lane.
+  const lampZ = -b.d / 2 + Math.min(2.6, b.d * .35);
+  if (Math.abs(lampZ) + .3 < b.d / 2 - .4) {
+    cyl(0, b.height - .34, lampZ, .02, .62, dark);
+    cyl(0, b.height - .72, lampZ, .19, .14, '#c8b488');
+    cyl(0, b.height - .79, lampZ, .1, .03, '#e8d9a8');
+  }
+
+  // A shelf board along a solid side wall with a row of tins and jars on it,
+  // at different heights so the row does not read as a printed pattern.
+  const shelfSide = rand(11) < .5 ? -1 : 1;
+  const shelfRun = Math.min(3.2, b.d - 3.2);
+  const shelfSpot = shelfRun > 1.4 && claim(
+    [[shelfSide, 0], [-shelfSide, 0], [shelfSide, -1], [-shelfSide, -1]]
+      .map(([side, bias]) => [side * (b.w / 2 - .34), bias * (b.d * .18)]), .4, shelfRun);
+  if (shelfSpot) {
+    const [sx, sz] = shelfSpot;
+    box(sx, 1.34, sz, .3, .05, shelfRun, floor);
+    for (const support of [-1, 1]) box(sx, 1.18, sz + support * (shelfRun / 2 - .25), .26, .28, .06, dark);
+    for (let i = 0; i * .44 < shelfRun - .3; i++) {
+      const tall = rand(i + 900) < .35;
+      cyl(sx, 1.42 + (tall ? .07 : 0), sz - shelfRun / 2 + .3 + i * .44, .055 + rand(i + 920) * .03, tall ? .26 : .12, i % 3 ? accent : '#ad945b');
+    }
+  }
+
+  // A boot scraper and a mat just inside the doorway, where the dirt comes in.
+  // This one belongs in the door lane, so it is placed rather than claimed.
+  const matZ = b.d / 2 - 1.15;
+  const mat = box(0, .079, matZ, 1.3, .014, .7, '#7b6f57'); mat.rotation.y = rand(31) * .14 - .07;
+  for (let i = 0; i < 5; i++) box(-.5 + i * .25, .088, matZ, .06, .02, .62, dark);
+  // The dirt it has not caught, tracked a little further in.
+  for (let i = 0; i < 8; i++) {
+    const smudge = box((rand(i + 960) - .5) * 1.8, .077, matZ - .6 - rand(i + 980) * 1.4, .1 + rand(i + 1000) * .22, .008, .09 + rand(i + 1020) * .16, dark);
+    smudge.rotation.y = rand(i + 1040) * Math.PI;
+  }
+
+  // A stove against the back wall with its flue running up to the roof, and the
+  // scorch ring on the boards around its feet. Rooms whose theme already puts a
+  // stove in a corner do not get a second one.
+  const hasStove = theme === 'hearth' || theme === 'homestead';
+  const stoveSpot = !hasStove && claim(
+    [[-shelfSide * (b.w / 2 - 1.15), -b.d / 2 + 1.05], [shelfSide * (b.w / 2 - 1.15), -b.d / 2 + 1.05],
+     [-shelfSide * (b.w / 2 - 1.15), b.d / 2 - 2.2]], 1.5, 1.4);
+  if (stoveSpot) {
+    const [stoveX, stoveZ] = stoveSpot;
+    box(stoveX, .35, stoveZ, .74, .7, .62, '#4f544c');
+    box(stoveX, .72, stoveZ, .82, .06, .7, '#5d635a');
+    cyl(stoveX, .5, stoveZ + .34, .11, .1, '#3d423c');
+    cyl(stoveX, 1.5, stoveZ, .085, 1.6, '#4a4f48');
+    for (const y of [.95, 1.9]) cyl(stoveX, y, stoveZ, .1, .07, '#3d423c');
+    const scorch = box(stoveX, .075, stoveZ + .15, 1.35, .008, 1.15, '#6a5b48'); scorch.rotation.y = .08;
+    // Split wood stacked beside it, ready for the stove.
+    const logSide = stoveX < 0 ? 1 : -1;
+    for (let i = 0; i < 5; i++) {
+      const log = cyl(stoveX + logSide * (.68 + (i % 2) * .06), .11 + Math.floor(i / 2) * .18, stoveZ + .5 + (i % 2) * .2, .075, .52, i % 2 ? '#7d6a4e' : '#6d5c44');
+      log.rotation.set(Math.PI / 2, 0, rand(i + 1100) * .2);
+    }
   }
 }

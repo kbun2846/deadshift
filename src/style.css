@@ -169,3 +169,10 @@ button>.button-label,.primary .button-label{position:absolute;left:10px;top:0;di
 body button,body button *,body .weapon-control-entry>summary{text-transform:uppercase!important}
 /* Heavier block lettering with a wider, less rounded silhouette. */
 body,button,input,select,textarea,h1,h2,h3{font-family:'Arial Black','Arial Bold',Arial,sans-serif!important}
+/* Entering a building switches on a full-screen backdrop pass at the same moment
+   the camera is blending to the room fit, which is where low-end devices stall.
+   Blur radius is the expensive term, so it scales with the preset; the grayscale
+   carries the read on every tier, and Potato drops the pass entirely. */
+.interior-vision[data-quality=balanced]{backdrop-filter:grayscale(.65) blur(4px)}
+.interior-vision[data-quality=performance]{backdrop-filter:grayscale(.6);background:#56605a1a}
+.interior-vision[data-quality=potato]{backdrop-filter:none;background:#56605a2e}

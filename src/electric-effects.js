@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import { RULES, segmentBox } from './simulation.js';
+import { isDemanding } from './settings.js';
+
+// Reused across every arc of every frame rather than allocated per arc.
+const SCRATCH = new THREE.Vector3();
+const ARC_UP = new THREE.Vector3(0, 1, 0);
 
 // Short-lived geometry only: no fire, smoke, or scorch for electrical pulses.
 export class ElectricEffects {
@@ -13,7 +18,7 @@ export class ElectricEffects {
     this.limit.visible = orbs.length > 0;
     if (orbs.length) {this.limit.position.set(orbs[0].originX, 0, orbs[0].originZ);this.limit.rotation.y=orbs[0].age*Math.PI*2;}
   }
-  setQuality(name) { this.quality = name === 'quality'; this.performance = name === 'performance' || name === 'potato'; }
+  setQuality(name) { this.quality = isDemanding(name); this.performance = name === 'performance' || name === 'potato'; }
   aftershock(e){
     this.aftershocks ||= new Map();
     const key=e.id;
@@ -89,25 +94,40 @@ export class ElectricEffects {
       }
     }
   }
-  bolt(a, b, life = .48) {
+  // Every arc is four meshes with fixed-size buffers, and a hex pulse puts well
+  // over a hundred arcs in the air in a single frame. Built fresh that was
+  // ~400 geometry uploads plus ~400 materials and the matching dispose churn,
+  // all inside one frame — the largest spike in the game. The sets are pooled
+  // instead: identical shapes, and the only per-arc state is opacity, which is
+  // written every frame anyway.
+  #buildBolt() {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(25 * 3), 3));
     const mesh = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: '#d7f3ff', transparent: true, depthWrite: false, toneMapped: false }));
-    mesh.frustumCulled = false; this.scene.add(mesh);
-    let forks = null;
-    {
-      const forkGeometry = new THREE.BufferGeometry(); forkGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12 * 2 * 3), 3));
-      forks = new THREE.LineSegments(forkGeometry, new THREE.LineBasicMaterial({ color: '#75caff', transparent: true, opacity: .6, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending }));
-      forks.frustumCulled = false; this.scene.add(forks);
-    }
+    mesh.frustumCulled = false;
+    const forkGeometry = new THREE.BufferGeometry();
+    forkGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12 * 2 * 3), 3));
+    const forks = new THREE.LineSegments(forkGeometry, new THREE.LineBasicMaterial({ color: '#75caff', transparent: true, opacity: .6, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending }));
+    forks.frustumCulled = false;
     const glow = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6), new THREE.MeshBasicMaterial({ color: '#68caff', transparent: true, opacity: .28, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
-    this.scene.add(glow);
     // A camera-visible white ribbon follows the actual jagged arc, inside its blue glow.
     const ribbonGeometry = new THREE.BufferGeometry();
     ribbonGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(24 * 6 * 3), 3));
     const ribbon = new THREE.Mesh(ribbonGeometry, new THREE.MeshBasicMaterial({ color: '#effcff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
-    ribbon.frustumCulled = false; this.scene.add(ribbon);
-    const effect = { mesh, forks, glow, ribbon, a, b, age: 0, life, seed: Math.random() * 100 };
+    ribbon.frustumCulled = false;
+    return { mesh, forks, glow, ribbon };
+  }
+
+  bolt(a, b, life = .48) {
+    this.boltPool ||= [];
+    const parts = this.boltPool.pop() || this.#buildBolt();
+    // Draw ranges are rewritten every frame, but a reused set must not show a
+    // previous arc's tail for the frame before its first update.
+    parts.mesh.geometry.setDrawRange(0, 0);
+    parts.forks.geometry.setDrawRange(0, 0);
+    parts.ribbon.geometry.setDrawRange(0, 0);
+    for (const part of [parts.mesh, parts.forks, parts.glow, parts.ribbon]) { part.visible = true; this.scene.add(part); }
+    const effect = { ...parts, a, b, age: 0, life, seed: Math.random() * 100, pooled: true };
     this.effects.push(effect); return effect;
   }
   syncSpin(spin,player,dt=0) {
@@ -240,9 +260,11 @@ export class ElectricEffects {
         ribbon.needsUpdate = true;
         effect.ribbon.material.opacity = (1 - t) ** .6 * (.8 + .2 * Math.sin(effect.motion * 110 + effect.seed));
         const dy=(b.y ?? .76)-(a.y ?? .76);
-        const direction = new THREE.Vector3(dx, dy, dz);
+        // Scratch, not fresh: this runs for every live arc every frame, and a
+        // hex pulse puts well over a hundred arcs in the air at once.
+        SCRATCH.set(dx, dy, dz).normalize();
         effect.glow.position.set((a.x + b.x) / 2, ((a.y ?? .76)+(b.y ?? .76))/2, (a.z + b.z) / 2);
-        effect.glow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+        effect.glow.quaternion.setFromUnitVectors(ARC_UP, SCRATCH);
         const width = (this.quality ? .1 : .075) * (effect.intensity || 1) * (effect.energy === undefined ? 1 : effect.energy === 1 ? 2.8 : .7) * (.8 + .2 * Math.sin(effect.motion * 93 + effect.seed));
         effect.glow.scale.set(width, Math.hypot(dx, dy, dz), width);
         effect.glow.material.opacity = (1 - t) * (effect.energy === 1 ? .8 : effect.energy === .25 ? .18 : .5);
@@ -271,7 +293,22 @@ export class ElectricEffects {
     }
     this.effects = this.effects.filter(e => e.age < e.life);
   }
-  dispose(e) { for (const mesh of [e.mesh, e.forks, e.glow, e.ribbon, e.core, ...(e.rings || [])].filter(Boolean)) { mesh.removeFromParent(); mesh.geometry.dispose(); mesh.material.dispose(); } }
+  dispose(e) {
+    // A pooled arc is detached and handed back; anything else (convergence
+    // cores, rings) is genuinely one-off and is destroyed.
+    if (e.pooled && !e.core && !e.rings) {
+      for (const part of [e.mesh, e.forks, e.glow, e.ribbon]) part.removeFromParent();
+      this.boltPool ||= [];
+      // Bounded so a stress test cannot leave a thousand sets resident.
+      if (this.boltPool.length < 192) { this.boltPool.push({ mesh: e.mesh, forks: e.forks, glow: e.glow, ribbon: e.ribbon }); return; }
+    }
+    for (const mesh of [e.mesh, e.forks, e.glow, e.ribbon, e.core, ...(e.rings || [])].filter(Boolean)) { mesh.removeFromParent(); mesh.geometry.dispose(); mesh.material.dispose(); }
+  }
+  // Only on teardown: the pool itself holds GPU buffers.
+  disposePool() {
+    for (const parts of this.boltPool || []) for (const part of [parts.mesh, parts.forks, parts.glow, parts.ribbon]) { part.geometry.dispose(); part.material.dispose(); }
+    this.boltPool = [];
+  }
   clear() { this.effects.forEach(e => this.dispose(e)); this.effects = []; this.spinEffects.clear();this.aftershocks?.clear(); this.lastSpinNodes=null;this.returnHex=null;this.births?.clear();this.linkClock=.45;this.chargeClock=0;this.limit.visible = false; }
 }
 

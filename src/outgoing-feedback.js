@@ -1,6 +1,8 @@
 import {damageFeedbackSize,damageFeedbackScale,damageFeedbackTilt} from './damage-feedback.js';
 const ADDITION_LIFE=1.2;
-const format=damage=>Number(damage.toFixed(1));
+// Damage numbers are whole and always rounded down, so a figure on screen is
+// never more than what actually landed.
+const format=damage=>Math.floor(Number(damage)||0);
 export function createOutgoingFeedback(parent){
  const root=document.createElement('div');root.className='damage-feedback outgoing-feedback';parent.append(root);let items=[],lastTime=0;
  const expire=time=>{if(time<lastTime){items.forEach(i=>i.node.remove());items=[];}lastTime=time;items=items.filter(i=>{if(time-i.updated<2.5)return true;i.node.remove();return false;});};

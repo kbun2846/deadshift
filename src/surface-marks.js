@@ -2,7 +2,14 @@ import * as THREE from 'three';
 import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-// Persistent, surface-clipped soot. Batches grow instead of evicting old marks.
+// Surface-clipped soot, capped per surface. Every mark is a blended,
+// ground-coplanar draw with depthWrite off, and in a top-down camera the
+// ground is the whole screen — so letting the batches grow without limit is a
+// fill-rate leak that only shows up after ten minutes of play, which is
+// exactly what a phone playtest surfaces and a benchmark misses. Once a
+// surface is full the oldest batch is retired, so the marks are a rolling
+// window rather than a permanent record.
+export const MARK_BATCHES = Object.freeze({ potato: 1, performance: 1, balanced: 2, quality: 4, extreme: 4 });
 export class SurfaceMarks {
   constructor(view) {
     this.jobs=[]; this.currentJob=null; this.receiverCache=null;
@@ -83,6 +90,13 @@ export class SurfaceMarks {
       batch = new THREE.Mesh(geometry, this.material); batch.userData.surfaceMark = true;
       // Decals sit above opaque terrain but below transparent lightning and particles.
       batch.renderOrder = -1; parent.add(batch); batches.push(batch);
+      // Retire the oldest so a long session cannot keep stacking blended
+      // layers over the ground.
+      const cap = MARK_BATCHES[this.view.qualityName] ?? 2;
+      while (batches.length > cap) {
+        const stale = batches.shift();
+        stale.removeFromParent(); stale.geometry.dispose();
+      }
     }
     this.count++;
   }
