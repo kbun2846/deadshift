@@ -47,22 +47,43 @@ test('the interior mask rebuild is capped rather than running every frame',()=>{
  assert.ok(rebuilds>=18,`should still track the player, only rebuilt ${rebuilds}`);
 });
 
-test('the vision overlay backdrop pass gets cheaper on lower presets',()=>{
+test('the interior shroud costs less the lower the preset goes',()=>{
  const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
  const rule=tier=>{
   const start=css.indexOf(`.interior-vision[data-quality=${tier}]{`);
   return start<0?null:css.slice(start,css.indexOf('}',start));
  };
- const blurRadius=body=>{
-  const at=body.indexOf('blur(');
-  return at<0?0:Number(body.slice(at+5,body.indexOf('px',at)));
- };
- const base=7; // the default .interior-vision rule
- assert.ok(css.includes('backdrop-filter:grayscale(.65) blur(7px)'),'the default rule should be unchanged');
- assert.ok(rule('potato').includes('backdrop-filter:none'),'Potato must drop the pass entirely');
- assert.equal(blurRadius(rule('performance')),0,'Performance keeps grayscale without a blur');
- const balanced=blurRadius(rule('balanced'));
- assert.ok(balanced>0&&balanced<base,`Balanced blurred ${balanced}px against a ${base}px default`);
+ // A backdrop blur is a whole-viewport backdrop read and filter on every
+ // composited frame -- the most expensive thing that can sit over a tiler.
+ // The shroud is painted into a canvas now, so no tier needs one at all.
+ const shroudRules=[...css.matchAll(/\.interior-vision[^{]*\{([^}]*)\}/g)].map(m=>m[1]);
+ assert.ok(shroudRules.length>=3,'the shroud still has per-tier rules');
+ // No tier may carry a backdrop filter. It is clipped by the element's mask and
+ // not by what the element paints, so with the mask gone it drained the room the
+ // player is standing in along with the world outside -- and a backdrop read is
+ // a whole-viewport pass on every composited frame besides.
+ for(const body of shroudRules)
+  assert.ok(!/backdrop-filter:\s*(?!none)/.test(body),`the shroud must not filter its backdrop: ${body.slice(0,70)}`);
+ for(const tier of ['potato','performance'])
+  assert.ok(rule(tier).includes('backdrop-filter:none'),`${tier} must drop the backdrop pass entirely`);
+ // And the painted buffer itself has to get coarser, not just the filter.
+ const renderer=readFileSync(new URL('../src/renderer.js',import.meta.url),'utf8');
+ const table=renderer.slice(renderer.indexOf('const VISION_STEP'),renderer.indexOf('const VISION_REPAINT'));
+ const step=tier=>Number(table.match(new RegExp(tier+':\\s*(\\d+)'))[1]);
+ assert.ok(step('potato')>step('performance'),'Potato paints coarser than Performance');
+ assert.ok(step('performance')>step('balanced'),'Performance paints coarser than Balanced');
+ assert.ok(step('balanced')>=step('quality'),'Balanced is no finer than Quality');
+ assert.ok(step('quality')>=4,'even Quality stays well below the viewport');
+});
+
+test('the shroud never goes back to an asynchronously decoded mask',()=>{
+ // A `mask-image` data URI decodes off the main thread, so the shroud painted
+ // itself unmasked for a frame every time one swapped. That was the flicker.
+ const renderer=readFileSync(new URL('../src/renderer.js',import.meta.url),'utf8');
+ assert.ok(!/visionOverlay\.style\.maskImage/.test(renderer),'no mask-image on the shroud');
+ assert.ok(!/image\/svg\+xml.*interiorPolygons/s.test(renderer)||!/feMorphology/.test(renderer.slice(renderer.indexOf('paintVision'))),
+  'no SVG filter chain rebuilt for the interior shroud');
+ assert.ok(/paintVision\s*\(/.test(renderer),'it is painted into a canvas instead');
 });
 
 test('soot is a rolling window, not a permanent record',()=>{

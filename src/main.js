@@ -45,7 +45,7 @@ const map = import.meta.env.DEV && params.get('start') === 'farm' && selectedMap
   ? { ...selectedMap, spawn: { x: selectedMap.crops[0].x - selectedMap.crops[0].w / 2 + 2, z: selectedMap.crops[0].z - selectedMap.crops[0].d / 2 - 3 } }
   : landmarkStart ? { ...selectedMap, spawn: { x: landmarkStart.x, z: landmarkStart.z + 6 } }
   : roomStart ? { ...selectedMap, spawn: { x: roomStart.x, z: roomStart.z } } : selectedMap;
-document.title = 'DEADSHIFT ALPHA v0.4 — ' + map.name;
+document.title = 'DEADSHIFT ALPHA v0.5 — ' + map.name;
 document.querySelector('.brand p').textContent = map.name.toUpperCase();
 document.querySelector('.mode').textContent=map.training?'TUTORIAL':'PRACTICE';
 let settings;
@@ -77,7 +77,7 @@ let tutorial=map.training?new Tutorial(sim.weapon):null, tutorialSaved=false, se
 let inputOverride=null;
 try{inputOverride=sessionStorage.getItem('deadshift-controls-override');}catch{}
 const inputPreference=createInputPreference(detectedInput,inputOverride);
-let touchPrompts=inputPreference.mode==='touch';
+let touchPrompts=inputPreference.surface==='touch';
 let view;
 try { view = new WorldView($('world'), map, settings.quality); view.motion = settings.motion; }
 catch (error) {
@@ -430,7 +430,7 @@ const devTools=installDevTools(sim,$('dev-panel'),()=>{dirty=true;updateHUD();},
  onUnlock:()=>showDevEntry(true),
  onLock:()=>showDevEntry(false),
 });
-$('dev-open').onclick=()=>{
+if($('dev-open')&&$('dev-panel'))$('dev-open').onclick=()=>{
  const opening=$('dev-panel').classList.contains('hidden');
  $('dev-panel').classList.toggle('hidden',!opening);
  $('settings-panel').classList.toggle('with-dev',opening);
@@ -739,13 +739,25 @@ function applyInputPreference(){
  updateTutorial();
 }
 for(const [id,value] of [['input-keyboard','keyboard'],['input-mobile','touch']])$(id).onclick=()=>{
+ // The selector in the menu IS deliberate, and it is used out of play, so a
+ // full reset is right here even though an automatic switch must not do one.
  inputPreference.select(value);touchPrompts=value==='touch';releaseInput();
  try{sessionStorage.setItem('deadshift-controls-override',value);}catch{}
  applyInputPreference();
 };
+// Noticing which input was last used is not a deliberate act by the player, so
+// it must not disturb anything they are holding. It used to call releaseInput(),
+// which drops every held key, the aim, the trigger and every stick at once --
+// and on a tablet with a keyboard it fires between two presses of the same
+// burst. Aiming down sights while walking and then pulling the trigger was
+// three switches in a row, and the shot never came out.
 function detectActiveInput(mode){
  if(document.body.classList.contains('loading')||document.body.classList.contains('editing-touch-layout'))return;
- if(inputPreference.observe(mode)){releaseInput();touchPrompts=mode==='touch';applyInputPreference();}
+ const surface=inputPreference.surface;
+ const changed=inputPreference.observe(mode);
+ if(!changed&&inputPreference.surface===surface)return;
+ touchPrompts=inputPreference.surface==='touch';
+ applyInputPreference();
 }
 window.addEventListener('pointerdown',e=>{
  if(e.pointerType==='touch'||e.pointerType==='pen')detectActiveInput('touch');
@@ -753,7 +765,7 @@ window.addEventListener('pointerdown',e=>{
 },true);
 window.addEventListener('keydown',e=>{
  if(e.target.matches('input,select,textarea,[contenteditable=true]')||e.ctrlKey||e.metaKey||e.altKey)return;
- if(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','KeyR','KeyX','KeyC','Space','Escape','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))detectActiveInput('keyboard');
+ if(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','KeyR','KeyX','KeyC','Space','Escape','Tab','ShiftLeft','ShiftRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))detectActiveInput('keyboard');
 },true);
 applyInputPreference();
 $('tutorial-next').onclick=()=>{if(!tutorial.active)tutorial.begin();else tutorial.advance();releaseInput();updateTutorial();};

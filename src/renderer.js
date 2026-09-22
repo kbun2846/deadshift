@@ -17,6 +17,21 @@ import { Birds } from './birds.js';
 import { CropView } from './crop-view.js';
 import { cropAt, cropEntityVisible, cropImmersion } from './crops.js';
 import { InteriorVisibility } from './interior-visibility.js';
+
+// How coarse the interior shroud is painted, as a divisor of the viewport. The
+// upscale back to full size is what softens the doorway cones, so a bigger
+// divisor is both cheaper AND a wider feather -- the low tiers want both.
+const VISION_STEP = Object.freeze({ potato: 16, performance: 12, balanced: 9, quality: 7, extreme: 7 });
+// Seconds between repaints. A phone never needs the shroud to chase the camera
+// at frame rate; the cones are soft and move slowly.
+const VISION_REPAINT = Object.freeze({ potato: .1, performance: .07, balanced: .05, quality: .033, extreme: .033 });
+// The wash itself: a cool, desaturated grey that both dims the world outside
+// and drains the warmth out of it, which together read as the old
+// grayscale-plus-blur pass without any backdrop work. The higher tiers sit
+// lighter because they still have the fog and the scene's own detail to lean
+// on; Potato has almost nothing else separating inside from out.
+const VISION_SHROUD = Object.freeze({ potato: 'rgba(74,79,76,.62)', performance: 'rgba(74,79,76,.58)',
+  balanced: 'rgba(76,81,78,.52)', quality: 'rgba(78,83,80,.46)', extreme: 'rgba(78,83,80,.46)' });
 import { makeDetailedInterior } from './detailed-interiors.js';
 import { makeInteriorDetails } from './interior-details.js';
 import { BUILDING_FINISHES } from './building-finishes.js';
@@ -146,10 +161,28 @@ export class WorldView {
     this.cursorWorld = new THREE.Vector3();
     this.makeAmbient();
     this.surfaceMarks = new SurfaceMarks(this);
-    this.visionOverlay = document.createElement('div'); this.visionOverlay.className = 'interior-vision';
+    // A canvas, not a masked div. The shroud used to be a full-viewport SVG
+    // data URI carrying an erode and a gaussian blur, rebuilt twenty times a
+    // second and handed to `mask-image`. Three separate problems came out of
+    // that: a mask image decodes asynchronously, so the shroud painted itself
+    // unmasked for a frame every time one swapped, which is the flicker; the
+    // two filters ran over the whole viewport on the compositor; and building,
+    // encoding and reparsing several kilobytes of SVG was main-thread work on
+    // the frame a player walked through a doorway. Painting it here instead is
+    // synchronous, so it can never be a frame out of step, and drawing at a
+    // fraction of the viewport then letting CSS scale it back up gives the soft
+    // edge for free -- the bilinear upscale IS the feather.
+    this.visionOverlay = document.createElement('canvas'); this.visionOverlay.className = 'interior-vision';
     this.visionOverlay.dataset.quality = qualityName;
+    this.visionContext = this.visionOverlay.getContext('2d');
     this.visionOverlay.setAttribute('aria-hidden', 'true'); canvas.insertAdjacentElement('afterend', this.visionOverlay);
-    this.cropOverlay = document.createElement('div'); this.cropOverlay.className = 'crop-vision'; this.cropOverlay.setAttribute('aria-hidden', 'true'); canvas.insertAdjacentElement('afterend', this.cropOverlay);
+    // Same story as the shroud above: this was a CSS radial gradient masked by a
+    // rebuilt SVG data URI carrying an erode and a blur. Both halves fit in one
+    // small canvas, where the mask and the gradient combine in a single
+    // destination-in pass and nothing has to be decoded.
+    this.cropOverlay = document.createElement('canvas'); this.cropOverlay.className = 'crop-vision';
+    this.cropContext = this.cropOverlay.getContext('2d');
+    this.cropOverlay.setAttribute('aria-hidden', 'true'); canvas.insertAdjacentElement('afterend', this.cropOverlay);
     this.setQuality(GRAPHICS[qualityName]?qualityName:'balanced');
     this.resize();
     this.camera.position.set(this.focus.x, this.cameraHeight, this.focus.z + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(this.focus); this.camera.updateMatrixWorld();
@@ -1054,6 +1087,14 @@ export class WorldView {
     this.renderer.setPixelRatio(renderPixelRatio(this.quality,devicePixelRatio,w,h)*(this.resolutionScale||1));
     this.renderer.setSize(w, h); this.camera.aspect = w / h;
     this.camera.fov = w / h < 1.2 ? 49 : 40; this.camera.updateProjectionMatrix();
+    const step = VISION_STEP[this.qualityName] || VISION_STEP.balanced;
+    for (const overlay of [this.visionOverlay, this.cropOverlay]) {
+      if (!overlay) continue;
+      overlay.width = Math.max(2, Math.ceil(w / step));
+      overlay.height = Math.max(2, Math.ceil(h / step));
+    }
+    // Resizing a canvas clears it, so whatever was painted is gone.
+    this.visionMaskKey = null; this.cropMaskKey = null;
   }
 
   // What the birds need to size and pace a crossing: how far the view reaches
@@ -1612,31 +1653,81 @@ export class WorldView {
     this.renderer.render(this.scene, this.camera);
   }
 
-  updateVision(sim) {
+  updateVision(sim) { this.updateCropVision(sim); this.updateInteriorVision(sim); }
+
+  updateCropVision(sim) {
     const immersion=cropImmersion(sim.crops,sim.player,RULES.radius),crop=immersion?.crop;
     const cropDisplay = crop ? 'block' : 'none';
     // Writing an unchanged display value still invalidates style on every frame.
     if (this.cropDisplay !== cropDisplay) { this.cropDisplay = cropDisplay; this.cropOverlay.style.display = cropDisplay; }
-    if (!crop) this.cropMaskKey = null;
-    if (crop) {
-      this.cropOverlay.style.opacity=immersion.entryOpacity;
-      const c = this.screenPoint(sim.player.x, sim.player.z, .7), edge = this.screenPoint(sim.player.x + crop.visibility, sim.player.z, .7);
-      const radius = Math.abs(edge.x - c.x);
-      this.cropOverlay.style.background = `radial-gradient(ellipse ${radius*1.25}px ${radius*1.14}px at ${c.x}px ${c.y}px, transparent 18%, rgba(0,0,0,.12) 32%, rgba(0,0,0,.42) 50%, rgba(0,0,0,.76) 70%, rgba(0,0,0,.95) 88%, #000 100%)`;
-      if(immersion.outerOpacity>=1){this.cropOverlay.style.maskImage='none';this.cropMaskKey='none';}
-      // Two full-viewport SVG filters (erode + blur) rebuilt from a data URI is the
-      // most expensive thing a frame can do on a phone. The silhouette is soft and
-      // slow-moving, so a 20Hz ceiling is invisible while the gradient above still
-      // tracks the player every frame.
-      else if(!(this.cropMaskClock>this.effectTime)){
-        this.cropMaskClock=this.effectTime+.05;this.cropMaskKey=null;
-        const polygons=immersion.sections.map(s=>projectVisionPolygon([{x:s.x-s.w/2,z:s.z-s.d/2},{x:s.x+s.w/2,z:s.z-s.d/2},{x:s.x+s.w/2,z:s.z+s.d/2},{x:s.x-s.w/2,z:s.z+s.d/2}],this.camera,innerWidth,innerHeight));
-        const shapes=polygons.filter(p=>p.length>=3).map(p=>`<polygon fill="white" stroke="white" stroke-width="1.5" points="${p.map(v=>`${v.x.toFixed(1)},${v.y.toFixed(1)}`).join(' ')}"/>`).join('');
-        const feather=Math.max(28,radius*.32);
-        const mask=`<svg xmlns="http://www.w3.org/2000/svg" width="${innerWidth}" height="${innerHeight}"><defs><filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feMorphology operator="erode" radius="${feather*1.6}"/><feGaussianBlur stdDeviation="${feather}"/></filter><clipPath id="field">${shapes}</clipPath></defs><rect width="100%" height="100%" fill="white" opacity="${immersion.outerOpacity}"/><g filter="url(#soft)">${shapes}</g></svg>`;
-        this.cropOverlay.style.maskImage='url("data:image/svg+xml,'+encodeURIComponent(mask)+'")';
+    if (!crop) { this.cropMaskKey = null; return; }
+    const c = this.screenPoint(sim.player.x, sim.player.z, .7);
+    const edge = this.screenPoint(sim.player.x + crop.visibility, sim.player.z, .7);
+    const radius = Math.abs(edge.x - c.x);
+    this.cropOverlay.style.opacity = immersion.entryOpacity;
+    // The gradient tracks the player every frame, which is cheap; the field
+    // silhouette behind it is soft and slow, so it is rate-capped per tier.
+    const quantise = (value, step) => Math.round(value / step);
+    const maskKey = [quantise(c.x, 2), quantise(c.y, 2), quantise(radius, 2), quantise(immersion.outerOpacity, .02),
+      immersion.sections.length, innerWidth, innerHeight].join(',');
+    if (this.cropMaskKey === maskKey) return;
+    if (this.cropMaskClock > this.effectTime && this.cropMaskKey) return;
+    this.cropMaskClock = this.effectTime + (VISION_REPAINT[this.qualityName] || VISION_REPAINT.balanced);
+    this.cropMaskKey = maskKey;
+    const sections = immersion.outerOpacity >= 1 ? [] : immersion.sections.map(section => projectVisionPolygon(
+      [{x:section.x-section.w/2,z:section.z-section.d/2},{x:section.x+section.w/2,z:section.z-section.d/2},
+       {x:section.x+section.w/2,z:section.z+section.d/2},{x:section.x-section.w/2,z:section.z+section.d/2}],
+      this.camera, innerWidth, innerHeight));
+    this.paintCrop(sections, c, radius, immersion.outerOpacity, Math.max(28, radius * .32));
+  }
+
+  // Standing in a crop, the world is visible close by and swallowed further out,
+  // and only inside the field at all. Both of those are alpha, so they are one
+  // paint: lay the mask down, then keep it only where the falloff says to.
+  paintCrop(polygons, center, radius, outerOpacity, feather) {
+    const context = this.cropContext;
+    if (!context) return;
+    const { width, height } = this.cropOverlay;
+    const scaleX = width / innerWidth, scaleY = height / innerHeight;
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.globalCompositeOperation = 'source-over';
+    context.filter = 'none';
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = `rgba(0,0,0,${Math.min(1, Math.max(0, outerOpacity))})`;
+    context.fillRect(0, 0, width, height);
+    if (polygons.length) {
+      // The old pass eroded before blurring so the soft edge did not spill past
+      // the field. At this resolution the blur is a couple of pixels wide and
+      // the upscale carries the rest, so the erode is not worth a second pass.
+      context.filter = `blur(${Math.max(1, feather * scaleX * .5).toFixed(1)}px)`;
+      context.fillStyle = '#000';
+      for (const points of polygons) {
+        if (points.length < 3) continue;
+        context.beginPath();
+        context.moveTo(points[0].x * scaleX, points[0].y * scaleY);
+        for (let i = 1; i < points.length; i++) context.lineTo(points[i].x * scaleX, points[i].y * scaleY);
+        context.closePath();
+        context.fill();
       }
+      context.filter = 'none';
     }
+    // Everything painted so far is the mask. The falloff now decides how much of
+    // it survives, centred on the player and slightly wider than it is tall.
+    context.globalCompositeOperation = 'destination-in';
+    const x = center.x * scaleX, y = center.y * scaleY, r = Math.max(1, radius * scaleX);
+    context.save();
+    context.translate(x, y); context.scale(1.25, 1.14);
+    const falloff = context.createRadialGradient(0, 0, 0, 0, 0, r);
+    falloff.addColorStop(.18, 'rgba(0,0,0,0)'); falloff.addColorStop(.32, 'rgba(0,0,0,.12)');
+    falloff.addColorStop(.5, 'rgba(0,0,0,.42)'); falloff.addColorStop(.7, 'rgba(0,0,0,.76)');
+    falloff.addColorStop(.88, 'rgba(0,0,0,.95)'); falloff.addColorStop(1, '#000');
+    context.fillStyle = falloff;
+    context.fillRect(-width * 2, -height * 2, width * 4, height * 4);
+    context.restore();
+    context.globalCompositeOperation = 'source-over';
+  }
+
+  updateInteriorVision(sim) {
     const room = sim.interior;
     const visionDisplay = room ? 'block' : 'none';
     // Gated the same way the crop overlay beside it is: writing an unchanged
@@ -1645,28 +1736,46 @@ export class WorldView {
       this.visionDisplay = visionDisplay;
       this.visionOverlay.style.display = visionDisplay;
     }
-    if (!room) this.visionMaskClock = 0;
-    if (!room) { this.visionMaskKey=null; return; }
-    // Two full-viewport SVG filters (erode + blur) rebuilt from a data URI is the
-    // most expensive thing a frame can do on a phone — the same cost the crop
-    // mask is already capped for. The doorway cones are soft and slow, so a 20Hz
-    // ceiling is invisible, and the key is quantised so sub-pixel camera drift
-    // does not count as movement. Entering a building is where this bites: the
-    // overlay switches on at exactly the moment the camera is also blending.
-    const quantise=(value,step)=>Math.round(value/step);
-    const maskKey=[room.id,quantise(sim.player.x,.05),quantise(sim.player.z,.05),innerWidth,innerHeight,
-      ...this.camera.matrixWorld.elements.map(e=>quantise(e,.01)),...this.camera.projectionMatrix.elements.map(e=>quantise(e,.01))].join(',');
-    if(this.visionMaskKey===maskKey)return;
-    if(this.visionMaskClock>this.effectTime&&this.visionMaskKey)return;
-    this.visionMaskClock=this.effectTime+.05;
-    this.visionMaskKey=maskKey;
-    const polygons = interiorPolygons(room,sim.player).map(points=>projectVisionPolygon(points,this.camera,innerWidth,innerHeight));
-    const holes = polygons.filter(points=>points.length>=3).map(points => '<polygon fill="black" points="' + points.map(p =>
-      p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ') + '"/>').join('');
-    // Blur the union of clear regions, avoiding seams where doorway cones overlap.
-    const feather = Math.max(5, Math.min(9, innerHeight * .007));
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${innerWidth}" height="${innerHeight}"><defs><filter id="feather" filterUnits="userSpaceOnUse" x="-40" y="-40" width="${innerWidth + 80}" height="${innerHeight + 80}" color-interpolation-filters="sRGB"><feMorphology operator="erode" radius="${feather*1.6}"/><feGaussianBlur stdDeviation="${feather}"/></filter><mask id="v" maskUnits="userSpaceOnUse" x="0" y="0" width="${innerWidth}" height="${innerHeight}"><rect width="100%" height="100%" fill="white"/><g filter="url(#feather)">${holes}</g></mask></defs><rect width="100%" height="100%" fill="white" mask="url(#v)"/></svg>`;
-    this.visionOverlay.style.maskImage = 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+    if (!room) { this.visionMaskClock = 0; this.visionMaskKey = null; return; }
+    // Quantised so sub-pixel camera drift is not movement, and rate-capped --
+    // far more loosely than the SVG version needed, because a repaint at a
+    // twelfth of the viewport costs a fraction of what two filter passes did.
+    const quantise = (value, step) => Math.round(value / step);
+    const maskKey = [room.id, quantise(sim.player.x, .05), quantise(sim.player.z, .05), innerWidth, innerHeight,
+      ...this.camera.matrixWorld.elements.map(e => quantise(e, .01)),
+      ...this.camera.projectionMatrix.elements.map(e => quantise(e, .01))].join(',');
+    if (this.visionMaskKey === maskKey) return;
+    if (this.visionMaskClock > this.effectTime && this.visionMaskKey) return;
+    this.visionMaskClock = this.effectTime + (VISION_REPAINT[this.qualityName] || VISION_REPAINT.balanced);
+    this.visionMaskKey = maskKey;
+    this.paintVision(interiorPolygons(room, sim.player)
+      .map(points => projectVisionPolygon(points, this.camera, innerWidth, innerHeight)));
+  }
+
+  // Paints the shroud: a flat wash over the viewport with the clear regions
+  // punched out of it. Everything is in the low-resolution buffer's own pixels,
+  // so the cost is fixed by the tier rather than by the device's screen.
+  paintVision(polygons) {
+    const context = this.visionContext;
+    if (!context) return;
+    const { width, height } = this.visionOverlay;
+    const scaleX = width / innerWidth, scaleY = height / innerHeight;
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.globalCompositeOperation = 'source-over';
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = VISION_SHROUD[this.qualityName] || VISION_SHROUD.balanced;
+    context.fillRect(0, 0, width, height);
+    context.globalCompositeOperation = 'destination-out';
+    context.fillStyle = '#000';
+    for (const points of polygons) {
+      if (points.length < 3) continue;
+      context.beginPath();
+      context.moveTo(points[0].x * scaleX, points[0].y * scaleY);
+      for (let i = 1; i < points.length; i++) context.lineTo(points[i].x * scaleX, points[i].y * scaleY);
+      context.closePath();
+      context.fill();
+    }
+    context.globalCompositeOperation = 'source-over';
   }
 
   updateFootprints(sim, dt, active, x, z) {

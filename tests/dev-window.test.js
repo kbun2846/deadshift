@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {DEV_TOGGLES,DEV_WINDOW_KEY,clampWindowPosition,readWindowPosition,refill} from '../src/dev-window.js';
+import {DEV_TOGGLES,DEV_WINDOW_KEY,clampWindowPosition,readWindowPosition,refill,safeStorage} from '../src/dev-window.js';
 import {Simulation} from '../src/simulation.js';
 import {maps} from '../src/maps.js';
 import {GRAPHICS} from '../src/settings.js';
@@ -111,4 +111,24 @@ test('every graphics tier is offered by the dev window and the settings tab',()=
  for(const name of Object.keys(GRAPHICS)){
   assert.ok(select[1].includes(`value="${name}"`),`${name} is selectable in settings`);
  }
+});
+
+// A sandboxed host can make reading `window.localStorage` itself throw. That
+// used to happen inside createDevWindow's default parameter, on the startup
+// path, so the whole game died after the splash: the menu appeared with no
+// handlers and no fitted button text.
+test('a host that denies storage access still yields a usable dev window',()=>{
+ const original=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,
+  get(){throw new Error('Access is denied for this document.');}});
+ try{
+  assert.equal(safeStorage(),null,'a denying host reads as no storage at all');
+  assert.equal(readWindowPosition(safeStorage()),null,'and the saved position simply does not load');
+ }finally{
+  if(original)Object.defineProperty(globalThis,'localStorage',original);
+  else delete globalThis.localStorage;
+ }
+ const source=readFileSync(new URL('../src/dev-window.js',import.meta.url),'utf8');
+ assert.ok(!/storage\s*=\s*globalThis\.localStorage/.test(source),
+  'the default parameter must not read the property unguarded');
 });

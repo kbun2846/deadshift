@@ -5,7 +5,16 @@ export function toggleDevOverrides(dev,keys){
  for(const key of keys)dev[key]=key==='speed'?1:!active;
  return !active;
 }
+// Stands in for the panel when the markup it needs is not there. Every caller
+// keeps working; the tools are simply absent and permanently locked.
+const devToolsStub = () => ({ isUnlocked: () => false, syncSpeed() {}, unlock: () => false, toggleAll: () => null });
+
 export function installDevTools(sim, panel, changed, hooks = {}) {
+  // The developer panel is optional scaffolding, so it must never be able to
+  // take the game down with it: an index.html that has gone out of step with
+  // the script -- a stale deploy, say -- used to throw here and abort startup
+  // entirely, leaving the menu on screen with nothing wired up behind it.
+  if (!panel) return devToolsStub();
   const root=document.createElement('section');root.className='dev-tools';
   root.innerHTML=`<div id="dev-options" hidden><p class="small">Local practice tools · M opens teleport map</p><label class="setting select-setting">RUN SPEED<select data-dev="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label>${[['teleport','Click map to teleport'],['ammo','Unlimited ammo'],['orbs','Unlimited floating orbs + no expiry'],['cooldowns','No X cooldown'],['stamina','Unlimited dodge stamina'],['invulnerable','Invulnerable (including fire)']].map(([id,label])=>`<label class="setting">${label}<input type="checkbox" data-dev="${id}"/></label>`).join('')}<button type="button" id="dev-refill" class="secondary plain-text">RESTORE HEALTH / AMMO / STAMINA</button><button type="button" id="dev-lock" class="secondary plain-text">DISABLE & LOCK TOOLS</button></div>`;
   panel.append(root);let unlocked=false;

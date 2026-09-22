@@ -35,6 +35,13 @@ export function clampWindowPosition(position, viewport, size) {
   };
 }
 
+// Reading globalThis.localStorage is itself a throwing operation where a host
+// denies storage access — a sandboxed frame, say — so it is resolved lazily
+// behind a guard instead of in a default parameter. The dev window is built on
+// the startup path, and an exception raised there took the whole game down
+// with it: the splash cleared, the menu appeared, and nothing was wired up.
+export const safeStorage = () => { try { return globalThis.localStorage || null; } catch { return null; } };
+
 export function readWindowPosition(storage) {
   try {
     const saved = JSON.parse(storage?.getItem(DEV_WINDOW_KEY) || 'null');
@@ -42,7 +49,7 @@ export function readWindowPosition(storage) {
   } catch { return null; }
 }
 
-export function createDevWindow(root, { sim, spawnBird, changed, setQuality, quality = () => 'balanced', storage = globalThis.localStorage, document: doc = globalThis.document } = {}) {
+export function createDevWindow(root, { sim, spawnBird, changed, setQuality, quality = () => 'balanced', storage = safeStorage(), document: doc = globalThis.document } = {}) {
   const panel = doc.createElement('section');
   panel.className = 'dev-window hidden';
   panel.setAttribute('aria-label', 'Developer window');
