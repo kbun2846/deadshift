@@ -21,7 +21,7 @@ export class ShotgunPressure{
   this.time+=Math.max(0,dt);const full=shotgunPressurized(sim);
   this.shake+=(Number(full)*.085-this.shake)*(1-Math.exp(-14*dt));
   if(full&&this.time>=this.next){
-   this.next=this.time+({potato:.18,performance:.13,balanced:.08,quality:.055,extreme:.055}[quality]||.08);
+   this.next=this.time+({potato:.18,performance:.13,balanced:.08,quality:.055,extreme:.04}[quality]||.08);
    this.gun.updateWorldMatrix(true,false);this.gun.getWorldQuaternion(this.rotation);
    for(const side of [-1,1]){
     this.origin.set(side*.15,.025,.035);this.gun.localToWorld(this.origin);

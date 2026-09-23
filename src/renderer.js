@@ -6,7 +6,7 @@ import { GrenadeView } from './grenade-view.js';
 import { DeathView } from './death-view.js';
 import { makeRailways, makeRailProp, RAIL_TYPES } from './rail-depot.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { buildingWalls, mapProps, mapColliders, localOpenings, buildingOpenings, buildingPoint } from './maps.js';
+import { buildingWalls, mapProps, mapColliders } from './maps.js';
 import { inside, RULES } from './simulation.js';
 import { GRAPHICS, renderPixelRatio, isDemanding } from './settings.js';
 import { ElectricEffects } from './electric-effects.js';
@@ -15,16 +15,21 @@ import { SurfaceMarks } from './surface-marks.js';
 import { DustTrail, FOOTFALL_PARTICLES, IMPACT_PARTICLES, kickedDust, debrisDust, CLUTTER_BURST, throwsDust } from './dust-trail.js';
 import { Birds } from './birds.js';
 import { CropView } from './crop-view.js';
-import { cropAt, cropEntityVisible, cropImmersion } from './crops.js';
+import { cropEntityVisible, cropImmersion } from './crops.js';
 import { InteriorVisibility } from './interior-visibility.js';
+import { lightBasis, snapShadowFocus } from './shadow-snap.js';
+import { boxIndex } from './box-index.js';
+import { mergeTransformed } from './merge-transformed.js';
 
 // How coarse the interior shroud is painted, as a divisor of the viewport. The
 // upscale back to full size is what softens the doorway cones, so a bigger
 // divisor is both cheaper AND a wider feather -- the low tiers want both.
-const VISION_STEP = Object.freeze({ potato: 16, performance: 12, balanced: 9, quality: 7, extreme: 7 });
+export const CAMERA_NEAR = 2;
+
+const VISION_STEP = Object.freeze({ potato: 16, performance: 10, balanced: 9, quality: 7, extreme: 5 });
 // Seconds between repaints. A phone never needs the shroud to chase the camera
 // at frame rate; the cones are soft and move slowly.
-const VISION_REPAINT = Object.freeze({ potato: .1, performance: .07, balanced: .05, quality: .033, extreme: .033 });
+const VISION_REPAINT = Object.freeze({ potato: .1, performance: .07, balanced: .05, quality: .033, extreme: .02 });
 // The wash itself: a cool, desaturated grey that both dims the world outside
 // and drains the warmth out of it, which together read as the old
 // grayscale-plus-blur pass without any backdrop work. The higher tiers sit
@@ -38,7 +43,15 @@ import { BUILDING_FINISHES } from './building-finishes.js';
 import { makeApproaches, onApproach } from './approach-paths.js';
 import { interiorPolygons, projectVisionPolygon } from './vision-polygons.js';
 import { ROADSIDE_TYPES, makeRoadside } from './roadside.js';
-import { OUTDOOR_CAMERA_HEIGHT, CAMERA_TILT, interiorCameraHeight } from './camera-framing.js';
+import { OUTDOOR_CAMERA_HEIGHT, CAMERA_TILT, interiorCameraHeight, snapCameraFocus } from './camera-framing.js';
+import { TutorialMarkers } from './tutorial-markers.js';
+import { RemotePlayers } from './remote-players.js';
+import { freezeTransforms } from './frozen-transforms.js';
+import { BlobShadows } from './blob-shadows.js';
+import { DetailFX, ELECTRIC as FX_ELECTRIC, orbBlastScale } from './effects-detail.js';
+import { mapLook } from './map-look.js';
+import { RIFLE_MUZZLE } from './config/gameplay.js';
+import { setExtremeSurfaces } from './extreme-surfaces.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 // Reused every frame by the beam pass rather than allocated per beam.
@@ -56,9 +69,15 @@ const WHITE = new THREE.Color('#ffffff');
 const lerp = (a, b, t) => a + (b - a) * t;
 const randomGenerator = seed => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
 
+const PROP_POP = .28;
+const STREAM_GLOW = new THREE.Color('#9edcff');
+// Instances per particle colour. Sized for Extreme; lower presets never fill it.
+const PARTICLE_POOL = 400;
+const BOX_TEMPLATES = new Map();
+
 export class WorldView {
   constructor(canvas, map, qualityName='balanced') {
-    this.map = map; this.canvas = canvas; this.materials = new Map();
+    this.bufferSize = new THREE.Vector2(); this.map = map; this.canvas = canvas; this.materials = new Map(); this.materialColors = new WeakMap(); this.initialQuality = qualityName;
     this.interiorVisibility = new InteriorVisibility();
     this.groundMaterials = new Set(); this.textureCache = new Map(); this.quality = GRAPHICS[qualityName] || GRAPHICS.balanced;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.quality.antialias === true, powerPreference: 'high-performance' });
@@ -67,14 +86,24 @@ export class WorldView {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = .98;
-    this.renderer.setClearColor('#8e7859');
+    // Light and haze come from the map (map-look.js), so each map sets its own mood.
+    this.look = mapLook(map);
+    this.renderer.setClearColor(this.look.haze);
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog('#8e7859', 70, 130);
-    this.camera = new THREE.PerspectiveCamera(40, 1, .1, 180);
+    this.scene.fog = new THREE.Fog(this.look.haze, 70, 130);
+    // Near plane at 2, not 0.1. The camera never comes within about seventeen
+    // units of anything -- even zoomed into the smallest room, even the death
+    // camera's push-in -- and depth precision is spent in proportion to 1/near,
+    // so a 0.1 near plane squandered almost all of it on empty space in front
+    // of the lens. Far off, surfaces a few millimetres apart could not be told
+    // apart and flickered through each other; on the 16-bit depth buffers some
+    // phones hand out, 0.1 left roughly 24cm of separation at forty units.
+    // Raising it to 2 buys twenty times the precision for nothing.
+    this.camera = new THREE.PerspectiveCamera(40, 1, CAMERA_NEAR, 180);
     this.focus = new THREE.Vector3(map.spawn.x, 0, map.spawn.z);
     this.cameraHeight = OUTDOOR_CAMERA_HEIGHT;
-    this.scene.add(new THREE.HemisphereLight('#fff4df', '#b0a38c', 2));
-    const sun = new THREE.DirectionalLight('#fff0cc', 2.5);
+    this.scene.add(new THREE.HemisphereLight(this.look.sky, this.look.bounce, this.look.skyIntensity));
+    const sun = new THREE.DirectionalLight(this.look.sun, this.look.sunIntensity);
     sun.position.set(-24, 40, -18); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     // Fitted to the ground the overhead camera can actually frame. At height 29
@@ -88,6 +117,10 @@ export class WorldView {
     Object.assign(sun.shadow.camera, { left: -21, right: 21, top: 15, bottom: -15, near: 20, far: 82 });
     sun.shadow.normalBias = .02; sun.shadow.bias = -.00008; sun.shadow.radius = 1;
     this.scene.add(sun, sun.target); this.sun = sun;
+    // The sun sits at a fixed offset from its target, so its direction never
+    // changes and the basis across its shadow map is computed once.
+    this.sunOffset = { x: -24, y: 40, z: -18 };
+    this.sunBasis = lightBasis({ x: -this.sunOffset.x, y: -this.sunOffset.y, z: -this.sunOffset.z });
     this.static = new THREE.Group(); this.scene.add(this.static);
     this.propDetails = []; this.roofs = []; this.tumbleweeds = []; this.props = new Map();
     this.makeTerrain();
@@ -104,18 +137,15 @@ export class WorldView {
     // clutter out; this is the safety net for everything that did not.
     this.shadowBySize(this.static, .34);
     this.batch(this.static);
-    // `material.transparent` is part of three's program cache key, so the roof
-    // fade now needs two variants of every roof material. Compiling the second
-    // one lazily would stall the frame the player first walks into a building,
-    // which is exactly the wrong moment. Warm both here, behind the loading
-    // screen, which also warms every other program in the scene and removes
-    // the usual first-frame hitches.
-    this.warmPrograms();
     // These transforms never animate. Keep quality geometry, skip rebuilding its matrices.
-    for (const root of [this.static,this.groundDetails,this.extraGroundDetails,this.qualityDetails,this.performanceDetails]) {
-      root.updateMatrixWorld(true);
-      root.traverse(o=>{o.matrixAutoUpdate=false;o.matrixWorldAutoUpdate=false;});
-    }
+    // The scene itself never moves; left on, it recomposes every frame and
+    // forces all 3600 objects under it to recompute their world matrices.
+    this.scene.matrixAutoUpdate = false; this.scene.updateMatrix();
+    for (const root of [this.static,this.groundDetails,this.extraGroundDetails,this.qualityDetails,this.performanceDetails]) freezeTransforms(root);
+    // Breakable props (about 350 groups, 1600 objects) stand still too, except
+    // when hit (a wobble) or restored (a grow-in). The prop loop in update()
+    // calls updateMatrix() on those frames only.
+    for (const g of this.props.values()) freezeTransforms(g, { movable: true });
     this.player = this.makePlayer(); this.scene.add(this.player);
     this.targets = new Map();
     for (const target of map.targets) {
@@ -124,7 +154,7 @@ export class WorldView {
     this.electric = new ElectricEffects(this.scene); this.shots = new Map(); this.particles = []; this.rings = []; this.beams = new Map(); this.blasts = [];
     this.smokeGeo = new THREE.IcosahedronGeometry(1, 0);
     this.beamGeo = new THREE.CylinderGeometry(1, 1, 1, 6);
-    this.fxLight = new THREE.PointLight('#9bffe1', 0, 7, 2); this.scene.add(this.fxLight);
+    this.fxLight = new THREE.PointLight('#9bffe1', 0, 7, 2); this.scene.add(this.fxLight); this.fxLightLevel = 0;
     this.shotGeo = new THREE.SphereGeometry(.125, 7, 5);
     this.shotMaterial = new THREE.MeshBasicMaterial({ color: '#d6fff0' });
     this.seedMaterial = new THREE.MeshStandardMaterial({ color: '#b8e4ff', emissive: '#548eb7', emissiveIntensity: .7, roughness: .38 });
@@ -139,9 +169,21 @@ export class WorldView {
     // quads during a break, on the exact frame you would notice a hitch.
     this.particleMaterials = ['#c99b65', '#edcf8c', '#fff4d0', '#a75436', '#788568', '#a68a60', '#696c58', '#ffffff'].map(color => new THREE.MeshBasicMaterial({ color }));
     this.particlePool = this.particleMaterials.map(m => {
-      const mesh = new THREE.InstancedMesh(this.particleGeo, m, 240); mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled = false; this.scene.add(mesh); return mesh;
+      const mesh = new THREE.InstancedMesh(this.particleGeo, m, PARTICLE_POOL); mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled = false;
+      // Allocated up front rather than on the first setColorAt. Whether an
+      // instanced mesh has per-instance colour is part of its shader, so a pool
+      // that grew the buffer mid-game compiled a second program on its first
+      // tinted burst -- after the loading screen, in the middle of play.
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(PARTICLE_POOL * 3).fill(1), 3);
+      mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+      this.scene.add(mesh); return mesh;
     });
     this.dustTrail = new DustTrail(this.scene);
+    // Sparks, embers, smoke, flashes, shock rings and grit over every weapon,
+    // blast, fire and footstep (effects-detail.js). Counts scale per preset.
+    this.fx = new DetailFX(this.scene);
+    // Where two floating orbs arc to each other, both ends flash and spit.
+    this.electric.onContact = (a, b) => { for (const end of [a, b]) this.fx.electric(end.x, .72, end.z, .45, { ring: false }); };
     this.birds = new Birds(this.scene);
     this.dummy = new THREE.Object3D(); this.dustClock = 0; this.stepClock = 0; this.windClock = 0;
     this.footprints = []; this.footDistance = 0; this.footSide = 1;
@@ -150,9 +192,42 @@ export class WorldView {
     footGeometry.setAttribute('fade', new THREE.InstancedBufferAttribute(new Float32Array(160), 1));
     this.footMesh = new THREE.InstancedMesh(footGeometry, new THREE.ShaderMaterial({
       transparent: true, depthWrite: false,
-      uniforms: { relief: { value: 0 } },
-      vertexShader: 'attribute float fade; varying float vFade; varying vec2 vFoot; void main(){ vFade=fade; vFoot=uv*2.0-1.0; gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.0); }',
-      fragmentShader: 'uniform float relief; varying float vFade; varying vec2 vFoot; void main(){ float edge=smoothstep(0.68,0.97,length(vFoot)); float lip=edge*smoothstep(-0.1,0.8,vFoot.y)*relief; vec3 color=mix(vec3(0.22,0.17,0.11),vec3(0.72,0.60,0.40),lip); float shade=0.22+relief*(0.10*(1.0-edge)+0.15*edge); gl_FragColor=vec4(color,shade*vFade); }',
+      uniforms: { relief: { value: 0 }, pressed: { value: 0 } },
+      vertexShader: 'attribute float fade; uniform float pressed; varying float vFade; varying vec2 vFoot; varying vec2 vSun; void main(){ vFade=fade; vFoot=uv*2.0-1.0;'
+        // The sun, turned into this print's own frame (x across the foot, y along it).
+        + ' vec3 across=normalize(vec3(instanceMatrix[0].x,0.0,instanceMatrix[0].z)); vec3 along=normalize(vec3(instanceMatrix[2].x,0.0,instanceMatrix[2].z)); vec3 sun=normalize(vec3(-24.0,0.0,-18.0));'
+        + ' vSun=vec2(dot(sun,across),dot(sun,along)); gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.0); }',
+      // Extreme ('pressed') shapes a real boot print: a sole and a heel sunk
+      // into the sand with tread bars across the sole and a lip of pushed-up
+      // sand round the edge, lit by the sun from the same side as everything
+      // else (the wall facing the sun falls into shade, the far wall catches
+      // the light). Other presets keep the flat stamped print.
+      fragmentShader: `uniform float relief; uniform float pressed; varying float vFade; varying vec2 vFoot; varying vec2 vSun;
+        float print(vec2 p){
+          float sole=length(vec2(p.x/.92,(p.y-.28)/.72))-1.0;
+          float heel=length(vec2(p.x/.78,(p.y+.62)/.36))-1.0;
+          float d=min(sole,heel);
+          float tread=(p.y>-.1)?.18*step(.55,fract(p.y*5.0)):0.0;
+          return -(1.0-smoothstep(-.12,.04,d))*(1.0-tread)+.35*exp(-pow((d-.14)/.09,2.0));
+        }
+        void main(){
+          // Colours are display colours, decoded here and encoded for whatever
+          // is drawn to: the screen, or Extreme's linear buffers (which used to
+          // brighten these, because raw shader output skipped the conversion).
+          if(pressed<.5){ float edge=smoothstep(0.68,0.97,length(vFoot)); float lip=edge*smoothstep(-0.1,0.8,vFoot.y)*relief; vec3 color=mix(vec3(0.22,0.17,0.11),vec3(0.72,0.60,0.40),lip); float shade=0.22+relief*(0.10*(1.0-edge)+0.15*edge); gl_FragColor=linearToOutputTexel(sRGBTransferEOTF(vec4(color,shade*vFade))); return; }
+          vec2 p=vFoot*vec2(1.0,-1.18); float e=.03; // +y: toward the toe
+          float h=print(p), hx=(print(p+vec2(e,0.0))-h)/e, hy=(print(p+vec2(0.0,e))-h)/e;
+          // Metres: the print is 19 cm across and 36 cm long, about 1.5 cm deep.
+          vec3 n=normalize(vec3(-hx*.015/.095,1.0,-hy*.015/.18));
+          float lit=dot(n,normalize(vec3(vSun.x*.55,.75,vSun.y*.55)))/.75-1.0;
+          // Two layers: packed, darker sand in the hollow plus the shaded wall,
+          // and the sunlit wall and lip of loose sand over it.
+          float depth=clamp(-h,0.0,1.0), rim=clamp(h,0.0,1.0);
+          float darkA=depth*.3+max(0.0,-lit)*1.5, lightA=max(0.0,lit)*1.3+rim*.18;
+          float alpha=clamp(darkA+lightA,0.0,.75);
+          vec3 color=(vec3(.3,.21,.12)*darkA+vec3(.93,.83,.64)*lightA)/max(darkA+lightA,1e-3);
+          gl_FragColor=linearToOutputTexel(sRGBTransferEOTF(vec4(color,alpha*vFade*smoothstep(1.0,.9,length(vFoot)))));
+        }`,
     }), 160);
     this.footMesh.count = 0; this.footMesh.frustumCulled = false;
     this.footMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.scene.add(this.footMesh);
@@ -184,6 +259,17 @@ export class WorldView {
     this.cropContext = this.cropOverlay.getContext('2d');
     this.cropOverlay.setAttribute('aria-hidden', 'true'); canvas.insertAdjacentElement('afterend', this.cropOverlay);
     this.setQuality(GRAPHICS[qualityName]?qualityName:'balanced');
+    // Warm every program the scene will need, behind the loading screen. This
+    // has to come after setQuality, not before it: the shadow-map type and the
+    // bump maps are both part of three's program cache key, and setQuality
+    // changes them. Warming first compiled everything for PCFSoft shadows and
+    // then threw it all away the moment Balanced switched to PCF, so every
+    // program was compiled live instead -- a building, where a room's worth of
+    // never-seen materials come into view at once, was where that stalled.
+    // `material.transparent` is in the key too, so the roof fade needs two
+    // variants of every roof material, and both are compiled here.
+    this.warmPrograms();
+    this.programsWarmed = true;
     this.resize();
     this.camera.position.set(this.focus.x, this.cameraHeight, this.focus.z + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(this.focus); this.camera.updateMatrixWorld();
   }
@@ -209,7 +295,7 @@ export class WorldView {
   }
 
   material(color) {
-    if (!this.materials.has(color)) this.materials.set(color, new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0 }));
+    if (!this.materials.has(color)) { const m = new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0 }); this.materials.set(color, m); (this.materialColors ||= new WeakMap()).set(m, color); }
     return this.materials.get(color);
   }
   mesh(geometry, color, x, y, z, parent = this.static) {
@@ -236,8 +322,23 @@ export class WorldView {
     return root;
   }
 
-  box(x, y, z, w, h, d, color, parent) { return this.mesh(new THREE.BoxGeometry(w, h, d), color, x, y, z, parent); }
-  cylinder(x, y, z, radius, height, color, parent, segments = 10, top = radius) { return this.mesh(new THREE.CylinderGeometry(top, radius, height, segments), color, x, y, z, parent); }
+  // The world asks for ~31,000 boxes in only ~1,900 distinct sizes. Building
+  // a BoxGeometry runs its face generator every time; copying the arrays of
+  // one already built for that size is several times cheaper. Every box still
+  // gets its own geometry, since some are edited afterwards (terrain UVs).
+  box(x, y, z, w, h, d, color, parent) {
+    const key = w + ',' + h + ',' + d;
+    let template = BOX_TEMPLATES.get(key);
+    if (!template) { template = new THREE.BoxGeometry(w, h, d); BOX_TEMPLATES.set(key, template); }
+    return this.mesh(new THREE.BufferGeometry().copy(template), color, x, y, z, parent);
+  }
+  // Built on Extreme, round things get twice the sides: barrels, hat brims,
+  // wheels, posts. The world is built once per load, so this follows the
+  // preset the map loaded with (switching up mid-game keeps the models).
+  cylinder(x, y, z, radius, height, color, parent, segments = 10, top = radius) {
+    if (this.initialQuality === 'extreme' && segments >= 6) segments = Math.min(40, segments * 2);
+    return this.mesh(new THREE.CylinderGeometry(top, radius, height, segments), color, x, y, z, parent);
+  }
   flat(x, z, w, d, color, y = .012) {
     const geometry = new THREE.PlaneGeometry(w, d); geometry.rotateX(-Math.PI / 2);
     const mesh = this.mesh(geometry, color, x, y, z); mesh.castShadow = false;
@@ -272,6 +373,15 @@ export class WorldView {
     this.cropView?.setQuality(name);
     const q = this.quality;
     this.renderer.shadowMap.enabled = q.shadows > 0;
+    this.fx?.setQuality(name);
+    // Extreme's finishing passes (ambient occlusion, bloom, grade) load on
+    // first use; every other preset draws straight to the screen.
+    if (name === 'extreme') this.enableExtremePost();
+    // Its buffers are several hundred MB at 4K; they go when Extreme does.
+    else if (this.post) { this.post.dispose(); this.post = null; this.postLoading = null; }
+    // No shadow map on Potato: soft patches under things stand in for it.
+    if (q.shadows === 0) (this.blobShadows ||= new BlobShadows(this.scene, this.map)).enabled = true;
+    else if (this.blobShadows) this.blobShadows.enabled = false;
     // PCF_SOFT costs 20 depth-compare fetches per shaded fragment and PCF costs
     // 17, against 1 for the basic path — and every opaque object in the scene
     // sets receiveShadow, so that lands on the whole screen, ground included.
@@ -296,8 +406,14 @@ export class WorldView {
     const woodRelief = q.relief === 'full' ? this.reliefTexture('wood') : null;
     this.groundMaterials.forEach(m => { m.map = name === 'potato' ? null : texture; m.bumpMap = groundRelief; m.bumpScale = .075; m.needsUpdate = true; });
     for (const roof of this.roofs) for (const m of roof.materials) { m.bumpMap = woodRelief; m.bumpScale = .035; m.roughness = .88; m.needsUpdate = true; }
-    const timberColors = new Set(['#917655','#ad9470','#66543f','#9b8161','#b59971','#967b58','#ab8e65',...this.map.buildings.map(b=>b.color)]);
+    const timberColors = this.timberColors();
     for (const [color,m] of this.materials) if (timberColors.has(color) && !this.groundMaterials.has(m)) { m.bumpMap=woodRelief; m.bumpScale=.035; m.needsUpdate=true; }
+    const bakedTimber = this.bakedMaterials?.get('timber');
+    if (bakedTimber) { bakedTimber.bumpMap = woodRelief; bakedTimber.bumpScale = .035; bakedTimber.needsUpdate = true; }
+    // Extreme: varied, pebbled ground and dust-weathered surfaces (shader only).
+    const surfaces = [...(this.bakedMaterials?.values() || []), ...[...this.materials.values()].filter(m => !m.transparent && !this.groundMaterials.has(m)),
+      ...this.roofs.flatMap(roof => roof.materials)];
+    setExtremeSurfaces({ ground: this.groundMaterials, surfaces }, name === 'extreme');
     // Materials are shared across thousands of meshes; flag each one once so a
     // preset change queues one recompile per program instead of per mesh.
     const recompiled = new Set();
@@ -308,15 +424,24 @@ export class WorldView {
     });
     this.motes.geometry.setDrawRange(0, q.motes);
     this.fxLight.visible = q.light;
+    if (this.groundDetailsWanted(name) && this.groundDetailsFull === false) {
+      for (const root of [this.groundDetails, this.extraGroundDetails, this.performanceDetails]) {
+        root.removeFromParent(); root.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+      }
+      this.makeGroundDetails(true);
+    }
     this.groundDetails.visible = name === 'balanced' || isDemanding(name);
     this.performanceDetails.visible = name !== 'potato';
     this.propDetails.forEach(g => { g.visible = isDemanding(name); });
     this.extraGroundDetails.visible = isDemanding(name); this.qualityDetails.visible = isDemanding(name);
     this.footMesh.material.uniforms.relief.value = q.shadows > 0 ? 1 : 0;
+    this.footMesh.material.uniforms.pressed.value = name === 'extreme' ? 1 : 0;
     for (const [i, marks] of this.sandMarks.entries()) {
       marks.visible = name !== 'potato';
-      marks.material.opacity = isDemanding(name) ? (i ? .25 : .3) : name === 'balanced' ? (i ? .25 : .3) : .09;
-      const fraction = isDemanding(name) ? 1 : name === 'balanced' ? 1 : .3;
+      // Line segments are among the cheapest things to draw, so Performance
+      // gets most of the ground's cracks rather than a faint third of them.
+      marks.material.opacity = isDemanding(name) ? (i ? .25 : .3) : name === 'balanced' ? (i ? .25 : .3) : .17;
+      const fraction = isDemanding(name) ? 1 : name === 'balanced' ? 1 : .65;
       marks.geometry.setDrawRange(0, Math.floor(marks.geometry.attributes.position.count * fraction / 2) * 2);
     }
     for (const beam of this.beams.values()) beam.halo.visible = q.glow;
@@ -326,6 +451,7 @@ export class WorldView {
     this.birds?.setQuality(name);
     if (this.visionOverlay) this.visionOverlay.dataset.quality = name;
     this.resize();
+    if (this.programsWarmed) this.warmPrograms();
   }
 
   reliefTexture(kind) {
@@ -342,30 +468,76 @@ export class WorldView {
     texture.anisotropy=Math.min(8,this.renderer.capabilities.getMaxAnisotropy());this.textureCache.set(key,texture);return texture;
   }
 
-  batch(group) {
+  // Plain flat-coloured materials (everything made by material(color) that no
+  // texture, bump pass or fade depends on) are baked into vertex colours so
+  // that meshes of different colours can share one draw. Before this the world
+  // was split into a draw per colour per cell, and breakable props into a draw
+  // per part: a barrel was four, a crate up to nine. Timber keeps its own baked
+  // material because the higher presets give wood grain a bump map.
+  bakeKind(o) {
+    const m = o.material, color = this.materialColors?.get(m);
+    if (color === undefined || this.groundMaterials?.has(m) || m.transparent || m.vertexColors || o.geometry.attributes.color) return null;
+    return this.timberColors().has(color) ? 'timber' : 'plain';
+  }
+  bakedMaterial(kind) {
+    this.bakedMaterials ||= new Map();
+    if (!this.bakedMaterials.has(kind)) this.bakedMaterials.set(kind, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, metalness: 0, vertexColors: true }));
+    return this.bakedMaterials.get(kind);
+  }
+  timberColors() {
+    return this.timberColorSet ||= new Set(['#917655','#ad9470','#66543f','#9b8161','#b59971','#967b58','#ab8e65',...this.map.buildings.map(b=>b.color)]);
+  }
+
+  batch(group, bake = true) {
     group.updateMatrixWorld(true);
     const buckets = new Map();
     group.traverse(o => {
       if (!o.isMesh || Array.isArray(o.material) || o.material.map || o.material.alphaMap) return;
+      const baked = bake ? this.bakeKind(o) : null;
       // Spatial batches let both the camera and shadow frusta reject distant detail.
       // Material-only batches span the entire map, drawing every blade of grass.
       o.geometry.computeBoundingSphere();
       const center=o.geometry.boundingSphere.center.clone().applyMatrix4(o.matrixWorld);
       const cell=`${Math.floor(center.x/24)},${Math.floor(center.z/24)}`;
-      const key = `${cell}-${o.material.uuid}-${o.castShadow}-${!!o.geometry.index}-${Object.keys(o.geometry.attributes).sort().join(',')}`;
-      if (!buckets.has(key)) buckets.set(key, { material: o.material, castShadow: o.castShadow, meshes: [] });
+      // Body parts that death reactions remove on their own (a head, the legs)
+      // merge only with parts of the same kind, and the merged mesh keeps the tag.
+      const part = o.userData.deathPart || '';
+      const key = `${cell}-${part}-${baked ? 'baked-' + baked : o.material.uuid}-${o.castShadow}-${!!o.geometry.index}-${Object.keys(o.geometry.attributes).sort().join(',')}`;
+      if (!buckets.has(key)) buckets.set(key, { material: baked ? this.bakedMaterial(baked) : o.material, baked: !!baked, castShadow: o.castShadow, part, meshes: [] });
       buckets.get(key).meshes.push(o);
     });
-    const inverse = group.matrixWorld.clone().invert();
-    for (const { material, castShadow, meshes } of buckets.values()) {
+    const inverse = group.matrixWorld.clone().invert(), local = new THREE.Matrix4();
+    // Merged originals are collected and dropped from their parents in one pass
+    // at the end. removeFromParent() per mesh is an indexOf and a splice on the
+    // parent's child list each time, and ground detail puts thousands of blades
+    // under a single group -- quadratic, and a measurable slice of the load.
+    const merged = new Set(), parents = new Set();
+    for (const { material, baked, castShadow, part, meshes } of buckets.values()) {
       if (meshes.length < 2) continue;
-      const geometries = meshes.map(m => m.geometry.clone().applyMatrix4(inverse.clone().multiply(m.matrixWorld)));
-      const merged = mergeGeometries(geometries);
-      if (!merged) { geometries.forEach(g => g.dispose()); continue; }
-      merged.computeBoundingSphere();
-      const m = new THREE.Mesh(merged, material); m.castShadow = castShadow; m.receiveShadow = true;
-      for (const original of meshes) { original.removeFromParent(); original.geometry.dispose(); }
-      geometries.forEach(g => g.dispose()); group.add(m);
+      // Written straight into the merged buffers; the clone-per-mesh path is
+      // kept only for anything the direct merge declines.
+      let combined = mergeTransformed(meshes.map(m => ({ geometry: m.geometry, matrix: new THREE.Matrix4().multiplyMatrices(inverse, m.matrixWorld), color: baked ? m.material.color : undefined })));
+      if (!combined) {
+        const geometries = meshes.map(m => {
+          const g = m.geometry.clone().applyMatrix4(local.multiplyMatrices(inverse, m.matrixWorld));
+          if (baked) { const c = m.material.color, n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) a.set([c.r, c.g, c.b], i * 3); g.setAttribute('color', new THREE.BufferAttribute(a, 3)); }
+          return g;
+        });
+        combined = mergeGeometries(geometries);
+        geometries.forEach(g => g.dispose());
+      }
+      if (!combined) continue;
+      combined.computeBoundingSphere();
+      const m = new THREE.Mesh(combined, material); m.castShadow = castShadow; m.receiveShadow = true;
+      if (part) m.userData.deathPart = part;
+      for (const original of meshes) { merged.add(original); if (original.parent) parents.add(original.parent); original.geometry.dispose(); }
+      group.add(m);
+    }
+    for (const parent of parents) {
+      parent.children = parent.children.filter(child => {
+        if (!merged.has(child)) return true;
+        child.parent = null; return false;
+      });
     }
   }
 
@@ -440,8 +612,12 @@ export class WorldView {
 
   onSideRoad(x,z,padding=0) {
     if(this.approachPaths && onApproach(this.approachPaths,x,z,padding))return true;
-    const branches=this.map.farmBend ? [...(this.map.sideRoads||[]),{points:[[48,80],[75,81.2],[77,84],[49,83.2]]}] : this.map.sideRoads||[];
-    return branches.some(({points}) => {
+    // Built once, each with its bounds: this is asked tens of thousands of
+    // times while the ground is dressed, and most points are nowhere near.
+    const branches=this.sideBranches ||= (this.map.farmBend ? [...(this.map.sideRoads||[]),{points:[[48,80],[75,81.2],[77,84],[49,83.2]]}] : this.map.sideRoads||[])
+      .map(({points})=>({points,minX:Math.min(...points.map(p=>p[0])),maxX:Math.max(...points.map(p=>p[0])),minZ:Math.min(...points.map(p=>p[1])),maxZ:Math.max(...points.map(p=>p[1]))}));
+    return branches.some(({points,minX,maxX,minZ,maxZ}) => {
+      if(x<minX-padding||x>maxX+padding||z<minZ-padding||z>maxZ+padding)return false;
       let within=false;
       for(let i=0,j=points.length-1;i<points.length;j=i++) {
         const [ax,az]=points[i],[bx,bz]=points[j];
@@ -454,12 +630,12 @@ export class WorldView {
 
   makeWornTerrain() {
     const random = randomGenerator(this.map.scenerySeed + 604), group = new THREE.Group(); this.static.add(group);
-    const obstacles = mapColliders(this.map);
+    const obstacles = boxIndex(mapColliders(this.map));
     for (let i = 0; i < 130; i++) {
       const x = (random() - .5) * this.map.width, z = (random() - .5) * this.map.depth, radius = 1.1 + random() * 1.7;
       const edge = this.roadEdges(z);
       if ((x > edge.left - radius - .5 && x < edge.right + radius + .5) || this.onSideRoad(x,z,radius) || this.map.buildings.some(b => inside({ x, z }, b, radius + 2.5))) continue;
-      if (obstacles.some(b => inside({ x, z }, b, radius + .5)) || this.map.targets.some(t => Math.hypot(t.x - x, t.z - z) < radius + 1)) continue;
+      if (obstacles.some(x, z, radius + .5, b => inside({ x, z }, b, radius + .5)) || this.map.targets.some(t => Math.hypot(t.x - x, t.z - z) < radius + 1)) continue;
       const geometry = new THREE.CircleGeometry(radius, 9); geometry.rotateX(-Math.PI / 2);
       const positions = geometry.attributes.position;
       for (let k = 0; k < positions.count; k++) {
@@ -474,10 +650,10 @@ export class WorldView {
 
   makeSandMarks() {
     const random = randomGenerator(this.map.scenerySeed + 411), points = [[], []]; this.sandMarks = [];
-    const obstacles = mapColliders(this.map);
+    const obstacles = boxIndex(mapColliders(this.map));
     for (let i = 0; i < 1900 * this.map.width * this.map.depth / (76 * 64); i++) {
       const x = (random() - .5) * this.map.width, z = (random() - .5) * this.map.depth;
-      if (this.map.buildings.some(b => inside({ x, z }, b, 2.7)) || obstacles.some(b => inside({ x, z }, b, .3))) continue;
+      if (this.map.buildings.some(b => inside({ x, z }, b, 2.7)) || obstacles.some(x, z, .3, b => inside({ x, z }, b, .3))) continue;
       const edge = this.roadEdges(z), road = (x > edge.left && x < edge.right) || this.onSideRoad(x,z);
       const angle = random() * Math.PI, length = .2 + random() ** 1.5 * 1.05;
       const dx = Math.cos(angle) * length, dz = Math.sin(angle) * length;
@@ -502,7 +678,7 @@ export class WorldView {
         const x=a.x+(b.x-a.x)*along-tz*offset,z=a.z+(b.z-a.z)*along+tx*offset;
         const angle=random()*Math.PI,length=.25+random()*.65,dx=Math.cos(angle)*length,dz=Math.sin(angle)*length;
         if(!this.onSideRoad(x,z)||!this.onSideRoad(x+dx*.5,z+dz*.5)||!this.onSideRoad(x+dx,z+dz))continue;
-        if(obstacles.some(o=>inside({x,z},o,.15)||inside({x:x+dx,z:z+dz},o,.15)))continue;
+        if(obstacles.some(x,z,.15,o=>inside({x,z},o,.15))||obstacles.some(x+dx,z+dz,.15,o=>inside({x:x+dx,z:z+dz},o,.15)))continue;
         points[1].push(x,.043,z,x+dx,.043,z+dz);
       }
     }
@@ -553,41 +729,62 @@ export class WorldView {
     }
   }
 
-  makeGroundDetails() {
+  // Only Balanced and up show the dense ground cover; Performance and Potato
+  // show just the sparse seventh of it. Building the dense part anyway was over
+  // a second of every low-end load (1.5 s of an 8 s load here) for geometry
+  // those presets never draw. The random sequence is walked in full either way,
+  // so the sparse patches land exactly where they always did, and a later
+  // switch to a higher preset rebuilds the whole set identically.
+  groundDetailsWanted(name) { return name === 'balanced' || isDemanding(name); }
+  makeGroundDetails(full = this.groundDetailsWanted(this.initialQuality)) {
     const base = new THREE.Group(), extra = new THREE.Group(), sparse = new THREE.Group(); this.scene.add(base, extra, sparse);
+    this.groundDetailsFull = full;
+    const skipped = new THREE.Object3D(), place = (geometry, color, x, y, z, group) => group === sparse || full ? this.mesh(geometry, color, x, y, z, group) : skipped;
     this.performanceDetails=sparse;
     this.groundDetails = base; this.extraGroundDetails = extra;
-    const random = randomGenerator(this.map.scenerySeed + 73), obstacles = mapColliders(this.map);
+    const random = randomGenerator(this.map.scenerySeed + 73), obstacles = boxIndex(mapColliders(this.map));
+    // Shared, unit-sized templates scaled per piece, instead of a freshly built
+    // geometry for every blade, seed head and pebble. Around ten thousand of
+    // them used to be constructed here only to be merged and discarded at once.
+    // The merge applies each piece's full transform, scale included, so the
+    // result is the same geometry: a cone's vertices scale linearly with its
+    // height and a polyhedron's with its radius, and normals go through the
+    // normal matrix.
+    const thinStem = new THREE.ConeGeometry(.035, 1, 3), wideStem = new THREE.ConeGeometry(.075, 1, 3);
+    const seedHead = new THREE.SphereGeometry(.045, 5, 3), pebble = new THREE.DodecahedronGeometry(1);
     let patches = 0;
     for (let attempt = 0; attempt < 9000 && patches < Math.round(950 * this.map.width * this.map.depth / (76 * 64)); attempt++) {
       const x = (random() - .5) * this.map.width, z = (random() - .5) * this.map.depth;
       const road = this.roadEdges(z);
       if ((x > road.left - 1 && x < road.right + 1) || this.onSideRoad(x,z,1) || (this.map.crops || []).some(f => inside({ x, z }, f, .3)) || this.map.buildings.some(b => inside({ x, z }, b, 2.7)) ||
-          obstacles.some(b => inside({ x, z }, b, 1)) || this.map.targets.some(t => Math.hypot(t.x - x, t.z - z) < 2)) continue;
+          obstacles.some(x, z, 1, b => inside({ x, z }, b, 1)) || this.map.targets.some(t => Math.hypot(t.x - x, t.z - z) < 2)) continue;
       patches++;
       const group = patches%7===0 ? sparse : patches <= Math.round(330 * this.map.width * this.map.depth / (76 * 64)) ? base : extra;
       const dry = patches % 5 !== 0, stems = dry ? 5 + Math.floor(random() * 5) : 6;
       for (let i = 0; i < stems; i++) {
         const angle = i / stems * Math.PI * 2 + random() * .4;
         const height = dry ? .22 + random() * .42 : .16 + random() * .18;
-        const stem = this.mesh(new THREE.ConeGeometry(dry ? .035 : .075, height, 3),
+        const stem = place(dry ? thinStem : wideStem,
           dry ? i % 3 ? '#b8a167' : '#c9b577' : '#83856a',
           x + Math.cos(angle) * .12, height * .42, z + Math.sin(angle) * .12, group);
+        stem.scale.y = height;
         stem.rotation.set(Math.sin(angle) * .45, angle, Math.cos(angle) * .45);
         if (dry && i % 3 === 0) {
-          const head = this.mesh(new THREE.SphereGeometry(.045, 5, 3), '#c9b577',
+          const head = place(seedHead, '#c9b577',
             x + Math.cos(angle) * .2, height * .9, z + Math.sin(angle) * .2, group);
           head.scale.set(.7, 1.8, .7);
         }
       }
       if (patches % 2 === 0) for (let i = 0; i < 3; i++) {
-        const stone = this.mesh(new THREE.DodecahedronGeometry(.07 + random() * .1), '#8c7a5c',
+        const size = .07 + random() * .1;
+        const stone = place(pebble, '#8c7a5c',
           x + (random() - .5) * 1.5, .05, z + (random() - .5) * 1.5, group);
-        stone.scale.y = .45; stone.rotation.y = random() * 6;
+        stone.scale.set(size, size * .45, size); stone.rotation.y = random() * 6;
       }
     }
     this.noShadows(base); this.noShadows(extra); this.noShadows(sparse);
     this.batch(base); this.batch(extra); this.batch(sparse);
+    for (const root of [base, extra, sparse]) freezeTransforms(root);
     base.userData.patches = Math.min(330, patches); extra.userData.patches = Math.max(0, patches - 330);
   }
 
@@ -684,7 +881,7 @@ export class WorldView {
     // that panel already casts the whole roof. Re-drawing every tile into the
     // shadow map is the single largest source of wasted casters per building.
     for (const layer of roof.children) for (const tile of layer.children) this.noShadows(tile);
-    this.batch(roof);
+    this.batch(roof, false);
     // Thin raised roof layers should not produce shadow-map striping on each other.
     roof.traverse(m => { if (m.isMesh) m.receiveShadow = false; });
     // Captured after the batch: these are the merged meshes that actually came
@@ -892,6 +1089,12 @@ export class WorldView {
     const chevron = new THREE.Shape(); chevron.moveTo(0, 0); chevron.lineTo(-.11, .2); chevron.lineTo(.11, .2); chevron.closePath();
     const pointer = new THREE.Mesh(new THREE.ShapeGeometry(chevron), new THREE.MeshBasicMaterial({ color: '#f3e7c5', side: THREE.DoubleSide }));
     pointer.rotation.x = -Math.PI / 2; pointer.position.set(0, .08, -.95); g.add(pointer);
+    // Merge the body into a few draws: legs, head and the rest each become one
+    // mesh (death reactions still find them by deathPart). The gun and the
+    // Static arm move and hide on their own, so they sit out the body merge;
+    // the gun's solid parts merge among themselves.
+    body.remove(gun, g.userData.staticArm); this.batch(body); body.add(g.userData.staticArm, gun);
+    this.batch(gun);
     return g;
   }
 
@@ -929,16 +1132,19 @@ export class WorldView {
       }
       for (const y of [.85, 1.17]) this.box(0, y, .175, .45, .035, .025, '#77694e', board);
       const disk = this.mesh(new THREE.SphereGeometry(.095, 7, 5), '#9a6350', 0, 1.1, .2, board); disk.scale.z = .2;
-      g.userData.disk = disk;
+      // Everything on the board moves together (the hit wobble moves the
+      // board), so it is one draw instead of eight.
+      this.batch(board);
       return g;
     }
     this.box(0, .47, 0, .13, .9, .13, '#907552', board);
     this.box(0, .1, 0, 1.1, .18, .65, '#a88d62', board);
     const face = new THREE.Group(); face.position.set(0, 1, 0); face.rotation.x = .6; board.add(face);
-    const disk = this.cylinder(0, 0, 0, .6, .14, '#eee0bd', face, 20); g.userData.disk = disk;
+    this.cylinder(0, 0, 0, .6, .14, '#eee0bd', face, 20);
     this.cylinder(0, .08, 0, .41, .016, moving ? '#6e8880' : '#b87552', face, 20);
     this.cylinder(0, .096, 0, .27, .018, '#ede0bc', face, 20);
     this.cylinder(0, .109, 0, .13, .02, '#ab5438', face, 16);
+    this.batch(board);
     return g;
   }
 
@@ -958,24 +1164,42 @@ export class WorldView {
     this.motes = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#fff1c6', size: .045, transparent: true, opacity: .6, depthWrite: false })); this.scene.add(this.motes);
     this.ambientClock = 3;
     // Broad overlapping wisps, baked once rather than a full-screen fog pass.
-    const dustCanvas=document.createElement('canvas');dustCanvas.width=256;dustCanvas.height=128;
+    // Built from many soft lobes of two tones, then combed with fine
+    // wind-blown streaks, so a cloud has body and grain instead of one blur.
+    const dustCanvas=document.createElement('canvas');dustCanvas.width=512;dustCanvas.height=256;
     const ctx=dustCanvas.getContext('2d');
-    for(let i=0;i<18;i++){
-      const x=35+rand()*186,y=35+rand()*58,r=18+rand()*30;
+    for(let i=0;i<46;i++){
+      const x=70+rand()*372,y=70+rand()*116,r=14+rand()*58,light=i%3===0;
       const gradient=ctx.createRadialGradient(x,y,0,x,y,r);
-      gradient.addColorStop(0,'rgba(216,194,149,.45)');gradient.addColorStop(.45,'rgba(216,194,149,.18)');gradient.addColorStop(1,'rgba(216,194,149,0)');
+      const tone=light?'232,214,172':'208,186,142';
+      gradient.addColorStop(0,`rgba(${tone},${light?.32:.4})`);gradient.addColorStop(.5,`rgba(${tone},.14)`);gradient.addColorStop(1,`rgba(${tone},0)`);
       ctx.fillStyle=gradient;ctx.fillRect(x-r,y-r,r*2,r*2);
     }
+    ctx.globalCompositeOperation='destination-out';
+    for(let i=0;i<70;i++){const y=40+rand()*176,x=rand()*512;ctx.strokeStyle=`rgba(0,0,0,${.05+rand()*.08})`;ctx.lineWidth=1+rand()*3;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+40+rand()*120,y+(rand()-.5)*6);ctx.stroke();}
+    ctx.globalCompositeOperation='source-over';
     const dustTexture=new THREE.CanvasTexture(dustCanvas);dustTexture.colorSpace=THREE.SRGBColorSpace;
+    // Clear space around the player and where they aim: a cloud drifting over
+    // either thins to nothing there, so weather never hides the fight.
+    this.wispClear={player:{value:new THREE.Vector2()},aim:{value:new THREE.Vector2()}};
     // Each of these covers a fifth to a quarter of the screen, and they
     // overlap: three of them is roughly two thirds of a full-screen blended
     // pass, which is what the comment above was trying to avoid. On a tiler
     // every blended layer is a read-modify-write of the tile with no early
     // depth rejection, so the phone tiers get fewer of them and the scene fog
     // carries the haze instead.
-    this.dustWisps=Array.from({length:3},(_,i)=>{
-      const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:dustTexture,transparent:true,opacity:0,depthWrite:false,depthTest:true}));
-      sprite.scale.set(15+i*3,6+i,1);this.resetDustWisp(sprite,i);this.scene.add(sprite);return sprite;
+    const wispGeometry=new THREE.PlaneGeometry(1,1);wispGeometry.rotateX(-Math.PI/2);
+    this.dustWisps=Array.from({length:5},(_,i)=>{
+      const material=new THREE.MeshBasicMaterial({map:dustTexture,transparent:true,opacity:0,depthWrite:false,depthTest:true});
+      material.onBeforeCompile=shader=>{
+        shader.uniforms.clearPlayer=this.wispClear.player;shader.uniforms.clearAim=this.wispClear.aim;
+        shader.vertexShader='varying vec2 vWispWorld;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvWispWorld=(modelMatrix*vec4(transformed,1.0)).xz;');
+        shader.fragmentShader='uniform vec2 clearPlayer; uniform vec2 clearAim; varying vec2 vWispWorld;\n'+shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+          diffuseColor.a*=smoothstep(2.2,5.5,distance(vWispWorld,clearPlayer))*smoothstep(1.2,3.6,distance(vWispWorld,clearAim));`);
+      };
+      material.customProgramCacheKey=()=>'dust-wisp';
+      const wisp=new THREE.Mesh(wispGeometry,material);wisp.renderOrder=5;
+      wisp.scale.set(15+(i%3)*3,1,7+(i%3));this.resetDustWisp(wisp,i%3);this.scene.add(wisp);return wisp;
     });
     for (const [x, z] of [[-4, -9], [20, 18], [-22, 12]]) this.spawnTumbleweed(x, z);
   }
@@ -989,8 +1213,8 @@ export class WorldView {
       z:route===2?-1.05:(Math.random()-.5)*1.8,
       dx:horizontal?direction*(1.8+Math.random()*.6):(Math.random()-.5)*1.1,
       dz:route===2?1.8+Math.random()*.5:(Math.random()-.5)*.9,
-      phase:Math.random()*Math.PI*2,height:1.8+Math.random()*1.6};
-    wisp.material.rotation=(Math.random()-.5)*.25;
+      phase:Math.random()*Math.PI*2,height:1.2+Math.random()*1.4};
+    wisp.rotation.y=(Math.random()-.5)*.25;
   }
 
   spawnTumbleweed(x, z) {
@@ -1010,7 +1234,9 @@ export class WorldView {
     if (bare) { for (const wisp of this.dustWisps) wisp.visible = false; return; }
     // How many of the big blended haze sprites this preset can afford. One is
     // enough to read as moving air; three is most of a full-screen blend.
-    const wisps = this.qualityName === 'performance' ? 1 : this.qualityName === 'balanced' ? 2 : 3;
+    const wisps = this.qualityName === 'performance' ? 1 : this.qualityName === 'balanced' ? 2 : this.qualityName === 'extreme' ? 5 : 3;
+    this.wispClear.player.value.set(sim.player.x, sim.player.z);
+    this.wispClear.aim.value.set(sim.player.aimPointX ?? sim.player.x, sim.player.aimPointZ ?? sim.player.z);
     for (let i = wisps; i < this.dustWisps.length; i++) this.dustWisps[i].visible = false;
     const halfHeight=Math.tan(this.camera.fov*Math.PI/360)*this.camera.position.distanceTo(this.focus);
     const halfWidth=halfHeight*this.camera.aspect;
@@ -1072,20 +1298,35 @@ export class WorldView {
   // Compile every program the scene will need, including the blended variant
   // of each roof material, before gameplay starts.
   warmPrograms() {
+    for (const group of this.particlePool || []) this.interiorVisibility.apply(group);
+    // The detail-effect pools sit hidden until something happens, and compile
+    // only compiles what is visible: shown for the warm-up, so the first
+    // grenade or gunshot does not stop the game for a second to build shaders.
+    const fxMeshes = this.fx?.meshes || [];
+    for (const mesh of fxMeshes) { this.interiorVisibility.apply(mesh); mesh.visible = true; }
     const compile = () => { try { this.renderer.compile(this.scene, this.camera); } catch { /* A warm-up failure is not a reason to refuse to start. */ } };
     compile();
+    for (const mesh of fxMeshes) mesh.visible = mesh.count > 0;
     const roofMaterials = this.roofs.flatMap(r => r.materials);
     if (!roofMaterials.length) return;
     for (const m of roofMaterials) m.transparent = true;
     compile();
-    for (const m of roofMaterials) m.transparent = false;
+    // Put them back and have three re-pick the opaque shader, rather than leave
+    // them holding the transparent one the second compile just attached.
+    for (const m of roofMaterials) { m.transparent = false; m.needsUpdate = true; }
+    for (const roof of this.roofs) roof.blended = false;
   }
 
   resize() {
     this.cachedRect = null;
     const w = window.innerWidth, h = window.innerHeight;
-    this.renderer.setPixelRatio(renderPixelRatio(this.quality,devicePixelRatio,w,h)*(this.resolutionScale||1));
-    this.renderer.setSize(w, h); this.camera.aspect = w / h;
+    // One drawing-buffer allocation, not two: setPixelRatio followed by
+    // setSize reallocates the canvas twice, a visible hitch on a phone each
+    // time the adaptive resolution steps.
+    const ratio = renderPixelRatio(this.quality,devicePixelRatio,w,h)*(this.resolutionScale||1);
+    this.renderer.setDrawingBufferSize(w, h, ratio);
+    this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px';
+    this.camera.aspect = w / h;
     this.camera.fov = w / h < 1.2 ? 49 : 40; this.camera.updateProjectionMatrix();
     const step = VISION_STEP[this.qualityName] || VISION_STEP.balanced;
     for (const overlay of [this.visionOverlay, this.cropOverlay]) {
@@ -1216,12 +1457,28 @@ export class WorldView {
     }
   }
 
+  // A gunshot lights its surroundings for a few hundredths of a second, using
+  // the effects light every tier with lights already has (so no new shader
+  // variants and no cost when idle). Warm, like the powder flash.
+  muzzleLight(reach, level) {
+    const p = this.lastSim?.player; if (!p) return;
+    this.fxLight.color.set('#ffb766'); this.fxLight.position.set(p.x + p.aimX * reach, 1.05, p.z + p.aimZ * reach);
+    this.fxLightLevel = Math.max(this.fxLightLevel, level);
+  }
+
   event(e) {
     if(e.type==='playerDeath'){this.deathView??=new DeathView(this);this.deathView.start(e);return;}
     if(e.type==='grenadeExplosion'){this.explosion(e);return;}
+    if(e.type==='grenadeThrow'){this.grenadeView?.thrown(e);}
+    if(e.type==='shotgunShot'){this.muzzleLight(1.1,14+(e.charge||0)*14);const p=this.lastSim?.player;if(p)this.fx.muzzle('ballast',e.x,.77,e.z,p.aimX,p.aimZ,e.charge||0);}
     if(e.type==='shotgunShot'||e.type==='shotgunReload'){this.shotgunView?.event(e);return;}
-    if(e.type==='rifleImpact'){this.burst(e.x,e.z,(RIFLE_QUALITY[this.qualityName]||RIFLE_QUALITY.balanced).impact,'hit');return;}
-    if(e.type==='rifleShot'){this.rifleView?.shot(e);return;}
+    if(e.type==='rifleImpact'){this.burst(e.x,e.z,(RIFLE_QUALITY[this.qualityName]||RIFLE_QUALITY.balanced).impact,'hit');this.fx.impact(e.x,e.z,this.kickedDustColor(e.x,e.z));return;}
+    if(e.type==='rifleShot'){
+      this.muzzleLight(1.15,7);
+      const p=this.lastSim?.player;
+      if(p)this.fx.muzzle('rifle',p.x+p.aimX*(RIFLE_MUZZLE.forward+.12)-p.aimZ*RIFLE_MUZZLE.lateral,.76,p.z+p.aimZ*(RIFLE_MUZZLE.forward+.12)+p.aimX*RIFLE_MUZZLE.lateral,p.aimX,p.aimZ);
+      this.rifleView?.shot(e);return;
+    }
     if(e.electric&&['hit','kill','playerHit'].includes(e.type))this.electric.aftershock(e);
     if (e.type === 'cropDust' || e.type === 'cropAsh') {
       for (let i = 0; i < 12; i++) {
@@ -1231,13 +1488,29 @@ export class WorldView {
       }
     }
     if (e.type === 'sprayArc') {
+      // Where the stream's arcs land, it spits sparks and flashes; the muzzle
+      // flickers with it. Throttled, since the stream reports every tick.
+      this.streamClock = (this.streamClock ?? 0) - RULES.step;
+      if (e.firing && this.streamClock <= 0 && e.paths.length) {
+        this.streamClock = .045;
+        for (let i = 0; i < 2; i++) {
+          const path = e.paths[Math.floor(Math.random() * e.paths.length)];
+          this.fx.electric(path.b.x, path.b.y ?? .76, path.b.z, .55 + Math.random() * .4, { ring: Math.random() < .3 });
+        }
+        this.fx.glow({ x: this.staticMuzzle.x, y: this.staticMuzzle.y, z: this.staticMuzzle.z, size: .7, life: .06, color: STREAM_GLOW, glow: 1.3, flicker: 1 });
+      }
       const paths=e.paths.map(path=>({...path,a:this.staticMuzzle}));
       this.electric.event({...e,paths}, this.lastSim?.colliders || []);
-      this.fxLight.color.set('#9cdfff'); this.fxLight.position.copy(this.staticMuzzle); this.fxLight.intensity = e.firing ? 12 : 3;
+      this.fxLight.color.set('#9cdfff'); this.fxLight.position.copy(this.staticMuzzle); this.fxLightLevel = e.firing ? 12 : 3;
     }
-    if (e.type.startsWith('hex')) { this.electric.event(e); if (e.type === 'hexPulse') { this.shake = Math.max(this.shake, .2); this.fxLight.color.set('#b8ecff'); this.fxLight.position.set(e.nodes[0].originX, 1.3, e.nodes[0].originZ); this.fxLight.intensity = 35; } }
+    if (e.type === 'hexPulse') this.fx.hexPulse(e.nodes);
+    if (e.type === 'hexZap') this.fx.electric(e.b.x, .75, e.b.z, 1);
+    if (e.type === 'hexFizzle') this.fx.electric(e.x, .75, e.z, .7);
+    if (e.type.startsWith('hex')) { this.electric.event(e); if (e.type === 'hexPulse') { this.shake = Math.max(this.shake, .2); this.fxLight.color.set('#b8ecff'); this.fxLight.position.set(e.nodes[0].originX, 1.3, e.nodes[0].originZ); this.fxLightLevel = 35; } }
     if (e.type === 'dodge') {
       this.burst(e.x, e.z, 12 * (FOOTFALL_PARTICLES[this.qualityName] ?? 1), 'dust', this.kickedDustColor(e.x, e.z));
+      const p = this.lastSim?.player;
+      this.fx.grit(e.x, e.z, this.kickedDustColor(e.x, e.z), p?.dodgeX ?? 0, p?.dodgeZ ?? 0, 3);
       this.dustTrail.dashStart();
     }
     if (e.type === 'impactMark') this.surfaceMarks.enqueue('bullet',e);
@@ -1249,11 +1522,17 @@ export class WorldView {
       // out of the player's chest; orbs parked out in the world keep theirs.
       const muzzle = this.staticMuzzle, atGun = path => Math.hypot(path.x - e.x, path.z - e.z) <= 1.15 && muzzle.lengthSq() > 0;
       for (const path of e.paths) this.addBeam(atGun(path) ? { ...path, x: muzzle.x, z: muzzle.z } : path, .016 + e.count * .0007);
-      this.fxLight.color.set('#9bffe1'); this.fxLight.position.set(e.x, 1.2, e.z); this.fxLight.intensity = 8 + e.count * 1.5;
+      if (muzzle.lengthSq() > 0) this.fx.electric(muzzle.x, muzzle.y, muzzle.z, .6 + Math.min(1, e.count / 12), { ring: false });
+      this.fxLight.color.set('#9bffe1'); this.fxLight.position.set(e.x, 1.2, e.z); this.fxLightLevel = 8 + e.count * 1.5;
     }
-    if (e.type === 'pointImpact') { this.burst(e.x, e.z, 6 * this.impactDetail, 'hit'); }
+    if (e.type === 'pointImpact') { this.burst(e.x, e.z, 6 * this.impactDetail, 'hit'); this.fx.electric(e.x, .72, e.z, .8); }
     if (e.type === 'explosion') this.electric.event({ type: 'convergence', x: e.x, z: e.z, radius: e.radius * .6 });
     if (e.type === 'propHit') this.burst(e.x, e.z, 6 * this.impactDetail, 'dust');
+    if (e.type === 'propRestore') {
+      const g = this.props.get(e.id);
+      if (g) { g.userData.baseScale ??= g.scale.clone(); g.userData.popIn = PROP_POP; g.visible = true; }
+      this.burst(e.x, e.z, 5 * this.impactDetail, 'dust', this.kickedDustColor(e.x, e.z));
+    }
     if (e.type === 'propBreak') {
       const prop = this.props.get(e.id); if (prop) prop.visible = false;
       this.breakProp(e);
@@ -1328,7 +1607,7 @@ export class WorldView {
     // tighter fan along the dash, because the player's own body did it.
     const dashed = !!e.dashed, force = dashed ? 1.55 : 1, fan = dashed ? 1.1 : 1.7;
     const angle = Math.atan2(e.directionZ, e.directionX);
-    const count = Math.round((plant ? 9 : little ? 7 : 14) * (dashed ? 1.7 : 1) * (isDemanding(this.qualityName) ? 2.5 : .5 + this.quality.effects * .5));
+    const count = Math.round((plant ? 9 : little ? 7 : 14) * (dashed ? 1.7 : 1) * (this.qualityName === 'extreme' ? 3.2 : isDemanding(this.qualityName) ? 2.5 : .5 + this.quality.effects * .5));
     for (let i = 0; i < count && this.particles.length < this.quality.particleCap; i++) {
       const direction = angle + (Math.random() - .5) * fan, speed = (1.7 + Math.random() * 3.2) * force * (little ? .8 : 1);
       const size = (little ? .06 + Math.random() * .06 : .12 + Math.random() * .11) * e.scale;
@@ -1349,6 +1628,9 @@ export class WorldView {
 
   explosion(e) {
     this.surfaceMarks.enqueue('explosion',e);
+    // Orb blasts grow one step per landed orb (orbBlastScale); grenades stay full size.
+    const look = e.type === 'explosion' ? orbBlastScale(e.count) : 1;
+    this.fx.explosion(e.x, e.z, e.radius, e.count || 6, this.kickedDustColor(e.x, e.z), look);
     // One ring geometry for the lifetime of the view: it was rebuilt, uploaded
     // and thrown away on every explosion.
     this.blastRingGeo ||= new THREE.RingGeometry(.88, 1, 40);
@@ -1357,7 +1639,7 @@ export class WorldView {
     const core = new THREE.Mesh(this.smokeGeo, new THREE.MeshBasicMaterial({ color: '#fff3c3', transparent: true, opacity: 1, depthWrite: false, toneMapped: false }));
     core.position.set(e.x, .7, e.z); core.scale.setScalar(e.radius * .4); core.renderOrder = 1; this.scene.add(core);
     // Keep the readable fireball on every preset; quality adds extra rolling lobes.
-    const smoke = [], count = Math.min(isDemanding(this.qualityName)?36:20,Math.max(4, Math.round(4 + e.count * .55 * this.quality.effects)));
+    const smoke = [], count = Math.min(this.qualityName==='extreme'?48:isDemanding(this.qualityName)?36:20,Math.max(4, Math.round(4 + e.count * .55 * this.quality.effects)));
     // Every puff in a blast fades on the same curve — only position and scale
     // differ — so the blast needs four materials, not two per puff. At 36 puffs
     // on Quality that was 72 fresh materials per explosion, each one a uniform
@@ -1377,9 +1659,9 @@ export class WorldView {
       smoke.push({ mesh, flame, dx: Math.cos(angle), dz: Math.sin(angle), size: .3 + Math.random() * .16 });
     }
     this.blasts.push({ x: e.x, z: e.z, radius: e.radius, ring, core, smoke, materials: [...smokeMaterials, ...flameMaterials], age: 0 });
-    this.burst(e.x, e.z, isDemanding(this.qualityName) ? 25 + e.count * 7 : 5 + e.count * 2, 'hit');
+    this.burst(e.x, e.z, Math.max(3, Math.round((isDemanding(this.qualityName) ? 25 + e.count * 7 : 5 + e.count * 2) * Math.min(1, look))), 'hit');
     this.shake = Math.max(this.shake, Math.min(1.1,.15 + e.count * .045)); this.shakeDecay = 8;
-    this.fxLight.color.set('#ff9e42'); this.fxLight.position.set(e.x, 1.5, e.z); this.fxLight.intensity = Math.min(120,15 + e.count * 4);
+    this.fxLight.color.set('#ff9e42'); this.fxLight.position.set(e.x, 1.5, e.z); this.fxLightLevel = Math.min(120,(15 + e.count * 4) * Math.min(1, .5 + .5 * look));
   }
 
   updateBlasts(dt) {
@@ -1441,7 +1723,7 @@ export class WorldView {
         arcPoints.setXYZ(i, lerp(b.startX, b.endX, t) + px * offset, .74 + offset * .45, lerp(b.startZ, b.endZ, t) + pz * offset);
       }
       arcPoints.needsUpdate = true; b.arc.material.opacity = Math.max(0, opacity * .8); b.arc.visible = length > .05;
-      for (const [mesh, scale] of [[b.core, 1], [b.halo, isDemanding(this.qualityName) ? 9 : 5]]) {
+      for (const [mesh, scale] of [[b.core, 1], [b.halo, this.qualityName === 'extreme' ? 11 : isDemanding(this.qualityName) ? 9 : 5]]) {
         mesh.position.set((b.startX + b.endX) / 2, .72, (b.startZ + b.endZ) / 2);
         if (length > .0001) mesh.quaternion.setFromUnitVectors(UP, BEAM_DIR.copy(delta).normalize());
         mesh.scale.set(b.width * scale, Math.max(.001, length), b.width * scale);
@@ -1456,7 +1738,11 @@ export class WorldView {
     const p = sim.player, speed = Math.hypot(p.vx, p.vz);
     const renderX = lerp(previousPlayer.x, p.x, alpha), renderZ = lerp(previousPlayer.z, p.z, alpha);
     this.player.position.set(renderX, 0, renderZ);
-    this.updateFootprints(sim, dt, active, renderX, renderZ);
+    // Dev "remove my player" hides the body (the death view hides it too, so
+    // only give it back when no death is playing).
+    const ghost = !!sim.dev?.ghost;
+    if (ghost) this.player.visible = false; else if (!this.deathView?.active) this.player.visible = true;
+    this.updateFootprints(sim, dt, active && !ghost, renderX, renderZ);
     this.player.rotation.y = Math.atan2(-p.aimX, -p.aimZ);
     const body = this.player.userData.body;
     const dodge = p.dodgeRemaining > 0 ? Math.sin(Math.PI * (1 - p.dodgeRemaining / RULES.dodgeDuration)) : 0;
@@ -1489,21 +1775,42 @@ export class WorldView {
     const fx = this.focus.x + shakeX + (this.motion && !cameraRoom ? this.kick.x : 0), fz = this.focus.z + shakeZ + (this.motion && !cameraRoom ? this.kick.z : 0);
     this.shadowClock=(this.shadowClock||0)+dt;
     if(!this.quality.shadowFPS||this.sun.shadow.needsUpdate||this.shadowClock>=1/this.quality.shadowFPS){
-      this.sun.position.set(fx - 24, 40, fz - 18); this.sun.target.position.set(fx, 0, fz);
+      // Snapped to whole shadow texels so the map's grid stays fixed to the
+      // world; otherwise every update lands edges on a slightly different grid
+      // and they crawl. See shadow-snap.js.
+      const cam = this.sun.shadow.camera, size = this.sun.shadow.mapSize;
+      const at = snapShadowFocus({ x: fx, y: 0, z: fz }, this.sunBasis,
+        (cam.right - cam.left) / size.x, (cam.top - cam.bottom) / size.y);
+      this.sun.position.set(at.x + this.sunOffset.x, at.y + this.sunOffset.y, at.z + this.sunOffset.z);
+      this.sun.target.position.set(at.x, at.y, at.z);
       this.sun.shadow.needsUpdate=true;
       this.shadowClock=this.quality.shadowFPS?this.shadowClock%(1/this.quality.shadowFPS):0;
     }
-    this.camera.position.set(fx, this.cameraHeight, fz + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(fx, 0, fz); this.camera.updateMatrixWorld();
+    const snapped = snapCameraFocus(fx, fz, this.cameraHeight, this.camera.fov, this.renderer.getDrawingBufferSize(this.bufferSize).y);
+    this.camera.position.set(snapped.x, this.cameraHeight, snapped.z + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(snapped.x, 0, snapped.z); this.camera.updateMatrixWorld();
     for (const roof of this.roofs) {
       const desired = sim.roofId === roof.id ? .095 : 1;
-      roof.opacity = lerp(roof.opacity, desired, 1 - Math.exp(-8 * dt));
+      // Rate 20: about a tenth of a second to 90%. At 8 the roof was still
+      // visibly lifting a third of a second after the player was through the door.
+      roof.opacity = lerp(roof.opacity, desired, 1 - Math.exp(-20 * dt));
       // Leaving these permanently transparent meant the largest, topmost
       // surface in a top-down frame was blended at alpha 1 and drawn after all
       // opaque geometry — so every floor, wall and counter under a visible roof
       // was fully shaded and then painted over, with no chance of being
       // occluded. Opaque whenever it is actually opaque.
       const blended = roof.opacity < .995;
-      for (const m of roof.materials) { m.opacity = roof.opacity; m.depthWrite = roof.opacity > .98; m.transparent = blended; }
+      // `transparent` decides the shader three uses (the opaque one forces alpha
+      // to 1), and three only re-picks a material's shader when told it changed.
+      // Flipping the flag without needsUpdate left the roof on its opaque shader,
+      // so it never faded. It only ever worked because the effects light used to
+      // switch off indoors, which refreshed every shader in the scene by
+      // accident; once that stopped, the roof stopped fading. Both variants are
+      // warmed at load, so this swap costs nothing.
+      if (roof.blended !== blended) {
+        roof.blended = blended;
+        for (const m of roof.materials) { m.transparent = blended; m.needsUpdate = true; }
+      }
+      for (const m of roof.materials) { m.opacity = roof.opacity; m.depthWrite = roof.opacity > .98; }
       const castsShadow=roof.opacity>.5;
       if(roof.castsShadow!==castsShadow){
         for(const m of roof.casters)m.castShadow=castsShadow;
@@ -1524,7 +1831,19 @@ export class WorldView {
     }
     for (const prop of sim.props) {
       const g = this.props.get(prop.id); if (!g) continue;
-      g.visible = prop.hp > 0; g.rotation.z = prop.flash > 0 ? Math.sin(prop.flash * 65) * .025 : 0;
+      g.visible = prop.hp > 0;
+      const wobble = prop.flash > 0 ? Math.sin(prop.flash * 65) * .025 : 0;
+      let moved = wobble !== g.rotation.z; g.rotation.z = wobble;
+      // A restored prop grows back into place rather than blinking in.
+      const pop = g.userData.popIn;
+      if (pop !== undefined) {
+        moved = true;
+        g.userData.popIn = Math.max(0, pop - dt);
+        const t = 1 - g.userData.popIn / PROP_POP, grow = 1 - (1 - t) ** 3;
+        g.scale.copy(g.userData.baseScale).multiplyScalar(.35 + .65 * grow);
+        if (!g.userData.popIn) { g.scale.copy(g.userData.baseScale); delete g.userData.popIn; }
+      }
+      if (moved) g.updateMatrix();
     }
     const present = new Set();
     for (const s of [...sim.shots, ...sim.hexOrbs]) {
@@ -1534,7 +1853,7 @@ export class WorldView {
         const orb = new THREE.Mesh(this.shotGeo, this.seedMaterial); g.add(orb);
         const aura = new THREE.Mesh(this.shotGeo, new THREE.MeshBasicMaterial({color:'#91d9ff',transparent:true,opacity:.12,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false})); aura.scale.setScalar(1.7); g.add(aura);
         const trail = new THREE.Mesh(this.trailGeo, this.trailMaterial); g.add(trail);
-        const electricGeometry = new THREE.BufferGeometry(); electricGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(5 * 6 * 2 * 3), 3));
+        const electricGeometry = new THREE.BufferGeometry(); electricGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(7 * 6 * 2 * 3), 3));
         const electricity = new THREE.LineSegments(electricGeometry, this.orbElectricMaterial); g.add(electricity);
         g.userData = { orb, trail, electricity, aura }; this.shots.set(s.id, g); this.scene.add(g);
       }
@@ -1565,7 +1884,7 @@ export class WorldView {
       g.userData.trail.scale.set(1, 1, Math.min(1.4, s.age * 31));
       g.userData.trail.position.z = -Math.min(.7, s.age * 15.5);
       const electricity = g.userData.electricity, points = electricity.geometry.attributes.position;
-      const arcs = this.qualityName === 'performance' || this.qualityName === 'potato' ? 1 : isDemanding(this.qualityName) ? 5 : 3;
+      const arcs = this.qualityName === 'performance' || this.qualityName === 'potato' ? 1 : this.qualityName === 'extreme' ? 7 : isDemanding(this.qualityName) ? 5 : 3;
       const electricTick=Math.floor(elapsed*18);
       if(g.userData.electricTick!==electricTick||g.userData.arcCount!==arcs){
       g.userData.electricTick=electricTick;g.userData.arcCount=arcs;
@@ -1580,7 +1899,7 @@ export class WorldView {
       electricity.scale.setScalar(s.launched ? 1.3 : lifeScale);
     }
     for (const [id, g] of this.shots) if (!present.has(id)) { this.scene.remove(g); g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); this.shots.delete(id); }
-    this.updateBeams(sim, dt); this.fxLight.intensity *= Math.exp(-12 * dt);
+    this.updateBeams(sim, dt); this.fxLightLevel *= Math.exp(-12 * dt);
     const dashing = p.dodgeRemaining > 0;
     if (active && speed > 1) {
       this.stepClock += dt;
@@ -1598,6 +1917,19 @@ export class WorldView {
     if (active && this.wasDashing && !dashing) this.dustTrail.land(renderX, renderZ, this.kickedDustColor(p.x, p.z), p.dodgeX, p.dodgeZ);
     this.wasDashing = dashing;
     this.dustTrail.update(dt);
+    if (active) { this.fx.clearZone.value.set(renderX, renderZ); this.updateDetailFX(sim, dt); this.fx.update(dt); }
+    // Training range only: the pink zone and the arrow in front of the player.
+    if (this.tutorialGuide && !this.tutorialMarkers) this.tutorialMarkers = new TutorialMarkers(this.scene);
+    this.tutorialMarkers?.update(dt, this.tutorialGuide, { x: renderX, z: renderZ });
+    // Online: other players, already placed by the network session (main.js sets the list).
+    if (this.remotePlayers?.length || this.remote) (this.remote ||= new RemotePlayers(this)).update(this.remotePlayers || [], elapsed);
+    if (this.blobShadows?.enabled) {
+      const movers = [];
+      if (this.player.visible) movers.push({ x: renderX, z: renderZ, size: .95 });
+      for (const t of sim.targets) if (t.hp > 0) movers.push({ x: t.x, z: t.z, size: t.kind === 'dummy' ? .8 : 1.1, height: t.kind === 'dummy' ? 1.7 : 1.2 });
+      for (const p of this.remotePlayers || []) movers.push({ x: p.x, z: p.z, size: .95 });
+      this.blobShadows.update(i => sim.props[i]?.hp > 0, movers);
+    }
     this.cropView.update(sim, dt);
     this.updateParticles(dt); this.updateBlasts(dt);this.electric.updateAftershocks(dt,sim); this.electric.drift(sim.seeds,sim.player,sim.colliders,dt); this.electric.charge(sim.hexOrbs,dt,sim.player); this.electric.syncSpin(sim.hexSpin,sim.player,dt); this.electric.update(dt); this.electric.boundary(sim.hexOrbs);
     for (const ring of this.rings) {
@@ -1617,7 +1949,7 @@ export class WorldView {
   captureMapThumbnail() {
     const width=460,height=570,target=new THREE.WebGLRenderTarget(width,height);
     target.texture.colorSpace=THREE.SRGBColorSpace;
-    const camera=new THREE.PerspectiveCamera(40,width/height,.1,180);
+    const camera=new THREE.PerspectiveCamera(40,width/height,CAMERA_NEAR,180);
     const spawn=this.map.spawn;
     camera.position.set(spawn.x,OUTDOOR_CAMERA_HEIGHT,spawn.z+OUTDOOR_CAMERA_HEIGHT*CAMERA_TILT);
     camera.lookAt(spawn.x,0,spawn.z);
@@ -1645,12 +1977,76 @@ export class WorldView {
       // Static buildings/terrain are intentionally excluded and remain visible through gray fog.
       for (const g of this.shots.values()) apply(g);
       for (const b of this.beams.values()) { apply(b.core); apply(b.halo); apply(b.arc); }
-      for (const e of this.electric.effects) for (const g of [e.mesh,e.forks,e.glow,e.ribbon,e.core,...(e.rings || [])]) apply(g);
+      for (const g of this.electric.arcs.objects) apply(g);
+      for (const g of this.electric.pulseParts()) apply(g);
       this.particlePool.forEach(apply); this.rings.forEach(r => apply(r.mesh));
+      for (const mesh of this.fx.meshes) if (mesh.visible) apply(mesh);
       for (const b of this.blasts) { apply(b.core); apply(b.ring); for (const p of b.smoke) { apply(p.mesh); apply(p.flame); } }
-      this.fxLight.visible = this.quality.light && this.lastSim.canAimAt(this.fxLight.position.x, this.fxLight.position.z);
+      // Gated through intensity, never through visibility. The number of lights
+      // in the scene is compiled into every shader, so hiding this light when it
+      // fell out of sight -- which is exactly what stepping indoors does -- asked
+      // for a new variant of every material on screen at once. That was the
+      // stall on first entering a building, on every tier that has the light.
+      const seen = this.fxLightLevel > .01 && this.lastSim.canAimAt(this.fxLight.position.x, this.fxLight.position.z);
+      this.fxLight.intensity = seen ? this.fxLightLevel : 0;
     }
-    this.renderer.render(this.scene, this.camera);
+    if (this.post && this.qualityName === 'extreme') {
+      let roof = 1; for (const r of this.roofs) roof = Math.min(roof, r.opacity);
+      this.post.setIndoor(1 - roof); this.post.render();
+    }
+    else this.renderer.render(this.scene, this.camera);
+  }
+
+  enableExtremePost() {
+    this.postLoading ||= import('./extreme-post.js')
+      .then(({ ExtremePost }) => {
+        if (this.qualityName !== 'extreme') { this.postLoading = null; return; } // switched away while it loaded
+        this.post = new ExtremePost(this.renderer, this.scene, this.camera, { excluded: () => this.aoExcluded() });
+      })
+      .catch(error => { console.warn('Extreme post-processing unavailable:', error); });
+  }
+
+  // What the ambient-occlusion pass leaves out: anything with no solid,
+  // depth-writing surface (glows, particles, decals, lines), faded roofs,
+  // birds (they are far above the ground they would otherwise shade) and
+  // ground cover. Only
+  // the scene's top level is checked, and each object's answer is kept.
+  aoExcluded() {
+    const list = this.aoList ||= []; list.length = 0;
+    const known = this.aoSolid ||= new WeakMap(), roofs = this.aoRoofs ||= new Set(this.roofs.map(r => r.group));
+    const solid = root => {
+      let found = false;
+      root.traverse(o => {
+        if (found || !o.isMesh || Array.isArray(o.material)) return;
+        const m = o.material; found = !m.transparent && m.depthWrite !== false && m.toneMapped !== false;
+      });
+      return found;
+    };
+    for (const o of this.scene.children) {
+      if (!o.visible || roofs.has(o)) continue;
+      let answer = known.get(o);
+      if (answer === undefined) { answer = solid(o); known.set(o, answer); }
+      if (!answer) list.push(o);
+    }
+    // A roof counts as solid until it is mostly see-through. Left out for its
+    // whole fade, the furniture under it cast occlusion straight through the
+    // nearly opaque roof, so leaving a house showed the room's outline on the
+    // roof until it had finished closing.
+    for (const roof of this.roofs) if (roof.opacity < .5) list.push(roof.group);
+    for (const flight of this.birds?.flights || []) { list.push(flight.group); if (flight.shadow) list.push(flight.shadow); }
+    // Ground cover (tufts, pebbles, twigs) is thousands of tiny triangles that
+    // cast no occlusion worth the cost of drawing them a second time.
+    list.push(this.groundDetails, this.extraGroundDetails, this.performanceDetails);
+    // Lines and points tucked inside solid groups (crate slats, rope, cracks)
+    // would be drawn into the depth and normals as if they were surfaces.
+    // Those groups never change, so they are found once.
+    if (!this.aoNestedLines) {
+      this.aoNestedLines = [];
+      for (const o of this.scene.children) if (known.get(o)) o.traverse(c => { if (c !== o && (c.isLine || c.isPoints || c.isSprite)) this.aoNestedLines.push(c); });
+    }
+    for (const o of this.aoNestedLines) list.push(o);
+    for (const avatar of this.remote?.avatars.values() || []) list.push(avatar.tag);
+    return list;
   }
 
   updateVision(sim) { this.updateCropVision(sim); this.updateInteriorVision(sim); }
@@ -1741,11 +2137,18 @@ export class WorldView {
     // far more loosely than the SVG version needed, because a repaint at a
     // twelfth of the viewport costs a fraction of what two filter passes did.
     const quantise = (value, step) => Math.round(value / step);
-    const maskKey = [room.id, quantise(sim.player.x, .05), quantise(sim.player.z, .05), innerWidth, innerHeight,
+    const cameraKey = [room.id, innerWidth, innerHeight,
       ...this.camera.matrixWorld.elements.map(e => quantise(e, .01)),
       ...this.camera.projectionMatrix.elements.map(e => quantise(e, .01))].join(',');
+    const maskKey = cameraKey + ',' + quantise(sim.player.x, .05) + ',' + quantise(sim.player.z, .05);
     if (this.visionMaskKey === maskKey) return;
-    if (this.visionMaskClock > this.effectTime && this.visionMaskKey) return;
+    // The shroud is painted in screen space, so a camera that moved since the
+    // last paint (the push-in on entering a room, the follow camera) must be
+    // repainted this frame: held back by the rate cap, the shadow cones lagged
+    // the walls they are cut from and jittered against them.
+    const cameraMoved = this.visionCameraKey !== cameraKey;
+    this.visionCameraKey = cameraKey;
+    if (!cameraMoved && this.visionMaskClock > this.effectTime && this.visionMaskKey) return;
     this.visionMaskClock = this.effectTime + (VISION_REPAINT[this.qualityName] || VISION_REPAINT.balanced);
     this.visionMaskKey = maskKey;
     this.paintVision(interiorPolygons(room, sim.player)
@@ -1782,7 +2185,9 @@ export class WorldView {
     const distance = Math.hypot(x - this.lastFootPosition.x, z - this.lastFootPosition.z);
     this.lastFootPosition = { x, z };
     for (const foot of this.footprints) foot.age += dt;
-    this.footprints = this.footprints.filter(foot => foot.age < 3);
+    // Extreme keeps a longer trail of pressed prints.
+    const footLife = this.qualityName === 'extreme' ? 7 : 3;
+    this.footprints = this.footprints.filter(foot => foot.age < footLife);
     if (active && !sim.roofId && distance < 1 && Math.hypot(sim.player.vx, sim.player.vz) > .6) {
       this.footDistance += distance;
       if (this.footDistance >= .55) {
@@ -1796,9 +2201,49 @@ export class WorldView {
     for (const [i, foot] of this.footprints.entries()) {
       this.dummy.position.set(foot.x, .041, foot.z); this.dummy.rotation.set(0, foot.angle, 0);
       this.dummy.scale.set(.095, 1, .18); this.dummy.updateMatrix();
-      this.footMesh.setMatrixAt(i, this.dummy.matrix); fade.setX(i, Math.max(0, 1 - foot.age / 3));
+      this.footMesh.setMatrixAt(i, this.dummy.matrix); fade.setX(i, Math.max(0, 1 - foot.age / footLife) * Math.min(1, foot.age / .08 + .4));
     }
     this.footMesh.count = this.footprints.length; this.footMesh.instanceMatrix.needsUpdate = true; fade.needsUpdate = true;
+  }
+
+  // Detail that comes from what is going on rather than from one event: grit
+  // off the feet, sparks shed by floating orbs and a spinning hex, embers
+  // over burning crops.
+  updateDetailFX(sim, dt) {
+    const fx = this.fx; if (!fx.on) return;
+    const p = sim.player, speed = Math.hypot(p.vx, p.vz);
+    this.gritClock = (this.gritClock ?? 0) - dt;
+    if (speed > 1 && this.gritClock <= 0) {
+      this.gritClock = p.dodgeRemaining > 0 ? .03 : .17;
+      fx.grit(p.x, p.z, this.kickedDustColor(p.x, p.z), p.vx / speed, p.vz / speed, p.dodgeRemaining > 0 ? 1.4 : .5);
+    }
+    // Orbs parked in the air crackle: tiny blue sparks spat off their skin.
+    this.orbClock = (this.orbClock ?? 0) - dt;
+    if (this.orbClock <= 0) {
+      this.orbClock = .07;
+      for (const s of sim.shots) if (!s.launched && Math.random() < .5 * fx.level) {
+        const a = Math.random() * 6.3, speed = 1 + Math.random() * 2;
+        fx.spark({ x: s.x + Math.cos(a) * .14, y: .72, z: s.z + Math.sin(a) * .14, vx: Math.cos(a) * speed, vy: (Math.random() - .3) * 2, vz: Math.sin(a) * speed,
+          life: .08 + Math.random() * .12, stops: FX_ELECTRIC, gravity: .1, drag: 5, length: .06, width: .01, glow: 1.5 });
+      }
+      // A spinning hex (X) sheds light and sparks off every node as it turns.
+      for (const n of sim.hexSpin?.nodes || []) {
+        fx.glow({ x: n.x, y: .75, z: n.z, size: 1.3, life: .09, color: STREAM_GLOW, glow: 1.2, flicker: 1 });
+        for (let i = 0, count = fx.n(3); i < count; i++) {
+          const a = Math.random() * 6.3, speed = 2 + Math.random() * 4;
+          fx.spark({ x: n.x, y: .75, z: n.z, vx: Math.cos(a) * speed, vy: Math.random() * 3, vz: Math.sin(a) * speed, life: .15 + Math.random() * .2, stops: FX_ELECTRIC, gravity: .4, drag: 3, length: .1, width: .012, glow: 1.6 });
+        }
+      }
+    }
+    // Burning crops loft embers and throw off the odd spark.
+    this.fireClock = (this.fireClock ?? 0) - dt;
+    if (this.fireClock <= 0) {
+      this.fireClock = .08;
+      for (const c of sim.crops) if (c.state === 'burning' && Math.hypot(c.x - p.x, c.z - p.z) < 40) {
+        for (let i = 0, count = fx.n(1.2); i < count; i++) fx.ember({ x: c.x + (Math.random() - .5) * c.w, y: .5 + Math.random() * .8, z: c.z + (Math.random() - .5) * c.d,
+          vx: .4 + (Math.random() - .5) * .6, vz: (Math.random() - .5) * .6, vy: 1.2 + Math.random() * 1.5, life: 1.6 + Math.random() * 1.6, size: .02 + Math.random() * .025, rise: 1.4 });
+      }
+    }
   }
 
   updateParticles(dt) {
@@ -1817,18 +2262,20 @@ export class WorldView {
       const drag = p.debris ? p.y <= floor ? 6 : .35 : 2;
       p.vx *= Math.exp(-dt * drag); p.vz *= Math.exp(-dt * drag);
       if (p.debris) p.angle += p.spin * dt;
-      const index = counts[p.material]++; if (index >= 240) continue;
+      const index = counts[p.material]++; if (index >= PARTICLE_POOL) continue;
       this.dummy.position.set(p.x, p.y, p.z); this.dummy.rotation.set(p.angle + p.life * 2, p.angle, p.life);
       const scale = p.size * Math.max(0, p.debris ? Math.min(1, p.life / .6) : p.life / p.maxLife);
       this.dummy.scale.set(scale * (p.stretch || 1), scale * (p.debris ? .55 : 1), scale); this.dummy.updateMatrix();
       this.particlePool[p.material].setMatrixAt(index, this.dummy.matrix);
       this.particlePool[p.material].setColorAt(index, p.tint || WHITE);
     }
-    this.particlePool.forEach((mesh, i) => { mesh.count = Math.min(counts[i], 240); if(mesh.count){mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;} });
+    this.particlePool.forEach((mesh, i) => { mesh.count = Math.min(counts[i], PARTICLE_POOL); if(mesh.count){mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;} });
   }
 
   reset(sim) {
     this.deathView?.clear();
+    this.fx.clear();
+    this.remote?.clear();
     this.rifleView?.clear();this.shotgunView?.clear();
     this.grenadeView?.clear();
     for(const g of this.targets.values()){g.userData.coverHiddenTime=0;g.visible=true;}
@@ -1840,7 +2287,11 @@ export class WorldView {
     for (const g of this.shots.values()) { this.scene.remove(g); g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); } this.shots.clear();
     for (const r of this.rings) { r.mesh.removeFromParent(); r.mesh.geometry.dispose(); r.mesh.material.dispose(); } this.rings.length = 0;
     for (const b of this.beams.values()) { b.core.removeFromParent(); b.halo.removeFromParent(); b.core.material.dispose(); b.halo.material.dispose(); b.arc.removeFromParent(); b.arc.geometry.dispose(); b.arc.material.dispose(); } this.beams.clear();
-    this.fxLight.intensity = 0;
+    this.fxLightLevel = 0;
+    for (const g of this.props.values()) {
+      if (g.userData.popIn !== undefined) { g.scale.copy(g.userData.baseScale); delete g.userData.popIn; }
+      g.rotation.z = 0; g.updateMatrix();
+    }
     for (const b of this.blasts) this.disposeBlast(b); this.blasts.length = 0;
   }
 }

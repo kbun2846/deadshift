@@ -1,13 +1,13 @@
-import {refill} from './dev-window.js';
-export function toggleDevOverrides(dev,keys){
- keys=keys.filter(key=>key!=='invulnerable');
- const active=keys.some(key=>key==='speed'?(dev.speed||1)!==1:!!dev[key]);
- for(const key of keys)dev[key]=key==='speed'?1:!active;
- return !active;
-}
+// The Developer tools panel beside Settings. It stays empty and hidden until
+// the code is entered (pause, Shift+P, DEV_CODE); before that nothing in the
+// game mentions the tools. The options themselves come from dev-options.js,
+// shared with the floating window on O.
+import { DEV_CODE, buildDevOptions, refill, toggleDevOverrides } from './dev-options.js';
+export { toggleDevOverrides };
+
 // Stands in for the panel when the markup it needs is not there. Every caller
 // keeps working; the tools are simply absent and permanently locked.
-const devToolsStub = () => ({ isUnlocked: () => false, syncSpeed() {}, unlock: () => false, toggleAll: () => null });
+const devToolsStub = () => ({ isUnlocked: () => false, sync() {}, syncSpeed() {}, unlock: () => false, toggleAll: () => null, lock() {} });
 
 export function installDevTools(sim, panel, changed, hooks = {}) {
   // The developer panel is optional scaffolding, so it must never be able to
@@ -15,46 +15,33 @@ export function installDevTools(sim, panel, changed, hooks = {}) {
   // the script -- a stale deploy, say -- used to throw here and abort startup
   // entirely, leaving the menu on screen with nothing wired up behind it.
   if (!panel) return devToolsStub();
-  const root=document.createElement('section');root.className='dev-tools';
-  root.innerHTML=`<div id="dev-options" hidden><p class="small">Local practice tools · M opens teleport map</p><label class="setting select-setting">RUN SPEED<select data-dev="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label>${[['teleport','Click map to teleport'],['ammo','Unlimited ammo'],['orbs','Unlimited floating orbs + no expiry'],['cooldowns','No X cooldown'],['stamina','Unlimited dodge stamina'],['invulnerable','Invulnerable (including fire)']].map(([id,label])=>`<label class="setting">${label}<input type="checkbox" data-dev="${id}"/></label>`).join('')}<button type="button" id="dev-refill" class="secondary plain-text">RESTORE HEALTH / AMMO / STAMINA</button><button type="button" id="dev-lock" class="secondary plain-text">DISABLE & LOCK TOOLS</button></div>`;
-  panel.append(root);let unlocked=false;
-  const optionsPanel=root.querySelector('#dev-options');
-  const section=(title,keys)=>{
-    const group=document.createElement('details');group.className='weapon-control-entry dev-section';
-    const heading=document.createElement('summary');heading.textContent=title;group.append(heading);
-    for(const key of keys){const control=root.querySelector(`[data-dev="${key}"]`);if(control)group.append(control.closest('.setting'));}
-    optionsPanel.insertBefore(group,root.querySelector('#dev-refill'));return group;
-  };
-  section('General',['speed','teleport','ammo','stamina','invulnerable']);
-  section('Static',['orbs','cooldowns']);
-  const ballast=section('Ballast',[]);ballast.insertAdjacentHTML('beforeend','<label class="setting">Instant reload<input type="checkbox" data-dev="shotgunInstantReload"/></label>');
-  if(hooks.spawnBird){
-    const world=section('World',[]);
-    world.insertAdjacentHTML('beforeend','<button type="button" id="dev-bird" class="secondary plain-text">SPAWN BIRD</button>');
-    world.querySelector('#dev-bird').onclick=()=>{
-      const name=hooks.spawnBird();
-      if(name)world.querySelector('#dev-bird').textContent='SPAWN BIRD · '+String(name).toUpperCase();
-    };
-  }
-  const rifle=section('Nominal',[]);
-  const options=root.querySelector('#dev-options');
-  options.querySelector('.small').textContent='Local practice tools · P toggles tools except invincibility · M opens teleport map';
-  function unlock(code){
-    if(code!=='1919')return false;
-    unlocked=true;options.hidden=false;hooks.onUnlock?.();
+  const root = document.createElement('section'); root.className = 'dev-tools';
+  root.innerHTML = '<div id="dev-options" hidden><p class="small">P switches the everyday overrides on or off together · O opens the floating window</p><div class="dev-option-list"></div><button type="button" id="dev-lock" class="secondary plain-text">DISABLE & LOCK TOOLS</button></div>';
+  panel.append(root);
+  const options = root.querySelector('#dev-options');
+  let unlocked = false, built = null;
+
+  function unlock(code) {
+    if (String(code).trim() !== DEV_CODE) return false;
+    unlocked = true; options.hidden = false;
+    // Built on unlock, not at startup: until then the page holds no trace of the tools.
+    built ||= buildDevOptions(root.querySelector('.dev-option-list'), { sim, where: 'settings', hooks: { refill: () => refill(sim), ...hooks }, changed });
+    built.sync(); hooks.onUnlock?.();
     return true;
   }
-  options.addEventListener('change',e=>{
-    const key=e.target.dataset.dev;if(!unlocked||!key)return;
-    sim.dev[key]=key==='speed'?Number(e.target.value):e.target.checked;changed();
-  });
-  root.querySelector('#dev-refill').onclick=()=>{refill(sim);changed();};
-  root.querySelector('#dev-lock').onclick=()=>{sim.dev={};unlocked=false;options.hidden=true;for(const input of options.querySelectorAll('input'))input.checked=false;options.querySelector('select').value='1';hooks.onLock?.();changed();};
-  return {isUnlocked(){return unlocked;},syncSpeed(){options.querySelector('[data-dev="speed"]').value=String(sim.dev.speed||1);},unlock,toggleAll(){
-    if(!unlocked)return null;
-    const inputs=[...options.querySelectorAll('[data-dev]')];
-    const enabled=toggleDevOverrides(sim.dev,inputs.map(input=>input.dataset.dev));
-    for(const input of inputs){if(input.tagName==='SELECT')input.value=String(sim.dev[input.dataset.dev]);else input.checked=!!sim.dev[input.dataset.dev];}
-    changed();return enabled;
-  }};
+  function lock() {
+    sim.dev = {}; unlocked = false; options.hidden = true; built?.sync(); hooks.onLock?.(); changed();
+  }
+  root.querySelector('#dev-lock').onclick = lock;
+  return {
+    isUnlocked() { return unlocked; },
+    sync() { built?.sync(); },
+    syncSpeed() { built?.sync(); },
+    unlock, lock,
+    toggleAll() {
+      if (!unlocked) return null;
+      const enabled = toggleDevOverrides(sim.dev);
+      built?.sync(); changed(); return enabled;
+    },
+  };
 }

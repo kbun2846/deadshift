@@ -1,8 +1,9 @@
-import {bindTouchAction} from './touch-action.js';
 export const TOUCH_LAYOUT_KEY='deadshift-touch-layout-v2';
 export const touchOrientation=({width,height})=>width>height?'landscape':'portrait';
-export function validateTouchLayouts(value){return {portrait:validateTouchLayout(value?.portrait),landscape:validateTouchLayout(value?.landscape)};}
-export const TOUCH_CONTROL_IDS=['move-stick','seed-stick','touch-place','touch-launch','touch-hex','touch-stream','touch-dodge','touch-extended','touch-grenade'];
+// swapped: movement on the right and the buttons on the left, for left-handed play.
+export function validateTouchLayouts(value){return {portrait:validateTouchLayout(value?.portrait),landscape:validateTouchLayout(value?.landscape),swapped:value?.swapped===true};}
+// Movement is not a placed control: it appears wherever the left thumb lands.
+export const TOUCH_CONTROL_IDS=['touch-place','touch-launch','touch-hex','touch-stream','touch-dodge','touch-extended','touch-grenade'];
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 export function validateTouchLayout(value){
  const result={};
@@ -18,7 +19,13 @@ export function normalizedPosition(point,size,viewport){
  const start=controlPosition({x:0,y:0},size,viewport),end=controlPosition({x:1,y:1},size,viewport);
  return {x:clamp((point.x-start.x)/Math.max(1,end.x-start.x),0,1),y:clamp((point.y-start.y)/Math.max(1,end.y-start.y),0,1)};
 }
-export function installTouchLayout({root,controls,actions,canEdit,onEditing}){
+// A saved layout with one control put back: that control is simply forgotten,
+// so it rejoins the default corner cluster, which already sits on whichever
+// side the player chose (Swap sides). Nothing else in the layout moves.
+export function withoutControl(positions,id){const next={...positions};delete next[id];return next;}
+// restoreCluster re-lays the default corner cluster (arrangeTouchCluster) once a
+// control has rejoined it.
+export function installTouchLayout({root,controls,canEdit,onEditing,onChange=()=>{},restoreCluster=()=>{}}){
  let orientation=touchOrientation({width:innerWidth,height:innerHeight}),layouts=validateTouchLayouts(null);
  try{
   const saved=localStorage.getItem(TOUCH_LAYOUT_KEY);
@@ -27,18 +34,21 @@ export function installTouchLayout({root,controls,actions,canEdit,onEditing}){
  }catch{}
  let positions=layouts[orientation];
  const elements=TOUCH_CONTROL_IDS.map(id=>document.getElementById(id));
- const button=document.createElement('button');button.id='touch-layout-edit';button.className='icon-button';button.textContent='EDIT';button.setAttribute('aria-label','Edit mobile controls');button.setAttribute('aria-pressed','false');actions.prepend(button);
+ // Editing is started from Settings > Mobile, not from a button on the game screen.
+ document.body.classList.toggle('touch-swapped',layouts.swapped);
  const overlay=document.createElement('div');overlay.id='touch-layout-overlay';overlay.hidden=true;
- overlay.innerHTML='<div class="touch-layout-reserved">TOP QUARTER RESERVED</div><div class="touch-layout-help"><strong>EDIT YOUR CONTROLS</strong><span>Drag to move · drag ↘ to resize · × removes. Reset restores removed controls. Changes save automatically.</span><button type="button" id="touch-layout-reset">RESET LAYOUT</button><button type="button" id="touch-layout-done">DONE</button></div>';
+ overlay.innerHTML='<div class="touch-layout-reserved">TOP QUARTER RESERVED</div><div class="touch-layout-help"><strong>EDIT YOUR CONTROLS</strong><span>Drag a button to move it · ↘ resizes · ↺ puts it back in the corner · × removes · changes save on their own</span><button type="button" id="touch-layout-swap">SWAP SIDES</button><button type="button" id="touch-layout-reset">RESET LAYOUT</button><button type="button" id="touch-layout-done">DONE</button></div>';
  root.append(overlay);
  let editing=false,drag=null,scheduled=false;
  const viewport=()=>({width:innerWidth,height:innerHeight});
  const visible=element=>!element.hidden&&element.getClientRects().length>0;
- const save=()=>{layouts[orientation]=positions;try{localStorage.setItem(TOUCH_LAYOUT_KEY,JSON.stringify(layouts));}catch{}};
+ const save=()=>{layouts[orientation]=positions;try{localStorage.setItem(TOUCH_LAYOUT_KEY,JSON.stringify(layouts));}catch{}onChange();};
  function clearPlacement(){for(const element of elements){element.classList.remove('touch-positioned','touch-removed');for(const name of ['left','top','width','height','min-height'])element.style.removeProperty(name);}}
  function place(element){
   const p=positions[element.id];if(!p)return;
   element.classList.toggle('touch-removed',!!p.hidden);if(p.hidden)return;
+  // Positioned first, so the size measured is the plain round button's.
+  element.classList.add('touch-positioned');
   for(const name of ['width','height','min-height'])element.style.removeProperty(name);
   const base=element.getBoundingClientRect(),scale=p.scale||1;
   element.style.setProperty('width',Math.min(base.width*scale,innerWidth-16)+'px','important');
@@ -54,34 +64,59 @@ export function installTouchLayout({root,controls,actions,canEdit,onEditing}){
   for(const element of elements){element.classList.toggle('touch-removed',!!positions[element.id]?.hidden);if(visible(element))place(element);}
  }
  function schedule(){if(!scheduled){scheduled=true;requestAnimationFrame(()=>{scheduled=false;refresh();});}}
- function freeze(){
-  // Measure together before removing any control from the default grid.
-  const measured=elements.filter(visible).map(element=>({element,rect:element.getBoundingClientRect()}));
-  for(const {element,rect} of measured)positions[element.id]={...positions[element.id],...normalizedPosition({x:rect.left,y:rect.top},rect,viewport())};
-  for(const {element} of measured)place(element);
+ // A button still in the default ring has no position of its own. The first
+ // time it is dragged it leaves the ring as a round button centred where its
+ // label was, and from then on it goes wherever it is put.
+ function detach(element){
+  const anchor=(element.querySelector('.button-label')||element).getBoundingClientRect();
+  const cx=anchor.left+anchor.width/2,cy=anchor.top+anchor.height/2;
+  element.classList.add('touch-positioned');
+  for(const name of ['width','height','min-height','left','top'])element.style.removeProperty(name);
+  const size=element.getBoundingClientRect();
+  positions[element.id]={...positions[element.id],hidden:false,...normalizedPosition({x:cx-size.width/2,y:cy-size.height/2},size,viewport())};
+  place(element);
+ }
+ // Puts one dragged-out button back in its spot in the default cluster, in the
+ // corner on the player's side (right normally, left with Swap sides).
+ function restoreControl(element){
+  positions=withoutControl(positions,element.id);
+  element.classList.remove('touch-positioned','touch-removed');
+  for(const name of ['left','top','width','height','min-height'])element.style.removeProperty(name);
+  save();restoreCluster();schedule();
  }
  function finish(){
   if(!editing)return;
-  drag=null;editing=false;save();overlay.hidden=true;document.body.classList.remove('editing-touch-layout');button.setAttribute('aria-pressed','false');onEditing(false);
+  drag=null;editing=false;save();overlay.hidden=true;document.body.classList.remove('editing-touch-layout');onEditing(false);
  }
- bindTouchAction(button,{press:()=>{
-  if(editing){finish();return;}
-  if(document.body.dataset.controls!=='touch'||!canEdit())return;
-  freeze();editing=true;document.body.classList.add('editing-touch-layout');overlay.hidden=false;button.setAttribute('aria-pressed','true');onEditing(true);
+ function start(){
+  if(editing)return true;
+  if(document.body.dataset.controls!=='touch'||!canEdit())return false;
+  editing=true;document.body.classList.add('editing-touch-layout');overlay.hidden=false;onEditing(true);
   for(const element of elements){
    if(element.querySelector('.touch-edit-handle'))continue;
-   for(const [action,label] of [['remove','×'],['resize','↘']]){const handle=document.createElement('span');handle.className='touch-edit-handle touch-edit-'+action;handle.dataset.layoutAction=action;handle.textContent=label;handle.setAttribute('aria-label',action+' control');element.append(handle);}
+   for(const [action,label] of [['remove','×'],['resize','↘'],['restore','↺']]){const handle=document.createElement('span');handle.className='touch-edit-handle touch-edit-'+action;handle.dataset.layoutAction=action;handle.textContent=label;handle.setAttribute('aria-label',action+' control');element.append(handle);}
   }
- }});
+  return true;
+ }
+ // Mirrors every control across the screen, in both orientations, and moves
+ // the walking side with them.
+ function swapSides(){
+  layouts.swapped=!layouts.swapped;
+  for(const name of ['portrait','landscape'])for(const p of Object.values(layouts[name]))p.x=1-p.x;
+  positions=layouts[orientation];document.body.classList.toggle('touch-swapped',layouts.swapped);
+  clearPlacement();save();schedule();return layouts.swapped;
+ }
+ overlay.querySelector('#touch-layout-swap').onclick=swapSides;
  overlay.querySelector('#touch-layout-done').onclick=finish;
  overlay.querySelector('#touch-layout-reset').onclick=()=>{
-  positions={};clearPlacement();
-  freeze();save();
+  positions={};clearPlacement();save();restoreCluster();
  };
  controls.addEventListener('pointerdown',event=>{
   if(!editing)return;event.preventDefault();event.stopImmediatePropagation();
   const element=event.target.closest('.touch-stick,button');if(!elements.includes(element)||drag)return;
   const action=event.target.dataset.layoutAction;
+  if(action==='restore'){restoreControl(element);return;}
+  if(!positions[element.id]||positions[element.id].hidden)detach(element);
   if(action==='remove'){positions[element.id]={...positions[element.id],hidden:true};element.classList.add('touch-removed');save();return;}
   const rect=element.getBoundingClientRect();drag={element,id:event.pointerId,dx:event.clientX-rect.left,dy:event.clientY-rect.top,action,rect,scale:positions[element.id]?.scale||1,startX:event.clientX,startY:event.clientY};element.setPointerCapture(event.pointerId);
  },true);
@@ -104,5 +139,5 @@ export function installTouchLayout({root,controls,actions,canEdit,onEditing}){
  window.addEventListener('resize',schedule);
  new MutationObserver(schedule).observe(document.body,{attributes:true,attributeFilter:['data-controls','class']});
  new MutationObserver(schedule).observe(controls,{attributes:true,subtree:true,attributeFilter:['hidden']});
- schedule();return {refresh:schedule,get editing(){return editing;},finish};
+ schedule();return {refresh:schedule,get editing(){return editing;},get swapped(){return layouts.swapped;},start,finish,swapSides,reset:()=>{layouts.portrait={};layouts.landscape={};positions=layouts[orientation];clearPlacement();save();restoreCluster();schedule();},restore:id=>{const element=document.getElementById(id);if(element)restoreControl(element);}};
 }

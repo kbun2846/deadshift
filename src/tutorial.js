@@ -1,67 +1,188 @@
-export const tutorialMap={id:'tutorial',name:'Training Range',width:32,depth:28,training:true,spawn:{x:0,z:6},palette:{ground:'#756750',road:'#756750'},scenerySeed:12,buildings:[],props:[],crops:[],zones:[],fences:[{x:0,z:-14,length:32,axis:'x'},{x:0,z:14,length:32,axis:'x'},{x:-16,z:0,length:28,axis:'z'},{x:16,z:0,length:28,axis:'z'}],targets:[-9,-4.5,0,4.5,9].map((x,i)=>({id:'training-'+i,x,z:-5,kind:i%2?'dummy':'target'}))};
-export function tutorialMapFor(weapon){
- return weapon==='shotgun'?{...tutorialMap,targets:tutorialMap.targets.map(target=>({...target,maxHp:400}))}:tutorialMap;
+import { WEAPONS } from './items.js';
+// The training range and its courses.
+//
+// Two kinds of course share the one range. "basics" is what the home screen's
+// tutorial button starts: walking, dashing, shooting and the map, the same for
+// every weapon. The weapon courses (Gamemodes > Tutorial > a weapon) teach only
+// that weapon. Lessons start on their own and move on on their own once done,
+// so the only button left is the one that leaves.
+
+// Breakable crates sit in the open ground either side of the spawn, away from
+// the firing line, and come back a little after being smashed.
+export const TUTORIAL_CRATES = [
+ { x: -11, z: 8.5, angle: .22 }, { x: 11, z: 8.5, angle: -.3 }, { x: 0, z: 11.8, angle: .08 },
+].map((c, i) => ({ type: 'crate', id: 'tutorial-crate-' + i, broken: false, ...c }));
+const CRATE_RESPAWN = 2.4, CRATE_CLEARANCE = 1.9;
+
+// Walk lesson checkpoints, clear of the crates, targets and fences.
+export const TUTORIAL_ZONES = [{ x: -6, z: 1.5 }, { x: 6.5, z: 2 }, { x: -3.5, z: 10.5 }];
+export const ZONE_RADIUS = 1.3;
+// Time a finished lesson stays on screen, ticked off, before the next begins.
+export const LESSON_PAUSE = 1.1;
+
+export const tutorialMap = {
+ id: 'tutorial', name: 'Training Range', width: 32, depth: 28, training: true, spawn: { x: 0, z: 6 },
+ palette: { ground: '#756750', road: '#756750' }, look: { warmth: .15 }, scenerySeed: 12, buildings: [], props: TUTORIAL_CRATES, crops: [], zones: [],
+ fences: [{ x: 0, z: -14, length: 32, axis: 'x' }, { x: 0, z: 14, length: 32, axis: 'x' }, { x: -16, z: 0, length: 28, axis: 'z' }, { x: 16, z: 0, length: 28, axis: 'z' }],
+ targets: [-9, -4.5, 0, 4.5, 9].map((x, i) => ({ id: 'training-' + i, x, z: -5, kind: i % 2 ? 'dummy' : 'target' })),
+};
+export function tutorialMapFor(weapon) {
+ return weapon === 'shotgun' ? { ...tutorialMap, targets: tutorialMap.targets.map(target => ({ ...target, maxHp: 400 })) } : tutorialMap;
 }
-export const lessons=[
- ['Move around','Hold W, A, S or D to walk.\n\nKeep moving until the counter fills.',5],
- ['Dodge','Move in any direction, then press Space to dodge. Do this five times.\n\nThe two highlighted bars show stamina. Each dodge uses one charge; wait for it to refill.',5],
- ['Place your orbs','Aim toward the targets with your mouse or arrow keys. Hold E to place five orbs.\n\nOrbs reload faster when standing still, except while using the lightning stream.',5],
- ['Land a volley','Aim at a target. With no orbs placed, left-click or press Q for a quick shot.\n\nPlacing an orb before launching deals slightly more damage.\n\nFor a volley, hold E to place more orbs first, then click or press Q to launch them together.\n\nLand five shots or volleys. ',5],
- ['Lightning stream','Move close to a target and aim at it. Hold C to hit it with lightning, then release. Repeat five times.\n\nKeep the stream on the same target to increase damage. Watch the ammo bar and wait for a refill if it runs out.',5],
- ['Deploy and pulse','Press X to deploy. Wait for the hexagon to form, then press X again to pulse. Repeat five times.\n\nPulse before the expansion bar reaches the red boundary.\n\nTraining restores ammo and cooldown between attempts.',5],
- ['Open your map','Press M or use the highlighted map button at the top right.\n\nClose it with M, Escape or the Close button. Then select Continue to finish.',1],
-];
-export const rifleLessons=[
- lessons[0],[lessons[1][0],lessons[1][1].replace('two highlighted','three highlighted'),lessons[1][2]],
- ['Fire single shots','Aim into the range and click the left mouse button or tap Q once. Release it between shots.\n\nFire five separate shots. Each press fires one bullet.',5],
- ['Automatic fire','Hold the left mouse button or Q to keep firing.\n\nFire five automatic follow-up shots while holding the control. Watch the ammo segments empty; R reloads if needed.',5],
- ['Aim with control','Hold the right mouse button or Shift and aim at a target. Fire while still holding aim.\n\nLand five aimed hits. The two spread lines tighten when aiming; walking slows, and standing still improves accuracy further.',5],
- ['Reload your rifle','Fire at least one bullet, then press R. Wait for the reload to finish. Repeat three times.\n\nEach magazine holds 18 rounds.',3],
- ['Throw a grenade','Aim toward the targets and press E. \n\nLet three grenades explode. Keep clear of your own blast.\n\nThe normal cooldown is 25 seconds; training restores the grenade after each explosion.',3],
- ['Load an extended magazine','Press X and wait for the reload to finish. Repeat three times.\n\nLoads 36 rounds. Training resets the cooldown.\n\nR returns to a standard 18-round magazine.',3],
- lessons[6],
-];
-export const rifleTouchLessons=[
- 'Drag and hold the left stick to walk.\n\nKeep moving until the counter fills.',
- 'Move with the left stick and tap DODGE. Repeat five times.\n\nEach dodge uses one stamina charge; wait for it to refill.',
- 'Aim by dragging on the world, then tap FIRE once and release.\n\nFire five separate shots.',
- 'Aim by dragging on the world and hold FIRE.\n\nFire five automatic follow-up shots without releasing. Tap RELOAD if the magazine empties.',
- 'Aim at a target by dragging on the world. Hold AIM and fire while keeping AIM held.\n\nLand five aimed hits. Aiming tightens the spread lines and slows walking; standing still also improves accuracy.',
- 'Fire at least one bullet, then tap RELOAD and wait until it finishes. Repeat three times.\n\nEach magazine holds 18 rounds.',
- 'Aim by dragging on the world and tap GRENADE to throw a grenade.\n\nLet three grenades explode. Move clear: the fuse lasts 1.4 seconds.\n\nTraining restores your grenade after each explosion; the normal cooldown is 25 seconds.',
- 'Tap EXTEND and wait for the 36-round magazine to load. Repeat three times.\n\nLoading takes 1.8 seconds. Training restores the ability after each reload; the normal cooldown is 60 seconds. RELOAD returns to 18 rounds.',
- 'Tap the map button at the top right.\n\nClose the map, then select Continue to finish.',
-];
-export const shotgunLessons=[
- lessons[0],['Dodge once','Move and press Space / DODGE. Ballast has one native dodge. Repeat three times, waiting for stamina between dodges.',3],
- ['Fire and launch','Tap and release LMB / FIRE. Each shot launches you backward. Fire five shots; R / RELOAD loads two shells.',5],
- ['Store charge','Hold LMB / FIRE to charge, then press Q, click RMB, or tap LOCK before releasing. Store charge three times. It lasts 15 seconds and powers both shells.',3],
- ['Charged blast','Fully charge and release LMB / FIRE. Fire three fully charged shots. Aim away from your destination to propel yourself toward it.',3],
- ['Double discharge','Press E / DOUBLE with two shells loaded. Both fire in quick succession with the same charge. Repeat three times.\n\nTIP: Store full charge with both shells loaded, dash close, aim and double fire. A well-placed burst can defeat a 500-HP player.',3],
- ['Reload','Fire, then press R / RELOAD. Wait for the barrels to open, eject spent shells and close. Complete three reloads.',3],
- lessons[6],
-];
+
+// Copy is plain and short. Key names go in [brackets] and are drawn as keycaps,
+// in capitals, whatever the rest of the interface does with case.
+// { id, title, goal, keys, touch, note?, touchNote?, highlight? }
+const lesson = (id, title, goal, keys, touch, extra = {}) => ({ id, title, goal, keys, touch, ...extra });
+export const COURSES = {
+ basics: [
+  lesson('walk', 'walk', TUTORIAL_ZONES.length, 'hold [W] [A] [S] [D] and walk into the pink zone', 'drag anywhere on the left side to walk into the pink zone',
+   { note: 'follow the pink arrow' }),
+  lesson('dash', 'dash', 5, 'hold a direction and press [SPACE] to dash through a crate', 'drag on the left to move and tap [DODGE] to dash through a crate',
+   { note: 'each dash uses a stamina bar', highlight: 'dodge-stamina', touchHighlight: 'touch-dodge' }),
+  // Touch only: the right thumb aims while the left walks. Skipped on keys.
+  lesson('aimhold', 'aim while walking', 3, '', 'walk with your left thumb and hold your right thumb on a target',
+   { touchNote: 'your aim stays under your right thumb until you lift it', touchOnly: true }),
+  lesson('shoot', 'shoot', 3, 'aim with the mouse and press [LMB] / [Q] to hit a target', 'tap a target to fire at it',
+   { note: '[Q] does the same as [LMB]', touchNote: 'a quick tap fires and a drag never does' }),
+  // Keyboard only: the whole game plays without a mouse. Skipped on touch.
+  lesson('nomouse', 'no mouse', 3, 'aim with [↑] [←] [↓] [→] and press [Q] to fire', '',
+   { note: 'you can play the whole game on the keyboard', keyboard: true }),
+  lesson('map', 'map', 1, 'press [M] to open the map', 'tap [MAP] up top', { note: 'press [M] again to close it', touchNote: 'tap close when you are done', highlight: 'map-toggle' }),
+ ],
+ static: [
+  lesson('orbs', 'place orbs', 24, 'hold [E] and place two full loads of orbs', 'hold [PLACE] and place two full loads of orbs', { note: 'stand still and they refill faster', highlight: 'seed-pips' }),
+  lesson('volley', 'volley', 3, 'place a few orbs then press [LMB] / [Q] to fire them at a target', 'place a few orbs then tap [LAUNCH] at a target',
+   { note: 'more orbs hit harder', highlight: 'seed-pips' }),
+  lesson('stream', 'stream', 3, 'get close and hold [C] on a target', 'get close and hold [STREAM] on a target', { note: 'stay on one target to ramp it up', highlight: 'seed-pips' }),
+  lesson('pulse', 'hex pulse', 3, 'press [X] to deploy then [X] again to pulse', 'tap [PULSE] to deploy then tap it again to pulse',
+   { note: 'pulse before the ring at your cursor turns red', highlight: 'hex-recharge' }),
+ ],
+ rifle: [
+  lesson('single', 'single shots', 5, 'tap [LMB] / [Q] once to fire a single shot', 'tap [FIRE] once for a single shot', { note: 'let go between shots', highlight: 'seed-pips' }),
+  lesson('auto', 'auto fire', 36, 'hold [LMB] / [Q] and empty two full mags', 'hold [FIRE] and empty two full mags', { note: 'press [R] to reload in between', touchNote: 'tap [RELOAD] in between', highlight: 'seed-pips' }),
+  lesson('aimin', 'aim in', 3, 'hold [RMB] / [SHIFT] and hit a target', 'hold [AIM] and hit a target',
+   { note: 'standing still tightens it more', highlight: 'rifle-spread', touchHighlight: 'touch-stream' }),
+  lesson('reload', 'reload', 2, 'fire a shot then press [R]', 'fire a shot then tap [RELOAD]', { note: 'a mag holds 18 rounds', highlight: 'seed-pips', touchHighlight: 'touch-hex' }),
+  lesson('grenade', 'grenade', 2, 'press [E] to throw a grenade', 'tap [GRENADE] to throw one', { note: 'stay out of the blast', highlight: 'hex-recharge' }),
+  lesson('bigmag', 'big mag', 1, 'press [X] to load a 36 round mag', 'tap [EXTEND] to load a 36 round mag', { note: '[R] goes back to 18', touchNote: '[RELOAD] goes back to 18', highlight: 'extended-recharge' }),
+ ],
+ shotgun: [
+  lesson('sfire', 'fire', 4, 'press [LMB] / [Q] and fire two full loads', 'tap [FIRE] and fire two full loads', { note: 'press [R] to reload and watch the kick', touchNote: 'tap [RELOAD] in between and watch the kick', highlight: 'seed-pips' }),
+  lesson('charged', 'charged blast', 3, 'hold [LMB] / [Q] until it is full then let go', 'hold [FIRE] until it is full then let go',
+   { note: 'the ring at your cursor shows the charge' }),
+  lesson('store', 'store charge', 2, 'hold [LMB] / [Q] then press [SHIFT] / [RMB] to store it', 'hold [FIRE] then tap [LOCK] to store it', { note: 'the ring turns white while it is stored' }),
+  lesson('double', 'double', 2, 'press [E] to fire both shells', 'tap [DOUBLE] to fire both shells', { note: 'needs two shells loaded', highlight: 'seed-pips' }),
+  lesson('sreload', 'reload', 2, 'press [R] to reload', 'tap [RELOAD] to reload', { note: 'you get two shells', highlight: 'seed-pips' }),
+ ],
+};
+export const COURSE_NAMES = Object.freeze({ basics: 'basics', ...Object.fromEntries(WEAPONS.map(w => [w.id, w.name.toLowerCase()])) });
+
+const isCrate = id => typeof id === 'string' && id.startsWith('tutorial-crate');
+
 export class Tutorial {
- constructor(weapon='static'){this.weapon=['rifle','shotgun'].includes(weapon)?weapon:'static';this.lessons=this.weapon==='shotgun'?shotgunLessons:this.weapon==='rifle'?rifleLessons:lessons;this.index=0;this.count=0;this.distance=0;this.last=null;this.active=false;this.seen=new Set();}
- get goal(){return this.lessons[this.index]?.[2]||1;}
- get ready(){return this.count>=this.goal;}
- begin(){this.active=true;this.last=null;}
- advance(){if(!this.ready)return false;this.index++;this.count=0;this.distance=0;this.last=null;this.active=false;this.seen.clear();return true;}
- credit(id){if(!this.active||this.ready)return;if(id!==undefined){if(this.seen.has(id))return;this.seen.add(id);}this.count++;}
- update(player){if(this.active&&this.index===0&&this.last){this.distance+=Math.hypot(player.x-this.last.x,player.z-this.last.z);while(this.distance>=2){this.distance-=2;this.credit();}}this.last={x:player.x,z:player.z};}
- event(e,sim){
-  if(!this.active||this.ready)return;
-  if(this.weapon==='shotgun'){
-   if(this.index===1&&e.type==='dodge'||this.index===2&&e.type==='shotgunShot'||this.index===3&&e.type==='shotgunStored'||this.index===4&&e.type==='shotgunShot'&&e.charge>.99||this.index===5&&e.type==='shotgunDouble'||this.index===6&&e.type==='shotgunReloaded'||this.index===7&&e.type==='mapOpened')this.credit(e.id);return;
-  }
-  if(this.weapon==='rifle'){
-   if(this.index===1&&e.type==='dodge'||this.index===2&&e.type==='rifleShot'&&e.burstIndex===1||this.index===3&&e.type==='rifleShot'&&e.burstIndex>1||this.index===4&&e.type==='rifleHit'&&e.aimed||this.index===5&&e.type==='rifleReloaded'&&!e.extended||this.index===6&&e.type==='grenadeExplosion'||this.index===7&&e.type==='rifleReloaded'&&e.extended||this.index===8&&e.type==='mapOpened')this.credit(e.id);
-   return;
-  }
-  const hit=e.type==='hit'||e.type==='kill';
-  if(this.index===1&&e.type==='dodge'||this.index===2&&e.type==='seed'||this.index===5&&e.type==='hexPulse'||this.index===6&&e.type==='mapOpened')this.credit();
-  if(this.index===3&&hit&&e.volley&&!sim.spray.active)this.credit(e.volley);
-  if(this.index===4&&hit&&sim.spray.active)this.credit(e.volley);
+ constructor(course = 'basics') {
+  this.course = COURSES[course] ? course : 'basics';
+  // Basics is taught with Static: its quick shot is a plain click, like every gun.
+  this.weapon = this.course === 'basics' ? 'static' : this.course;
+  this.lessons = COURSES[this.course];
+  this.index = 0; this.count = 0; this.seen = new Set(); this.pause = 0; this.brokenFor = new Map();
  }
- get complete(){return this.index>=this.lessons.length;}
+ get lesson() { return this.lessons[this.index]; }
+ get goal() { return this.lesson?.goal || 1; }
+ get ready() { return this.count >= this.goal; }
+ get complete() { return this.index >= this.lessons.length; }
+ // The lesson just finished and is showing as done for a moment.
+ get celebrating() { return this.pause > 0; }
+ get zone() { return this.lesson?.id === 'walk' && !this.ready ? { ...TUTORIAL_ZONES[this.count], r: ZONE_RADIUS } : null; }
+
+ credit(id) {
+  if (this.complete || this.ready) return false;
+  if (id !== undefined) { if (this.seen.has(id)) return false; this.seen.add(id); }
+  this.count++;
+  if (this.ready) this.pause = LESSON_PAUSE;
+  return true;
+ }
+ advance() {
+  if (!this.ready) return false;
+  this.index++; this.count = 0; this.pause = 0; this.seen.clear();
+  return true;
+ }
+
+ // Where the pink arrow points, or null for no arrow.
+ pointer(sim) {
+  if (this.celebrating) return null;
+  if (this.zone) return this.zone;
+  if (this.lesson?.id === 'dash') {
+   let best = null, distance = Infinity;
+   for (const prop of sim.props) if (isCrate(prop.id) && prop.hp > 0) {
+    const d = Math.hypot(prop.x - sim.player.x, prop.z - sim.player.z);
+    if (d < distance) { distance = d; best = prop; }
+   }
+   return best;
+  }
+  return null;
+ }
+
+ // Called once per simulation step. Returns true when what the card shows changed.
+ update(sim, dt) {
+  const before = this.index * 100 + this.count;
+  // A keyboard-only lesson means nothing on a touchscreen.
+  // Keyboard-only and touch-only lessons are skipped on the other kind of play.
+  if (this.lesson && (this.touch ? this.lesson.keyboard : this.lesson.touchOnly)) { this.index++; this.count = 0; this.pause = 0; this.seen.clear(); }
+  // Aim-while-walking counts seconds spent doing both at once.
+  if (this.lesson?.id === 'aimhold' && this.touchAiming && this.walking) {
+   this.heldFor = (this.heldFor || 0) + dt;
+   if (this.heldFor >= 1) { this.heldFor -= 1; this.credit(); }
+  }
+  const p = sim.player, zone = this.zone;
+  if (zone && Math.hypot(p.x - zone.x, p.z - zone.z) < zone.r) this.credit();
+  if (this.pause > 0) { this.pause -= dt; if (this.pause <= 0) this.advance(); }
+  // Smashed crates come back, but never on top of the player.
+  for (const prop of sim.props) if (isCrate(prop.id)) {
+   if (prop.hp > 0) { this.brokenFor.delete(prop.id); continue; }
+   const time = (this.brokenFor.get(prop.id) || 0) + dt; this.brokenFor.set(prop.id, time);
+   if (time >= CRATE_RESPAWN && Math.hypot(p.x - prop.x, p.z - prop.z) > CRATE_CLEARANCE) { sim.restoreProp(prop.id); this.brokenFor.delete(prop.id); }
+  }
+  // Training hands back what a lesson spends, so nobody waits on a cooldown.
+  const id = this.lesson?.id;
+  if (id === 'pulse' && !sim.hexOrbs.length && !sim.hexSpin) { sim.hexCooldown = 0; sim.ammo = Math.max(sim.ammo, 10); }
+  if (id === 'grenade' && !sim.grenades.length) sim.grenadeCooldown = 0;
+  if (id === 'bigmag' && !sim.rifle.reload) sim.rifle.extendedCooldown = 0;
+  return before !== this.index * 100 + this.count;
+ }
+
+ event(e, sim) {
+  if (this.complete || this.ready) return false;
+  const id = this.lesson.id, hit = e.type === 'hit' || e.type === 'kill';
+  switch (id) {
+   case 'dash': return e.type === 'propBreak' && e.dashed && isCrate(e.id) && this.credit();
+   case 'shoot': return hit && e.volley !== undefined && this.credit(e.volley);
+   case 'map': return e.type === 'mapOpened' && this.credit();
+   case 'orbs': return e.type === 'seed' && this.credit();
+   case 'volley': return hit && e.volley !== undefined && !sim.spray.active && this.credit(e.volley);
+   case 'stream': return hit && sim.spray.active && this.credit(e.volley);
+   case 'pulse': return e.type === 'hexPulse' && this.credit();
+   case 'single': return e.type === 'rifleShot' && e.burstIndex === 1 && this.credit(e.id);
+   // Every round counts: two full magazines is 36 shots, reload and all.
+   case 'auto': return e.type === 'rifleShot' && this.credit();
+   case 'nomouse': return e.type === 'keyboardShot' && this.credit();
+   case 'aimin': return e.type === 'rifleHit' && e.aimed && this.credit(e.id);
+   case 'reload': return e.type === 'rifleReloaded' && !e.extended && this.credit(e.id);
+   case 'grenade': return e.type === 'grenadeExplosion' && this.credit(e.id);
+   case 'bigmag': return e.type === 'rifleReloaded' && e.extended && this.credit(e.id);
+   case 'sfire': return e.type === 'shotgunShot' && this.credit(e.id);
+   case 'charged': return e.type === 'shotgunShot' && e.charge > .99 && this.credit(e.id);
+   case 'store': return e.type === 'shotgunStored' && this.credit(e.id);
+   case 'double': return e.type === 'shotgunDouble' && this.credit(e.id);
+   case 'sreload': return e.type === 'shotgunReloaded' && this.credit(e.id);
+  }
+  return false;
+ }
+}
+
+// "[W] [A]" -> keycaps. Everything else is escaped text.
+export function lessonMarkup(text) {
+ const escape = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+ return text.split(/(\[[^\]]+\])/).map(part => /^\[.+\]$/.test(part) ? `<kbd>${escape(part.slice(1, -1))}</kbd>` : escape(part)).join('');
 }

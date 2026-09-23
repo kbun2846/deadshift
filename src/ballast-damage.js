@@ -1,5 +1,5 @@
-export const BALLAST_FATAL_WINDOW=.45;
-export const BALLAST_FATAL_FRACTION=.85;
+import { BALLAST_FATAL_WINDOW, BALLAST_FATAL_FRACTION } from './config/gameplay.js';
+export { BALLAST_FATAL_WINDOW, BALLAST_FATAL_FRACTION };
 // Track actual damage from this attacker's shotgun, never unrelated damage.
 export function recordBallastDamage(victim,damage,time,owner){
  const recent=victim.hp>=victim.maxHp?[]:(victim.ballastDamage||[]);

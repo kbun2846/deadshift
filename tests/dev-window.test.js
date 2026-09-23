@@ -35,7 +35,8 @@ test('corrupt or missing storage never breaks the window',()=>{
 
 test('every toggle names a real override the simulation reads',()=>{
  const known=new Set(['ammo','orbs','cooldowns','stamina','invulnerable','teleport','speed',
-  'rifleInstantReload','shotgunInstantReload','grenadeCooldown','extendedCooldown']);
+  'rifleInstantReload','shotgunInstantReload','grenadeCooldown','extendedCooldown',
+  'oneHit','ghost','freezeTargets','hideHud']);
  for(const [key,label] of DEV_TOGGLES){
   assert.ok(known.has(key),`${key} is not an override the game honours`);
   assert.ok(label&&label===label.trim()&&label.length<32,`${key} needs a short plain label`);
@@ -89,11 +90,12 @@ test('the aim cone carries a faint but unmistakably red interior',()=>{
 
 test('both Ballast and Nominal draw the zone, and only while loaded and ready',()=>{
  const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
- const gate=main.slice(main.indexOf("cone.classList.toggle('unloaded'"),main.indexOf("cone.classList.toggle('unloaded'")+260);
+ const overlay=readFileSync(new URL('../src/aim-overlay.js',import.meta.url),'utf8');
+ const gate=overlay.slice(overlay.indexOf("cone.classList.toggle('unloaded'"),overlay.indexOf("cone.classList.toggle('unloaded'")+260);
  assert.ok(gate.includes('sim.shotgun.ammo>0'),'Ballast still needs a shell');
  assert.ok(gate.includes('sim.rifle.ammo>0'),'Nominal needs a round chambered');
  assert.ok(gate.includes('sim.rifle.reload<=0'),'and no magazine on the way in');
- assert.ok(main.includes("sim.weapon==='shotgun'||sim.weapon==='rifle'"),'the cone shows for both weapons');
+ assert.ok(overlay.includes("sim.weapon==='shotgun'||sim.weapon==='rifle'"),'the cone shows for both weapons');
  assert.ok(main.includes("e.type==='rifleShot')coneFlicker"),"Nominal's zone blinks on its own shot");
 });
 

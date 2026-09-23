@@ -38,6 +38,9 @@ export const APPROACH = .78;
 // passing over the character reads as something in the fight. Paths are laid
 // at least this far to one side.
 export const PLAYER_CLEARANCE = 7;
+// Where the view is too short across the path for the full clearance -- a
+// left-to-right crossing -- it gives way, but never below this.
+export const MIN_PLAYER_CLEARANCE = 3;
 
 export const SPECIES = Object.freeze({
   // Long swept wings, deeply forked tail, fast shallow beat.
@@ -98,16 +101,17 @@ export class FlightSchedule {
   constructor(interval = BIRD_INTERVAL, random = Math.random) {
     this.interval = interval; this.random = random; this.reset();
   }
-  reset() { this.time = 0; this.windowEnd = this.interval; this.due = this.random() * this.interval; }
+  // Roughly one crossing per interval, give or take a sixth of it, and the
+  // first a third to a half of the way in. It used to fall anywhere inside
+  // each window, so two could come back to back or two minutes could pass
+  // with nothing -- which, alongside crossings that started too far away to
+  // reach the player, is why nobody was seeing birds.
+  reset() { this.time = 0; this.due = this.interval * (.33 + this.random() * .25); }
   update(dt) {
     this.time += dt;
-    let release = false;
-    if (this.due !== null && this.time >= this.due) { release = true; this.due = null; }
-    if (this.time >= this.windowEnd) {
-      this.windowEnd += this.interval;
-      this.due = this.windowEnd - this.interval + this.random() * this.interval;
-    }
-    return release;
+    if (this.time < this.due) return false;
+    this.due += this.interval * (5 / 6 + this.random() / 3);
+    return true;
   }
 }
 
@@ -202,18 +206,25 @@ export class Birds {
   constructor(scene, { random = Math.random } = {}) {
     this.scene = scene; this.random = random; this.flights = []; this.enabled = true;
     this.schedule = new FlightSchedule(BIRD_INTERVAL, random);
-    this.templates = new Map(); this.materials = new Map(); this.solid = true;
+    this.templates = new Map(); this.materials = new Map(); this.solid = true; this.rich = false;
+    this.shadowGeometry = null; this.shadowMaterial = null;
     this.cycle = 0; this.onFlap = null; this.heading = random() < .5;
   }
 
   setQuality(name) {
-    this.enabled = name !== 'potato';
+    // A crossing is a couple of small draws for a few seconds a minute, which
+    // even Potato can afford, and the sky is part of the world on every tier.
+    this.enabled = true;
     const solid = name === 'balanced' || isDemanding(name);
     // The cache is already keyed by build, so both sets can simply stay
     // resident — eight small groups in total. Clearing it stranded every
     // template's BufferGeometry on the GPU, and the preset is a setting the
     // player can flip as often as they like.
     if (solid !== this.solid) { this.solid = solid; this.clear(); }
+    // Extreme: lit, rounder birds with layered feathers and a soft shadow
+    // sliding over the ground beneath them.
+    const rich = name === 'extreme';
+    if (rich !== this.rich) { this.rich = rich; this.clear(); }
     if (!this.enabled) this.clear();
   }
 
@@ -228,6 +239,15 @@ export class Birds {
   }
 
   #material(color, opacity = 1) {
+    if (this.rich && opacity >= 1) {
+      const key = 'lit' + color;
+      // Flat-shaded and lit by the same sun as the world, so the wings catch
+      // the light on the down stroke and the body has a shaded side.
+      // Toned down to land on the same on-screen colour as the unlit birds:
+      // full sun on a light feather otherwise reads as white.
+      if (!this.materials.has(key)) this.materials.set(key, new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(.72), roughness: .82, metalness: 0, flatShading: true, side: THREE.DoubleSide }));
+      return this.materials.get(key);
+    }
     const key = color + opacity;
     if (!this.materials.has(key)) this.materials.set(key, new THREE.MeshBasicMaterial({
       color, transparent: opacity < 1, opacity, side: THREE.DoubleSide, depthWrite: opacity >= 1, toneMapped: false,
@@ -236,7 +256,7 @@ export class Birds {
   }
 
   #template(name) {
-    const key = (this.solid ? 'solid:' : 'flat:') + name;
+    const key = (this.rich ? 'rich:' : this.solid ? 'solid:' : 'flat:') + name;
     if (this.templates.has(key)) return this.templates.get(key);
     if (this.solid) return this.#solidTemplate(key, name);
     const spec = SPECIES[name];
@@ -311,20 +331,21 @@ export class Birds {
     // the wing chord disappears between the wings and the bird reads as a pair
     // of blades with a head; it needs to be visibly the thing the wings are
     // attached to.
-    const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(C * .62, 0), this.#material(spec.body));
+    const round = this.rich ? 1 : 0;
+    const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(C * .62, round), this.#material(spec.body));
     shell.scale.set(1, .645, L * .58 / C);
     bird.add(shell);
     // A neck, on every species. Without one the head floats clear of the
     // shoulders and the bird looks like two separate objects flying in
     // formation. It starts inside the shell so there is no seam.
     const neckFrom = -L * .26, neckTo = -L * .44, neckLength = neckFrom - neckTo;
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(C * .3, C * .15, neckLength, 6), this.#material(spec.skin ?? spec.body));
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(C * .3, C * .15, neckLength, this.rich ? 10 : 6), this.#material(spec.skin ?? spec.body));
     neck.rotation.x = Math.PI / 2;
     neck.position.set(0, C * .11, (neckFrom + neckTo) / 2);
     bird.add(neck);
     // The head has to out-measure the neck it sits on, or the two merge into
     // one long snout and the bird looks like it is flying muzzle first.
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(C * .32, 0), this.#material(spec.skin ?? spec.body));
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(C * .32, round), this.#material(spec.skin ?? spec.body));
     head.position.set(0, C * .17, -L * .48);
     bird.add(head);
     if (spec.ruff) {
@@ -359,6 +380,22 @@ export class Birds {
       // back, and at this size that silhouette is the whole read.
       const panel = new THREE.Mesh(solid(wingOutline(spec), C * .07), this.#material(spec.wing));
       pivot.add(panel);
+      if (this.rich) {
+        // Coverts: a shorter, paler layer over the inner wing, the way a real
+        // wing is shingled rather than one sheet.
+        const coverts = new THREE.Mesh(solid(wingOutline(spec), C * .05), this.#material(spec.body));
+        coverts.scale.set(.58, 1, .72); coverts.position.set(0, C * .05, -C * .06);
+        pivot.add(coverts);
+        // Primaries at the tip for the species that do not already splay.
+        if (!spec.fingers) for (let i = 0; i < 4; i++) {
+          const lane = i - 1.5;
+          const primary = new THREE.Mesh(solid(fingerOutline(spec), C * .03), this.#material(spec.wing));
+          primary.scale.set(.7, 1, .8);
+          primary.position.set(spec.span * .8, -C * .01, lane * C * .14 + spec.span * spec.sweep * .92);
+          primary.rotation.y = -lane * .14;
+          pivot.add(primary);
+        }
+      }
       if (spec.fingers) for (let i = 0; i < spec.fingers; i++) {
         const finger = new THREE.Mesh(solid(fingerOutline(spec), C * .04), this.#material(spec.wing));
         const lane = i - (spec.fingers - 1) / 2;
@@ -398,12 +435,26 @@ export class Birds {
     // always did; only how far it runs before and after has changed.
     const speed = span / CROSS_SECONDS * spec.pace;
     const exit = crossingReach(view, span);
-    const entry = Math.max(span * APPROACH, lead ?? exit);
+    // Enter just outside the current view, so the bird is on screen within a
+    // second or so. Starting past the map edge meant twenty-odd seconds of
+    // flight aimed at where the player had been, and in a shooter they have
+    // always moved on by then -- crossings happened, but out of sight. The
+    // exit still runs off the map so a bird never vanishes in view.
+    const entry = Math.max(span * APPROACH, lead ?? 0);
     const dirX = Math.cos(bearing), dirZ = Math.sin(bearing);
     // Offset to one side or the other, far enough that the path can never run
     // over the player standing at the focus.
-    const room = Math.max(PLAYER_CLEARANCE + 1, span * .38);
-    const lateral = (random() < .5 ? -1 : 1) * (PLAYER_CLEARANCE + random() * (room - PLAYER_CLEARANCE));
+    // Measured against how much of the view lies across the path, not its
+    // width: the view is shorter than it is wide, and a bird ~10m up sees only
+    // about seven metres either side of centre top to bottom. The fixed 7m
+    // clearance pushed every left-to-right crossing clean out of frame, so
+    // half of all birds flew by unseen. The clearance now scales to fit and
+    // the path always passes well inside the view.
+    const halfWidth = span / 2, halfHeight = halfWidth / Math.max(1, view?.aspect ?? 1.6);
+    const across = Math.abs(dirZ) * halfWidth + Math.abs(dirX) * halfHeight;
+    const clearance = Math.max(MIN_PLAYER_CLEARANCE, Math.min(PLAYER_CLEARANCE, across * .45));
+    const room = Math.max(clearance + .5, across * .72);
+    const lateral = (random() < .5 ? -1 : 1) * (clearance + random() * (room - clearance));
     return {
       name, spec, scale: range(spec.scale, random) * Math.max(.6, (view?.height ?? 29) - altitude) / 18,
       x: focus.x - dirX * entry - dirZ * lateral, y: altitude, z: focus.z - dirZ * entry + dirX * lateral,
@@ -419,6 +470,7 @@ export class Birds {
     flight.wings = group.children.filter(child => child.isGroup);
     flight.group = group;
     this.scene.add(group);
+    if (this.rich) flight.shadow = this.#shadow(flight);
     this.flights.push(flight);
     return flight;
   }
@@ -460,6 +512,9 @@ export class Birds {
       flight.x += flight.vx * dt; flight.y += flight.vy * dt; flight.z += flight.vz * dt;
       const group = flight.group;
       group.position.set(flight.x, flight.y, flight.z);
+      // Thrown the way the sun throws every other shadow: 0.6 m across and
+      // 0.45 m down the screen per metre of height.
+      if (flight.shadow) { flight.shadow.position.set(flight.x + flight.y * .6, .06, flight.z + flight.y * .45); flight.shadow.rotation.y = group.rotation.y; flight.shadow.visible = !hidden; }
       group.rotation.y = Math.atan2(flight.vx, flight.vz) + Math.PI;
       // Seen from above, a beat is the span shortening and lengthening. The
       // down stroke is sharper than the recovery, so it never reads as a hinge.
@@ -483,13 +538,30 @@ export class Birds {
     }
     this.flights = this.flights.filter(flight => {
       if (flight.age < flight.life) return true;
-      flight.group.removeFromParent();
+      flight.group.removeFromParent(); flight.shadow?.removeFromParent();
       return false;
     });
   }
 
+  // A soft patch the shape of the bird's span, faint because it is high up.
+  #shadow(flight) {
+    if (!this.shadowGeometry) {
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64;
+      const ctx = canvas.getContext('2d'), g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+      const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+      this.shadowGeometry = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+      this.shadowMaterial = new THREE.MeshBasicMaterial({ color: '#3a2a18', map: texture, transparent: true, opacity: .28, depthWrite: false });
+    }
+    const spec = flight.spec, mesh = new THREE.Mesh(this.shadowGeometry, this.shadowMaterial);
+    mesh.scale.set(spec.span * 2.3 * flight.scale, 1, spec.length * 1.3 * flight.scale); mesh.renderOrder = 2;
+    this.scene.add(mesh);
+    return mesh;
+  }
+
   clear() {
-    for (const flight of this.flights) flight.group.removeFromParent();
+    for (const flight of this.flights) { flight.group.removeFromParent(); flight.shadow?.removeFromParent(); }
     this.flights.length = 0; this.schedule.reset();
   }
 }

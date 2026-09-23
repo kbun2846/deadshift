@@ -10,18 +10,19 @@
 export const GRAPHICS = Object.freeze({
   potato: { label: 'Potato', pixelRatio: 1, scale: .55, maxPixels: 750000, shadows: 0, texture: 32, effects: .1, particleCap: 48, motes: 0, glow: false, light: false, antialias: false, anisotropy: 1, relief: null,
     description: 'Barebones · half resolution · flat terrain · no decorative foliage, shadows or ambient dust' },
-  performance: { label: 'Performance', pixelRatio: 1.15, scale: .82, maxPixels: 1150000, shadows: 512, shadowFPS: 24, texture: 128, effects: .3, particleCap: 140, motes: 20, glow: false, light: true, antialias: false, anisotropy: 2, relief: null,
+  performance: { label: 'Performance', pixelRatio: 1.15, scale: .82, maxPixels: 1150000, shadows: 768, shadowFPS: 24, texture: 256, effects: .3, particleCap: 140, motes: 20, glow: false, light: true, antialias: false, anisotropy: 2, relief: null,
     description: 'Sharper adaptive resolution · simplified foliage · contact shadows on landmarks · lit effects' },
   balanced: { label: 'Balanced', pixelRatio: 1.3, scale: 1, maxPixels: 1800000, shadows: 1024, shadowFPS: 30, texture: 512, effects: .75, particleCap: 400, motes: 72, glow: true, light: true, antialias: true, anisotropy: 4, relief: 'ground',
     description: 'Adaptive resolution · soft shadows on buildings, props & entities · raised sand grain · detailed foliage & effects' },
   quality: { label: 'Quality', pixelRatio: 2, scale: 1, maxPixels: 3700000, shadows: 2048, shadowFPS: 45, texture: 1024, effects: 2, particleCap: 1300, motes: 190, glow: true, light: true, antialias: true, anisotropy: 8, relief: 'full',
     description: 'Raised sand & wood grain · dense vegetation · richer landmark detail & effects' },
-  // A tier above Quality with somewhere to grow. Identical to Quality for now
-  // by design, so it is selectable and saved before anything is built on it;
-  // whatever goes here later must be additive, since the two share every
-  // quality-gated code path today.
-  extreme: { label: 'Extreme', pixelRatio: 2, scale: 1, maxPixels: 3700000, shadows: 2048, shadowFPS: 45, texture: 1024, effects: 2, particleCap: 1300, motes: 190, glow: true, light: true, antialias: true, anisotropy: 8, relief: 'full',
-    description: 'Raised sand & wood grain · dense vegetation · richer landmark detail & effects' },
+  // Everything Quality has, and on top: ambient occlusion, bloom and a colour
+  // grade (extreme-post.js), a 4096 shadow map redrawn every frame, varied and
+  // weathered ground and surfaces (extreme-surfaces.js), rounder models, lit
+  // birds with shadows, brighter tracers and denser effects. Additive only:
+  // Extreme shares every Quality code path and adds to it.
+  extreme: { label: 'Extreme', pixelRatio: 2, scale: 1, maxPixels: 3700000, shadows: 4096, shadowFPS: 60, texture: 2048, effects: 2.6, particleCap: 2200, motes: 260, glow: true, light: true, antialias: true, anisotropy: 16, relief: 'full',
+    description: 'Everything in Quality plus ambient occlusion, bloom, sharper every-frame shadows, weathered ground & surfaces, rounder models and richer effects' },
 });
 
 // The tiers that warn before they are chosen, and the ones that turn on the
@@ -93,12 +94,14 @@ export class AdaptiveResolution {
   sample(dt, rendered, quality, fps){
     const key=quality+':'+fps;
     if(key!==this.key){this.reset();this.key=key;}
-    if(!['performance','balanced'].includes(quality)||fps===1)return 1;
+    // Extreme may shed a little resolution (never below 80%) rather than
+    // frames: its extra passes scale with pixel count. Quality stays fixed.
+    if(!['performance','balanced','extreme'].includes(quality)||fps===1)return 1;
     if(!(dt>0)||dt>.25)return this.scale;
     this.elapsed+=dt;this.frames+=Number(rendered);
     if(this.elapsed<2)return this.scale;
     const target=Math.min(fps||60,60),rate=this.frames/this.elapsed;
-    if(rate<target*.85){this.scale=Math.max(.7,this.scale-.1);this.healthy=0;}
+    if(rate<target*.85){this.scale=Math.max(quality==='extreme'?.8:.7,this.scale-.1);this.healthy=0;}
     else if(rate>=target*.96){
       this.healthy+=this.elapsed;
       if(this.healthy>=8){this.scale=Math.min(1,this.scale+.05);this.healthy=0;}

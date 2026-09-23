@@ -38,7 +38,7 @@ test('the roof fade only re-enables the meshes that were built as casters',()=>{
  assert.ok(build.includes('this.noShadows(tile)'),'tiles are still excluded before the batch');
  assert.ok(source.includes('this.roofs.push({ ...b, group: roof, casters,'),'the casters are captured at build time');
  const casters=source.indexOf('const casters = []');
- const batch=source.indexOf('this.batch(roof);');
+ const batch=source.indexOf('this.batch(roof, false);');
  assert.ok(casters>batch,'the casters must be collected after the merge, not before');
  const fade=source.slice(source.indexOf('const castsShadow=roof.opacity>.5'),source.indexOf('const castsShadow=roof.opacity>.5')+320);
  assert.ok(fade.includes('for(const m of roof.casters)'),'the fade toggles only the recorded casters');
@@ -62,4 +62,21 @@ test('shadowBySize only ever removes casters, never restores them',()=>{
  assert.equal(big.castShadow,true,'a readable silhouette keeps casting');
  assert.equal(small.castShadow,false,'sub-texel geometry stops casting');
  assert.equal(excluded.castShadow,false,'an explicit exclusion is not undone');
+});
+
+test('plain coloured parts bake into one draw with their colours kept per vertex',()=>{
+ const view=Object.create(WorldView.prototype);view.materials=new Map();view.groundMaterials=new Set();view.map={buildings:[]};
+ const root=new THREE.Group(),colors=['#aa3322','#22aa33','#3322aa'];
+ colors.forEach((c,i)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),view.material(c));m.position.x=i*2;m.castShadow=true;root.add(m);});
+ const special=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:'#ffffff'}));root.add(special);
+ view.batch(root);
+ const baked=root.children.filter(m=>m.material.vertexColors);
+ assert.equal(baked.length,1,'three colours, one draw');
+ const got=new Set();const a=baked[0].geometry.attributes.color;
+ for(let i=0;i<a.count;i++)got.add([a.getX(i),a.getY(i),a.getZ(i)].map(v=>v.toFixed(4)).join());
+ assert.deepEqual([...got].sort(),colors.map(c=>{const k=new THREE.Color(c);return [k.r,k.g,k.b].map(v=>v.toFixed(4)).join();}).sort(),'each part keeps its exact colour');
+ assert.ok(root.children.includes(special),'a material that is not a plain colour is left alone');
+ const roof=new THREE.Group();for(const c of colors){const m=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),view.material(c));roof.add(m);}
+ view.batch(roof,false);
+ assert.ok(!roof.children.some(m=>m.material.vertexColors),'roofs fade their own materials, so they are never baked');
 });

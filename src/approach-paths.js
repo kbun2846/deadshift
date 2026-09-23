@@ -1,15 +1,20 @@
 import * as THREE from 'three';
 import {buildingPoint,buildingContains,mapColliders,localOpenings} from './maps.js';
+import {boxIndex} from './box-index.js';
 
 export function approachPaths(map,onRoad) {
  const step=1,cols=Math.floor(map.width)+1,rows=Math.floor(map.depth)+1,total=cols*rows;
  const distance=new Int32Array(total).fill(-1),next=new Int32Array(total).fill(-1),blocked=new Uint8Array(total),queue=[];
  const point=i=>({x:i%cols-map.width/2,z:Math.floor(i/cols)-map.depth/2});
  const index=p=>Math.round(p.z+map.depth/2)*cols+Math.round(p.x+map.width/2);
- const obstacles=mapColliders(map).filter(c=>!c.buildingId);
+ const obstacles=boxIndex(mapColliders(map).filter(c=>!c.buildingId));
+ // Padded footprints built once: spreading a fresh copy of every building for
+ // every grid cell was hundreds of thousands of throwaway objects per load.
+ const pad=(b,e)=>({...b,w:b.w+e,d:b.d+e,r:Math.hypot(b.w+e,b.d+e)/2}),near=(b,p)=>Math.abs(p.x-b.x)<b.r&&Math.abs(p.z-b.z)<b.r&&buildingContains(b,p);
+ const wide=map.buildings.map(b=>pad(b,2.2)),snug=map.buildings.map(b=>pad(b,.3));
  for(let i=0;i<total;i++){
   const p=point(i);
-  blocked[i]=map.buildings.some(b=>buildingContains({...b,w:b.w+2.2,d:b.d+2.2},p))||obstacles.some(c=>Math.abs(p.x-c.x)<c.w/2+1.05&&Math.abs(p.z-c.z)<c.d/2+1.05);
+  blocked[i]=wide.some(b=>near(b,p))||obstacles.some(p.x,p.z,1.05,c=>Math.abs(p.x-c.x)<c.w/2+1.05&&Math.abs(p.z-c.z)<c.d/2+1.05);
   if(!blocked[i]&&onRoad(p.x,p.z)){distance[i]=0;queue.push(i);}
  }
  for(let head=0;head<queue.length;head++){
@@ -34,7 +39,7 @@ export function approachPaths(map,onRoad) {
     const q=point(j),len=Math.hypot(q.x-door.x,q.z-door.z);
     let clear=true;
     for(let t=0;t<=1;t+=.1){const p={x:door.x+(q.x-door.x)*t,z:door.z+(q.z-door.z)*t};
-      if(map.buildings.some(other=>buildingContains({...other,w:other.w+.3,d:other.d+.3},p))||obstacles.some(c=>Math.abs(p.x-c.x)<c.w/2+.55&&Math.abs(p.z-c.z)<c.d/2+.55)){clear=false;break;}
+      if(snug.some(other=>near(other,p))||obstacles.some(p.x,p.z,.55,c=>Math.abs(p.x-c.x)<c.w/2+.55&&Math.abs(p.z-c.z)<c.d/2+.55)){clear=false;break;}
     }
     const cost=len+distance[j]*.08;if(clear&&cost<best){best=cost;cursor=j;}
   }
@@ -79,7 +84,40 @@ export function approachPaths(map,onRoad) {
  }));
 }
 export function pathRadius(i,n){const t=i/Math.max(1,n-1);return .6+.42*Math.exp(-t*14)+.85*Math.pow(t,9)+.04*Math.sin(i*.71);}
-export function onApproach(paths,x,z,padding=0){return paths.some(({points})=>points.some((p,i)=>Math.hypot(x-p.x,z-p.z)<pathRadius(i,points.length)+padding));}
+// Answering "is this point on a footpath?" used to test every resampled point
+// of every path on the map, recomputing each one's radius with exp, pow and sin
+// as it went. Terrain generation asks it tens of thousands of times while it
+// scatters grass, stones and sand marks, which made it well over a third of the
+// whole load. The points are bucketed into a coarse grid once per set of paths,
+// radius precomputed, so each query only visits the handful of points near it.
+// The answer is identical: any point that could pass the distance test lies
+// within maxRadius + padding, and every bucket overlapping that box is checked.
+const APPROACH_CELL=2;
+const approachIndexes=new WeakMap();
+const cellKey=(cx,cz)=>(cx+32768)*65536+(cz+32768);
+function approachIndex(paths){
+ let index=approachIndexes.get(paths);
+ if(index)return index;
+ const cells=new Map();let maxRadius=0;
+ for(const {points} of paths)for(let i=0;i<points.length;i++){
+  const p=points[i],r=pathRadius(i,points.length);if(r>maxRadius)maxRadius=r;
+  const key=cellKey(Math.floor(p.x/APPROACH_CELL),Math.floor(p.z/APPROACH_CELL));
+  let bucket=cells.get(key);if(!bucket)cells.set(key,bucket=[]);
+  bucket.push(p.x,p.z,r);
+ }
+ index={cells,maxRadius};approachIndexes.set(paths,index);
+ return index;
+}
+export function onApproach(paths,x,z,padding=0){
+ const {cells,maxRadius}=approachIndex(paths),reach=maxRadius+padding;
+ const x0=Math.floor((x-reach)/APPROACH_CELL),x1=Math.floor((x+reach)/APPROACH_CELL);
+ const z0=Math.floor((z-reach)/APPROACH_CELL),z1=Math.floor((z+reach)/APPROACH_CELL);
+ for(let cx=x0;cx<=x1;cx++)for(let cz=z0;cz<=z1;cz++){
+  const bucket=cells.get(cellKey(cx,cz));if(!bucket)continue;
+  for(let k=0;k<bucket.length;k+=3)if(Math.hypot(x-bucket[k],z-bucket[k+1])<bucket[k+2]+padding)return true;
+ }
+ return false;
+}
 export function makeApproaches(view){
  const map=view.map;
  view.approachPaths=approachPaths(map,(x,z)=>{const r=view.roadEdges(z);return x>r.left&&x<r.right||view.onSideRoad(x,z);});

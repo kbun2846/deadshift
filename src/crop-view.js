@@ -44,6 +44,10 @@ export class CropView {
     this.flames = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false, transparent: true, opacity: .88, depthWrite: false, blending: THREE.AdditiveBlending }), 672);
     this.smoke = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ color: '#5b5348', transparent: true, opacity: .4, depthWrite: false }), 448);
     for (const mesh of [this.flames, this.smoke]) { mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0; view.scene.add(mesh); }
+    // Flames are tinted per instance; allocate the colour buffer before the
+    // warm-up so the first crop fire does not compile a new shader mid-game.
+    this.flames.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(672 * 3).fill(1), 3);
+    this.flames.instanceColor.setUsage(THREE.DynamicDrawUsage);
   }
   setQuality(name){
     // Preserve every stalk's position and height: crops still conceal entities.
@@ -99,7 +103,7 @@ export class CropView {
         if (changed) this.writeStalks(part);
       }
       if (s.state !== 'burning' || Math.hypot(s.x - sim.player.x, s.z - sim.player.z) > 45) continue;
-      const count = isDemanding(this.view.qualityName) ? 12 : this.view.qualityName === 'potato' ? 2 : this.view.qualityName === 'performance' ? 5 : 8;
+      const count = this.view.qualityName === 'extreme' ? 16 : isDemanding(this.view.qualityName) ? 12 : this.view.qualityName === 'potato' ? 2 : this.view.qualityName === 'performance' ? 5 : 8;
       const fade = Math.min(1, s.burnAge * 6) * Math.min(1, (CROP_FIRE.duration - s.burnAge) * 3);
       for (let i = 0; i < count; i++) {
         const seed = index * 71 + i * 13, phase = (sim.time * 1.9 + i * .37) % 1;

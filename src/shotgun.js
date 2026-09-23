@@ -1,4 +1,5 @@
-export const SHOTGUN=Object.freeze({shells:2,pellets:12,chargeTime:2,holdTime:15,reload:2.8,range:7.5,chargedRange:9,spread:.30,aimSpread:.18,doubleDelay:.05,doubleRecoilLead:.12,doubleRecoilScale:1.3,interval:.26});
+import { SHOTGUN } from './config/gameplay.js';
+export { SHOTGUN };
 export const shotgunRange=charge=>SHOTGUN.range+(SHOTGUN.chargedRange-SHOTGUN.range)*charge;
 export const shotgunDamage=(charge,firstShell=false)=>100+200*charge+(firstShell?15:0);
 export function shotgunPelletContact(b,target){
@@ -19,7 +20,7 @@ export function shotgunFalloff(distance,range){
  if(depth<=.5)return 1-(depth-.15)/.35*.6;
  return .4-(depth-.5)/.5*.35;
 }
-export const shotgunRecoil=charge=>{const c=Math.max(0,Math.min(1,charge));return 4.2+1.4*c+2*c**4;};
+export const shotgunRecoil=charge=>{const c=Math.max(0,Math.min(1,charge));return SHOTGUN.recoilBase+SHOTGUN.recoilCharge*c+SHOTGUN.recoilPeak*c**4;};
 export const shotgunSpread=aiming=>aiming?SHOTGUN.aimSpread:SHOTGUN.spread;
 export const shotgunReloadRounds=remaining=>SHOTGUN.shells*Math.max(0,Math.min(1,((1-remaining/SHOTGUN.reload)-.3)/.7));
 export const shotgunPressurized=sim=>sim.weapon==='shotgun'&&!sim.player.dead&&sim.player.hp>0&&sim.shotgun.ammo>0&&sim.shotgun.reload<=0&&sim.shotgun.charge>=1-1e-8;
@@ -66,7 +67,7 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
    const angle=Math.atan2(p.aimZ,p.aimX)+((i+Math.random())/SHOTGUN.pellets*2-1)*spread;
    sim.shotgunPellets.push({x:blocked?p.x:x,z:blocked?p.z:z,dx:Math.cos(angle),dz:Math.sin(angle),forwardX:p.aimX,forwardZ:p.aimZ,travel:0,range,charge,damage:shellDamage/SHOTGUN.pellets,damageType:'ballast',contactSample:Math.random(),volley});
   }
-  const kick=shotgunRecoil(charge)*recoilScale;p.blastVX=-p.aimX*kick*8;p.blastVZ=-p.aimZ*kick*8;p.ballastLaunch=true;
+  const kick=shotgunRecoil(charge)*recoilScale;p.blastVX=-p.aimX*kick*SHOTGUN.launchScale;p.blastVZ=-p.aimZ*kick*SHOTGUN.launchScale;p.ballastLaunch=true;
   sim.events.push({type:'shotgunShot',x,z,charge,id:volley});
   if(s.ammo===0){s.charge=0;s.stored=false;s.hold=0;}
  };
@@ -86,11 +87,11 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
  if(s.pending>0){s.pending=Math.max(0,s.pending-dt);if(s.pending<1e-8){s.pending=0;fire(s.doubleCharge,SHOTGUN.doubleRecoilScale);}}
  if((input.reload||emptyTrigger)&&s.ammo<2&&!s.pending&&!interruptedReload&&p.hp>0){s.reload=SHOTGUN.reload;s.charge=0;s.stored=false;s.hold=0;s.suppress=!!input.fire;sim.events.push({type:'shotgunReload',spent:s.spent,live:s.ammo});s.trigger=!!input.fire;return;}
  if(sim.dev.ammo&&!s.ammo&&!s.pending){s.ammo=2;s.spent=0;}
- // An empty breech cannot build or retain charge, including Q's stored charge.
+ // An empty breech cannot build or retain charge, including a stored (Shift / RMB) charge.
  if(s.ammo<=0){s.charge=0;s.stored=false;s.hold=0;s.trigger=!!input.fire;s.suppress=false;return;}
  const suppressed=s.suppress;
  if(!input.fire)s.suppress=false;
- // E snapshots the live trigger charge, including this tick, without needing Q.
+ // E snapshots the live trigger charge, including this tick, without needing a store.
  if(!suppressed&&!s.pending&&s.cooldown<=1e-8&&input.fire&&!s.stored)s.charge=Math.min(1,s.charge+dt/SHOTGUN.chargeTime+1e-12);
  if(input.doubleShot&&s.cooldown<=1e-8&&s.ammo&&!s.pending){
   const charge=s.charge;s.doubleCharge=charge;const both=s.ammo===2;

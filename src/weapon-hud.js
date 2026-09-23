@@ -1,5 +1,6 @@
 // Shared presentation contract: name, accent, capacity, ammo, status, and controls.
 import { RIFLE } from './rifle.js';
+import { WEAPONS } from './items.js';
 import { SHOTGUN, shotgunReloadRounds } from './shotgun.js';
 export function shotgunAmmoPresentation(shotgun){
  return {capacity:SHOTGUN.shells,rounds:shotgun.reload>0?Math.max(shotgun.ammo,shotgunReloadRounds(shotgun.reload)):shotgun.ammo};
@@ -11,11 +12,8 @@ export function rifleAmmoPresentation(rifle){
  if(progress<.2)return {capacity:rifle.capacity,rounds:rifle.ammo*(1-progress/.2)};
  return {capacity:rifle.reloadCapacity,rounds:rifle.reloadCapacity*Math.max(0,(progress-.3)/.7)};
 }
-export const WEAPON_UI={
- shotgun:{name:'Ballast',accent:'#e6bd8e',capacity:2,keyboard:[['LMB','CHARGE / RELEASE'],['Q','STORE'],['RMB','FOCUS / STORE'],['E','DOUBLE'],['R','RELOAD']],touch:[['FIRE','HOLD / RELEASE'],['LOCK','STORE'],['AIM','FOCUS'],['DOUBLE','TAP'],['RELOAD','TAP']]},
- static:{name:'Static',accent:'#b8e6ef',capacity:12,keyboard:[['E','PLACE'],['LMB / Q','LAUNCH'],['C','STREAM']],touch:[['PLACE','HOLD'],['LAUNCH','TAP'],['STREAM','HOLD']]},
- rifle:{name:'Nominal',accent:'#e1cca2',capacity:18,keyboard:[['LMB / Q','FIRE / HOLD'],['RMB / SHIFT','AIM'],['R','RELOAD'],['E','GRENADE'],['X','36 ROUNDS']],touch:[['FIRE','HOLD'],['AIM','HOLD'],['RELOAD','TAP'],['GRENADE','TAP'],['EXTEND','36 ROUNDS']]},
-};
+// Names, colours, capacities and control hints come from the item registry.
+export const WEAPON_UI=Object.fromEntries(WEAPONS.map(w=>[w.id,{name:w.name,accent:w.accent,capacity:w.capacity,keyboard:w.hints.keyboard,touch:w.hints.touch}]));
 export function createWeaponHUD(root){
  const ammo=root.querySelector('#seed-pips'),controls=root.querySelector('.weapon-controls');
  const heading=document.createElement('div');heading.className='weapon-readout';

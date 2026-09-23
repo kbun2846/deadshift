@@ -16,7 +16,7 @@ export const deadwater = {
   farmBend: { start: 48, end: 92, offset: 40 },
   sideRoads: [{ points: [[2,-27.6],[-19,-27.3],[-40,-28.2],[-65,-27.6],[-91,-28.5],[-92,-23.4],[-66,-22.7],[-41,-23.1],[-19,-22.5],[2,-22.6]] }],
   crops: [{ id: 'dry-corn', x: 78, z: 100, w: 30, d: 28, visibility: 5 }],
-  spawn: { x: 0, z: 7 }, palette: { ground: '#776044', road: '#94764f' },
+  spawn: { x: 0, z: 7 }, palette: { ground: '#776044', road: '#94764f' }, look: { warmth: .15 },
   buildings: [
     { ...building('saloon', -12, -5, 10, 10, 2.9, 'SALOON', '#b58f70', '#687269'), angle: Math.PI / 2, doors: ['front', 'right'], windows: [{ side: 'front', offset: 3, width: 1.65 }] },
     { ...building('supplies', 12, -7, 8, 9, 2.7, 'SUPPLIES', '#c4ae8c', '#a37154'), doors: ['front', 'left'] },
@@ -302,7 +302,7 @@ export const deadwater = {
 // A second, smaller layout exercises the same loader. Open ?map=dry-creek.
 export const dryCreek = {
   id: 'dry-creek', name: 'Dry Creek', width: 40, depth: 36,
-  spawn: { x: 0, z: 5 }, palette: { ground: '#776044', road: '#94764f' },
+  spawn: { x: 0, z: 5 }, palette: { ground: '#776044', road: '#94764f' }, look: { warmth: .15 },
   buildings: [building('depot', -8, -6, 8, 8, 2.6, 'DEPOT', '#c5a079', '#6b776b')],
   props: [{ type: 'barrel', x: 5, z: 0 }, { type: 'crate', x: 9, z: -5 },
     { type: 'cactus', x: -15, z: 5 }, { type: 'cactus', x: 15, z: -10, scale: .8 },

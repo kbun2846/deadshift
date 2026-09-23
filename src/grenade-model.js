@@ -10,5 +10,16 @@ export function makeGrenade(detail=2){
   for(const y of [-.08,.035,.12]){const ring=new THREE.Mesh(new THREE.TorusGeometry(y===.12?.105:.135,.008,3,8),dark);ring.rotation.x=Math.PI/2;ring.position.y=y;group.add(ring);}
   const pin=new THREE.Mesh(new THREE.TorusGeometry(.034,.006,3,8),steel);pin.position.set(.065,.19,0);pin.rotation.y=Math.PI/2;group.add(pin);
  }
+ if(detail>=3){
+  // Extreme: the fragmentation grid (vertical grooves between the rings), a
+  // threaded fuse collar, the striker spring under the lever and a proper
+  // pull ring hanging off the pin.
+  for(let i=0;i<8;i++){const a=i*Math.PI/4,groove=new THREE.Mesh(new THREE.BoxGeometry(.012,.3,.012),dark);groove.position.set(Math.cos(a)*.138,0,Math.sin(a)*.138);groove.rotation.y=-a;groove.scale.y=1;group.add(groove);}
+  const collar=new THREE.Mesh(new THREE.CylinderGeometry(.068,.068,.022,14),steel);collar.position.y=.158;group.add(collar);
+  const thread=new THREE.Mesh(new THREE.TorusGeometry(.066,.005,4,16),dark);thread.rotation.x=Math.PI/2;thread.position.y=.168;group.add(thread);
+  const spring=new THREE.Mesh(new THREE.TorusGeometry(.02,.004,3,10),steel);spring.position.set(0,.235,-.03);spring.rotation.y=Math.PI/2;group.add(spring);
+  const pull=new THREE.Mesh(new THREE.TorusGeometry(.05,.006,4,16),steel);pull.position.set(.1,.17,.0);pull.rotation.set(0,Math.PI/2,.5);group.add(pull);
+  body.geometry.dispose();body.geometry=new THREE.IcosahedronGeometry(.14,2);
+ }
  return group;
 }

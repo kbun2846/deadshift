@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { LUMPY } from './effects-detail.js';
 
 // Ground haze kicked up by the feet. Separate from the debris particles: those
 // are lit chips that arc and bounce, these are flat, slow, and fade where they
@@ -9,13 +10,13 @@ import * as THREE from 'three';
 // was without smearing the view. The dash leaves the same haze sampled along
 // the whole travelled path, so the streak reads as distance covered, not as a
 // longer-lived cloud.
-export const DUST_RICHNESS = Object.freeze({ potato: 0, performance: .55, balanced: 1, quality: 1.5, extreme: 1.5 });
+export const DUST_RICHNESS = Object.freeze({ potato: 0, performance: .55, balanced: 1, quality: 1.5, extreme: 2 });
 // Debris particles at a footfall and on a dash. Quality and Balanced carry the
 // extra; the lower tiers keep their existing budget.
-export const FOOTFALL_PARTICLES = Object.freeze({ potato: 1, performance: 1, balanced: 1.8, quality: 2.2, extreme: 2.2 });
+export const FOOTFALL_PARTICLES = Object.freeze({ potato: 1, performance: 1, balanced: 1.8, quality: 2.2, extreme: 2.8 });
 // Impacts, breakages and respawns. Same shape as above: the two top presets
 // carry the extra, the low tiers keep the budget they were tuned for.
-export const IMPACT_PARTICLES = Object.freeze({ potato: 1, performance: 1, balanced: 1.5, quality: 2.1, extreme: 2.1 });
+export const IMPACT_PARTICLES = Object.freeze({ potato: 1, performance: 1, balanced: 1.5, quality: 2.1, extreme: 2.8 });
 // Kicked dust is lighter and drier than the packed ground it came off, so it
 // has to be lifted away from the surface colour or it is simply not visible.
 export const kickedDust = color => color.clone().lerp(PALE, .34).multiplyScalar(1.16);
@@ -60,27 +61,40 @@ export function debrisDust(ground, type) {
 }
 
 const PALE = new THREE.Color('#e9dcbd');
-const STEP = Object.freeze({ life: .5, rise: .34, spread: .22, start: .13, grow: 1.5, alpha: .4 });
-const DASH = Object.freeze({ life: .78, rise: .5, spread: .42, start: .18, grow: 2.6, alpha: .52 });
+const STEP = Object.freeze({ life: .5, rise: .34, spread: .22, start: .13, grow: 1.5, alpha: .48 });
+const DASH = Object.freeze({ life: .78, rise: .5, spread: .42, start: .18, grow: 2.6, alpha: .62 });
 // A dodge ends on the feet, not in the air: the stop deserves its own kick.
-const LAND = Object.freeze({ life: .6, rise: .42, spread: .3, start: .2, grow: 2.2, alpha: .5 });
+const LAND = Object.freeze({ life: .6, rise: .42, spread: .3, start: .2, grow: 2.2, alpha: .58 });
 // Weather rather than movement — wide, slow, thin, and low to the ground.
 const GUST = Object.freeze({ life: 2.4, rise: .3, spread: 1.5, start: .5, grow: 3.4, alpha: .17 });
 
 export class DustTrail {
   constructor(scene, capacity = 192) {
     this.capacity = capacity; this.time = 0; this.puffs = []; this.richness = 1; this.dashClock = 0;
-    const geometry = new THREE.IcosahedronGeometry(1, 0);
+    // Rounder than it used to be, shaded lighter on top than underneath and
+    // thinning out towards its outline, so a puff reads as a soft cloud of
+    // sand with some volume rather than a flat faceted pebble.
+    const geometry = new THREE.IcosahedronGeometry(1, 1);
     geometry.setAttribute('instanceFade', new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1));
     const material = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false });
     material.onBeforeCompile = shader => {
       shader.vertexShader = 'attribute float instanceFade; varying float vFade;\n' + shader.vertexShader;
-      shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFade=instanceFade;');
-      shader.fragmentShader = 'varying float vFade;\n' + shader.fragmentShader;
-      shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a*=vFade;');
+      shader.vertexShader = 'varying float vTop; varying float vFacing;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        vFade=instanceFade;
+        ${LUMPY}
+        vec3 turned = normalize(mat3(instanceMatrix) * normalize(position));
+        vTop = turned.y; vFacing = abs(normalize(mat3(modelViewMatrix) * turned).z);`);
+      shader.fragmentShader = 'varying float vFade; varying float vTop; varying float vFacing;\n' + shader.fragmentShader;
+      shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+        diffuseColor.rgb*=mix(.8,1.1,vTop*.5+.5);
+        diffuseColor.a*=vFade*smoothstep(.02,.55,vFacing);`);
     };
     this.mesh = new THREE.InstancedMesh(geometry, material, capacity);
     this.mesh.count = 0; this.mesh.frustumCulled = false; this.mesh.renderOrder = 1;
+    // Per-instance colour is part of the shader, so allocate it now: grown on
+    // the first puff, it compiled a second program the first time anyone walked.
+    this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3).fill(1), 3);
+    this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
     scene.add(this.mesh);
     this.dummy = new THREE.Object3D();
   }

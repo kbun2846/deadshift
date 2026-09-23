@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Birds,FlightSchedule,SPECIES,FLOCK,CYCLE,BIRD_INTERVAL,BIRD_CLEARANCE,PLAYER_CLEARANCE,VULTURE_CHANCE,CROSS_SECONDS,APPROACH,BIRD_TILT,EXIT_MARGIN,LANE_ATTEMPTS,crossingReach,tailOutline,fingerOutline,closestApproach,pathIsClear,viewSpan,bodyOutline,wingOutline} from '../src/birds.js';
+import {Birds,FlightSchedule,SPECIES,FLOCK,CYCLE,BIRD_INTERVAL,BIRD_CLEARANCE,PLAYER_CLEARANCE,MIN_PLAYER_CLEARANCE,VULTURE_CHANCE,CROSS_SECONDS,APPROACH,BIRD_TILT,EXIT_MARGIN,LANE_ATTEMPTS,crossingReach,tailOutline,fingerOutline,closestApproach,pathIsClear,viewSpan,bodyOutline,wingOutline} from '../src/birds.js';
 const VIEW={height:29,fov:40,aspect:1.78};
 
 const sequence=values=>{let i=0;return()=>values[i++%values.length];};
@@ -31,18 +31,18 @@ test('the vulture soars where the small birds beat',()=>{
  assert.ok(SPECIES.vulture.span>SPECIES.crow.span*1.5,'on a longer wing');
 });
 
-test('one crossing per minute, at a different moment each minute',()=>{
- const offsets=[.1,.9,.5,.25];
- const schedule=new FlightSchedule(BIRD_INTERVAL,sequence(offsets));
+test('about one crossing a minute, never bunched and never a long silence',()=>{
+ const schedule=new FlightSchedule(BIRD_INTERVAL,sequence([0,1,.5,0,1,.25,.75,0,1,.5]));
  const releases=[];
- for(let t=0,step=.25;t<BIRD_INTERVAL*4;t+=step) if(schedule.update(step)) releases.push(+schedule.time.toFixed(2));
- assert.equal(releases.length,4,'one per minute over four minutes');
- for(const [i,at] of releases.entries()){
-  assert.ok(at>=i*BIRD_INTERVAL&&at<(i+1)*BIRD_INTERVAL,`release ${i} fell outside its minute`);
+ for(let t=0,step=.25;t<BIRD_INTERVAL*8;t+=step) if(schedule.update(step)) releases.push(schedule.time);
+ assert.ok(releases.length>=7&&releases.length<=9,`${releases.length} crossings in eight minutes`);
+ assert.ok(releases[0]>=BIRD_INTERVAL*.3&&releases[0]<=BIRD_INTERVAL*.6,'the first comes early, not after a full minute');
+ for(let i=1;i<releases.length;i++){
+  const gap=releases[i]-releases[i-1];
+  assert.ok(gap>=BIRD_INTERVAL*.8&&gap<=BIRD_INTERVAL*1.2,`gap ${gap.toFixed(1)}s is outside a minute give or take`);
  }
- // The moment moves around inside the minute rather than sitting on it.
- const within=releases.map((at,i)=>at-i*BIRD_INTERVAL);
- assert.ok(new Set(within.map(v=>Math.round(v))).size>1,'timing should not be a metronome');
+ const gaps=releases.slice(1).map((t,i)=>Math.round(t-releases[i]));
+ assert.ok(new Set(gaps).size>1,'timing should not be a metronome');
 });
 
 test('closest approach is measured over the window both are still flying',()=>{
@@ -111,18 +111,20 @@ test('wings beat and the bird faces its heading',()=>{
  assert.ok(Math.abs(flight.group.rotation.y-heading)<1e-9,'and it should face where it is going');
 });
 
-test('birds are decoration: no shadows, and none at all on Potato',()=>{
+test('birds are decoration: no shadows, and they fly on every preset',()=>{
  const scene=new THREE.Scene(),birds=new Birds(scene);
  birds.schedule=new FlightSchedule(1,Math.random);
  birds.update(1.1,{x:0,z:0},VIEW);
  birds.flights[0].group.traverse(o=>{if(o.isMesh)assert.equal(o.castShadow,false);});
+ // A crossing is a couple of small draws for a few seconds a minute; even
+ // Potato keeps its sky.
+ for(const preset of ['potato','performance','balanced','quality']){
+  birds.setQuality(preset);birds.clear();
+  fly(birds,BIRD_INTERVAL*1.3);
+  assert.ok(birds.flights.length>0||birds.schedule.time>0,`${preset} flies`);
+ }
  birds.setQuality('potato');
- assert.equal(birds.flights.length,0,'Potato empties the sky');
- fly(birds,300);
- assert.equal(birds.flights.length,0,'and never refills it');
- birds.setQuality('balanced');
- fly(birds,BIRD_INTERVAL*1.2);
- assert.ok(birds.flights.length>0,'other presets fly again');
+ assert.equal(birds.enabled,true,'Potato no longer empties the sky');
 });
 
 test('a roof hides the sky without emptying it',()=>{
@@ -204,7 +206,7 @@ test('no path is ever laid across the player',()=>{
   // where it matters: the perpendicular distance from the path to the player.
   const speed=Math.hypot(flight.vx,flight.vz);
   const miss=Math.abs(flight.x*flight.vz-flight.z*flight.vx)/speed;
-  assert.ok(miss>=PLAYER_CLEARANCE-1e-9,
+  assert.ok(miss>=MIN_PLAYER_CLEARANCE-1e-9,
    `a bird passed ${miss.toFixed(2)}m from the player`);
   birds.clear();
  }
@@ -311,14 +313,19 @@ test('a wing beat reports itself once per beat, and not while hidden',()=>{
  assert.equal(beats.length,quiet,'a bird behind a roof makes no sound');
 });
 
-test('a bird out past the edge of the map is not heard from the middle of it',()=>{
+test('a crossing starts just outside the view, and a distant bird is not heard',()=>{
+ // Crossings used to start past the edge of the map, twenty-odd seconds of
+ // flight from a player who had long since moved; they happened out of sight.
  const birds=new Birds(new THREE.Scene());
  let beats=0;birds.onFlap=()=>beats++;
  const view={...VIEW,extent:124};
  const flight=birds.spawn('crow',{x:0,z:0},view);
- assert.ok(Math.hypot(flight.x,flight.z)>124,'a scheduled crossing should start off the map');
+ const span=viewSpan(view,flight.y),start=Math.hypot(flight.x,flight.z);
+ assert.ok(start>span*.5,'outside the view, so it flies in rather than appearing');
+ assert.ok(start<span*1.2,`within reach of the view, not off the map (${start.toFixed(1)} vs span ${span.toFixed(1)})`);
+ flight.x+=500;flight.z+=500;
  for(let i=0;i<120;i++)birds.update(1/120,{x:0,z:0},view);
- assert.equal(beats,0,'wingbeats carried across the whole map');
+ assert.equal(beats,0,'a bird far off is not heard');
 });
 
 test('every bird flies nose first, with its wake behind it',()=>{
@@ -492,4 +499,31 @@ test('a crossing reaches past the map when one is known, and far past the view o
  assert.ok(crossingReach({height:29,fov:40,aspect:1.6},span)>span*1.6);
  assert.ok(crossingReach(undefined,span)>span*APPROACH);
  assert.ok(LANE_ATTEMPTS>=3,'a blocked lane must get real retries, or crossings go missing');
+});
+
+test('a player on the move actually sees most crossings',()=>{
+ // Every earlier test passed while players saw no birds at all: crossings
+ // started off the map, twenty seconds from a player who had moved on, and
+ // left-to-right ones were pushed out of frame by the clearance. This walks a
+ // player around for ten minutes and counts what reaches the screen.
+ const view={height:29,fov:40,aspect:1.6,extent:124};
+ let totalSpawned=0,totalSeen=0;
+ for(const seed of [3,17,99,1234]){
+  let s=seed;const rnd=()=>(s=(s*16807)%2147483647)/2147483647;
+  const birds=new Birds(new THREE.Scene(),{random:rnd});birds.setQuality('performance');
+  const focus={x:0,z:0},seen=new Set(),all=new Set();let heading=0;const dt=1/30;
+  for(let t=0;t<600;t+=dt){
+   heading+=(rnd()-.5)*.3;focus.x+=Math.cos(heading)*5*dt;focus.z+=Math.sin(heading)*5*dt;
+   focus.x=Math.max(-90,Math.min(90,focus.x));focus.z=Math.max(-70,Math.min(70,focus.z));
+   birds.update(dt,focus,view);
+   for(const f of birds.flights){
+    all.add(f);
+    const halfZ=Math.tan(20*Math.PI/180)*(view.height-f.y),halfX=halfZ*view.aspect;
+    if(Math.abs(f.x-focus.x)<halfX&&Math.abs(f.z-focus.z)<halfZ)seen.add(f);
+   }
+  }
+  assert.ok(all.size>=8&&all.size<=12,`${all.size} crossings in ten minutes`);
+  totalSpawned+=all.size;totalSeen+=seen.size;
+ }
+ assert.ok(totalSeen/totalSpawned>=.65,`only ${totalSeen} of ${totalSpawned} crossings reached the screen`);
 });

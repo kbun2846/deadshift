@@ -1,5 +1,6 @@
 import { cropCircle } from './crops.js';
-export const GRENADE=Object.freeze({range:12,fuse:1.4,windup:.18,cooldown:25,radius:4,coreRadius:.7,damage:240,edgeDamage:35});
+import { GRENADE } from './config/gameplay.js';
+export { GRENADE };
 export const grenadeDamage=distance=>distance>GRENADE.radius?0:Math.round(GRENADE.edgeDamage+(GRENADE.damage-GRENADE.edgeDamage)*Math.max(0,1-Math.max(0,distance-GRENADE.coreRadius)/(GRENADE.radius-GRENADE.coreRadius))**1.4);
 export function resetGrenades(sim){sim.grenades=[];sim.grenadeCooldown=0;sim.grenadeThrowTime=-10;}
 export function stepGrenades(sim,input,dt,segmentBox){

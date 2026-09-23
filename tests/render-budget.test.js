@@ -25,6 +25,10 @@ test('adaptive resolution lowers sustained overload, recovers slowly and leaves 
  assert.ok(adaptive.scale>low&&adaptive.scale<1);
  assert.equal(adaptive.sample(1/30,true,'quality',60),1);
  adaptive.reset();assert.equal(adaptive.scale,1);
+ // Extreme sheds at most a fifth of its resolution.
+ const extreme=new AdaptiveResolution();
+ for(let i=0;i<600;i++)extreme.sample(1/30,true,'extreme',60);
+ assert.ok(Math.abs(extreme.scale-.8)<1e-6);
 });
 
 test('every graphics tier bounds pixel work on phones and large high-DPI monitors',()=>{

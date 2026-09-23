@@ -10,7 +10,9 @@ test('portrait and landscape keep independent saved controls',()=>{
  assert.equal(layouts.landscape['touch-launch'].x,.5);
  assert.equal(layouts.portrait['touch-launch'].hidden,false);
  assert.equal(layouts.landscape['touch-launch'].hidden,true);
- assert.deepEqual(validateTouchLayouts(null),{portrait:{},landscape:{}});
+ assert.deepEqual(validateTouchLayouts(null),{portrait:{},landscape:{},swapped:false});
+ assert.equal(validateTouchLayouts({swapped:true}).swapped,true,'swap sides is saved');
+ assert.equal(validateTouchLayouts({swapped:'yes'}).swapped,false);
 });
 test('controls stay below the reserved quarter and inside portrait and landscape screens',()=>{
  for(const viewport of [{width:390,height:844},{width:844,height:390}])for(const size of [{width:96,height:96},{width:128,height:88}]){
@@ -24,4 +26,13 @@ test('controls stay below the reserved quarter and inside portrait and landscape
 test('saved layouts validate coordinates and retain shared action positions',()=>{
  assert.deepEqual(validateTouchLayout(null),{});
  assert.deepEqual(validateTouchLayout({'touch-launch':{x:2,y:-1},'touch-place':{x:.8,y:.9,scale:3,hidden:true},'touch-hex':{x:'bad',y:1},other:{x:0,y:0}}),{'touch-place':{x:.8,y:.9,scale:2,hidden:true},'touch-launch':{x:1,y:0,scale:1,hidden:false}});
+});
+
+test('putting one control back forgets only that control, so it rejoins the corner cluster',async()=>{
+ const {withoutControl}=await import('../src/touch-layout.js');
+ const saved={'touch-dodge':{x:.4,y:.5,scale:1.2,hidden:false},'touch-hex':{x:.1,y:.9,scale:1,hidden:false}};
+ const next=withoutControl(saved,'touch-dodge');
+ assert.equal(next['touch-dodge'],undefined);
+ assert.deepEqual(next['touch-hex'],saved['touch-hex']);
+ assert.ok(saved['touch-dodge'],'the saved layout it came from is left alone');
 });

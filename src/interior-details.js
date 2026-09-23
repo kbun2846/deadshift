@@ -205,7 +205,9 @@ export function makeInteriorDetails(view,b) {
     cyl(stoveX, .5, stoveZ + .34, .11, .1, '#3d423c');
     cyl(stoveX, 1.5, stoveZ, .085, 1.6, '#4a4f48');
     for (const y of [.95, 1.9]) cyl(stoveX, y, stoveZ, .1, .07, '#3d423c');
-    const scorch = box(stoveX, .075, stoveZ + .15, 1.35, .008, 1.15, '#6a5b48'); scorch.rotation.y = .08;
+    // Its top used to land at exactly the floor's top, y 0.079, so the two faces
+    // shared a plane and flickered through each other. Lifted a few millimetres.
+    const scorch = box(stoveX, .082, stoveZ + .15, 1.35, .008, 1.15, '#6a5b48'); scorch.rotation.y = .08;
     // Split wood stacked beside it, ready for the stove.
     const logSide = stoveX < 0 ? 1 : -1;
     for (let i = 0; i < 5; i++) {

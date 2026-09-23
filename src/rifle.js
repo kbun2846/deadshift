@@ -1,24 +1,15 @@
-// Baseline conventional weapon: metres, seconds, damage per bullet.
-export const RIFLE=Object.freeze({interval:.18,magazine:18,extendedMagazine:36,extendedCooldown:60,reload:1.8,damage:20,minDamage:14,effectiveRange:10,falloffEnd:22,maxRange:55,magazineLife:30,bulletSpeed:90,aimMoveMultiplier:.55,maxStamina:3,stationaryStamina:1.3});
+import { RIFLE, RIFLE_MUZZLE, RIFLE_CONVERGE, RULES } from './config/gameplay.js';
+export { RIFLE, RIFLE_MUZZLE, RIFLE_CONVERGE };
 export const rifleDamage=distance=>RIFLE.damage-(RIFLE.damage-RIFLE.minDamage)*Math.max(0,Math.min(1,(distance-RIFLE.effectiveRange)/(RIFLE.falloffEnd-RIFLE.effectiveRange)));
 export function rifleSpread(distance,speed=0,aiming=false){
  // Angular error is independent of cursor depth. The HUD projects this cone
  // at the cursor; a close cursor cannot tighten shots that keep travelling.
- return (aiming?.054:.105)*(1+.7*Math.min(1,speed/7.2));
+ return (aiming?RIFLE.aimSpread:RIFLE.hipSpread)*(1+RIFLE.movingSpread*Math.min(1,speed/RULES.speed));
 }
-// Where the barrel actually is: a metre out in front of the player and a
-// hand's width to one side, which is why a shot fired parallel to the player's
-// centreline never passes through the crosshair.
-export const RIFLE_MUZZLE=Object.freeze({forward:.96,lateral:.27});
 export const rifleMuzzle=p=>({
  x:p.x+p.aimX*RIFLE_MUZZLE.forward-p.aimZ*RIFLE_MUZZLE.lateral,
  z:p.z+p.aimZ*RIFLE_MUZZLE.forward+p.aimX*RIFLE_MUZZLE.lateral,
 });
-// The barrel is never laid on a point closer than this. Converging on a cursor
-// sitting on the player's own feet would rake the shot several degrees across
-// the screen; holding the floor here keeps the worst tilt inside a couple of
-// degrees, which is centimetres at the ranges where it could miss.
-export const RIFLE_CONVERGE=8;
 // The one piece of geometry the shot and the guide must agree on: where the
 // barrel sits, which way it is laid, and how far the convergence point is from
 // the muzzle. Spread is angular about this ray, so the guide drawn from it is

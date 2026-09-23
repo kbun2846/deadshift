@@ -65,10 +65,6 @@ body[data-controls=touch] #game #weapon .hex-recharge.ready .hex-recharge-center
 body[data-controls=touch] #game #weapon .hex-recharge-center kbd{font-size:8px}
 body[data-controls=touch] #game #weapon .seed-pips{gap:3px}
 body[data-controls=touch] #game #weapon .seed-pips[data-capacity="36"]{display:grid;grid-template-columns:repeat(18,minmax(0,1fr));gap:3px}
-body[data-controls=touch] #game #tutorial-guide{top:118px;width:min(360px,calc(100vw - 24px));max-height:32dvh;padding:12px}
-body[data-controls=touch] #game #tutorial-guide #tutorial-hint{font-size:13px;line-height:1.4}
-body[data-controls=touch] #game #tutorial-guide h2{font-size:17px}
-body[data-controls=touch] #game #tutorial-guide button{height:44px;min-height:44px}
 @media(orientation:landscape){
  body[data-controls=touch].playing #game .health-hud{left:max(20px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));width:150px;transform:none}
  body[data-controls=touch].playing:not(.paused) #game #touch-controls{bottom:calc(16px + env(safe-area-inset-bottom))}
@@ -77,9 +73,6 @@ body[data-controls=touch] #game #tutorial-guide button{height:44px;min-height:44
  body[data-controls=touch] #game .touch-stick{width:92px;height:92px}
  body[data-controls=touch] #game #touch-controls #touch-launch{width:92px;height:66px;min-height:66px;font-size:16px!important}
  body[data-controls=touch].playing #game #weapon{width:min(340px,calc(100vw - 320px));left:calc(50% - 20px);bottom:calc(12px + env(safe-area-inset-bottom))}
- body[data-controls=touch] #game #tutorial-guide{top:62px;width:min(360px,calc(100vw - 330px));max-height:calc(100dvh - 168px);padding:10px 12px}
- body[data-controls=touch] #game #tutorial-guide #tutorial-hint{font-size:12px;line-height:1.35}
- body[data-controls=touch] #game #tutorial-guide #tutorial-progress{font-size:9px}
 }
 @media(max-width:350px) and (orientation:portrait){
  body[data-controls=touch] #game .touch-right{grid-template-columns:repeat(2,68px)}
@@ -88,8 +81,6 @@ body[data-controls=touch] #game #tutorial-guide button{height:44px;min-height:44
 
 /* Saved controls use viewport positions, shared by all weapon layouts. */
 body[data-controls=touch] #game #touch-controls .touch-positioned{position:fixed;margin:0;transform:none}
-#game #touch-layout-edit{display:none}
-body[data-controls=touch].playing:not(.paused):not(.dying) #game #touch-layout-edit{display:inline-flex;min-width:60px}
 #touch-layout-overlay{position:fixed;inset:0;background:#10201a70;z-index:25;touch-action:none}
 #touch-layout-overlay[hidden]{display:none}
 .touch-layout-reserved{position:absolute;top:0;left:0;right:0;height:25%;border-bottom:2px dashed #e8afb9;background:#141b1ce6;padding:10px;color:#e8afb9;font:700 11px/1.2 Arial,sans-serif;display:flex;align-items:flex-end;pointer-events:none}
@@ -97,15 +88,69 @@ body[data-controls=touch].playing:not(.paused):not(.dying) #game #touch-layout-e
 .touch-layout-help>strong{font-size:16px}.touch-layout-help>span{width:100%}
 body[data-controls=touch] #game .touch-layout-help button{min-height:44px;font-size:13px!important;padding:8px 12px;border:1px solid #e8afb9;border-radius:8px}
 body.editing-touch-layout #game .masthead{z-index:32}
-body.editing-touch-layout #game .masthead :is(.brand,.mode),body.editing-touch-layout #game .top-actions>button:not(#touch-layout-edit){visibility:hidden;pointer-events:none}
+body.editing-touch-layout #game .masthead :is(.brand,.mode),body.editing-touch-layout #game .top-actions>button{visibility:hidden;pointer-events:none}
 body.editing-touch-layout #game #touch-controls{z-index:30}
 body.editing-touch-layout #game #touch-controls :is(button,.touch-stick){opacity:1;outline:2px dashed #e8afb9;outline-offset:4px;cursor:grab;transition:none;touch-action:none}
 body.editing-touch-layout #game :is(#tutorial-guide,#weapon,.health-hud,#reticle,.rifle-spread,.aim-cone){visibility:hidden}
 @media(max-height:500px){.touch-layout-help{font-size:11px;gap:5px;max-width:calc(100% - 120px)}.touch-layout-help>strong{font-size:13px}.touch-layout-help>span{width:auto}body[data-controls=touch] #game .touch-layout-help button{min-height:36px;padding:6px 10px}}
 body[data-controls=touch] #game #touch-controls .touch-removed{display:none!important}
-body[data-controls=touch] #game #seed-stick{grid-column:1/-1;order:-1;justify-self:end}
-@media(orientation:landscape){body[data-controls=touch] #game #seed-stick{width:76px;height:76px}}
 .touch-edit-handle{display:none!important}
 body.editing-touch-layout #game .touch-edit-handle{position:absolute;display:grid!important;place-items:center;width:32px;height:32px;border-radius:8px;background:#e8afb9;color:#171b19;border:2px solid #fff;font:700 23px/1 Arial,sans-serif!important;z-index:2;touch-action:none;pointer-events:auto}
-.touch-edit-remove{top:0;right:0}.touch-edit-resize{bottom:0;right:0;cursor:nwse-resize}
+.touch-edit-remove{top:0;right:0}.touch-edit-resize{bottom:0;right:0;cursor:nwse-resize}.touch-edit-restore{top:0;left:0}
 .touch-layout-help{max-height:calc(25dvh - 28px);overflow:auto}
+
+/* Movement: the whole left half is the stick. It shows up under the thumb and
+   goes away when lifted; buttons on that side still sit above it. */
+#game #move-zone{display:none}
+body[data-controls=touch].playing:not(.paused):not(.editing-touch-layout) #game #move-zone{display:block;position:absolute;left:0;top:0;bottom:0;width:50%;touch-action:none;-webkit-user-select:none;user-select:none}
+/* A light ring and a soft knob: present enough to read, clear enough to see
+   the ground through. Larger than the old fixed stick so a full pull is a
+   comfortable thumb stretch rather than a twitch. */
+body[data-controls=touch] #game #move-stick.floating-stick{position:fixed;left:0;top:0;margin:0;width:124px;height:124px;transform:translate(-50%,-50%);display:none;pointer-events:none;z-index:4;opacity:1;background:radial-gradient(circle,#18252214 0 55%,#1825222e 100%);border:2px solid #ecede680;box-shadow:none}
+body[data-controls=touch] #game #move-stick.floating-stick.engaged{display:grid;border-color:#ecede699}
+body[data-controls=touch] #game #move-stick .stick-knob{width:50px;height:50px;border-radius:50%;background:#ecede659;border:1.5px solid #ffffffb3;box-shadow:0 1px 4px #0004;transition:none}
+/* On touch the lesson card lets drags through to the movement zone. */
+body[data-controls=touch] #game #tutorial-guide{pointer-events:none}
+body[data-controls=touch] #game #tutorial-guide #tutorial-finish{pointer-events:auto}
+/* No long-press callouts, selection handles or grey tap flashes on the game. */
+body.playing #game,body.playing #game *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+
+/* Right-thumb cluster (shapes and positions come from arrangeTouchCluster in
+   main.js): FIRE is a big quarter circle tucked into the corner, and every
+   other action is its own curved segment of a ring around it. Swap sides
+   mirrors the lot, walking included. A button dragged in the layout editor
+   leaves the ring and becomes a plain circle you can put anywhere. */
+body[data-controls=touch].playing:not(.paused) #game #touch-controls{left:0;right:0;top:auto;bottom:0;height:0;display:block;padding:0}
+body[data-controls=touch] #game .touch-left{display:none}
+body[data-controls=touch] #game .touch-right{display:block;width:0;height:0}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped{position:fixed;left:auto;top:auto;right:calc(env(safe-area-inset-right) + var(--edge,0px));bottom:calc(env(safe-area-inset-bottom) + var(--base,0px));margin:0;padding:0;display:block;width:var(--size);height:var(--size);min-height:0;border:0;border-radius:0;clip-path:var(--shape);box-shadow:none;background:#182522}
+body[data-controls=touch].touch-swapped #game #touch-controls .touch-right>button.touch-shaped{right:auto;left:calc(env(safe-area-inset-left) + var(--edge,0px))}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped>:not(.touch-edit-handle){position:absolute;left:var(--lx);top:var(--ly);translate:-50% -50%;margin:0;white-space:nowrap;text-align:center}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped>.button-label{font-size:10.5px!important;letter-spacing:.02em}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped>.touch-binding{display:none}
+body[data-controls=touch] #game #touch-controls .touch-right>#touch-launch.touch-shaped{width:var(--size);height:var(--size);min-height:0;background:var(--ui-accent);color:#1b1d1c}
+body[data-controls=touch] #game #touch-controls .touch-right>#touch-launch.touch-shaped>.button-label{font-size:19px!important;top:calc(var(--ly) - 7px)}
+body[data-controls=touch] #game #touch-controls .touch-right>#touch-launch.touch-shaped>.touch-binding{display:block;top:calc(var(--ly) + 12px);font-size:9px!important}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped:active{background:#f4d2d9;color:#161c19;transform:none}
+/* Pulled out in the editor: an ordinary round button, about the same size. */
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positioned{clip-path:none;border-radius:50%;display:inline-flex;flex-direction:column;width:64px;height:64px;min-height:0;padding:4px;right:auto!important;bottom:auto!important;border:1px solid #e0e8e2}
+body[data-controls=touch] #game #touch-controls .touch-right>#touch-launch.touch-positioned{width:96px;height:96px}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positioned>:not(.touch-edit-handle){position:static;translate:none}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positioned>.touch-binding{display:block}
+body.editing-touch-layout #game #touch-controls .touch-shaped:not(.touch-positioned)>.touch-edit-handle{display:none!important}
+/* In the editor the ring and FIRE show their outline so it is clear each can be pulled out. */
+body.editing-touch-layout #game #touch-controls .touch-shaped:not(.touch-positioned){outline:none;filter:drop-shadow(0 0 1.5px #e8afb9) drop-shadow(0 0 1.5px #e8afb9)}
+body[data-controls=touch].touch-swapped.playing:not(.paused):not(.editing-touch-layout) #game #move-zone{left:auto;right:0}
+
+/* The top-right buttons: smaller and see-through so they sit back. */
+body[data-controls=touch] #game .top-actions{gap:5px}
+body[data-controls=touch] #game .top-actions .icon-button{min-width:40px;height:32px;min-height:32px;padding:4px 7px;border-radius:7px;font-size:10px!important;background:#2429287a;border-color:#7f8a8459;color:#ffffffd9}
+/* Swapped: the ammo panel and the lesson card move across with the buttons. */
+@media(orientation:landscape){body[data-controls=touch].touch-swapped.playing #game #weapon{left:calc(50% + 20px)}}
+body[data-controls=touch].touch-swapped #game #tutorial-guide{left:auto;right:max(14px,env(safe-area-inset-right))}
+@media(max-height:500px){.touch-layout-help>strong{display:none}}
+@media(max-height:500px){body[data-controls=touch] #game .touch-layout-help button{min-height:30px;padding:4px 10px;font-size:11px!important}.touch-layout-help>span{font-size:11px}}
+body.editing-touch-layout #game #touch-controls .touch-positioned .touch-edit-handle{width:26px;height:26px;font-size:18px!important}
+body.editing-touch-layout #game #touch-controls .touch-positioned .touch-edit-remove{top:-8px;right:-8px}
+body.editing-touch-layout #game #touch-controls .touch-positioned .touch-edit-resize{bottom:-8px;right:-8px}
+body.editing-touch-layout #game #touch-controls .touch-positioned .touch-edit-restore{top:-8px;left:-8px}

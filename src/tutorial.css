@@ -1,0 +1,34 @@
+/* Training range lesson card. One small card, no buttons while practising:
+   lessons start and move on by themselves. Key names are keycaps in capitals,
+   the only text exempt from the interface's lowercase rule. */
+#game #tutorial-guide{position:fixed;z-index:8;display:block;cursor:default;left:38px;right:auto;top:112px;width:300px;max-height:none;overflow:visible;transform:none;padding:12px 14px 13px;background:#202724f0;border:1px solid #424c46;border-radius:7px;box-shadow:0 6px 20px #0000002e;color:#e6efea;text-align:left;pointer-events:auto;transition:border-color .2s}
+#game #tutorial-guide [hidden]{display:none!important}
+#game #tutorial-guide .tutorial-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+#game #tutorial-guide #tutorial-progress{font:600 10px/1.3 Arial,Helvetica,sans-serif;letter-spacing:.08em;color:#b8d9d9}
+#game #tutorial-guide #tutorial-count{font:700 13px/1.3 Arial,Helvetica,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:.04em;color:var(--ui-accent);white-space:nowrap}
+#game #tutorial-guide h2{margin:5px 0 6px;font-size:22px;line-height:1.1;letter-spacing:-.02em;color:#fff}
+#game #tutorial-guide #tutorial-hint{margin:0;font:400 14px/1.55 Arial,Helvetica,sans-serif;color:#dce4df}
+#game #tutorial-guide #tutorial-note{margin:3px 0 0;font:400 12px/1.4 Arial,Helvetica,sans-serif;color:#9eb0a9}
+#game #tutorial-guide kbd{display:inline-block;min-width:1.8em;margin:0 1px;padding:0 .42em;border:1px solid #6d7a74;border-bottom-width:2px;border-radius:4px;background:#2d3632;color:#fff;font:700 11.5px/1.5 Arial,Helvetica,sans-serif;letter-spacing:.02em;text-align:center;white-space:nowrap;vertical-align:1px;text-transform:none!important}
+#game #tutorial-guide #tutorial-meter{height:4px;margin-top:10px;border-radius:2px;background:#ffffff1c;overflow:hidden}
+#game #tutorial-guide #tutorial-meter i{display:block;width:100%;height:100%;background:var(--ui-accent);transform:scaleX(var(--progress,0));transform-origin:left;transition:transform .25s ease-out}
+/* A finished lesson stays up for a moment, ticked off, before the next one. */
+#game #tutorial-guide[data-state=done]{border-color:var(--ui-accent)}
+#game #tutorial-guide[data-state=done] h2::after{content:'  \2713';color:var(--ui-accent)}
+/* The one button: back to the menu, drawn like every other back button. */
+#game #tutorial-guide #tutorial-finish{display:block;margin-top:12px;border:0;border-radius:5px;background:var(--ui-accent);color:#151718;pointer-events:auto}
+#game #tutorial-guide[data-state=complete] .tutorial-head{display:none}
+#game #tutorial-guide[data-state=complete] h2{margin-top:0}
+@media(max-width:700px){#game #tutorial-guide{left:16px;top:96px;width:min(300px,calc(100vw - 32px))}}
+
+/* Phones and tablets: smaller type and a card that sits clear of the sticks. */
+body[data-controls=touch] #game #tutorial-guide{left:max(14px,env(safe-area-inset-left));top:calc(58px + env(safe-area-inset-top));width:min(272px,44vw);padding:8px 11px 9px}
+body[data-controls=touch] #game #tutorial-guide h2{margin:3px 0 4px;font-size:17px}
+body[data-controls=touch] #game #tutorial-guide #tutorial-progress{font-size:9px}
+body[data-controls=touch] #game #tutorial-guide #tutorial-count{font-size:12px}
+body[data-controls=touch] #game #tutorial-guide #tutorial-hint{font-size:12.5px;line-height:1.42}
+body[data-controls=touch] #game #tutorial-guide #tutorial-note{font-size:11px}
+body[data-controls=touch] #game #tutorial-guide kbd{font-size:10.5px}
+body[data-controls=touch] #game #tutorial-guide #tutorial-meter{margin-top:7px;height:3px}
+@media(orientation:portrait){body[data-controls=touch] #game #tutorial-guide{left:12px;right:12px;top:calc(128px + env(safe-area-inset-top));width:auto}}
+@media(orientation:landscape) and (max-height:340px){body[data-controls=touch] #game #tutorial-guide #tutorial-note{display:none}}

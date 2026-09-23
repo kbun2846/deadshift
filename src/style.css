@@ -79,15 +79,15 @@ body:not(.playing) .masthead,body:not(.playing) .vignette{display:none}
 .settings-tabs [aria-selected=true]{background:#475950}
 .controls-list{display:grid;grid-template-columns:120px 1fr;gap:16px 18px;font-size:13px;line-height:1.6}.controls-list dt{color:#b8d9d9}.controls-list dd{margin:0;color:#d2d6d2}
 #settings-panel .setting,#settings-panel .small,#graphics-description{color:#c4cdc7}
-#tutorial-guide{position:fixed;z-index:8;left:24px;top:95px;width:min(350px,calc(100vw - 48px));padding:18px 22px;background:#192222eb;border:1px solid #647d74;border-radius:7px;color:#e6efea;pointer-events:none}
-#tutorial-guide small{color:#a5d8df;letter-spacing:.13em;font-size:10px}#tutorial-guide h2{font-size:20px;margin:10px 0}#tutorial-guide p{font-size:13px;line-height:1.55;margin:0}#tutorial-guide button{pointer-events:auto;color:#d3eeee;margin-top:14px}
+
+
 .touch-right{flex-wrap:wrap;max-width:220px}.touch-right>button{min-width:42px;min-height:42px}
 button:focus-visible{outline:2px solid #b5e6ee;outline-offset:4px}
-@media(max-width:600px){#tutorial-guide{top:70px;padding:12px 16px}#tutorial-guide h2{font-size:17px}.controls-list{grid-template-columns:90px 1fr}.menu-shell h1{font-size:29px}}
-#tutorial-guide{left:50%;transform:translateX(-50%);top:82px;width:min(430px,calc(100vw - 32px));text-align:center}
-#tutorial-guide button{display:block;margin:14px auto 0;min-width:160px;padding:10px 18px;border:1px solid #819d98;border-radius:4px}
-#tutorial-guide button:disabled{opacity:.5;cursor:default}
-@media(max-width:600px){#tutorial-guide{top:66px;width:calc(100vw - 32px)}}
+@media(max-width:600px){.controls-list{grid-template-columns:90px 1fr}.menu-shell h1{font-size:29px}}
+
+
+
+
 body[data-controls=keyboard] .touch-controls{display:none!important}
 body[data-controls=keyboard] .weapon-controls{display:flex}
 body[data-controls=touch].playing:not(.paused) .touch-controls{display:flex;position:fixed;bottom:35px;left:24px;right:24px;z-index:9;align-items:center;justify-content:space-between;pointer-events:none}
@@ -99,7 +99,7 @@ body[data-controls=touch] .playing .weapon{bottom:175px}
 body[data-controls=touch].playing .weapon{bottom:175px}
 body[data-controls=touch] .weapon-controls{display:flex;font-size:7px}
 body[data-controls=touch] .icon-button{font-size:9px}
-@media(max-height:550px){body[data-controls=touch].playing .weapon{bottom:20px}body[data-controls=touch].playing:not(.paused) .touch-controls{bottom:20px}#tutorial-guide{top:65px;padding:10px 16px}#tutorial-guide h2{margin:5px 0}#tutorial-guide button{margin-top:8px}}
+@media(max-height:550px){body[data-controls=touch].playing .weapon{bottom:20px}body[data-controls=touch].playing:not(.paused) .touch-controls{bottom:20px}}
 .tutorial-highlight{outline:2px solid #b3ecff!important;outline-offset:9px;border-radius:9px;animation:tutorial-focus 1.8s ease-in-out infinite}
 #hex-recharge.tutorial-highlight,#map-toggle.tutorial-highlight{border-radius:50%}
 @keyframes tutorial-focus{0%,100%{box-shadow:0 0 0 5px #97ddff15,0 0 18px #a8eaff35}50%{box-shadow:0 0 0 12px #97ddff18,0 0 26px #a8eaff70}}
@@ -125,16 +125,16 @@ input::placeholder,textarea::placeholder{text-transform:lowercase}
 /* Tall, edge-to-edge button typography. */
 .menu-shell button:not(.map-choice){height:48px;min-height:48px;padding:0 12px;font-size:42px;line-height:.85;letter-spacing:-.035em;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-weight:500}
 .menu-shell .menu-back{height:40px;min-height:40px;font-size:36px;padding:0 12px}
-#settings-panel button,#pause-panel button,#tutorial-guide button{min-height:38px;padding:0 10px;font-size:32px;line-height:.95;letter-spacing:-.035em;font-weight:500}
+#settings-panel button,#pause-panel button{min-height:38px;padding:0 10px;font-size:32px;line-height:.95;letter-spacing:-.035em;font-weight:500}
 .settings-tabs{gap:7px}.settings-tabs button{flex:1;min-width:0}
 #pause-panel .primary{display:block}
 #map-close{padding:0 10px;font-size:26px;line-height:1;min-height:30px}
 #map-close kbd{font-size:inherit}
 #input-preference{font-stretch:condensed}
-@media(max-width:600px){.menu-shell button:not(.map-choice){font-size:36px;height:42px;min-height:42px}#settings-panel button,#pause-panel button,#tutorial-guide button{font-size:27px;min-height:33px}.settings-tabs{gap:4px}}
+@media(max-width:600px){.menu-shell button:not(.map-choice){font-size:36px;height:42px;min-height:42px}#settings-panel button,#pause-panel button{font-size:27px;min-height:33px}.settings-tabs{gap:4px}}
 .menu-shell button:not(.map-choice){height:36px;min-height:36px;line-height:.75}
 .menu-shell button:focus-visible{color:#edf5f1}
-#settings-panel button,#pause-panel button,#tutorial-guide button{min-height:30px;line-height:.85}
+#settings-panel button,#pause-panel button{min-height:30px;line-height:.85}
 @media(max-width:600px){.menu-shell button:not(.map-choice){height:32px;min-height:32px}}
 /* A squared humanist face with tall labels, rather than scaled button boxes. */
 body,button,input,select,textarea,h1,h2,h3{font-family:Bahnschrift,'Trebuchet MS',sans-serif!important}
@@ -165,7 +165,7 @@ body,button,input,select,textarea,h1,h2,h3{font-family:Georgia,'Times New Roman'
 .menu-shell h1{font-weight:400;letter-spacing:.075em}
 /* Compact industrial lettering, measured to the actual ink height in JS. */
 body,button,input,select,textarea,h1,h2,h3{font-family:Bahnschrift,'Arial Narrow',Arial,sans-serif!important}
-button:not(.map-choice),.menu-shell button:not(.map-choice),.menu-shell .input-choice button,#settings-panel button,#pause-panel button,#tutorial-guide button,#settings-developer button,#map-close{position:relative;font-size:32px;font-weight:700;font-stretch:normal;letter-spacing:0;line-height:32px;text-align:left;justify-content:flex-start;padding:0 10px;height:40px;min-height:40px;overflow:hidden;box-sizing:border-box}
+button:not(.map-choice),.menu-shell button:not(.map-choice),.menu-shell .input-choice button,#settings-panel button,#pause-panel button,#settings-developer button,#map-close{position:relative;font-size:32px;font-weight:700;font-stretch:normal;letter-spacing:0;line-height:32px;text-align:left;justify-content:flex-start;padding:0 10px;height:40px;min-height:40px;overflow:hidden;box-sizing:border-box}
 button>.button-label,.primary .button-label{position:absolute;left:10px;top:0;display:block;float:none;font:inherit;font-size:32px;line-height:32px;letter-spacing:0;margin:0;padding:0;white-space:nowrap;transform-origin:0 0;width:max-content;pointer-events:none}
 .menu-shell h1{font-weight:700;letter-spacing:.02em}
 .map-choice strong,.map-choice small{text-align:left}

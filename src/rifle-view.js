@@ -3,7 +3,9 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeRifle } from './rifle-model.js';
 import { RiflePose } from './rifle-pose.js';
 import { RIFLE_QUALITY, CASING_CAPACITY, casingPose } from './rifle-quality.js';
+import { NO_FX } from './effects-detail.js';
 const UP=new THREE.Vector3(0,1,0);
+const BULLET_GLOW=new THREE.Color('#ffd98a'),PORT_SMOKE=new THREE.Color('#bdb5a2');
 function disposeObject(root){const materials=new Set();root.traverse(o=>{o.geometry?.dispose();if(o.material)materials.add(o.material);});materials.forEach(m=>m.dispose());}
 
 export class RifleView{
@@ -56,7 +58,7 @@ export class RifleView{
   const slug=new THREE.LatheGeometry(profile,segments);slug.scale(1.3,1,1.3);
   this.bullets=this.batch(slug,this.bulletMat,8);this.outlines=this.batch(slug.clone().scale(1.45,1.12,1.45),this.outlineMat,8);
   this.bands=this.batch(new THREE.CylinderGeometry(.046,.046,.025,segments).translate(0,-.068,0),this.brass,8);
-  this.trails=this.batch(new THREE.CylinderGeometry(.013,.013,.3,4),this.trailMat,8);
+  this.trails=this.batch(this.quality.trailTaper?new THREE.CylinderGeometry(.022,.002,.3,6):new THREE.CylinderGeometry(.013,.013,.3,4),this.trailMat,8);
   this.casings=this.batch(new THREE.CylinderGeometry(.018,.018,.075,segments),this.brass,CASING_CAPACITY);
   this.magazines=this.batch(new THREE.BoxGeometry(.075,.045,.22),this.steel,24);
   this.sparks=this.batch(new THREE.BoxGeometry(.016,.016,.065),this.sparkMat,32);
@@ -74,6 +76,9 @@ export class RifleView{
    vx:-p.aimX*backward-p.aimZ*sideways,vz:-p.aimZ*backward+p.aimX*sideways,vy:1.2+Math.random()*.9,
    spinX:(Math.random()-.5)*28,spinZ:(Math.random()-.5)*28,landingAngle:Math.random()*Math.PI*2});
   if(this.effects.length>CASING_CAPACITY)this.effects.shift();
+  // The ejection port breathes a curl of smoke after the brass.
+  const fx=this.view.fx||NO_FX;
+  if(fx.on)for(let i=0,n=fx.n(2);i<n;i++)fx.puff({x:this.origin.x,y:this.origin.y,z:this.origin.z,vx:(-p.aimZ+Math.random()*.4-.2)*.6,vz:(p.aimX+Math.random()*.4-.2)*.6,vy:.35,size:.03,grow:3,life:.6+Math.random()*.4,alpha:.26,color:PORT_SMOKE});
   const x=p.x+p.aimX*.975-p.aimZ*.27,z=p.z+p.aimZ*.975+p.aimX*.27;
   for(let i=0;i<this.quality.sparks+this.quality.smoke;i++){
    const smoke=i>=this.quality.sparks,speed=smoke?.4:2+Math.random()*2,side=(Math.random()-.5)*2;
@@ -102,12 +107,14 @@ export class RifleView{
   this.pose.update(sim,this.aimBlend,settle,recoil);
   this.active=active;this.staticParts.forEach(p=>p.visible=sim.weapon==='static');
   this.flash.visible=active&&sim.time<this.flashTime;
-  let count=0;
+  let count=0;const fx=this.view.fx||NO_FX;
   for(const b of sim.rifleBullets){
    if(count>=8||!this.visible(sim,b.x,b.z))continue;
    this.dummy.position.set(b.x,.74,b.z);this.direction.set(b.dx,0,b.dz);this.dummy.quaternion.setFromUnitVectors(UP,this.direction);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();
    this.bullets.setMatrixAt(count,this.dummy.matrix);this.outlines.setMatrixAt(count,this.dummy.matrix);this.bands.setMatrixAt(count,this.dummy.matrix);
-   const length=Math.min(.3,b.travel);this.dummy.position.addScaledVector(this.direction,-length/2-.08);this.dummy.scale.set(1,length/.3,1);this.dummy.updateMatrix();this.trails.setMatrixAt(count,this.dummy.matrix);count++;
+   // A soft hot glow riding each round, drawn by the detail layer.
+   if(fx.on)fx.glow({x:b.x,y:.74,z:b.z,size:.32,life:.03,color:BULLET_GLOW,glow:.9});
+   const length=Math.min(this.quality.trailLength??.3,b.travel);this.dummy.position.addScaledVector(this.direction,-length/2-.08);this.dummy.scale.set(1,length/.3,1);this.dummy.updateMatrix();this.trails.setMatrixAt(count,this.dummy.matrix);count++;
   }
   this.bullets.count=this.outlines.count=count;this.trails.count=this.quality.trail?count:0;
   this.bands.count=this.quality.detail>=2?count:0;

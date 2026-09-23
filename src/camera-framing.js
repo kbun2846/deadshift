@@ -14,3 +14,18 @@ export function interiorCameraHeight(room, aspect) {
   }
   return height;
 }
+
+// The camera glides after the player, so from frame to frame the world slides
+// by fractions of a pixel. Thin detail -- shingle gaps, plank seams, trim --
+// then lands on a different mix of pixels every frame and shimmers along its
+// edges. Moving the camera only in whole screen pixels keeps each line on the
+// same pixels while it travels. Exact at ground level; roofs and wall tops,
+// being a little nearer the camera, keep only a small remainder of it.
+export function snapCameraFocus(x, z, height, fovDegrees, bufferHeight) {
+  if (!(bufferHeight > 0)) return { x, z };
+  const distance = height * Math.hypot(1, CAMERA_TILT);
+  const pixel = 2 * distance * Math.tan(fovDegrees * Math.PI / 360) / bufferHeight;
+  // Ground depth is foreshortened on screen by the camera's pitch.
+  const pitch = Math.atan2(1, CAMERA_TILT), depthPixel = pixel / Math.sin(pitch);
+  return { x: Math.round(x / pixel) * pixel, z: Math.round(z / depthPixel) * depthPixel };
+}

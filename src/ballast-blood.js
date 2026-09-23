@@ -20,7 +20,7 @@ export class BallastBlood{
    const x=i===0?0:.15+Math.random()*1.65,z=i===0?0:(Math.random()-.5)*(.65+x*.25),size=i===0?.65:.15+Math.random()*.23;
    puddle.position.set(x,i*.0004,z);puddle.scale.set(size*(i===0?1:1.35),size*(i===0?.75:.6),1);this.pool.add(puddle);
   }
-  this.count=({potato:12,performance:18,balanced:28,quality:40,extreme:40}[view.qualityName]||28);
+  this.count=({potato:12,performance:18,balanced:28,quality:40,extreme:56}[view.qualityName]||28);
   this.drops=new THREE.InstancedMesh(geometry(new THREE.IcosahedronGeometry(1,0)),red,this.count+8);this.drops.frustumCulled=false;view.scene.add(this.drops);
   this.fragments=Array.from({length:this.count},()=>{const forward=1.7+Math.random()*3,side=(Math.random()-.5)*1.2;return {vx:direction.x*forward-direction.z*side,vz:direction.z*forward+direction.x*side,vy:.5+Math.random()*1.6,size:.025+Math.random()*.035};});
   this.dummy=new THREE.Object3D();this.point=new THREE.Vector3();this.a=new THREE.Vector3();this.b=new THREE.Vector3();this.delta=new THREE.Vector3();this.up=new THREE.Vector3(0,1,0);

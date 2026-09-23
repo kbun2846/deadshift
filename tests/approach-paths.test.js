@@ -18,3 +18,24 @@ test('boxcars do not generate dirt access paths',()=>{
  const paths=approachPaths(deadwater,road);
  assert.ok(deadwater.buildings.filter(b=>b.cargo).every(b=>!paths.some(p=>p.buildingId===b.id)));
 });
+
+// onApproach is bucketed into a grid for speed; it must give exactly the
+// answers the straightforward scan did, for every padding terrain generation uses.
+test('the indexed approach lookup agrees with a full scan everywhere',async()=>{
+ const {onApproach,pathRadius}=await import('../src/approach-paths.js');
+ const scan=(paths,x,z,padding=0)=>paths.some(({points})=>points.some((p,i)=>Math.hypot(x-p.x,z-p.z)<pathRadius(i,points.length)+padding));
+ let seed=7;const rand=()=>(seed=(seed*16807)%2147483647)/2147483647;
+ const paths=[];
+ for(let n=0;n<14;n++){
+  const points=[];let x=(rand()-.5)*120,z=(rand()-.5)*100;
+  for(let i=0;i<20+Math.floor(rand()*60);i++){x+=(rand()-.5)*.8;z+=.4;points.push({x,z});}
+  paths.push({points});
+ }
+ let hits=0;
+ for(let i=0;i<20000;i++){
+  const x=(rand()-.5)*130,z=(rand()-.5)*120,padding=[0,.15,1,2.8][i%4];
+  const expected=scan(paths,x,z,padding);if(expected)hits++;
+  assert.equal(onApproach(paths,x,z,padding),expected,`disagreed at ${x.toFixed(3)},${z.toFixed(3)} padding ${padding}`);
+ }
+ assert.ok(hits>500,'the sample actually exercises points on the paths');
+});

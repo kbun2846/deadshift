@@ -6,10 +6,11 @@ test('arrow aim eases identically for every weapon, including focused fire',()=>
  const traces=[];
  for(const weapon of ['static','rifle','shotgun'])for(const aiming of [false,true]){
   const sim=make(weapon),angles=[];
-  for(let i=0;i<24;i++){sim.step({aimX:0,aimZ:-1,smoothAim:true,aiming});angles.push(Math.atan2(sim.player.aimZ,sim.player.aimX));}
-  assert.ok(angles[0]<0&&angles[0]>-Math.PI/4);
-  assert.ok(Math.abs(angles[17]+Math.PI/2)<.025);
-  assert.ok(angles.every((a,i)=>a>=-Math.PI/2&&(i===0||a<angles[i-1])));
+  for(let i=0;i<60;i++){sim.step({aimX:0,aimZ:-1,smoothAim:true,aiming});angles.push(Math.atan2(sim.player.aimZ,sim.player.aimX));}
+  assert.ok(angles[0]<0&&angles[0]>-Math.PI/20,'the turn eases in rather than jumping');
+  assert.ok(Math.abs(angles[8]+Math.PI/2)>.5,'a quarter turn is not over in a few frames');
+  assert.ok(Math.abs(angles[45]+Math.PI/2)<.02,'but it arrives within about three quarters of a second');
+  assert.ok(angles.every((a,i)=>a>=-Math.PI/2-1e-12&&(i===0||a<=angles[i-1])),'never overshoots and never turns back');
   traces.push(angles);
  }
  for(const trace of traces)assert.deepEqual(trace,traces[0]);
@@ -18,7 +19,7 @@ test('digital aim takes the short arc across angle wrap and remains valid on rev
  const sim=make('rifle');sim.player.aimX=Math.cos(3.1);sim.player.aimZ=Math.sin(3.1);
  sim.step({aimX:Math.cos(-3.1),aimZ:Math.sin(-3.1),smoothAim:true});
  assert.ok(sim.player.aimX<-.99);
- sim.player.aimX=1;sim.player.aimZ=0;sim.step({aimX:-1,aimZ:0,smoothAim:true});
+ sim.player.aimX=1;sim.player.aimZ=0;for(let i=0;i<6;i++)sim.step({aimX:-1,aimZ:0,smoothAim:true});
  assert.ok(sim.player.aimX>-1&&Math.abs(sim.player.aimZ)>.1);
  assert.ok(Math.abs(Math.hypot(sim.player.aimX,sim.player.aimZ)-1)<1e-10);
 });
@@ -54,3 +55,23 @@ for(const horizontal of ['ArrowLeft','ArrowRight'])for(const vertical of ['Arrow
   for(const weapon of ['static','rifle','shotgun']){s=fresh(weapon);s.step({...command,moveX:aim.x,moveZ:aim.z,dodge:true});assert.ok(s.player.dodgeRemaining>0);}
  });
 }
+
+test('Ballast on the keyboard: Q charges and fires, Shift stores',async()=>{
+ const {ballastInput}=await import('../src/rifle-input.js');
+ const none=new Set();
+ assert.deepEqual(ballastInput(false,new Set(['KeyQ']),none),{fire:true,storeCharge:false},'holding Q charges');
+ assert.deepEqual(ballastInput(false,none,new Set(['KeyQ'])),{fire:true,storeCharge:false},'a tap of Q still pulls the trigger');
+ assert.equal(ballastInput(false,none,new Set(['ShiftLeft'])).storeCharge,true);
+ assert.equal(ballastInput(false,none,new Set(['ShiftRight'])).storeCharge,true);
+ assert.equal(ballastInput(false,none,new Set(['MouseRight'])).storeCharge,true,'right click still stores');
+ assert.equal(ballastInput(true,none,none).fire,true,'left button still fires');
+ assert.deepEqual(ballastInput(false,new Set(['ShiftLeft']),none),{fire:false,storeCharge:false},'holding Shift only focuses; storing is the press');
+});
+
+test('a tap part way through a turn leaves the aim in between: taps give the angles between the keys',()=>{
+ const sim=make('static');
+ for(let i=0;i<6;i++)sim.step({aimX:0,aimZ:-1,smoothAim:true});
+ for(let i=0;i<30;i++)sim.step({});
+ const angle=Math.atan2(sim.player.aimZ,sim.player.aimX);
+ assert.ok(angle<-.05&&angle>-Math.PI/2+.1,`stopped part way at ${angle}`);
+});

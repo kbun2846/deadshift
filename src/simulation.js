@@ -5,26 +5,13 @@ import { mapColliders, mapProps, buildingContains, buildingWalls } from './maps.
 import { cropSegments, cropPoint, affectCrop, cropCircle, stepCrops } from './crops.js';
 import { RIFLE, resetRifle, stepRifle } from './rifle.js';
 import { resetGrenades, stepGrenades } from './grenade.js';
+import { autoRangeTarget, autoRangeDistance, AUTO_RANGE } from './auto-range.js';
+// Tunable numbers live in config/gameplay.js; re-exported so existing imports keep working.
+import { RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_DAMAGE_MULTIPLIER, boostedHexDamage } from './config/gameplay.js';
+export { RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH };
 
-const HEX_BASE_PULSE=150,HEX_BASE_ZAP=20;
-const HEX_DAMAGE_MULTIPLIER=1.14*1.4;
-const boostedHexDamage=damage=>Math.round(damage*HEX_DAMAGE_MULTIPLIER*100)/100;
-export const RULES = Object.freeze({
-  step: 1 / 60, speed: 7.2, acceleration: 10, braking: 14, radius: .38, keyboardAimResponse:14,
-  dodgeDistance: 3.2, dodgeDuration: .24, maxStamina: 2, dodgeStaminaCost: 1, staminaDelay: .6, staminaRecharge: 1.6, dodgeHitRadius: .18, dodgeDamageMultiplier: .5,
-  sprayWarmup: .2, sprayAmmoTime: .25, sprayRange: 8, sprayInnerAngle: Math.PI * 8 / 180, sprayOuterAngle: Math.PI * 22 / 180,
-  sprayInnerDPS: 196, sprayOuterDPS: 77, sprayTurnRate: Math.PI * .65, sprayRecoil: 2.8,
-  sprayRampTime: 1.5, sprayMaxMultiplier: 1.5,
-  maxSeeds: 12, seedInterval: .145, seedLife: 9, driftSpeed: .72,
-  orbRadius: .15,
-  hexCost: 10, hexFormationTime: .55, hexSpeed: 2.4, hexRange: 12, hexPulseRadius: 1.65, hexReach: 2.3, hexPulseDamage: boostedHexDamage(HEX_BASE_PULSE), hexEdgeDamage: boostedHexDamage(HEX_BASE_ZAP), hexSpinDuration: 1, hexCooldown: 30,
-  launchSpeed: 31, launchLife: 1.8, launchOvershoot: .55, interceptCorridor: 1.1, playerHealth: 500, targetHealth: 100, dummyHealth: 75, targetRespawn: 4.5,
-  rechargeDelay: .8, rechargeInterval: .65, stationaryRecharge: 1.25 * 1.18, focusDistance: 7,
-});
 
-// Larger volleys trade a long refill for a higher damage return per orb.
-export const ORB_DAMAGE_MULTIPLIER = 1.16*(345/400);
-export const ORB_VOLLEY_TOTALS=Object.freeze([0,9.28,20.88,34.8,90,125,165,205,245,285,325,363,400].map(d=>d*(345/400)));
+
 export const damagePerOrb = count => {
  const n=Math.max(1,Math.min(12,count));
  // Above three orbs, budget direct impact + the central blast together.
@@ -51,11 +38,6 @@ export function hexPulseDamageAt(power, distance) {
   const baseDamage=Math.round(power.damage / HEX_DAMAGE_MULTIPLIER);
   return boostedHexDamage(Math.round(baseDamage * (.25 + .75 * accuracy * accuracy)));
 }
-// Splash shape, kept separate from the blast's total so the volley budget the
-// damage curve is built on stays exactly where it was. `edge` is the fraction
-// still landing at the rim, and `heavyCore` is the extra a large volley adds at
-// the centre — a heavy shot should feel heavier where it actually lands.
-export const SPLASH = Object.freeze({ edge: .28, heavyCore: .06, heavyFrom: 4, heavyFull: 12 });
 export function splashFalloff(distance, radius, count = 0) {
   if (!(radius > 0) || distance > radius) return 0;
   const heavy = Math.max(0, Math.min(1, (count - SPLASH.heavyFrom) / (SPLASH.heavyFull - SPLASH.heavyFrom)));
@@ -105,7 +87,17 @@ export function segmentCircle(ax, az, bx, bz, cx, cz, radius) {
 }
 
 export class Simulation {
-  constructor(map) { this.dev = {}; this.map = map; this.colliders = mapColliders(map); this.reset(); }
+  constructor(map) {
+    this.dev = {}; this.map = map; this.colliders = mapColliders(map);
+    // Online only: where the other players stand ({x, z}, optional hp), as
+    // this simulation should see them this tick. The host fills it from its
+    // own sims, a joiner from the latest snapshot. Offline it stays empty.
+    // Players are solid to each other: you stop against them like a target.
+    this.otherPlayers = [];
+    this.reset();
+  }
+  // How close another player's centre can come to ours: two body radii.
+  touchingPlayer() { const p = this.player, limit = RULES.radius * 2; return this.otherPlayers.some(o => !(o.hp <= 0) && Math.hypot(o.x - p.x, o.z - p.z) < limit); }
 
   reset() {
     this.dev.speed=1;
@@ -214,7 +206,16 @@ export class Simulation {
       const delta = Math.atan2(Math.sin(desired - current), Math.cos(desired - current));
       const limit = this.spray.active ? RULES.sprayTurnRate * dt : Math.PI;
       // Ease digital aim along the shortest arc, keeping shots and the model aligned.
-      const turn=input.smoothAim?delta*(1-Math.exp(-RULES.keyboardAimResponse*dt)):delta;
+      let turn = delta;
+      if (input.smoothAim) {
+        // Direction-only aim turns with a little weight: its turn speed eases up
+        // rather than jumping, and never overshoots the direction asked for.
+        const wanted = Math.max(-RULES.keyboardAimMaxTurn, Math.min(RULES.keyboardAimMaxTurn, delta * RULES.keyboardAimResponse));
+        p.aimSpin = (p.aimSpin || 0) + (wanted - (p.aimSpin || 0)) * (1 - Math.exp(-RULES.keyboardAimSpinUp * dt));
+        turn = p.aimSpin * dt;
+        if (turn * delta < 0) { turn = 0; p.aimSpin = 0; }
+        else if (Math.abs(turn) > Math.abs(delta)) { turn = delta; p.aimSpin = 0; }
+      } else p.aimSpin = 0;
       const angle = current + Math.max(-limit, Math.min(limit, turn)); p.aimX = Math.cos(angle); p.aimZ = Math.sin(angle);
     }
     const blastDecay=Math.exp(-8*dt),blastTravel=(1-blastDecay)/8;
@@ -222,8 +223,18 @@ export class Simulation {
     p.blastVX*=blastDecay;p.blastVZ*=blastDecay;
     if(Math.hypot(p.blastVX,p.blastVZ)<1)p.ballastLaunch=false;
     if(Math.hypot(p.blastVX,p.blastVZ)<.01)p.blastVX=p.blastVZ=0;
-    p.aimPointX = Number.isFinite(input.aimPointX) ? input.aimPointX : p.x + p.aimX * RULES.focusDistance;
-    p.aimPointZ = Number.isFinite(input.aimPointZ) ? input.aimPointZ : p.z + p.aimZ * RULES.focusDistance;
+    // Direction-only aim (arrow keys, walking on touch) reaches whatever it
+    // points at instead of a fixed distance; see auto-range.js.
+    // Aim assist for direction-only aim helps with distance and nothing else:
+    // the aim point stays on the line the player chose and slides, unhurried,
+    // out or in to whatever that line points at. Mouse aim never gets it.
+    const assisted = input.autoRange && !Number.isFinite(input.aimPointX);
+    const lock = assisted ? autoRangeTarget(p, this.targets, p.autoTargetId, input.autoRange) : null;
+    p.autoTargetId = lock ? lock.id : null;
+    const wantedReach = lock ? autoRangeDistance(p, lock) : RULES.focusDistance;
+    p.aimReach = assisted ? (p.aimReach ?? RULES.focusDistance) + (wantedReach - (p.aimReach ?? RULES.focusDistance)) * (1 - Math.exp(-dt / AUTO_RANGE.settle)) : RULES.focusDistance;
+    p.aimPointX = Number.isFinite(input.aimPointX) ? input.aimPointX : p.x + p.aimX * p.aimReach;
+    p.aimPointZ = Number.isFinite(input.aimPointZ) ? input.aimPointZ : p.z + p.aimZ * p.aimReach;
     stepGrenades(this,input,dt,segmentBox);
     if(this.weapon==='rifle')stepRifle(this,input,dt,{segmentBox,segmentCircle});
     if(this.weapon==='shotgun')stepShotgun(this,input,dt,{segmentBox,segmentCircle});
@@ -240,10 +251,10 @@ export class Simulation {
         t.respawn -= dt;
         if (t.respawn <= 0) { t.hp = t.maxHp; t.x = t.baseX = t.spawnX; t.z = t.spawnZ; this.events.push({ type: 'respawn', x: t.x, z: t.z }); }
       }
-      if (t.moving && t.hp > 0) t.x = t.baseX + Math.sin(this.time * .72) * t.travel;
+      if (t.moving && t.hp > 0 && !this.dev.freezeTargets) t.x = t.baseX + Math.sin(this.time * .72) * t.travel;
     }
     // Moving and freshly respawned targets also separate from an idle player.
-    if(this.targets.some(t=>t.hp>0&&Math.hypot(t.x-p.x,t.z-p.z)<RULES.radius+(t.kind==='dummy'?.42:.55)))this.movePlayer(0,0);
+    if(this.targets.some(t=>t.hp>0&&Math.hypot(t.x-p.x,t.z-p.z)<RULES.radius+(t.kind==='dummy'?.42:.55))||this.touchingPlayer())this.movePlayer(0,0);
     this.stepSpray(dt);
     for (const s of this.shots) {
       const travel = s.launched ? Math.max(0, Math.min(dt, s.travelDuration - s.age)) : dt;
@@ -369,6 +380,16 @@ export class Simulation {
       vx: ax / length, vz: az / length, dashed: !underfoot });
   }
 
+  pushOutOfCircle(cx,cz,limit,previousX,previousZ){
+    const p=this.player;
+    let nx=p.x-cx,nz=p.z-cz,distance=Math.hypot(nx,nz);
+    if(distance>=limit)return;
+    if(distance<1e-8){nx=previousX-cx;nz=previousZ-cz;const length=Math.hypot(nx,nz);if(length>1e-8){nx/=length;nz/=length;}else {nx=-p.aimX;nz=-p.aimZ;}}
+    else {nx/=distance;nz/=distance;}
+    p.x+=nx*(limit-distance+1e-7);p.z+=nz*(limit-distance+1e-7);
+    const inward=p.vx*nx+p.vz*nz;
+    if(inward<0){p.vx-=inward*nx;p.vz-=inward*nz;}
+  }
   movePlayer(dx, dz) {
     const p = this.player, r = RULES.radius;
     const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / (r * .5)));
@@ -381,22 +402,17 @@ export class Simulation {
       // it instead of stopping on it, so the roll keeps the line the player
       // committed to. Solid cover is untouched and still stops them dead.
       // Floor clutter breaks under an ordinary stride as well.
+      // Dev "remove my player": no body in the world, so nothing to bump or break.
+      if (this.dev.ghost) continue;
       if (p.dodgeRemaining > 0) this.crushDodged();
       else if (p.hp > 0) this.crushDodged(true);
       // Resolve only the local circle/rectangle penetration. In particular,
       // touching a long horizontal fence must never snap x to its far end.
       for (let pass = 0; pass < 3; pass++) {
-        for(const target of this.targets) {
-          if(target.hp<=0)continue;
-          const limit=r+(target.kind==='dummy'?.42:.55);
-          let nx=p.x-target.x,nz=p.z-target.z,distance=Math.hypot(nx,nz);
-          if(distance>=limit)continue;
-          if(distance<1e-8){nx=previousX-target.x;nz=previousZ-target.z;const length=Math.hypot(nx,nz);if(length>1e-8){nx/=length;nz/=length;}else {nx=-p.aimX;nz=-p.aimZ;}}
-          else {nx/=distance;nz/=distance;}
-          p.x+=nx*(limit-distance+1e-7);p.z+=nz*(limit-distance+1e-7);
-          const inward=p.vx*nx+p.vz*nz;
-          if(inward<0){p.vx-=inward*nx;p.vz-=inward*nz;}
-        }
+        // Round bodies: targets, then other players online. Pushed straight
+        // out along the line between centres, and any speed into them removed.
+        for(const target of this.targets) if(target.hp>0)this.pushOutOfCircle(target.x,target.z,r+(target.kind==='dummy'?.42:.55),previousX,previousZ);
+        for(const other of this.otherPlayers) if(!(other.hp<=0))this.pushOutOfCircle(other.x,other.z,r*2,previousX,previousZ);
         for (const b of this.colliders) {
         // Floor clutter is stepped over, not walked into.
         if(b.walkOver)continue;
@@ -743,7 +759,6 @@ export class Simulation {
     }
     if(this.hexOrbs[0].age+1e-8<RULES.hexFormationTime)return;
     const nodes = this.hexOrbs.map(o => ({ ...o, power: hexPower(Math.hypot(o.x - o.originX, o.z - o.originZ)) })), edges = [], strands = [];
-    const cover = [...this.colliders];
     // Hex energy passes through scenery; entity damage still uses pulse/edge ranges.
     const clear = () => true;
     for (const a of nodes) {
@@ -870,6 +885,8 @@ export class Simulation {
 
   hit(target, shot) {
     if (target.hp <= 0 || shot.owner === target.id) return;
+    // Dev one-hit kills: any hit that isn't the world's own (fire) finishes it.
+    if (this.dev.oneHit && !shot.environmental) shot = { ...shot, damage: Math.max(shot.damage, target.hp) };
     const ballastFatal=shot.damageType==='ballast'&&recordBallastDamage(target,shot.damage,this.time,shot.owner);
     const fullHealth=target.hp>=target.maxHp-1e-8;
     if(fullHealth||target.oneShotVolley!==shot.volley||this.time-(target.oneShotAt??-1)>.15){target.oneShotEligible=fullHealth;target.oneShotVolley=shot.volley;target.oneShotAt=this.time;}
@@ -899,7 +916,7 @@ export class Simulation {
   }
 
   damagePlayer(damage, owner, environmental = false, selfBlast = false, impact = null, damageType = environmental?'fire':selfBlast?'explosion':'gunshot') {
-    if (this.dev.invulnerable || !owner || owner === this.player.id && !selfBlast || this.player.hp <= 0 || !Number.isFinite(damage) || damage <= 0) return 0;
+    if (this.dev.invulnerable || this.dev.ghost || !owner || owner === this.player.id && !selfBlast || this.player.hp <= 0 || !Number.isFinite(damage) || damage <= 0) return 0;
     const dealt = Math.min(this.player.hp, !environmental && this.player.dodgeRemaining > 0 ? Math.max(1, Math.round(damage * RULES.dodgeDamageMultiplier)) : damage);
     if(damageType==='ballast'&&recordBallastDamage(this.player,dealt,this.time,owner)&&dealt>=this.player.hp)damageType='ballastFatal';
     this.player.hp -= dealt;
@@ -950,6 +967,21 @@ export class Simulation {
     this.events.push({ type: prop.hp === 0 ? 'propBreak' : 'propHit', id: prop.id,
       electric:!!shot.electric, dashed:!!shot.dashed, propType: prop.type, x: prop.hp === 0 ? prop.x : shot.x, z: prop.hp === 0 ? prop.z : shot.z,
       directionX: shot.vx || 0, directionZ: shot.vz || 0, scale: prop.scale || 1 });
+  }
+
+  // Dev: every downed target stands up again on the next tick.
+  respawnTargets() { let count = 0; for (const t of this.targets) if (t.hp <= 0) { t.respawn = 1e-6; count++; } return count; }
+  // Dev: every broken prop is rebuilt where it was placed.
+  restoreAllProps() { let count = 0; for (const prop of this.props) if (this.restoreProp(prop.id)) count++; return count; }
+
+  // Puts a broken prop back as it was placed: full health, and solid again.
+  restoreProp(id) {
+    const prop = this.props.find(p => p.id === id);
+    if (!prop || prop.hp === null || prop.hp > 0) return false;
+    prop.hp = prop.health; prop.flash = 0;
+    this.colliders.push(...mapColliders(this.map).filter(c => c.propId === id));
+    this.events.push({ type: 'propRestore', id, x: prop.x, z: prop.z, propType: prop.type });
+    return true;
   }
 
   explode(volley, id) {

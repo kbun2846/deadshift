@@ -5,7 +5,8 @@ export const RIFLE_QUALITY=Object.freeze({
  performance:{detail:1,radialSegments:5,sparks:1,smoke:0,impact:1,trail:true,flashCore:false},
  balanced:{detail:2,radialSegments:6,sparks:3,smoke:1,impact:2,trail:true,flashCore:true},
  quality:{detail:3,radialSegments:8,sparks:9,smoke:5,impact:6,trail:true,flashCore:true},
- extreme:{detail:3,radialSegments:8,sparks:9,smoke:5,impact:6,trail:true,flashCore:true},
+ // Extreme's tracer is a long tapered streak (trailLength metres) instead of a short dash.
+ extreme:{detail:3,radialSegments:12,sparks:14,smoke:8,impact:9,trail:true,flashCore:true,trailLength:1.5,trailTaper:true},
 });
 export const CASING_LIFETIME=30;
 export const CASING_CAPACITY=192; // More than 30 seconds of uninterrupted fire.

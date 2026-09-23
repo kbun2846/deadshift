@@ -1,30 +1,56 @@
 import {shotgunPreview} from './shotgun-model.js';
 import { staticPreview } from './weapon-preview.js';
 import { riflePreview } from './rifle-model.js';
+import { WEAPONS } from './items.js';
+import { NETWORK } from './config/network.js';
 
-export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete }) {
+export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete, online }) {
  let page=document.querySelector('[data-page]:not([hidden])')?.dataset.page||'home';
  let selectedMap='deadwater';
  let weaponBack='maps';
- const back=()=>{if(page!=='home')show(page==='weapons'?weaponBack:page==='maps'?'modes':'home');};
+ const back=()=>{if(page!=='home')show(page==='weapons'?weaponBack:page==='maps'||page==='online'?'modes':'home');};
  const show=name=>{if(name==='maps')loadThumbnail();page=name;document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
  $('tutorial-entry').hidden=tutorialComplete;$('tutorial-mode').hidden=false;
  $('gamemodes').onclick=()=>show('modes');$('practice-mode').onclick=()=>show('maps');
+ // Online: host a room (you get a code to share) or type a friend's code.
+ // main.js does the connecting; this page only shows how it is going.
+ const status=text=>{$('online-status').textContent=text||'';};
+ let connecting=false;
+ const go=async request=>{
+  if(connecting)return;connecting=true;
+  $('online-host').disabled=$('online-join').disabled=true;
+  try{await online(request,status);}
+  catch(error){status(error.message||'Could not connect.');}
+  finally{connecting=false;$('online-host').disabled=$('online-join').disabled=false;}
+ };
+ $('online-mode').hidden=!NETWORK.enabled;
+ $('online-mode').onclick=()=>{status('');show('online');};
+ $('online-host').onclick=()=>go({role:'host'});
+ $('online-join-form').onsubmit=e=>{e.preventDefault();go({role:'join',code:$('online-code').value});};
+ // A shared link (?join=CODE) lands straight on this page and joins.
+ const invite=NETWORK.enabled&&new URLSearchParams(location.search).get('join');
+ if(invite&&online){$('online-code').value=invite;show('online');go({role:'join',code:invite});}
+ else if(NETWORK.enabled&&new URLSearchParams(location.search).get('host')==='1'&&online){show('online');go({role:'host'});}
  document.querySelectorAll('.menu-back').forEach(b=>b.onclick=back);
- const chooseWeapons=()=>{show('weapons');for(const card of $('weapon-options').children)card.loadPreview();};
- const goTutorial=()=>{weaponBack=page==='modes'?'modes':'home';selectedMap='tutorial';chooseWeapons();};
- $('tutorial-entry').onclick=goTutorial;$('tutorial-mode').onclick=goTutorial;
- const launch=weapon=>{
+ const chooseWeapons=()=>{$('tutorial-basics').hidden=selectedMap!=='tutorial';show('weapons');for(const card of $('weapon-options').children)card.loadPreview();};
+ // Home's tutorial goes straight into the basics: no weapon to pick for
+ // walking and dashing. Gamemodes > Tutorial picks a weapon's own course.
+ const goTutorial=()=>{weaponBack='modes';selectedMap='tutorial';chooseWeapons();};
+ $('tutorial-entry').onclick=()=>{selectedMap='tutorial';launch('static','basics');};$('tutorial-mode').onclick=goTutorial;
+ const launch=(weapon,course)=>{
   const query=new URLSearchParams({map:selectedMap,weapon,play:'1',mode:selectedMap==='tutorial'?'tutorial':'practice'});
-  if(map.id===selectedMap){history.replaceState(null,'','?'+query);start(weapon);}
+  if(course)query.set('course',course);
+  if(map.id===selectedMap){try{history.replaceState(null,'','?'+query);}catch{}start(weapon,selectedMap==='tutorial'?course||null:undefined);}
   else location.href='?'+query;
  };
- const weapons=[{id:'static',name:'Static',description:'place drifting electric orbs, launch focused volleys, or unleash a hex pulse and lightning stream',preview:staticPreview},{id:'rifle',name:'Nominal',description:'deliver steady, accurate fire with a classic automatic rifle built for dependable mid range combat',preview:riflePreview}];
- weapons.push({id:'shotgun',name:'Ballast',description:'charge a heavy double barrel and ride its recoil into devastating close range blasts',preview:shotgunPreview});
+ // Names and descriptions come from the item registry; only the 3D preview
+ // renderers are wired up here.
+ const previews={static:staticPreview,rifle:riflePreview,shotgun:shotgunPreview};
+ const weapons=WEAPONS.map(w=>({...w,preview:previews[w.id]}));
  for(const weapon of weapons){
   const card=document.createElement('article');card.className='weapon-card';card.dataset.name=weapon.name;
   const select=document.createElement('button');select.className='weapon-choice';select.setAttribute('aria-label','Select '+weapon.name);
-  const picture=document.createElement('img');picture.alt=weapon.id==='static'?'Static — light-blue electric gun with a yellow muzzle':'Nominal — matte steel rifle, wooden stock and olive-green grenade';if(weapon.id==='shotgun')picture.alt='Ballast — matte double-barrel shotgun with walnut stock';picture.className='weapon-preview';
+  const picture=document.createElement('img');picture.alt=weapon.previewAlt;picture.className='weapon-preview';
   const title=document.createElement('span');title.className='weapon-name';
   const label=document.createElement('span');label.className='button-label';label.textContent=weapon.name;title.append(label);
   const description=document.createElement('span');description.className='weapon-description';description.textContent=weapon.description;
@@ -41,6 +67,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  weaponList.addEventListener('scroll',updateScrollCue,{passive:true});
  const scrollResize=new ResizeObserver(updateScrollCue);scrollResize.observe(weaponList);
  for(const card of weaponList.children)scrollResize.observe(card);
+ $('tutorial-basics').onclick=()=>launch('static','basics');
  $('start').onclick=()=>{selectedMap=$('start').dataset.map||'deadwater';weaponBack='maps';chooseWeapons();};
  let thumbnailScheduled=false;
  function loadThumbnail(){
@@ -65,9 +92,9 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  for(const tab of tabs)tab.onclick=()=>openTab(tab.dataset.tab);
  openTab('graphics');
  const generalControls=[
-  ['Move','WASD / left stick'],
-  ['Aim','Mouse / arrow keys / aim stick / drag on the world','Movement sets facing when not aiming independently.'],
-  ['Aim in','Shift / right mouse button','Works on every weapon: tightens the shot and slows the walk.'],
+  ['Move','WASD / drag anywhere on the left half','On touch the stick appears wherever your thumb lands.'],
+  ['Aim','Mouse / arrow keys / touch the world','Movement sets facing when not aiming independently. On touch you face the way you walk; tap or hold a spot on the world to aim at it.'],
+  ['Aim in','Shift / right mouse button','Works on every weapon: tightens the shot and slows the walk. On Ballast, pressing it while charging also stores the charge.'],
   ['Dodge','Space / DODGE button','Rolls the way you are moving, or the way you are facing when standing still. Goes through breakable scenery.'],
   ['Map','M / map button; M or Escape closes'],
   ['Pause / resume','Esc / pause button'],
@@ -78,16 +105,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   ['Confirm / open controls','E / Enter / click / tap','On a weapon dropdown, right opens and left closes.'],
   ['Back','Q / Escape'],
  ];
- const weaponControls=[{name:'Static',controls:[
-  ['Place orbs','Hold E / hold PLACE'],
-  ['Launch placed orbs','Left click / Q / tap world / Q button'],
-  ['Quick shot','Q / left click / tap world / Q button','With no drifting orbs, fires one orb for 1 ammo.'],
-  ['Hex deploy / pulse','X / X button','Press again after formation to pulse. Costs 10 ammo.'],
-  ['Lightning stream','Hold C / hold C button','Release to stop.'],
- ]},{name:'Nominal',controls:[['Fire','Left click or Q / hold either / hold FIRE','One bullet per press; hold for automatic fire.'],['Aim precisely','Hold right click or Shift / hold AIM','Reduces spread at any distance. Standing still also improves accuracy.'],['Reload','R / RELOAD','18 rounds; 1.8-second reload. Dropped magazines remain for 30 seconds.'],['Extended magazine','X / X touch button','Loads 36 rounds in 1.8 seconds. Available every 60 seconds; R loads a standard 18-round magazine.'],['Throw grenade','E / E touch button','1.4-second fuse, 25-second cooldown. Aim within 12 metres. Deals 240 damage within 0.7 metres, falling to 35 at the 4-metre blast edge; cover blocks it.']]}];
- weaponControls.push({name:'Ballast',controls:[['Charge / fire','Hold / release LMB or FIRE','115–315 damage on the first shell; 100–300 on the second if every pellet lands. Two shells; one native dodge.'],['Store charge','Q or click RMB while charging / LOCK','Keeps the same charge for both shells for 15 seconds.'],['Double shot','E / DOUBLE','Fires both remaining shells 0.05 seconds apart, or the last shell.'],['Focus cone','Hold RMB / AIM','Narrows the short cone; clicking also stores a live charge. Charge increases range from 7.5 to 9 metres.'],['Reload','R / RELOAD','Break open, eject spent shells, insert shells and close. 2.8 seconds; firing after the first shell loads cancels the rest.']]});
  const list=rows=>'<table class="controls-grid"><thead><tr><th scope="col">Action</th><th scope="col">Keybind</th></tr></thead><tbody>'+rows.map(([action,binding,note])=>'<tr><th scope="row">'+action+'</th><td>'+binding+(note?'<small>'+note+'</small>':'')+'</td></tr>').join('')+'</tbody></table>';
-  $('settings-controls').innerHTML='<h3 class="controls-heading">General</h3>'+list(generalControls)+'<h3 class="controls-heading">Weapons</h3><div class="weapon-control-list">'+weaponControls.map(weapon=>'<details class="weapon-control-entry"><summary>'+weapon.name+'</summary>'+list(weapon.controls)+'</details>').join('')+'</div>';
+  $('settings-controls').innerHTML='<h3 class="controls-heading">General</h3>'+list(generalControls)+'<details class="weapon-control-entry weapons-group"><summary>Weapons</summary><div class="weapon-control-list">'+WEAPONS.map(weapon=>'<details class="weapon-control-entry"><summary>'+weapon.name+'</summary>'+list(weapon.controls||[])+'</details>').join('')+'</div></details>';
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">SHOW HUD CONTROL HINTS<input id="control-hints" type="checkbox" checked/></label>');
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting select-setting">MOBILE BUTTON OPACITY<select id="mobile-opacity"><option value="1">Solid · 100%</option><option value="0.7">Medium · 70%</option><option value="0.4">Faint · 40%</option></select></label>');
  const channels=[
