@@ -1,5 +1,7 @@
 import {ShotgunView} from './shotgun-view.js';
 import * as THREE from 'three';
+import './shader-savings.js';
+import { bakeColors } from './bake-colors.js'; // patches three's shaders; before any shader compiles
 import { RifleView } from './rifle-view.js';
 import { RIFLE_QUALITY } from './rifle-quality.js';
 import { GrenadeView } from './grenade-view.js';
@@ -52,6 +54,10 @@ import { DetailFX, ELECTRIC as FX_ELECTRIC, orbBlastScale } from './effects-deta
 import { mapLook } from './map-look.js';
 import { BloodSplatters } from './blood-splatter.js';
 import { RIFLE_MUZZLE } from './config/gameplay.js';
+// Longest the renderer will hold a frame back waiting for the GPU (gpuBusy).
+// Drawn after every other see-through thing: a faded roof's depth, then its colour.
+const ROOF_PREPASS_ORDER = 50;
+const FENCE_PATIENCE = 120;
 import { setExtremeSurfaces } from './extreme-surfaces.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -82,7 +88,37 @@ export class WorldView {
     this.interiorVisibility = new InteriorVisibility();
     this.groundMaterials = new Set(); this.textureCache = new Map(); this.quality = GRAPHICS[qualityName] || GRAPHICS.balanced;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.quality.antialias === true, powerPreference: 'high-performance' });
+    // Reading back each shader's error log on its first draw makes the driver
+    // finish that shader there and then, mid-frame. Only a development build
+    // needs the logs.
+    this.renderer.debug.checkShaderErrors = !!import.meta.env?.DEV;
+    // Empty draws are skipped. The effect pools (bullets, casings, magazines,
+    // sparks, smoke, pellets, flashes...) are instanced meshes that sit in the
+    // scene with no instances most of the time, and the arc and trail batches
+    // with an empty draw range; three.js still bound each one's shader and
+    // uploaded its uniforms to draw nothing -- about a quarter of all draw calls
+    // on an ordinary frame. The warm-up turns this off (`drawEmpty`), since
+    // drawing the empty pools once is how their shaders get built at load.
+    const drawDirect = this.renderer.renderBufferDirect;
+    this.renderer.renderBufferDirect = (camera, scene, geometry, material, object, group) => {
+      if (!this.drawEmpty && ((object.isInstancedMesh && object.count === 0) || geometry.drawRange.count === 0 || geometry.instanceCount === 0)) return;
+      return drawDirect.call(this.renderer, camera, scene, geometry, material, object, group);
+    };
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+    this.lowLatency = true;
+    // A phone that runs out of GPU memory drops the WebGL context: the canvas
+    // goes blank (the page colour shows through) until it comes back. Drawing
+    // stops while it is gone; when it returns, three rebuilds its own state and
+    // the shadow map and Extreme's buffers are made again. main.js hears about
+    // it (onContextLost) and steps down from Extreme if it keeps happening.
+    canvas.addEventListener('webglcontextlost', event => {
+      event.preventDefault(); this.contextLost = true; this.frameFence = null; this.onContextLost?.();
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      this.contextLost = false;
+      this.sun.shadow.map = null; this.sun.shadow.needsUpdate = true;
+      if (this.post) { this.post = null; this.postLoading = null; if (this.qualityName === 'extreme') this.enableExtremePost(); }
+    });
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -271,6 +307,11 @@ export class WorldView {
     // never-seen materials come into view at once, was where that stalled.
     // `material.transparent` is in the key too, so the roof fade needs two
     // variants of every roof material, and both are compiled here.
+    // The weapon views build their meshes (the rifle's smoke, the shotgun's
+    // pellets, the grenade's range marker) when made, so they are made here,
+    // before the warm-up, rather than on the first frame of play after it.
+    this.rifleView = new RifleView(this); this.shotgunView = new ShotgunView(this); this.grenadeView = new GrenadeView(this);
+    this.orderGround();
     this.warmPrograms();
     this.programsWarmed = true;
     this.resize();
@@ -841,7 +882,9 @@ export class WorldView {
     }
     // Doorway lintel and structural corner posts.
     this.box(b.x, b.height - .21, b.z + b.d / 2, b.doorWidth, .42, .4, '#866c4f');
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) this.box(b.x + sx * b.w / 2, b.height / 2, b.z + sz * b.d / 2, .26, b.height + .12, .26, '#967858');
+    // Topped just under the eave: taller, they poked up through the roof as a
+    // small block at each corner.
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) this.box(b.x + sx * b.w / 2, (b.height - .1) / 2, b.z + sz * b.d / 2, .26, b.height - .1, .26, '#967858');
     // Only actual front entrances get a front porch.
     if(!b.cargo && (b.doors||['front']).includes('front')) {
     // A plank porch with small steps, hitching rail and interior counter.
@@ -852,7 +895,9 @@ export class WorldView {
     for (const side of (b.doors || ['front']).filter(side => side !== 'front')) {
       const horizontal = side === 'back', sign = side === 'left' || side === 'back' ? -1 : 1;
       const x = b.x + (horizontal ? 0 : sign * b.w / 2), z = b.z + (horizontal ? -b.d / 2 : 0);
-      this.box(x, b.height - .21, z, horizontal ? b.doorWidth : .4, .42, horizontal ? .4 : b.doorWidth, '#866c4f');
+      // Side walls are eave walls: the roof comes down to the wall top there, so
+      // a lintel reaching it showed through the roof as a small plank.
+      this.box(x, b.height - (horizontal ? .21 : .3), z, horizontal ? b.doorWidth : .4, .42, horizontal ? .4 : b.doorWidth, '#866c4f');
       if(!b.cargo)this.box(x + (horizontal ? 0 : sign * .65), .06, z + (horizontal ? -.65 : 0), horizontal ? 3.1 : 1.5, .12, horizontal ? 1.5 : 3.1, '#b39a76');
     }
     const roof = new THREE.Group(); this.scene.add(roof);
@@ -860,6 +905,13 @@ export class WorldView {
     const trimMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(b.roofColor).multiplyScalar(.8), roughness: 1, transparent: true });
     const roofMaterials = [mainMat, trimMat, ...[.96, 1.025, 1.055].map(v => new THREE.MeshStandardMaterial({ color: new THREE.Color(b.roofColor).multiplyScalar(v), roughness: .95, transparent: true }))];
     const slope = Math.atan2(b.cargo ? .12 : .7, b.w / 2);
+    // Wear, the same every game for a given building (seeded by its id): a few
+    // missing shingles showing the dark underlayer, a few lifted ones, a nailed
+    // board patch; on metal, rust patches and a lifted sheet. Drawn only with
+    // the roof's own materials, so it costs no draw calls.
+    let seed = 2166136261; for (const c of String(b.id)) seed = Math.imul(seed ^ c.charCodeAt(0), 16777619);
+    const wear = () => { seed = Math.imul(seed ^ seed >>> 15, 2246822507) + 0x6d2b79f5 | 0; return ((seed ^ seed >>> 13) >>> 0) / 4294967296; };
+    const worn = .5 + wear(); // some roofs are kept up better than others
     for (const side of [-1, 1]) {
       const panel = this.box(b.x + side * b.w / 4, b.height + .36, b.z, b.w / 2 + .65, .15, b.d + 1, mainMat, roof); panel.rotation.z = -side * slope;
       const width = b.w / 2 + .65, depth = b.d + 1;
@@ -867,24 +919,50 @@ export class WorldView {
         // Raised corrugations run down the pitch of the weathered metal roof.
         for (let z = -depth / 2 + .18; z < depth / 2; z += .45)
           this.box(0, .105, z, width, .045, .045, roofMaterials[3], panel);
+        for (let i = 0, n = Math.round(worn * 2); i < n; i++) {
+          const rust = this.box((wear() - .5) * (width - 1.2), .082, (wear() - .5) * (depth - 1.4), .5 + wear() * .7, .012, .4 + wear() * .6, trimMat, panel);
+          rust.rotation.y = (wear() - .5) * .5;
+        }
+        if (wear() < .6 * worn) { // one sheet's end lifted by the wind
+          const sheet = this.box((wear() > .5 ? 1 : -1) * (width / 2 - .45), .12, (wear() - .5) * (depth - 1.5), .9, .025, .95, roofMaterials[4], panel);
+          sheet.rotation.z = side * .1;
+        }
       } else {
         // Staggered wooden shingles have a shallow physical lip and muted tones.
         for (let row = 0, x = -width / 2; x < width / 2; row++, x += .57) {
           for (let z = -depth / 2 - (row % 2 ? .55 : 0), col = 0; z < depth / 2; z += 1.1, col++) {
             const low = Math.max(z, -depth / 2), high = Math.min(z + 1.1, depth / 2);
-            this.box(x + Math.min(.57, width / 2 - x) / 2, .1, (low + high) / 2,
-              Math.min(.57, width / 2 - x) - .012, .035, high - low - .012, roofMaterials[2 + (row * 7 + col * 3 + col % 2) % 3], panel);
+            const cx = x + Math.min(.57, width / 2 - x) / 2, cz = (low + high) / 2, w = Math.min(.57, width / 2 - x) - .012, d = high - low - .012;
+            const roll = wear(), inside = w > .4 && d > .6; // never the cut ones along the edges
+            if (inside && roll < .03 * worn) { this.box(cx, .082, cz, w - .04, .012, d - .06, trimMat, panel); continue; } // missing: the dark underlayer
+            const tile = this.box(cx, .1, cz, w, .035, d, roofMaterials[2 + (row * 7 + col * 3 + col % 2) % 3], panel);
+            if (inside && roll > 1 - .035 * worn) { tile.position.y = .12; tile.rotation.x = (wear() > .5 ? 1 : -1) * .09; } // lifted
           }
+        }
+        if (wear() < .7 * worn) { // a newer board nailed over a leak
+          const patch = this.box((wear() - .5) * (width - 1.4), .128, (wear() - .5) * (depth - 1.6), .95 + wear() * .5, .03, .3, roofMaterials[4], panel);
+          patch.rotation.y = (wear() - .5) * .35;
         }
       }
     }
     this.box(b.x, b.height + .8, b.z, .18, .12, b.d + 1.15, trimMat, roof);
-    this.box(b.x, b.height - .08, b.z + b.d / 2 + .22, b.w + .4, .55, .22, '#9f805c');
+    // Front fascia, tucked under the eave: it runs past the side walls, where the
+    // pitched roof is lowest, and with its top above the wall its two ends
+    // showed through the roof as a small block at each front corner.
+    this.box(b.x, b.height - .36, b.z + b.d / 2 + .22, b.w + .4, .5, .22, '#9f805c');
     // Shingles and corrugations stand 3-4cm proud of the panel carrying them, and
     // that panel already casts the whole roof. Re-drawing every tile into the
     // shadow map is the single largest source of wasted casters per building.
     for (const layer of roof.children) for (const tile of layer.children) this.noShadows(tile);
     this.batch(roof, false);
+    // One material per roof, with each shade (panel, trim, three shingle tones)
+    // carried per vertex: the roof drew once per shade (about five draws a
+    // building) and now draws twice (what casts shadows, and the shingles that
+    // don't), with the same picture. The shades only ever differed in colour:
+    // setQuality gives every roof material the same roughness and bump map.
+    const roofMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 1, transparent: true });
+    for (const casts of [true, false]) bakeColors(roof, { material: roofMaterial, pick: m => m.castShadow === casts });
+    roofMaterials.forEach(m => m.dispose()); roofMaterials.length = 0; roofMaterials.push(roofMaterial);
     // Thin raised roof layers should not produce shadow-map striping on each other.
     roof.traverse(m => { if (m.isMesh) m.receiveShadow = false; });
     // Captured after the batch: these are the merged meshes that actually came
@@ -893,7 +971,21 @@ export class WorldView {
     // every shingle batch back into the shadow pass.
     const casters = [];
     roof.traverse(m => { if (m.isMesh && m.castShadow) casters.push(m); });
-    this.roofs.push({ ...b, group: roof, casters, materials: roofMaterials, opacity: 1 });
+    // A lifted roof is drawn faint (see update). Blended, every place two roof
+    // surfaces overlap (shingles on their panel, the two slopes meeting under
+    // the ridge cap) was painted twice and showed as a brighter strip across
+    // the room. So a faded roof first lays down only its depth (these copies,
+    // drawn after every other see-through thing so effects under the roof are
+    // not hidden), and its colour then lands on the nearest surface alone.
+    const depthOnly = this.roofDepthMaterial ||= new THREE.MeshBasicMaterial({ colorWrite: false, transparent: true, depthWrite: true });
+    const colour = [], prepass = [];
+    roof.traverse(m => { if (m.isMesh) colour.push(m); });
+    for (const m of colour) {
+      const copy = m.clone(false); copy.material = depthOnly; copy.castShadow = copy.receiveShadow = false;
+      copy.renderOrder = ROOF_PREPASS_ORDER; copy.visible = false; copy.userData.roofPrepass = true;
+      m.parent.add(copy); prepass.push(copy);
+    }
+    this.roofs.push({ ...b, group: roof, casters, materials: roofMaterials, colour, prepass, opacity: 1 });
     const beforeInterior = new Set(this.static.children);
     if(b.interiorStyle) makeDetailedInterior(this,b);
     else {
@@ -1300,15 +1392,113 @@ export class WorldView {
 
   // Compile every program the scene will need, including the blended variant
   // of each roof material, before gameplay starts.
+  // One tiny stand-in per material the view holds that no visible object is
+  // using yet, plus the kinds of material a blast and a thrown grenade create
+  // on the spot, each also in its indoor-clipped variant (see warmPrograms).
+  warmRack() {
+    const rack = new THREE.Group(), used = new Set(), found = new Set(), seen = new Set();
+    this.scene.traverse(o => { for (const m of [].concat(o.material || [])) used.add(m); }); // hidden ones too: the warm draw shows them
+    const skip = new Set(['scene', 'renderer', 'camera', 'lastSim', 'map', 'view', 'parent', 'sim']);
+    const visit = (value, depth) => {
+      if (!value || typeof value !== 'object' || seen.has(value) || depth > 3) return;
+      seen.add(value);
+      // Shadow-pass materials (depth, distance) are not drawn as surfaces.
+      if (value.isMaterial) { if (!used.has(value) && !value.isMeshDistanceMaterial && !value.isMeshDepthMaterial) found.add(value); return; }
+      if (value.isObject3D || value.isTexture || value.isBufferGeometry || ArrayBuffer.isView(value) || value instanceof Node) return;
+      if (value instanceof Map || value instanceof Set) { for (const v of value.values()) visit(v, depth + 1); return; }
+      if (Array.isArray(value)) { if (value.length <= 64) for (const v of value) visit(v, depth + 1); return; }
+      for (const key of Object.keys(value)) if (!skip.has(key)) visit(value[key], depth + 1);
+    };
+    visit(this, 0);
+    const Smoke = isDemanding(this.qualityName) ? THREE.MeshStandardMaterial : THREE.MeshBasicMaterial;
+    const adHoc = [
+      new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false }),
+      new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }),
+      new Smoke({ transparent: true, depthWrite: false }),
+      new THREE.MeshLambertMaterial({ flatShading: true }),
+      new THREE.MeshLambertMaterial(),
+    ];
+    const geometry = this.warmGeometry ||= new THREE.BoxGeometry(.01, .01, .01);
+    const add = (material, clone) => {
+      const object = material.isLineBasicMaterial ? new THREE.LineSegments(geometry, material)
+        : material.isPointsMaterial ? new THREE.Points(geometry, material)
+        : material.isSpriteMaterial ? new THREE.Sprite(material) : new THREE.Mesh(geometry, material);
+      object.frustumCulled = false; object.userData.warmClone = clone; rack.add(object);
+      return object;
+    };
+    for (const material of [...found, ...adHoc]) {
+      add(material, adHoc.includes(material));
+      const indoor = add(material.clone(), true);
+      this.interiorVisibility.apply(indoor);
+    }
+    return rack;
+  }
+
+  // The ground is drawn after the buildings, props and characters that stand on
+  // it, and its layers from the top down (the map's own ground before the wide
+  // slab under it, roads before the ground they lie on). A GPU then skips every
+  // ground pixel something already covers, instead of shading the full ground
+  // shader there and throwing it away: under the map ground the whole slab was
+  // shaded twice. Surface marks (-1) and crops (-2) still draw before it and
+  // sand marks (1) after, as they always did; the picture is unchanged.
+  orderGround() {
+    const box = new THREE.Box3();
+    const layers = [];
+    this.scene.traverse(o => { if (o.isMesh && [].concat(o.material).some(m => this.groundMaterials.has(m))) layers.push({ o, top: box.setFromObject(o).max.y }); });
+    layers.sort((a, b) => b.top - a.top).forEach((layer, i) => { layer.o.renderOrder = .5 + i * .45 / Math.max(1, layers.length); });
+  }
+
   warmPrograms() {
+    // Everything drawFrame gives the indoor-clipped shader, given it now.
     for (const group of this.particlePool || []) this.interiorVisibility.apply(group);
+    for (const object of this.electric?.arcs.objects || []) this.interiorVisibility.apply(object);
+    for (const object of this.electric?.pulseParts?.() || []) this.interiorVisibility.apply(object);
     // The detail-effect pools sit hidden until something happens, and compile
     // only compiles what is visible: shown for the warm-up, so the first
     // grenade or gunshot does not stop the game for a second to build shaders.
     const fxMeshes = this.fx?.meshes || [];
     for (const mesh of fxMeshes) { this.interiorVisibility.apply(mesh); mesh.visible = true; }
-    const compile = () => { try { this.renderer.compile(this.scene, this.camera); } catch { /* A warm-up failure is not a reason to refuse to start. */ } };
+    // On Extreme the scene is drawn into the composer's (linear) render target,
+    // not the (sRGB) canvas, and the output colour space is part of every
+    // shader: warming for the canvas left each effect to rebuild on first use.
+    const target = this.post && this.qualityName === 'extreme' ? this.post.composer.readBuffer : null;
+    // Drawn once, not only compiled: a shader's first draw is where the driver
+    // is made to finish it (and where the shadow pass builds its depth
+    // variants), so that happens here, while loading, instead of on the first
+    // shot. The next frame draws over it.
+    const compile = () => {
+      const previous = this.renderer.getRenderTarget();
+      // For that one draw everything in the scene is shown, hidden things too
+      // (a pooled effect waiting for its first use, the grenade in the hand),
+      // and nothing is culled, but the draw is clipped to a single pixel.
+      const restore = [];
+      // Lights keep their state: how many there are is part of every shader.
+      this.scene.traverse(o => { if (o.isLight) return; restore.push(o, o.visible, o.frustumCulled); o.visible = true; o.frustumCulled = false; });
+      try {
+        this.renderer.setRenderTarget(target); this.renderer.compile(this.scene, this.camera);
+        this.renderer.setScissorTest(true); this.renderer.setScissor(0, 0, 1, 1);
+        this.drawEmpty = true; this.renderer.render(this.scene, this.camera);
+      }
+      catch (error) { if (import.meta.env?.DEV) console.warn("warm-up", error); /* A warm-up failure is not a reason to refuse to start. */ }
+      finally {
+        this.drawEmpty = false; this.renderer.setScissorTest(false); this.renderer.setRenderTarget(previous);
+        for (let i = 0; i < restore.length; i += 3) { restore[i].visible = restore[i + 1]; restore[i].frustumCulled = restore[i + 2]; }
+      }
+    };
+    // Materials that only reach the screen once something happens (an orb's
+    // trail and arcs, a grenade in flight, a blast's ring, fire and smoke, a
+    // scorch mark) each needed a shader built mid-fight: a visible hitch on
+    // the first orb, the first grenade, the first blast. A rack of tiny
+    // stand-ins carrying each of them is compiled with the scene and removed.
+    const rack = this.warmRack();
+    this.scene.add(rack);
     compile();
+    this.scene.remove(rack);
+    // The stand-ins' materials are kept (not disposed): disposing the last
+    // user of a program destroys it, and the real effect would build it again.
+    for (const old of this.warmKept || []) old.dispose();
+    this.warmKept = rack.children.filter(c => c.userData.warmClone).map(c => c.material);
     for (const mesh of fxMeshes) mesh.visible = mesh.count > 0;
     const roofMaterials = this.roofs.flatMap(r => r.materials);
     if (!roofMaterials.length) return;
@@ -1349,9 +1539,42 @@ export class WorldView {
   birdView() { return { height: this.cameraHeight, fov: this.camera.fov, aspect: this.camera.aspect,
     extent: Math.hypot(this.map.width, this.map.depth) / 2 }; }
 
+  // Adaptive resolution. Resizing the drawing buffer clears the canvas, so it
+  // is never done between a draw and the screen showing it (that showed a
+  // blank, page-coloured frame every time the resolution stepped): the new
+  // size is applied at the start of the next render(), right before drawing.
   setResolutionScale(scale){
-    if(Math.abs((this.resolutionScale||1)-scale)<.001)return;
-    this.resolutionScale=scale;this.resize();
+    if(Math.abs((this.pendingScale??this.resolutionScale??1)-scale)<.001)return;
+    this.pendingScale=scale;
+  }
+
+  // Still short of the frame-rate target at the lowest render scale: ease the
+  // costliest extras (shadow redraw rate; Extreme's AO and bloom sizes).
+  setStrain(on){
+    this.strained=!!on;
+    this.post?.setLight(!!on);
+  }
+
+  // Frame pacing for low input lag. When the GPU falls behind, browsers queue
+  // frames, and each queued frame is input you see late (at 20 fps, two queued
+  // frames are 100 ms). A fence after each frame says when the GPU has finished
+  // it; while the previous frame is still being drawn, main.js skips drawing
+  // this one (the game keeps running and reading input), so the next frame is
+  // drawn from fresher input instead of waiting in a queue. Never waits more
+  // than FENCE_PATIENCE, and does nothing without WebGL 2 fences.
+  gpuBusy(){
+    const fence=this.frameFence;if(!fence)return false;
+    const gl=this.renderer.getContext();
+    if(gl.isContextLost()){this.frameFence=null;return false;}
+    const status=gl.clientWaitSync(fence,0,0);
+    if(status===gl.TIMEOUT_EXPIRED&&performance.now()-this.fenceAt<FENCE_PATIENCE)return true;
+    gl.deleteSync(fence);this.frameFence=null;return false;
+  }
+  fenceFrame(){
+    const gl=this.renderer.getContext();
+    if(!this.lowLatency||typeof gl.fenceSync!=='function'||gl.isContextLost())return;
+    if(this.frameFence)gl.deleteSync(this.frameFence);
+    this.frameFence=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);this.fenceAt=performance.now();
   }
 
   // Cached because aim() runs once per simulation step, and the HUD writes
@@ -1463,8 +1686,8 @@ export class WorldView {
   // A gunshot lights its surroundings for a few hundredths of a second, using
   // the effects light every tier with lights already has (so no new shader
   // variants and no cost when idle). Warm, like the powder flash.
-  muzzleLight(reach, level) {
-    const p = this.lastSim?.player; if (!p) return;
+  muzzleLight(reach, level, shooter = this.lastSim?.player) {
+    const p = shooter; if (!p) return;
     this.fxLight.color.set('#ffb766'); this.fxLight.position.set(p.x + p.aimX * reach, 1.05, p.z + p.aimZ * reach);
     this.fxLightLevel = Math.max(this.fxLightLevel, level);
   }
@@ -1477,24 +1700,36 @@ export class WorldView {
   netEvent(e, shooter, slot = 0) {
     if (!shooter) shooter = { x: e.x ?? 0, z: e.z ?? 0, aimX: 1, aimZ: 0 };
     const base = (slot + 1) * 1e6;
-    if (e.type === 'playerDeath') { this.blood.add(e.x, e.z, e.directionX, e.directionZ); this.burst(e.x, e.z, 34, 'kill'); this.fx.impact?.(e.x, e.z, this.kickedDustColor(e.x, e.z)); return; }
+    // Their stain, one per player (the slot), like yours below.
+    if (e.type === 'playerDeath') { this.blood.add(e.x, e.z, e.directionX, e.directionZ, 'slot' + slot); this.burst(e.x, e.z, 34, 'kill'); this.fx.impact?.(e.x, e.z, this.kickedDustColor(e.x, e.z)); return; }
     if (['grenadeThrow', 'shotgunReload', 'rifleReloaded', 'playerDamage', 'outgoingDamage', 'sprayStart'].includes(e.type)) return;
     if (e.type === 'rifleShot') {
-      this.muzzleLight(1.15, 5);
+      this.muzzleLight(1.15, 5, shooter); // at their gun, not yours
       this.fx.muzzle('rifle', shooter.x + shooter.aimX * (RIFLE_MUZZLE.forward + .12) - shooter.aimZ * RIFLE_MUZZLE.lateral, .76, shooter.z + shooter.aimZ * (RIFLE_MUZZLE.forward + .12) + shooter.aimX * RIFLE_MUZZLE.lateral, shooter.aimX, shooter.aimZ);
       return;
     }
-    if (e.type === 'shotgunShot') { this.fx.muzzle('ballast', e.x, .77, e.z, shooter.aimX, shooter.aimZ, e.charge || 0); return; }
+    if (e.type === 'shotgunShot') { this.muzzleLight(1.1, 10 + (e.charge || 0) * 10, shooter); this.fx.muzzle('ballast', e.x, .77, e.z, shooter.aimX, shooter.aimZ, e.charge || 0); return; }
     if (e.type === 'launch') e = { ...e, paths: (e.paths || []).map(p => ({ ...p, id: base + p.id })) };
     if (e.type === 'trailEnd') e = { ...e, id: base + e.id };
-    const savedSim = this.lastSim, savedMuzzle = this.staticMuzzle.clone();
+    // Another player's gun gets its own muzzle point, one per slot. It used to
+    // borrow this player's (staticMuzzle) for the event and put it back after,
+    // but a stream's arcs keep a reference to their muzzle and are drawn for a
+    // few frames: once it was put back they all hung off this player's gun, a
+    // white bolt from your own muzzle to wherever the other player's stream
+    // (or hex, or shot) was. Their own point is refreshed by each event, and
+    // the stream reports every tick, so their arcs follow their gun.
+    const muzzle = (this.netMuzzles ||= new Map()).get(slot) || new THREE.Vector3();
+    this.netMuzzles.set(slot, muzzle.set(shooter.x + shooter.aimX * .95 + shooter.aimZ * .25, .76, shooter.z + shooter.aimZ * .95 - shooter.aimX * .25));
+    const savedSim = this.lastSim;
     this.lastSim = Object.assign(Object.create(savedSim || {}), { player: { ...shooter, dodgeX: shooter.vx || 0, dodgeZ: shooter.vz || 0 } });
-    this.staticMuzzle.set(shooter.x + shooter.aimX * .95 + shooter.aimZ * .25, .76, shooter.z + shooter.aimZ * .95 - shooter.aimX * .25);
-    try { this.event(e); } finally { this.lastSim = savedSim; this.staticMuzzle.copy(savedMuzzle); }
+    this.eventMuzzle = muzzle;
+    try { this.event(e); } finally { this.lastSim = savedSim; this.eventMuzzle = null; }
   }
 
   event(e) {
-    if(e.type==='playerDeath'){this.blood.add(e.x,e.z,e.directionX,e.directionZ);this.deathView??=new DeathView(this);this.deathView.start(e);return;}
+    // Your body and your stain from the last death stay; the ones before go
+    // (DeathView.start clears the old body, the blood keeps one per player).
+    if(e.type==='playerDeath'){this.blood.add(e.x,e.z,e.directionX,e.directionZ,'you');this.deathView??=new DeathView(this);this.deathView.start(e);return;}
     if(e.type==='grenadeExplosion'){this.explosion(e);return;}
     if(e.type==='grenadeThrow'){this.grenadeView?.thrown(e);}
     if(e.type==='shotgunShot'){this.muzzleLight(1.1,14+(e.charge||0)*14);const p=this.lastSim?.player;if(p)this.fx.muzzle('ballast',e.x,.77,e.z,p.aimX,p.aimZ,e.charge||0);}
@@ -1514,6 +1749,7 @@ export class WorldView {
         if (e.type === 'cropDust') this.burst(x, z, 3, 'kill');
       }
     }
+    const muzzle = this.eventMuzzle || this.staticMuzzle;
     if (e.type === 'sprayArc') {
       // Where the stream's arcs land, it spits sparks and flashes; the muzzle
       // flickers with it. Throttled, since the stream reports every tick.
@@ -1524,11 +1760,13 @@ export class WorldView {
           const path = e.paths[Math.floor(Math.random() * e.paths.length)];
           this.fx.electric(path.b.x, path.b.y ?? .76, path.b.z, .55 + Math.random() * .4, { ring: Math.random() < .3 });
         }
-        this.fx.glow({ x: this.staticMuzzle.x, y: this.staticMuzzle.y, z: this.staticMuzzle.z, size: .7, life: .06, color: STREAM_GLOW, glow: 1.3, flicker: 1 });
+        this.fx.glow({ x: muzzle.x, y: muzzle.y, z: muzzle.z, size: .7, life: .06, color: STREAM_GLOW, glow: 1.3, flicker: 1 });
       }
-      const paths=e.paths.map(path=>({...path,a:this.staticMuzzle}));
+      // The arcs keep this point and follow it while they are drawn: this
+      // player's live gun, or the other player's own point (netEvent).
+      const paths=e.paths.map(path=>({...path,a:muzzle}));
       this.electric.event({...e,paths}, this.lastSim?.colliders || []);
-      this.fxLight.color.set('#9cdfff'); this.fxLight.position.copy(this.staticMuzzle); this.fxLightLevel = e.firing ? 12 : 3;
+      this.fxLight.color.set('#9cdfff'); this.fxLight.position.copy(muzzle); this.fxLightLevel = e.firing ? 12 : 3;
     }
     if (e.type === 'hexPulse') this.fx.hexPulse(e.nodes);
     if (e.type === 'hexZap') this.fx.electric(e.b.x, .75, e.b.z, 1);
@@ -1547,7 +1785,7 @@ export class WorldView {
       // An orb still sitting at the gun leaves from the muzzle. The gun is
       // carried off to one side, so a trail drawn from the launch point comes
       // out of the player's chest; orbs parked out in the world keep theirs.
-      const muzzle = this.staticMuzzle, atGun = path => Math.hypot(path.x - e.x, path.z - e.z) <= 1.15 && muzzle.lengthSq() > 0;
+      const atGun = path => Math.hypot(path.x - e.x, path.z - e.z) <= 1.15 && muzzle.lengthSq() > 0;
       for (const path of e.paths) this.addBeam(atGun(path) ? { ...path, x: muzzle.x, z: muzzle.z } : path, .016 + e.count * .0007);
       if (muzzle.lengthSq() > 0) this.fx.electric(muzzle.x, muzzle.y, muzzle.z, .6 + Math.min(1, e.count / 12), { ring: false });
       this.fxLight.color.set('#9bffe1'); this.fxLight.position.set(e.x, 1.2, e.z); this.fxLightLevel = 8 + e.count * 1.5;
@@ -1555,10 +1793,13 @@ export class WorldView {
     if (e.type === 'pointImpact') { this.burst(e.x, e.z, 6 * this.impactDetail, 'hit'); this.fx.electric(e.x, .72, e.z, .8); }
     if (e.type === 'explosion') this.electric.event({ type: 'convergence', x: e.x, z: e.z, radius: e.radius * .6 });
     if (e.type === 'propHit') this.burst(e.x, e.z, 6 * this.impactDetail, 'dust');
+    // The host reset the map: blood, scorch and bullet marks, bodies and
+    // lingering effects go (props come back through their own propRestore).
+    if (e.type === 'mapReset') this.clearDebris();
     if (e.type === 'propRestore') {
       const g = this.props.get(e.id);
       if (g) { g.userData.baseScale ??= g.scale.clone(); g.userData.popIn = PROP_POP; g.visible = true; }
-      this.burst(e.x, e.z, 5 * this.impactDetail, 'dust', this.kickedDustColor(e.x, e.z));
+      if (!e.quiet) this.burst(e.x, e.z, 5 * this.impactDetail, 'dust', this.kickedDustColor(e.x, e.z));
     }
     if (e.type === 'propBreak') {
       const prop = this.props.get(e.id); if (prop) prop.visible = false;
@@ -1792,18 +2033,27 @@ export class WorldView {
     this.staticMuzzle.set(0,0,-.333);
     this.player.userData.gun.localToWorld(this.staticMuzzle);
     const cameraRate = this.motion ? 5.7 : 16;
-    const cameraRoom = sim.interior, blend = 1 - Math.exp(-cameraRate * dt);
+    const cut = this.cameraCut; this.cameraCut = false;
+    const cameraRoom = sim.interior, blend = cut ? 1 : 1 - Math.exp(-cameraRate * dt);
     const deathCamera=this.deathView?.active?this.deathView.cameraFrame():null;
+    // Online weapon pick: straight down on the pick spot from high above
+    // (setPickView), before the death or room camera.
+    const pick = this.pickCamera;
+    if (pick) { this.focus.x = pick.x; this.focus.z = pick.z; this.cameraHeight = pick.height; }
+    else {
     this.focus.x = deathCamera?deathCamera.x:lerp(this.focus.x, cameraRoom && !cameraRoom.followCamera ? cameraRoom.x : renderX, blend);
     this.focus.z = deathCamera?deathCamera.z:lerp(this.focus.z, cameraRoom && !cameraRoom.followCamera ? cameraRoom.z : renderZ, blend);
-    this.cameraHeight = deathCamera?deathCamera.height:lerp(this.cameraHeight, cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT, 1 - Math.exp(-5.7 * dt));
+    this.cameraHeight = deathCamera?deathCamera.height:lerp(this.cameraHeight, cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT, cut ? 1 : 1 - Math.exp(-5.7 * dt));
+    }
     this.kick.multiplyScalar(Math.exp(-15 * dt)); this.shake *= Math.exp(-this.shakeDecay * dt);
     const pressureShake=this.shotgunView?.pressure.shake||0;
     const shakeX = this.motion ? Math.sin(elapsed * 91) * (this.shake+pressureShake) * .65 : 0;
     const shakeZ = this.motion ? Math.cos(elapsed * 77) * (this.shake+pressureShake) * .5 : 0;
     const fx = this.focus.x + shakeX + (this.motion && !cameraRoom ? this.kick.x : 0), fz = this.focus.z + shakeZ + (this.motion && !cameraRoom ? this.kick.z : 0);
     this.shadowClock=(this.shadowClock||0)+dt;
-    if(!this.quality.shadowFPS||this.sun.shadow.needsUpdate||this.shadowClock>=1/this.quality.shadowFPS){
+    // Strained (see setStrain): shadows redraw at two thirds of their rate.
+    const shadowRate=this.quality.shadowFPS?this.quality.shadowFPS*(this.strained?2/3:1):0;
+    if(!shadowRate||this.sun.shadow.needsUpdate||this.shadowClock>=1/shadowRate){
       // Snapped to whole shadow texels so the map's grid stays fixed to the
       // world; otherwise every update lands edges on a slightly different grid
       // and they crawl. See shadow-snap.js.
@@ -1813,7 +2063,7 @@ export class WorldView {
       this.sun.position.set(at.x + this.sunOffset.x, at.y + this.sunOffset.y, at.z + this.sunOffset.z);
       this.sun.target.position.set(at.x, at.y, at.z);
       this.sun.shadow.needsUpdate=true;
-      this.shadowClock=this.quality.shadowFPS?this.shadowClock%(1/this.quality.shadowFPS):0;
+      this.shadowClock=shadowRate?this.shadowClock%(1/shadowRate):0;
     }
     const snapped = snapCameraFocus(fx, fz, this.cameraHeight, this.camera.fov, this.renderer.getDrawingBufferSize(this.bufferSize).y);
     this.camera.position.set(snapped.x, this.cameraHeight, snapped.z + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(snapped.x, 0, snapped.z); this.camera.updateMatrixWorld();
@@ -1838,6 +2088,8 @@ export class WorldView {
       if (roof.blended !== blended) {
         roof.blended = blended;
         for (const m of roof.materials) { m.transparent = blended; m.needsUpdate = true; }
+        for (const m of roof.prepass || []) m.visible = blended;
+        for (const m of roof.colour || []) m.renderOrder = blended ? ROOF_PREPASS_ORDER + 1 : 0;
       }
       for (const m of roof.materials) { m.opacity = roof.opacity; m.depthWrite = roof.opacity > .98; }
       const castsShadow=roof.opacity>.5;
@@ -1977,24 +2229,32 @@ export class WorldView {
     this.render();
   }
 
-  captureMapThumbnail() {
-    const width=460,height=570,target=new THREE.WebGLRenderTarget(width,height);
+  // The map card's picture. Each map picks its best-looking spot in its data
+  // (`thumbnail: { x, z, height }`); without one it shows the spawn. Rendered
+  // at twice the size and scaled down, so edges come out smooth.
+  captureMapThumbnail(shot=this.map.thumbnail) {
+    const outW=460,outH=570,scale=2,width=outW*scale,height=outH*scale,target=new THREE.WebGLRenderTarget(width,height,{samples:4});
     target.texture.colorSpace=THREE.SRGBColorSpace;
-    const camera=new THREE.PerspectiveCamera(40,width/height,CAMERA_NEAR,180);
-    const spawn=this.map.spawn;
-    camera.position.set(spawn.x,OUTDOOR_CAMERA_HEIGHT,spawn.z+OUTDOOR_CAMERA_HEIGHT*CAMERA_TILT);
-    camera.lookAt(spawn.x,0,spawn.z);
+    const camera=new THREE.PerspectiveCamera(40,width/height,CAMERA_NEAR,220);
+    const at=shot||this.map.spawn,lift=shot?.height||OUTDOOR_CAMERA_HEIGHT;
+    camera.position.set(at.x,lift,at.z+lift*(shot?.tilt??CAMERA_TILT));
+    camera.lookAt(at.x,0,at.z);
     const previous=this.renderer.getRenderTarget();
-    const hidden=[this.player,this.motes,...this.targets.values(),...this.tumbleweeds].map(o=>[o,o.visible]);
+    // Nothing that moves or flashes: the player, targets, drifting dust and any
+    // idle effect pool (which would sit at the origin as a stray shape).
+    const hidden=[this.player,this.motes,...this.targets.values(),...this.tumbleweeds,...(this.fx?.meshes||[]),...(this.particlePool||[])].filter(Boolean).map(o=>[o,o.visible]);
     try {
       hidden.forEach(([o])=>o.visible=false);
       this.sun.shadow.needsUpdate=true;
       this.renderer.setRenderTarget(target);this.renderer.render(this.scene,camera);
       const pixels=new Uint8Array(width*height*4);this.renderer.readRenderTargetPixels(target,0,0,width,height,pixels);
-      const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
-      const ctx=canvas.getContext('2d'),image=ctx.createImageData(width,height);
+      const full=document.createElement('canvas');full.width=width;full.height=height;
+      const fullCtx=full.getContext('2d'),image=fullCtx.createImageData(width,height);
       for(let y=0;y<height;y++)image.data.set(pixels.subarray((height-1-y)*width*4,(height-y)*width*4),y*width*4);
-      ctx.putImageData(image,0,0);return canvas.toDataURL('image/jpeg',.9);
+      fullCtx.putImageData(image,0,0);
+      const canvas=document.createElement('canvas');canvas.width=outW;canvas.height=outH;
+      const ctx=canvas.getContext('2d');ctx.imageSmoothingQuality='high';ctx.drawImage(full,0,0,outW,outH);
+      return canvas.toDataURL('image/jpeg',.9);
     } finally {
       hidden.forEach(([o,visible])=>o.visible=visible);this.sun.shadow.needsUpdate=true;
       this.renderer.setRenderTarget(previous);target.dispose();
@@ -2002,6 +2262,13 @@ export class WorldView {
   }
 
   render() {
+    if (this.contextLost) return;
+    if (this.pendingScale !== undefined) { this.resolutionScale = this.pendingScale; this.pendingScale = undefined; this.resize(); }
+    this.drawFrame();
+    this.fenceFrame();
+  }
+
+  drawFrame() {
     if (this.lastSim) {
       this.updateVision(this.lastSim); this.interiorVisibility.update(this.lastSim);
       const apply = root => this.interiorVisibility.apply(root);
@@ -2033,6 +2300,7 @@ export class WorldView {
       .then(({ ExtremePost }) => {
         if (this.qualityName !== 'extreme') { this.postLoading = null; return; } // switched away while it loaded
         this.post = new ExtremePost(this.renderer, this.scene, this.camera, { excluded: () => this.aoExcluded() });
+        if (this.programsWarmed) this.warmPrograms(); // again, for the composer's target (see warmPrograms)
       })
       .catch(error => { console.warn('Extreme post-processing unavailable:', error); });
   }
@@ -2076,7 +2344,6 @@ export class WorldView {
       for (const o of this.scene.children) if (known.get(o)) o.traverse(c => { if (c !== o && (c.isLine || c.isPoints || c.isSprite)) this.aoNestedLines.push(c); });
     }
     for (const o of this.aoNestedLines) list.push(o);
-    for (const avatar of this.remote?.avatars.values() || []) list.push(avatar.tag);
     return list;
   }
 
@@ -2303,8 +2570,30 @@ export class WorldView {
     this.particlePool.forEach((mesh, i) => { mesh.count = Math.min(counts[i], PARTICLE_POOL); if(mesh.count){mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;} });
   }
 
-  reset(sim) {
+  // Debris only (online map reset): the world's marks and leftovers, not the
+  // camera, the players or anything in flight.
+  clearDebris() {
     this.deathView?.clear();
+    this.blood?.clear?.();
+    this.surfaceMarks.clear(); this.cropView.reset();
+    this.particles.length = 0; this.fx.clear();
+    for (const r of this.rings) { r.mesh.removeFromParent(); r.mesh.geometry.dispose(); r.mesh.material.dispose(); } this.rings.length = 0;
+  }
+
+  // The next frame puts the camera straight on the player instead of gliding
+  // there (a respawn across the map).
+  cutCamera() { this.cameraCut = true; }
+
+  // The online weapon pick's view (pick-view.js), or null to go back to the
+  // player (a cut, not a glide across the map).
+  setPickView(view) {
+    if (!view === !this.pickCamera && (!view || (view.x === this.pickCamera.x && view.z === this.pickCamera.z))) return;
+    this.pickCamera = view ? { x: view.x, z: view.z, height: view.height } : null;
+    this.cutCamera();
+  }
+
+  reset(sim) {
+    this.deathView?.clear(); this.blood?.clear();
     this.fx.clear();
     this.remote?.clear();
     this.rifleView?.clear();this.shotgunView?.clear();

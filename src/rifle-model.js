@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { bakeColors } from './bake-colors.js';
 import { makeGrenade } from './grenade-model.js';
 export function makeRifle(detail=3){
  const gun=new THREE.Group();
@@ -48,11 +48,9 @@ export function makeRifle(detail=3){
  box(.09,.015,.07,.035,.02,.025,'#979d91');
  tier=2;
  for(let i=0;i<4;i++)box(0,.066,-.17-i*.043,.125,.008,.012,'#493e32');
- // Bake rigid parts into one mesh per matte material, not one draw per detail.
- const batches=new Map();
- for(const mesh of gun.children){mesh.updateMatrix();mesh.geometry.applyMatrix4(mesh.matrix);if(!batches.has(mesh.material))batches.set(mesh.material,[]);batches.get(mesh.material).push(mesh.geometry);}
- gun.clear();
- for(const [material,geometries]of batches){const merged=mergeGeometries(geometries);geometries.forEach(g=>g.dispose());gun.add(new THREE.Mesh(merged,material));}
+ // One draw for the whole rifle (it was one per colour, about fifteen), same
+ // picture: see bake-colors.js.
+ bakeColors(gun);mats.forEach(m=>m.dispose());
  return gun;
 }
 let preview;

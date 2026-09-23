@@ -24,5 +24,7 @@ export function installMobileSettings({ touchLayout, closeSettings, setPaused, s
  byId('touch-reset-layout').onclick = () => { touchLayout.reset(); sync(); };
  // The mobile button opacity option belongs with the rest of the touch setup.
  byId('settings-mobile').prepend(byId('mobile-opacity').closest('label'));
+ // Aim assist on touch: sticks the aim to what it roughly points at (aim-assist.js).
+ byId('mobile-opacity').closest('label').after(byId('aim-assist').closest('label'));
  return { sync };
 }

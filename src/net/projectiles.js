@@ -86,6 +86,8 @@ export function drawSim(sim, foreign) {
  view.rifleBullets = [...sim.rifleBullets, ...foreign.rifleBullets];
  view.shotgunPellets = [...sim.shotgunPellets, ...foreign.shotgunPellets];
  view.grenades = [...sim.grenades, ...foreign.grenades];
+ // Practice targets online: the host's match holds them (see online-play.js).
+ if (foreign.targets) view.targets = foreign.targets;
  // Only your own parked orbs drift around you and crackle at your gun.
  Object.defineProperty(view, 'seeds', { value: sim.seeds });
  return view;

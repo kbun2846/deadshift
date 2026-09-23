@@ -44,11 +44,11 @@ test('lethal overkill emits one death, stops movement and attacks, and reset res
  sim.reset();assert.equal(sim.player.dead,false);assert.equal(sim.player.hp,500);
  sim.player.hp=-.1;sim.step({});assert.equal(sim.player.hp,0);assert.equal(sim.player.dead,true);
 });
-test('five distinct pool profiles remain compact and the menu waits four seconds',()=>{
+test('five distinct pool profiles remain compact and the death screen comes up quickly',()=>{
  const patterns=Array.from({length:5},(_,i)=>bloodPoolPattern(i));
  assert.equal(new Set(patterns.map(p=>JSON.stringify(p))).size,5);
  for(const p of patterns){assert.ok(p.width*1.6>1);assert.ok(p.lobes.every(l=>Math.hypot(l.x,l.z)+l.size<1.5));}
- assert.equal(DEATH_MENU_DELAY,4);
+ assert.equal(DEATH_MENU_DELAY,1.2);
 });
 test('death drops a visible gun, spreads blood, lands particles and cleans resources on restart',()=>{
  const player=new THREE.Group(),gun=new THREE.Group(),material=new THREE.MeshBasicMaterial();
@@ -84,4 +84,27 @@ test('every player death leaves blood on the floor: your own and other players o
  assert.ok(/e\.type === 'playerDeath'\) \{ this\.blood\.add\(/.test(renderer), 'other players\' deaths splat too');
  for (const [preset, cap] of Object.entries(SPLAT_CAP)) assert.ok(cap >= 6 && cap <= 20, preset);
  assert.ok(SPLAT_CAP.potato <= SPLAT_CAP.extreme, 'cheaper presets keep fewer');
+});
+
+test('each player leaves at most one bloodstain: their last death stays, the one before fades away', async () => {
+ const THREE = await import('three');
+ const { BloodSplatters } = await import('../src/blood-splatter.js');
+ const scene = new THREE.Scene();
+ const blood = new BloodSplatters({ scene, qualityName: 'balanced' });
+ blood.textures = [new THREE.Texture(), new THREE.Texture(), new THREE.Texture()];
+ blood.add(0, 0, 1, 0, 'you');
+ blood.update(120);
+ assert.equal(blood.splats.length, 1, 'your last stain stays past the usual minute, like your body');
+ assert.equal(blood.splats[0].mesh.material.opacity, 1);
+ blood.add(5, 5, 1, 0, 'slot2');
+ blood.add(9, 9, 0, 1, 'you');
+ blood.update(.3);
+ const mine = blood.splats.filter(s => s.owner === 'you');
+ assert.equal(mine.length, 2, 'the old one is fading out');
+ assert.ok(mine[0].mesh.material.opacity < 1 && mine[1].mesh.material.opacity === 1);
+ blood.update(.5);
+ assert.deepEqual(blood.splats.map(s => s.owner).sort(), ['slot2', 'you'], 'one each');
+ assert.equal(blood.splats.find(s => s.owner === 'you').mesh.position.x > 8, true, 'the newest is the one kept');
+ blood.add(1, 1); blood.update(70);
+ assert.equal(blood.splats.filter(s => s.owner === null).length, 0, 'an unowned stain still fades after a minute');
 });

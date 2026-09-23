@@ -33,7 +33,7 @@ export class ShotgunView{
   if(rich){const rim=new THREE.CylinderGeometry(.064,.064,.012,sides).translate(0,-.092,0);this.shellCaps.geometry=mergeGeometries([head,rim]);head.dispose();rim.dispose();}
   else this.shellCaps.geometry=head;
  }
- event(e){const sim=this.view.lastSim;if(e.type==='shotgunShot'){this.lastShot=sim.time;this.charge=e.charge;
+ event(e){const sim=this.view.lastSim;if(!sim)return;/* made at load: an event can come before the first update */if(e.type==='shotgunShot'){this.lastShot=sim.time;this.charge=e.charge;
   const p=sim.player,c=e.charge||0,budget=({potato:6,performance:9,balanced:16,quality:22,extreme:30}[this.view.qualityName]||9),count=Math.ceil(budget*(1+c*.9));
   for(let i=0;i<count;i++){const side=(Math.random()-.5)*(1+c),speed=1+Math.random()*(2+c*2);this.particles.push({born:sim.time,x:e.x,z:e.z,dx:p.aimX*speed-p.aimZ*side,dz:p.aimZ*speed+p.aimX*side,vy:.3+Math.random(),life:i%3===1?.14+c*.10:.40+Math.random()*.35+c*.3,flame:i%3===1,smoke:i%3===0,scale:1.3+c*1.1,angle:Math.random()*6.28});}
   }

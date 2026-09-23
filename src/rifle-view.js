@@ -67,7 +67,9 @@ export class RifleView{
   this.batches=[this.bullets,this.outlines,this.bands,this.trails,this.casings,this.magazines,this.sparks,this.smoke];this.particles=[];
  }
  shot(){
-  const sim=this.view.lastSim,p=sim.player;
+  // Made at load now (see WorldView), so a shot can arrive before the view's
+  // first update has seen the game.
+  const sim=this.view.lastSim;if(!sim)return;const p=sim.player;
   this.flashTime=sim.time+.075;this.flash.rotation.z=Math.random()*Math.PI*2;this.flash.scale.setScalar(.85+Math.random()*.3);
   this.origin.set(.1,.01,.02);this.gun.localToWorld(this.origin);
   const backward=1+Math.random()*.8,sideways=.9+Math.random()*.9;

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Tutorial,tutorialMap,tutorialMapFor,COURSES,TUTORIAL_ZONES,TUTORIAL_CRATES,LESSON_PAUSE,lessonMarkup} from '../src/tutorial.js';
+import {RIFLE} from '../src/config/gameplay.js';
 import {Simulation} from '../src/simulation.js';
 
 const STEP=1/60;
@@ -140,11 +141,11 @@ test('copy is lowercase and plain, with key names as capital keycaps',()=>{
  assert.ok(COURSES.basics[0].keys.includes('[W] [A] [S] [D]'));
 });
 
-test('two full loads: 36 Nominal rounds and 4 Ballast shells',()=>{
- const sim={spray:{active:false}},r=new Tutorial("rifle");
+test('two full loads: two Nominal magazines and 4 Ballast shells',()=>{
+ const sim={spray:{active:false}},r=new Tutorial("rifle"),M=RIFLE.magazine;
  r.index=COURSES.rifle.findIndex(l=>l.id==='auto');
- for(let i=0;i<35;i++)r.event({type:'rifleShot',burstIndex:i%18+1,id:i},sim);
- assert.ok(!r.ready);r.event({type:'rifleShot',burstIndex:18,id:35},sim);assert.ok(r.ready);
+ for(let i=0;i<M*2-1;i++)r.event({type:'rifleShot',burstIndex:i%M+1,id:i},sim);
+ assert.ok(!r.ready);r.event({type:'rifleShot',burstIndex:M,id:M*2-1},sim);assert.ok(r.ready);
  assert.equal(COURSES.shotgun[0].goal,4);
 });
 

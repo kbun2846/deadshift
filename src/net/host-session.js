@@ -11,7 +11,7 @@
 // server (with a WebSocket transport and no local player).
 import { NETWORK } from '../config/network.js';
 import { PROTOCOL_VERSION, playerInput, playerState, readMessage, loadout } from './protocol.js';
-import { Arena } from './arena.js';
+import { Arena, SPAWN_MODES, SETTINGS } from './arena.js';
 import { pack } from './projectiles.js';
 
 // Seconds between our own ticks that count as us being frozen, not them.
@@ -21,16 +21,20 @@ const IDLE = Object.freeze(playerInput({}));
 // Events that other screens need to see. Everything else stays with its sim.
 export const SHARED_EVENTS = new Set(['explosion', 'grenadeExplosion', 'propBreak', 'propHit', 'propRestore', 'impactMark', 'rifleImpact',
  'rifleShot', 'shotgunShot', 'launch', 'sprayArc', 'hexPulse', 'hexZap', 'hexFizzle', 'pointImpact', 'wall', 'trailEnd', 'hit', 'kill',
- 'cropDust', 'cropAsh', 'dodge', 'seed', 'playerDeath', 'playerDamage', 'outgoingDamage', 'rifleReloaded', 'shotgunReload', 'grenadeThrow', 'sprayStart']);
+ 'cropDust', 'cropAsh', 'dodge', 'seed', 'playerDeath', 'playerDamage', 'outgoingDamage', 'rifleReloaded', 'shotgunReload', 'grenadeThrow', 'sprayStart',
+ 'mapReset', 'matchStart', 'matchEnd', 'roundEnd', 'respawn']);
+// Seconds between pings to each joiner (their round trip shows in the lobby
+// and on the scoreboard).
+const PING_EVERY = 1;
 // Events only kept for a few seconds: a client that has not caught up by then
 // has missed them for good (it would be too late to show them anyway).
 const EVENT_KEEP = 180;
 
 export class HostSession {
- constructor({ transport, map, local, createSim, config = NETWORK, name = 'Host', now = () => performance.now() / 1000, random = Math.random }) {
+ constructor({ transport, map, local, createSim, config = NETWORK, name = 'Host', now = () => performance.now() / 1000, random = Math.random, settings }) {
   Object.assign(this, { transport, map, local, createSim, config, now });
   this.tick = 0; this.remotes = new Map(); this.ended = null; this.notices = []; this.removed = new Set();
-  this.arena = new Arena({ map, createSim, random });
+  this.arena = new Arena({ map, createSim, random, settings });
   this.hostSeat = this.arena.addSeat('host', name || 'Host', local);
   this.hostSeat.slot = 0;
   this.log = []; this.eventSeq = 0; this.localEvents = []; this.newFeed = [];
@@ -50,6 +54,14 @@ export class HostSession {
   if (message.t === 'hello') return this.admit(from, message);
   const remote = this.remotes.get(from);
   if (!remote) return;
+  if (message.t === 'pong') {
+   // Round trip in milliseconds, smoothed so one slow packet doesn't jump it.
+   // A pong alone does not count as being heard: a page that stopped playing
+   // (a frozen tab) still answers pings, and must still time out.
+   const rtt = Math.max(0, (this.now() - message.s) * 1000);
+   remote.ping = remote.ping === null ? rtt : remote.ping + (rtt - remote.ping) * .3;
+   return;
+  }
   remote.silent = 0; remote.heard = this.now(); remote.loaded = true;
   if (message.t === 'input') {
    remote.ack = Math.max(remote.ack, message.ack || 0);
@@ -59,8 +71,9 @@ export class HostSession {
    // A client that races ahead (or a flood) cannot build an endless backlog.
    if (remote.queue.length > 30) remote.queue.splice(0, remote.queue.length - 30);
   }
-  if (message.t === 'choose') this.arena.choose(from, message.weapon);
-  if (message.t === 'menu') this.arena.leaveWorld(from);
+  if (message.t === 'choose') this.arena.choose(from, message.weapon, message.go);
+  if (message.t === 'pick') this.arena.pickAgain(from);
+  if (message.t === 'respawn') this.arena.respawnNow(from);
  }
 
  admit(id, hello) {
@@ -77,7 +90,7 @@ export class HostSession {
   while (taken.has(name.toLowerCase())) name = (hello.name || 'Player') + ' ' + suffix++;
   const seat = this.arena.addSeat(id, name);
   seat.slot = slot;
-  const remote = { id, seat, sim: seat.sim, slot, name, queue: [], queuedSeq: 0, lastSeq: 0, last: IDLE, silent: 0, heard: this.now(), ack: this.eventSeq, previous: { ...seat.sim.player } };
+  const remote = { id, seat, sim: seat.sim, slot, name, ping: null, pingAt: 0, queue: [], queuedSeq: 0, lastSeq: 0, last: IDLE, silent: 0, heard: this.now(), ack: this.eventSeq, previous: { ...seat.sim.player } };
   this.remotes.set(id, remote);
   this.transport.send(id, { t: 'welcome', id, slot, name, tick: this.tick, map: this.map.id, players: this.states(), world: this.worldState() });
   this.notices.push(name + ' joined');
@@ -97,6 +110,27 @@ export class HostSession {
  // Who else is here, for the host's player list.
  players() { return [...this.remotes.values()].map(r => ({ id: r.id, name: r.name })); }
 
+ // Everyone in the room, for the lobby (all players see it; only the host's
+ // screen shows the controls): name, slot (their colour), round trip, host.
+ lobby() {
+  const ping = r => (r.ping === null ? null : Math.round(r.ping));
+  return {
+   players: [{ id: 'host', name: this.hostSeat.name, slot: 0, ping: 0, host: true, present: this.hostSeat.present },
+    ...[...this.remotes.values()].map(r => ({ id: r.id, name: r.name, slot: r.slot, ping: ping(r), host: false, present: r.seat.present }))],
+   spawnMode: this.arena.settings.spawnMode, settings: { ...this.arena.settings }, mode: this.arena.mode, map: this.arena.mapId, phase: this.arena.phase,
+  };
+ }
+
+ // Host lobby controls.
+ setSpawnMode(mode) { return SPAWN_MODES.includes(mode) && this.arena.setSpawnMode(mode); }
+ setSetting(key, value) { return !!SETTINGS[key] && this.arena.setSetting(key, value); }
+ resetMap() { this.arena.resetWorld(); }
+ setMode(mode) { return this.arena.setMode(mode); }
+ startRound(mode) { return this.arena.startRound(mode); }
+ endRound() { this.arena.endRound(); }
+ restartMatch() { return this.arena.newMatch(); }
+ match() { return this.arena.matchState(); }
+
  remove(id, why) {
   const remote = this.remotes.get(id);
   if (!remote) return;
@@ -105,8 +139,11 @@ export class HostSession {
   this.notices.push(remote.name + (why === 'timeout' ? ' lost connection' : why === 'removed' ? ' was removed' : ' left'));
  }
 
- // The host's own weapon choice and trips to the weapon menu.
- choose(weapon) { this.arena.choose('host', weapon); }
+ // The host's own weapon pick (go: into the world now), picking again after
+ // dying, and practice's instant respawn.
+ choose(weapon, go = true) { return this.arena.choose('host', weapon, go); }
+ pickAgain() { return this.arena.pickAgain('host'); }
+ respawnNow() { return this.arena.respawnNow('host'); }
  toMenu() { this.arena.leaveWorld('host'); }
 
  // Called by main.js right before it steps the host's own sim this tick,
@@ -123,7 +160,7 @@ export class HostSession {
   // others going quiet: their messages are waiting in the queue. Forgive it.
   const t = this.now(), gap = this.lastStep === undefined ? 0 : t - this.lastStep; this.lastStep = t;
   if (gap > STALL) for (const remote of this.remotes.values()) remote.heard += Math.min(gap, Math.max(0, t - remote.heard));
-  this.local.dev = { speed: 1 };
+  // The host's own sim keeps its dev settings: dev tools are host-only online.
   this.arena.after(this.hostSeat);
   const hostMark = this.hostSeat.mark;
   for (const remote of [...this.remotes.values()]) {
@@ -142,6 +179,7 @@ export class HostSession {
     this.record(remote.id, remote.sim.drainEvents());
    }
    remote.silent += 1 / 60;
+   if (t - remote.pingAt >= PING_EVERY) { remote.pingAt = t; this.transport.send(remote.id, { t: 'ping', s: t }); }
    // Real seconds, not ticks: a host running slow must not drop players early.
    // A joiner still building the world (seconds on a phone) sends nothing yet.
    if (this.now() - remote.heard > (remote.loaded ? this.config.timeout : this.config.loadGrace)) this.remove(remote.id, 'timeout');
@@ -173,11 +211,15 @@ export class HostSession {
  sendSnapshots() {
   const players = this.states(), proj = this.projectiles();
   const slow = this.tick % (this.config.snapshotEvery * 10) === 0;
-  const feed = this.arena.feed.slice(-8), board = slow ? this.arena.scoreboard() : null, world = slow ? this.worldState() : undefined;
+  const feed = this.arena.feed.slice(-8), board = slow ? this.scoreboard() : null, world = slow ? this.worldState() : undefined;
+  const match = this.match(), lobby = slow ? this.lobby() : undefined;
+  // Practice targets move and break: every snapshot, compact.
+  const targets = this.arena.targets.length ? this.arena.targets.map(t => [t.id, Math.round(t.x * 100) / 100, Math.round(t.z * 100) / 100, Math.round(t.hp), Math.round((t.flash || 0) * 100) / 100]) : null;
   for (const remote of this.remotes.values()) {
    const ev = this.log.filter(entry => entry.s > remote.ack).slice(0, 240);
-   this.transport.send(remote.id, { t: 'snapshot', tick: this.tick, players, you: { ...loadout(remote.sim), life: remote.seat.life, present: remote.seat.present, dead: remote.seat.dead, respawnIn: remote.seat.respawnIn },
-    proj, ev, feed, board, world });
+   this.transport.send(remote.id, { t: 'snapshot', tick: this.tick, players, you: { ...loadout(remote.sim), life: remote.seat.life, present: remote.seat.present, dead: remote.seat.dead, respawnIn: remote.seat.respawnIn,
+     weapon: remote.seat.weapon, picking: pickState(remote.seat.picking) },
+    proj, ev, feed, board, world, match, lobby, targets });
   }
  }
 
@@ -215,12 +257,19 @@ export class HostSession {
    .map(r => ({ ...blend(r.id, r.name, r.previous, r.sim.player, alpha), weapon: r.seat.weapon, slot: r.slot }));
  }
 
- scoreboard() { return this.arena.scoreboard(); }
+ // The arena's standings plus each player's round trip.
+ scoreboard() {
+  const pings = new Map(this.lobby().players.map(p => [p.id, p.ping]));
+  return this.arena.scoreboard().map(row => ({ ...row, ping: pings.get(row.id) ?? null, slot: this.arena.seats.get(row.id)?.slot ?? 0 }));
+ }
  feed() { return this.arena.feed; }
  drainFeed() { return this.newFeed.splice(0); }
  drainNotices() { return this.notices.splice(0); }
  close() { this.transport.close(); this.remotes.clear(); }
 }
+
+// A player's weapon pick as the screens need it: seconds left, what is picked.
+export const pickState = picking => (picking ? { left: Math.max(0, Math.round(picking.left * 10) / 10), weapon: picking.weapon, go: !!picking.go } : null);
 
 export function blend(id, name, a, b, alpha) {
  const angleA = Math.atan2(a.aimZ, a.aimX), angleB = Math.atan2(b.aimZ, b.aimX);

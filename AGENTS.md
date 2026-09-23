@@ -47,7 +47,7 @@ Player-facing links: `?join=CODE` joins a room, `?host=1` opens one.
 
 **Claude artifact build.** This is a single self-contained HTML page for claude.ai. `vite.artifact.mjs` builds without code splitting. A small bundler script then inlines the JS and CSS into one file that is published as an artifact. The artifact host provides its own page shell, so viewport settings in `index.html` may not apply there.
 
-**Version:** `src/version.js` is the one place the version lives (`0.65a`, the a is alpha). The browser tab reads `deadshift v0.65a` (`TAB_TITLE`); keep `index.html`'s `<title>` in step when it changes.
+**Version:** `src/version.js` is the one place the version lives (`0.66a`, the a is alpha). The browser tab reads `deadshift v0.66a` (`TAB_TITLE`); keep `index.html`'s `<title>` in step when it changes.
 
 ## Where the code lives
 
@@ -61,6 +61,7 @@ There are three copies. Know which one you are in.
 ```
 index.html          all menu, HUD, settings and panel markup
 src/                game code (about 90 modules, one job each)
+  maps/             one file per map (plain data); maps.js is the registry, map-kit.js the shared helpers
   config/
     network.js      online settings (transport, signalling, STUN/TURN, rates, timeouts)
     gameplay.js     EVERY gameplay tunable: movement, Static/orbs/hex (RULES), RIFLE, SHOTGUN (incl. recoil/launch), GRENADE, aim assist
@@ -101,8 +102,21 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
 ### Movement
 - **Where:** `simulation.js`. Speed, acceleration, braking and dodge values are in `RULES` (`config/gameplay.js`).
 - **Dodge:** costs stamina. Nominal gets 3 charges, Static 2, Ballast 1. A dodge breaks through breakable props.
-- **Direction-only aim** (arrow keys, WASD fallback, walking on touch) turns with weight: `keyboardAimResponse`, `keyboardAimMaxTurn` and `keyboardAimSpinUp` in `RULES`.
-- **Aim assist** (`auto-range.js`) only adjusts **distance** along the aimed line, never direction. Mouse is never assisted. Players rank first (practice targets stand in for players).
+- **Dodge input buffer:** a dodge pressed up to `RULES.dodgeBuffer` (0.15 s) before it can happen (mid-dodge, a hair short of stamina) goes off the moment it can, instead of being dropped.
+- **Direction-only aim** (arrow keys, WASD fallback, walking on touch) turns quickly with a little weight: `keyboardAimResponse` 9, `keyboardAimMaxTurn` 10 rad/s, `keyboardAimSpinUp` 24 in `RULES` (a quarter turn in about 0.25 s, a half turn in about 0.4 s). The touch move stick eases direction changes over `MOVE_STICK.smoothing` (0.055 s).
+- **Target lock for players without a mouse** (`target-lock.js`, wired in main.js: `lockMode`, `lockCandidates`, `lockTarget`). Keyboard-only aim, and touch (unless aim assist is off in Settings > Mobile). **Idle by default:** aiming is the ordinary kind (arrows or walking turn the aim, a finger drags the cursor). Candidates are alive, visible (`sim.canSeeTarget`: not under another building's roof; from indoors only out through doors and windows, the same sight lines as the dark interior shading; not behind sight-blocking cover), on screen and within 18 m; online only other players.
+  - **Keyboard:** arrow directions are taken from where the cursor (aim dot) is now. From idle, an arrow press locks onto the target that way from the cursor; with none that way it just aims as usual. While locked (the cursor is on the target), an arrow moves to the next target that way; with none that way the lock lets go and the arrow turns the aim as usual.
+  - **Touch:** from idle, a quick flick (under 0.4 s, at least 42 px) locks onto the target that way from the cursor; a slow drag just aims. While locked, a swipe moves to the next target that way (one per swipe, another every 140 px of a long drag); none that way goes idle. A tap fires at the locked target.
+  - Consistency: once the aim arrives on the target it stays exactly on it, following a moving target with no lag. A locked target briefly out of sight (a post, a doorframe, the screen edge; `hold` 0.6 s, alive and within 1.2x range) keeps the lock. If it dies or breaks, or stays hidden longer, the nearest other candidate takes over; with none left it goes idle.
+  - The aim point sweeps to a new target on a critically damped spring (`glide` 0.09 s smooth time: eases in and out, keeps its speed if the target changes mid-sweep), and while locked the body faces the sweeping point directly, so body, cone and dot move together. From idle a target just beside the cursor still counts as "that way" (2 px). The sim's aim assist is off while locked (the input already points at the target). A mouse never uses it. `#world` has `touch-action:none` so a swipe is never taken as a page pan.
+- **Aim assist** (`aim-assist.js` + `auto-range.js`, numbers in `AIM_ASSIST` / `AUTO_RANGE` in `config/gameplay.js`). Levels: **touch** strongest (finger, walking or stick; can be turned off in Settings > Mobile, `settings.aimAssist`), **keyboard** lighter, **mouse none** (`assistMode()` in main.js).
+  - Only visible targets count (`sim.assistTargets()` → `canSeeTarget`, range check first).
+  - Acquire: the player's own aim roughly points at a target (acquire cone, `AUTO_RANGE.halfAngle`). Players rank first; practice targets stand in for players.
+  - Range: the aim reach slides out to the target (a finger's own point is overridden while locked).
+  - Stick: the aim is bent toward the target by `pull` every tick, so strafing or a moving target does not drag it off. Movement never breaks a lock (only `hold`, death or range does).
+  - Let go: turning your own aim away builds `resist`; the pull fades with it and at `release` the lock drops, and that target is ignored for `cooldown` unless you aim straight back (`reacquire`).
+  - The aim dot turns **red** only when the dot is visibly over a target you can see: inside its on-screen outline from feet to top (`aimOnTarget` in main.js, `.reticle.on-target`). A lock alone does not turn it red. While locked on touch the dot shows the assisted aim, not the finger.
+  - Online the host runs it with the joiner's input (`autoRange` travels in inputs), so it is the same for everyone.
 
 ### Weapons
 - **Static** (`simulation.js`, visuals in `electric-effects.js` + `arc-batch.js`):
@@ -113,7 +127,7 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
 - **Nominal** (rifle; `rifle.js`, `rifle-view.js`, `rifle-pose.js`):
   - LMB/Q fires: tap for single shots, hold for auto.
   - RMB/Shift aims in.
-  - R reloads (18 rounds). X loads a 36-round magazine (60 s cooldown).
+  - R reloads (20 rounds). X loads a 40-round magazine (60 s cooldown). 22 damage per bullet (16 at the far falloff), one shot every 0.165 s. All menu/tutorial/HUD text reads these from `RIFLE` in config/gameplay.js.
   - E throws a grenade (`grenade.js`).
 - **Ballast** (charge shotgun; `shotgun.js`, `shotgun-view.js`):
   - Hold LMB or Q to charge, release to fire.
@@ -133,6 +147,22 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
 - **Reusing geometry:** reuse existing geometry, materials and pools rather than allocating per frame. `arc-batch.js` draws every electric arc in 4 calls.
 - **Frozen transforms** (`frozen-transforms.js`): the scene's own matrix update is off, and the static roots (buildings/scenery, ground cover, quality details) plus every breakable prop group are frozen: their world matrices are computed once and three.js skips walking them each frame (~0.86 → ~0.28 ms of matrix work here). A prop group that moves (hit wobble, restore grow-in) calls `updateMatrix()` on those frames only. **Anything added under a frozen root never animates;** give moving things their own group under the scene.
 - **Merged characters:** the player's body merges into a few meshes (legs, head and the rest, keeping `deathPart` tags for death reactions; the gun and Static arm stay separate because they move and hide), and each target's board is one mesh. `batch()` keeps parts with different `deathPart` apart.
+- **Shader warm-up (no first-use hitches)** (`warmPrograms`, `warmRack` in renderer.js). Every shader any preset, weapon or event needs is built *and drawn once* behind the loading screen, so no orb, grenade, blast, arc, death or building entry builds one mid-fight (checked: zero programs created or first used during play on all 5 presets x 3 weapons, with buildings, damage, death and respawn). How:
+  - The weapon views (`RifleView`, `ShotgunView`, `GrenadeView`) are made in the constructor, before the warm-up, not on the first frame.
+  - `warmRack()` adds a tiny stand-in for each material the view holds that nothing shows yet (walks the view's fields; skips shadow-pass depth/distance materials) plus the kinds a blast or thrown grenade makes on the spot (basic transparent/additive/double-sided, smoke, Lambert flat and smooth), each also in its indoor-clipped variant. Their materials are **kept**, not disposed: disposing the last user of a program destroys it and the real effect would build it again.
+  - The pass shows every non-light object (hidden pools, the grenade in the hand) with culling off, compiles, then **draws once into a 1-pixel scissor**. A draw, not only a compile: a shader's first draw is where the driver is made to finish it and where the shadow pass builds its depth variants. Lights are left alone (their count is part of every shader). The indoor-clip variant is applied to the particle pools, effect pools and the arc batch first.
+  - On Extreme the scene draws into the composer's linear target, and output colour space is in every shader key, so the warm-up draws into `post.composer.readBuffer`, and runs again when the post pipeline finishes loading.
+  - Production builds set `renderer.debug.checkShaderErrors = false` (reading a shader's log forces the driver to finish it mid-frame); dev keeps it and logs a failed warm-up to the console.
+  - Known gap: on Extreme, the AO pass's normals shader for the death effects is built at the first death (one shader). DeathView builds its meshes on first use.
+  - To check after adding an effect: hook `WebGL2RenderingContext.prototype.getProgramInfoLog` (dev build) and play; any call after load is a missed warm-up.
+- **Frame-rate savings that keep the picture identical** (checked by pixel diff of frozen frames, and `tests/render-savings.test.js`):
+  - `shader-savings.js` patches three.js's shader source at import (renderer.js imports it first). **Shadow early-out:** three 0.180 filters shadows by hand, 17 shadow-map reads per pixel on PCF (Performance/Balanced) and 16 on PCF Soft (Quality/Extreme), on every receiving pixel including the whole ground. It now reads the filter's corners and middle first and only reads the rest when they disagree (a soft edge); the probe reads are reused, so edges are exactly as before. **Dark effects light:** `fxLight` stays in the scene (its count is in every shader) but its lighting is skipped while its colour is black (a uniform test, free on a GPU). Re-check both on a three.js upgrade: in dev the module throws if three's code no longer matches.
+  - **Empty draws skipped** (a wrapper on `renderer.renderBufferDirect`): instanced effect pools with no instances and batches with an empty draw range were bound and drawn every frame, about a quarter of all draw calls. The warm-up sets `drawEmpty` so the pools still get their shaders built at load.
+  - **One draw per rigid part** (`bake-colors.js`, `bakeColors`): parts' colours move into vertex colours on one white material of the same kind. Rifle 15 draws → 1; Ballast about 35 → 4 (body, swinging barrels, each shell); each roof about 5 → 2 (casters and shingles), one fading material per roof. Child groups (moving parts) are left alone.
+  - **Ground drawn last, top layer first** (`orderGround`, renderOrder .5–.95): after the buildings and props on it, and the map's ground before the wide slab under it, so a GPU's depth test skips covered ground pixels instead of shading them. Surface marks (-1) and crops (-2) still draw before it, sand marks (1) after.
+  - Draw calls on an ordinary frame (960x540 test): Performance about 122 → 92, Balanced 140 → 109, Quality 211 → 180.
+  - Headless testing note: SwiftShader (CPU) runs both sides of a branch and has little early-z, so it cannot show the early-out, light skip or draw-order gains; measure those on a real GPU. Compare pictures with frozen A/B frames in one evaluate (render, toggle, render), never across runs: dust, birds and wind make separate runs differ by up to 25% of pixels.
+- **Roofs:** the corner posts stop just under the eave and the front fascia and side-door lintels sit below the roof line (they poked through at the corners as small blocks). Each roof has seeded wear (by building id, the same every game): a few missing shingles showing the dark underlayer, lifted shingles, a newer board patch; on metal, rust patches and a lifted sheet end. It uses only the roof's own colours.
 - **Blob shadows** (`blob-shadows.js`): Potato has no shadow map, so soft patches under props, the player, targets and other players stand in for it, leaning the way the sun throws the real shadows. Two draws.
 
 ### Map look (light and haze per map)
@@ -141,6 +171,10 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
 - Only the world's lights and haze change: the HUD, menus and unlit effects keep their colours. Every preset lights the world with these lights, so it applies to all of them. Extreme's grade pass sits on top as before.
 
 ### Graphics presets
+- **No blank frames:** adaptive resolution never resizes the canvas between a draw and the screen showing it (a resize clears the canvas, which showed the brown page colour for a frame every time the scale stepped). `setResolutionScale` only records the new scale; `render()` applies it right before drawing. A window resize draws straight away. A lost WebGL context (phones out of GPU memory) stops drawing until it returns, then rebuilds the shadow map and Extreme's buffers; two losses within a minute on Extreme step down to Quality with a notice.
+- **Low input lag (frame pacing):** after each frame a WebGL 2 fence is set (`fenceFrame`); while the GPU is still drawing the previous frame, main.js skips drawing this one (`gpuBusy`, `RenderBudget.hold`) instead of queueing it, so the next frame is drawn from fresher input. The game and input keep running; waits are capped at 120 ms. The aim dot updates every display frame, drawn or not.
+- **Adaptive resolution:** Performance and Balanced may drop to 70%, Quality to 85%, Extreme to 80% (`ADAPTIVE_FLOOR`). Still short of the target at the floor, the tier is *strained* (`setStrain`): shadows redraw at two thirds of their rate, and on Extreme the AO runs at 38% scale with a lighter denoise and bloom a size down. It lifts after 4 s of healthy frames.
+- **Faded roofs:** a lifted roof lays down its depth first (depth-only copies, render order 50) and then its colour (51), so overlapping roof surfaces are painted once (they used to show as a brighter strip across the room).
 - **Where:** `settings.js` → `GRAPHICS`. Five presets: **Potato, Performance, Balanced, Quality, Extreme**.
 - **Extreme** is Quality plus, never minus (a test enforces "never less of anything"):
   - **Post-processing** (`extreme-post.js`, loaded only when Extreme is picked, disposed when it is left): half-resolution GTAO ambient occlusion (eased down to 0.4 indoors so rooms keep their warm light), bloom on near-white effects only (soft-knee, capped so the Static stream glows instead of whiting out), and one grade+sRGB pass. The scene is still tone mapped per material while drawn (the composer's buffers are flagged as output targets), so effects that skip tone mapping keep their exact colours. The AO draws its own depth/normals without glows, particles, lines, faded roofs, birds and ground cover (`WorldView.aoExcluded`). Reusing the main depth instead was tried and dropped: lopsided AO and grey screen edges.
@@ -167,16 +201,22 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
 ### UI
 - **Settings > Controls:** General controls, then one Weapons dropdown with a dropdown per weapon. Each weapon's rows are `controls` on its entry in `items.js`, so a new weapon brings its own.
 - **Menus:** `menu.js`, `menu-navigation.js`, `select-menu.js`, `button-typography.js`. The settings panel has tabs for Graphics, Audio, Controls and Mobile (`settings-panel.js`, `mobile-settings.js`).
+- **Gamemodes page order:** 1V1, MULTIPLAYER, TUTORIAL, PRACTICE. **1V1** (`#duel-mode`) is only a button for now: nothing is wired to it yet. **Owner's plan: every gamemode outside MULTIPLAYER (1V1 and any others added there) is singleplayer against AI (bots) until at least the beta**, when dedicated servers and online versions will be considered. Only MULTIPLAYER is online.
+- **Button lettering is fitted before the first paint** (`button-typography.js`): the fit runs inside the ResizeObserver and MutationObserver callbacks (after layout, before paint), not a frame later, so a page appears with its stretched lettering already in place. Labels and map captions not fitted yet are `visibility:hidden` (menu-theme.css), so plain text is never shown.
 - **HUD:** health bar top centre on desktop (260-400 px wide, 15 px track), top left on touch landscape (230-320 px), top centre on touch portrait (up to 300 px); `weapon-hud.js`, `health-hud.js`, `ability-cooldown.js`, `damage-feedback.js`, `outgoing-feedback.js`, `perf-readout.js`, `overhead-map.js` (M).
+- **Damage numbers add up:** damage you take is one running number (`damage-feedback.js`): -50, -100, -150 while hits keep coming (a new number after `STACK_WINDOW`, 1.5 s, of no damage); burns grow it on `BURN_BEAT`. Damage you deal is one running total per target (`outgoing-feedback.js`, with the latest hit shown under it). Each time a figure grows it pops back in where it is with a fresh tilt leaning the other way (`damageFeedbackScale` from `bumped`, `damageFeedbackTilt(previous)`). Online it is the same for every player: each client draws its own taken and dealt numbers.
 - **Cursor and aim overlay** (`aim-overlay.js`): with a mouse, the aim dot is the only pointer, over the UI too. UI clicks never reach the game.
 - **Charge ring** (`aim-overlay.js`): Ballast charge and Static hex expansion show as a ring around the cursor. Ability dials and stamina: `ability-hud.js`.
 - **Touch** (`touch-controls.js` + `touch-layout.js` + `touch-action.js`, feel in `config/controls.js`; `main.js` decides what taps and drags do):
-  - A **floating move stick**: drag anywhere on the left half. Walking also steers aim.
+  - A **floating move stick**: drag anywhere on the left half. Walking also steers aim. It lets go on a lift anywhere on the page, when no finger is left on the screen, or when the page loses focus (a lost lift used to leave walking stuck); held buttons and the aiming finger reset the same way.
   - A **tap** anywhere fires at that spot, and a drag never fires.
-  - FIRE is a quarter circle in the corner, with the other actions as ring segments around it (`arrangeTouchCluster`).
+  - FIRE is a quarter circle in the corner, with the other actions as ring segments around it (`arrangeTouchCluster`; sizes in `TOUCH_CLUSTER`: FIRE 138 px, ring 76 px).
+  - **Aim-down-sights weapons** (`adsFire` in items.js, Nominal only; body class `ads-fire`): AIM moves to the bottom end of the ring with a wider arc (`aimWeight`), and the bottom slice of FIRE (`adsFireDegrees`, about a third) becomes **AIM + FIRE** (`#touch-aimfire`), which aims and fires together; the rest of FIRE hip-fires. Mirrors with Swap sides. Ballast is left out because its AIM stores the charge. If FIRE is dragged out in the editor the slice goes away and FIRE is whole.
   - Settings > Mobile holds Edit layout (dragged buttons become free circles), Swap sides and Reset.
   - **From the menus too:** outside a match, Settings > Mobile > EDIT LAYOUT hides the menus and renders one still frame of the map where a match opens (`openLayoutPreview` in main.js; body class `layout-preview` hides the HUD), then edits the controls over it; DONE returns to Settings > Mobile.
   - While editing, each dragged-out button has three handles: × removes it, ↘ resizes it, and ↺ puts just that button back in the corner cluster. It is forgotten from the saved layout (`withoutControl`), so it rejoins the cluster on the player's side: bottom right normally, bottom left with Swap sides. `restoreCluster` (main passes `arrangeTouchCluster`) lays the cluster out again afterwards.
+- **Death screen** (`death-screen.js`, one for solo and online): the red wash, DEAD, and a respawn countdown with a draining bar. Solo practice: the screen comes up 1.2 s after dying and you respawn at the map's spawn 5 s after the death (`RESPAWN_TIME`), the world as you left it and your body left where it fell; buttons RESPAWN NOW, CHANGE WEAPON (the weapon page for this map), RESTART (the whole session), MAIN MENU. Online variants: see Multiplayer.
+- **Tab switch pauses solo play:** hiding the page (`visibilitychange`) opens the pause menu in practice and tutorials; online nothing pauses. Audio is unlocked (`wakeSound`) on the first pointerdown, keydown or touchend, since browsers start it suspended.
 - **Tutorial:** `tutorial.js` (courses and lessons), `tutorial-card.js` (the lesson card), `tutorial-markers.js` (pink zone and arrow), `tutorial-progress.js`.
   - The home screen's tutorial runs **basics**. Gamemodes > Tutorial > weapon runs that weapon's course.
 - **Developer tools** (`dev-options.js`, `dev-tools.js`, `dev-window.js`, `dev-unlock-dialog.js`):
@@ -212,9 +252,9 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
 - Visual changes are checked in a hidden headless browser, never the owner's tab.
 - **main.js has no unit tests**, so after touching it (or anything it wires up) load the game headlessly and confirm it starts with no console errors, and run a static undefined-name check, e.g. ESLint with only `no-undef` enabled. A refactor once left a stray `$` in a moved function and the tests all passed while the game failed to start.
 
-## Multiplayer (free-for-all, in this alpha)
+## Multiplayer (rounds: FFA and practice, in this alpha)
 
-**On.** `NETWORK.enabled` is `true`: Gamemodes > MULTIPLAYER. Up to 4 players, free-for-all on Deadwater, P2P (one player hosts). No teams yet.
+**On.** `NETWORK.enabled` is `true`: Gamemodes > MULTIPLAYER. Up to 4 players on Deadwater, P2P (one player hosts). Rounds of FFA or practice, run from a lobby; 1V1, 2V2 and 3V3 are listed in the lobby but not built.
 
 ### Files
 
@@ -224,41 +264,59 @@ src/net/transport.js    the Transport interface (the only thing sessions talk to
 src/net/peer-transport.js  WebRTC via PeerJS 1.5.5 (loaded only when someone goes online)
 src/net/local-link.js   two windows of the same browser: BroadcastChannel instead of WebRTC (joining knocks here first, 0.5 s; hosting listens on both)
 src/net/protocol.js     message shapes, input cleaning (playerInput), usernames, snapshot/loadout packing
-src/net/arena.js        THE MATCH RULES: shared world, players as targets, damage, deaths, respawns, kill feed, scoreboard
+src/config/match.js     the modes (MODES, `ready`), the host's round settings (SETTINGS with their values), pick and results times
+src/net/arena.js        THE MATCH RULES: round phases, weapon picks, shared world, players and practice targets as targets, damage, deaths, respawns, kill feed, scoreboard, map reset
+src/pick-view.js        the weapon-pick camera spot (map.pickView or its thumbnail spot, 44 m up) and the no-spawn area it shows
 src/net/spawn-points.js random spawn spots inside buildings, clear of furniture
 src/net/projectiles.js  everyone's orbs/bullets/pellets/grenades packed for snapshots and drawn through a "draw sim"
 src/net/host-session.js the authority: steps every seat through the arena, numbered event log, snapshots per joiner
 src/net/client-session.js a joiner: movement prediction, host-fired weapon, events/feed/scoreboard/world sync
 src/net/online.js       picks the transport from config and starts the right session
-src/online-play.js      page glue: menu requests, badge, host player list (REMOVE), events and projectiles for main.js
-src/multiplayer-hud.js  kill feed, scoreboard (Tab / SCORES on touch), death card with respawn countdown
-src/remote-players.js   how other players are drawn (plum coat, mustard ring, name tag)
-tests/net.test.js       host + joiners over the loopback: join, spawn, loading grace, stall forgiveness, shoot to death, multi-kill line, self-kill, time, props, lost packets
+src/online-play.js      page glue: menu requests (with the host's settings), badge, lobby/round/pick actions, events and projectiles (and practice targets) for main.js
+src/lobby-screen.js     the lobby screen between rounds (players + ping, mode, map, settings; START ROUND for the host)
+src/lobby-panel.js      the lobby page of the pause menu during a round (players + ping, settings; host: REMOVE, RESET MAP, END ROUND)
+src/lobby-settings.js   the settings rows shared by the host setup page, the lobby screen and the lobby page
+src/weapon-pick.js      the multiplayer weapon pick (grid of rounded squares, 10 s timer, pink GO)
+src/multiplayer-hud.js  kill feed, scoreboard with ping and colours (Tab / SCORES on touch), match clock, round results
+src/remote-players.js   how other players are drawn: one colourway per slot (PLAYER_COLOURS), no name tag
+tests/net.test.js       host + joiners over the loopback: join, lobby, picks, modes, settings, spawn rules, loading grace, stall forgiveness, shoot to death, multi-kill line, self-kill, time, props, map reset, results, lost packets
 ```
 
 ### How a game goes
 - **Menu:** Gamemodes > MULTIPLAYER: USERNAME (saved in `deadshift-username`), then ROOM CODE + JOIN, then HOST A GAME. No password: the room code is the only key. The code box always shows capitals. Names are unique per room ("Sam 2").
+- **Hosting:** HOST A GAME opens **host a game**, the round settings (below; remembered in `deadshift-host-settings`), then CREATE GAME opens the room. Nobody is put in the map yet: everyone lands on the **lobby screen**.
+- **Lobby screen** (`lobby-screen.js`, while the round's phase is `lobby`): live list of players with their colour, host / you tags and ping, and the host's REMOVE; the room code (click copies an invite link); MODE (FFA, PRACTICE; 1V1, 2V2, 3V3 listed, not startable), MAP (the multiplayer maps; only Deadwater now) and SETTINGS. Joiners see all of it read-only and "waiting for the host". The host presses START ROUND.
+- **Settings** (`config/match.js` SETTINGS, host only, changeable on the host setup page, the lobby screen and the pause menu's LOBBY page): spawns (random building each / together in one building), round length (5/10/15 min), kill limit (none/10/20/30), health (250/500/750), respawn wait (3/5/8 s). Rows that do nothing in the chosen mode are dimmed.
+- **Weapon pick** (`weapon-pick.js`): every round starts with it, and a joiner arriving mid-round gets it. A see-through grey panel over a top-down view of the world from 44 m up (`pick-view.js`, above the birds); rounded squares, five to a row, scrolling, only picture and name; hover or pick lifts the square and its picture. A 10 s timer at the top: pink GO goes in at once with the pick; at zero you go in with your pick, or a random weapon. **Nobody spawns inside the ground that view shows.** Weapons change only after dying (CHANGE WEAPON on the death screen opens the pick; the respawn waits for it).
+- **FFA:** kills count. The round ends when the clock runs out or someone reaches the kill limit; the results (winner, standings) show for 10 s, then everyone is back on the lobby screen. Respawn after the respawn wait with the same weapon.
+- **Practice:** the map's targets are out (shared: everyone sees and hits the same ones; the host's arena runs them once per tick and they are mirrored to joiners every snapshot). Players can hit each other, but nothing is counted (no kills, deaths, feed or clock). Death has no wait: RESPAWN on the death screen puts you straight back.
 - **Same computer:** two windows of one browser connect through `net/local-link.js` (BroadcastChannel), so local testing never depends on WebRTC. Players on other devices still use WebRTC.
-- **Timeouts:** 6 s of silence drops a player (`timeout`), but a joiner still loading the map gets `loadGrace` (45 s) before its first message, and a freeze on our own side (loading, hidden window; any gap over 1 s between our own ticks) is not counted as the other side's silence.
-- **Weapon pick:** after loading in, every player picks a weapon on the weapons page drawn over the running game (`menuFlow.pickOnline`). Nobody is in the world until they pick. The back arrow leaves multiplayer.
-- **Spawning:** always at a random spot inside a random building (rooms at least 6 m across), preferring spots 6 m from anyone alive. 500 HP (`MATCH.health`).
-- **Death:** your death reaction plays; after 1.2 s a death card shows "killed by NAME" (or "you took yourself out") and a countdown; you respawn 5 s after dying (`MATCH.respawn`) in a random building. The card also has CHANGE WEAPON and LEAVE MULTIPLAYER. Other players are unaffected; their name goes in the kill feed.
-- **Pause:** your own only (the world keeps running). RESUME, CHANGE WEAPON, SETTINGS, the host's PLAYERS list with REMOVE, LEAVE MULTIPLAYER (replaces MAIN MENU); RESTART is hidden.
+- **Timeouts:** 6 s of silence drops a player (`timeout`), but a joiner still loading the map gets `loadGrace` (45 s) before its first message, and a freeze on our own side (loading, hidden window; any gap over 1 s between our own ticks) is not counted as the other side's silence. Ping replies alone do not count as being heard (a frozen tab still answers them).
+- **Spawning:** at a random spot inside a building (rooms at least 6 m across, outside the pick view), preferring spots 6 m from anyone alive; with spawns "together", all in one building (picked per round) a body apart. Health from the health setting.
+- **Death:** the same death screen as practice (`death-screen.js`): the red wash, DEAD, "killed by NAME" (or "you took yourself out") and, in FFA, the respawn countdown with a draining bar. Buttons: FFA: CHANGE WEAPON, LOBBY, LEAVE MULTIPLAYER; practice: RESPAWN, CHANGE WEAPON, LOBBY, LEAVE MULTIPLAYER. Your body stays where it fell after you respawn (settled), until your next death, a map reset or leaving. **At most one body and one bloodstain per player:** each player's last stain stays as long as their body (`BloodSplatters.add(..., owner)`: 'you', or 'slot'+slot for others), and their next death fades the older one out in 0.6 s while the old body goes, so the ground there is clean again. The camera cuts to the spawn, it does not glide across the map.
+- **Pause:** your own only; the round goes on and you can be hit. RESUME, SETTINGS, LOBBY, LEAVE MULTIPLAYER (RESTART and changing weapon are not there).
+- **LOBBY page** (`lobby-panel.js`, pause menu or death screen): everyone sees the players with ping and the settings; the host can change settings, REMOVE a player (`HostSession.kick`: refused for the rest of the room), RESET MAP (every prop and crop back, blood, marks and bodies cleared on every screen) and END ROUND (everyone back to the lobby screen). The two resets need a second press.
+- **Names:** no name floats over players. Names show in the lobby, the scoreboard, the kill feed and "killed by"; each player has a colourway (coat, arms, band, scarf, base ring; `PLAYER_COLOURS` by slot) shown as a dot next to their name.
 - **Kill feed:** bottom left on desktop; on touch it sits top right under MAP / SOUND / PAUSE (the bottom left is the move stick), in portrait a little lower. 6 s per line, "KILLER killed A, B" (everyone one attacker killed in the same tick is one line) or "NAME died". Your name blue, everyone else pink; names keep their case.
-- **Scoreboard:** hold Tab (SCORES button on touch). Rank, name, kills, deaths, damage dealt, damage taken, time in game, most used weapon, ranked by kills then fewer deaths. Time in game counts only while in the world (dead included, pause and settings included, the weapon menu excluded). Most used = the weapon with the most time in the world.
+- **Scoreboard:** hold Tab (SCORES button on touch). Rank, colour and name, kills, deaths, damage dealt, damage taken, time in game, most used weapon, ping, ranked by kills then fewer deaths. Time in game counts only while in the world (dead included, pause and settings included, weapon picks excluded).
+- **Match clock:** top centre in an FFA round (red in the last 30 s), "results" between the round and the lobby, hidden in the lobby and in practice.
 - **Own blasts hurt you** online too; dying to them is a death, not a kill.
+- **Developer tools are the host's only** online (the host's sim is the authority): the host unlocks and uses them as offline (Shift+P, O, map teleport); joiners' dev settings are reset every tick and they get "DEV TOOLS ARE THE HOST'S ONLINE".
 
 ### How it works
 - **One world, one sim per player (arena.js).** Each player keeps their own `Simulation` (body, weapon, ammo, orbs, cooldowns: all the single-player weapon code, unchanged). Before a player's sim steps, the arena hands it the shared `props`, `colliders` and `crops`, and puts every other living player in its `targets` as a proxy of kind `'player'` (radius `RULES.radius + .04`, see `target-radius.js`). Every weapon already hits targets, so all of them hit players. After the step, whatever health a proxy lost is dealt to the real player with `damagePlayer` (dodge reduction, damage type and direction from the kill/hit event, so the right death plays), and a changed collider list is kept for everyone.
 - **World authority:** player sims have `worldAuthority = false`; crops burn and prop flashes fade once per tick in the arena's own world sim (`endTick`), whose proxies are every living player, so fire damages everyone once.
 - **Host tick:** main.js calls `online.input(raw)` (host: `beforeLocal`) then steps its own sim, then `online.afterStep()` (host: `step()`): the arena finishes the host seat, steps every joiner's queued inputs, burns the world, runs respawns, clocks and the kill feed, and every 3rd tick sends each joiner a snapshot.
+- **Rounds (arena.js):** `phase` is `lobby` (nobody in the world), `playing` (a round of `mode`: `ffa` or `practice`) or `results` (ffa, 10 s, then `lobby`). `startRound` resets the map, the scores and the practice targets and puts every seat on a pick (`seat.picking = { left, weapon, go }`); `tryEnter` spawns once the pick is done (GO or time up, random weapon if none) and any respawn wait is over. `counting` (ffa) decides whether stats, the feed and the clock run. Snapshots carry `match` (phase, mode, time left, results) every time, `lobby` (players with ping, settings, mode, map) every 30 ticks, your `picking`, and the practice `targets` (id, x, z, hp, flash) every time.
+- **Ping:** the host sends `{t:'ping', s}` once a second to each joiner, who answers `{t:'pong', s}`; the host smooths the round trip per joiner and reports it in the lobby and on the scoreboard.
+- **Practice targets online:** the arena owns them (`arena.targets`); each seat's sim sees stand-ins (like other players) so it never moves or revives them, and damage to a stand-in lands on the real target. Drawing: the host passes them through `drawSim` (`foreign.targets`); joiners hold a mirror in their own sim (`applyTargets`: never moved or revived there).
 - **Joiners send full inputs** (`playerInput`: moves, aim point, every button), numbered, repeated 4 times. Their own sim only walks (prediction and reconciliation as before). **Weapons are fired by the host**, so hits have one truth; your own shots show one round trip late (simple on purpose; "favour the shooter" rewind can come later).
 - **Snapshots carry:** every player (position, aim, hp, weapon, present, dead, life), your `loadout` (ammo, reloads, charges, cooldowns for the HUD), everyone's projectiles (`pack`), events not yet acknowledged, the last kill-feed lines, the scoreboard (every 30 ticks) and the world (broken props and crop fires, every 30 ticks and on joining).
 - **Events are reliable:** the host numbers every shared event (`SHARED_EVENTS`) and keeps 3 s of them; each joiner's inputs carry `ack`, and the host resends everything newer. So shots, deaths and kill-feed lines are never lost on the unreliable channel.
 - **Drawing others:** `view.netEvent(e, shooter, slot)` plays another player's event with them standing in for you (muzzle flashes, trails, arcs), and `drawSim` hands the views your sim plus everyone else's projectiles (orb ids made unique per slot). A joiner's own events come back from the host and go through the ordinary `event()` path (hit markers, damage numbers, death reaction).
 - **Other players' deaths** are a burst of particles and their body disappearing until they respawn (no corpse or death reaction on remote bodies yet).
-- **Removing a player:** the host's pause menu lists everyone else with REMOVE (`HostSession.kick`): they get `{t:'removed'}`, leave with "The host removed you from the game.", and that peer is refused for the rest of the room.
-- **Developer overrides never go online.** Sessions reset `sim.dev` to `{speed:1}` every tick, P and O show "DEV TOOLS ARE OFF ONLINE" (only to someone who unlocked them), Shift+P does nothing online, map teleport is refused.
+- **Removing a player:** REMOVE on the lobby screen or the LOBBY page (`HostSession.kick`): they get `{t:'removed'}`, leave with "The host removed you from the game.", and that peer is refused for the rest of the room.
+- **Developer overrides are the host's only.** Joiners' sims (on the host and their own) get `sim.dev = {speed:1}` every tick; the host's own sim keeps its settings (including a respawn: `arena.spawn` skips the host seat). A game-speed override on the host speeds up everyone, since the host runs everyone.
 - **Local testing without the internet:** run a PeerJS server bound to 127.0.0.1 (`PeerServer({port:9000,host:'127.0.0.1',path:'/'})` from the `peer` package) and open the dev build with `?peerhost=127.0.0.1:9000` in two separate browser processes. On Potato the sandbox runs fast enough to play a round.
 
 ### NAT traversal and relays
@@ -268,17 +326,20 @@ tests/net.test.js       host + joiners over the loopback: join, spawn, loading g
 - **Signalling** (the introduction) uses the free public PeerJS cloud (`peerServer: null`). It only carries the handshake; if it goes down mid-game the game continues but nobody new can join. For reliability later, self-host a PeerJS server and set `peerServer`.
 
 ### Keep in mind
+- **Other players' effects anchor to their own gun.** `WorldView.netEvent` gives each slot its own muzzle point (`netMuzzles`) and passes it through `eventMuzzle`; handlers use `eventMuzzle || staticMuzzle`, and `muzzleLight` takes the shooter. Never borrow `staticMuzzle` (your live gun) for someone else's event: effects keep a reference to it and are drawn for several frames, which is how another player's Static stream came to draw as a white bolt out of your own gun. The shooter's flash light is placed at their gun the same way. Test: `tests/render-savings.test.js`.
+- **Testing multiplayer headless:** two pages in one browser context link over BroadcastChannel; the host needs signalling, so run a local PeerJS server (`PeerServer({ port: 9000, host: '127.0.0.1' })`, IPv4) and open `?peerhost=127.0.0.1:9000`. Move players with real input: writing a position into the host's sim doesn't reach the joiners.
 
 - The host's tab must stay in front. Browsers stop animation frames in background tabs, which stops the host's simulation for everyone (joiners are dropped after 6 s). A dedicated server removes this.
 - Other players are not hidden by walls or cover the way targets are.
 - Names are typed usernames until accounts exist.
+- Headless testing: Chromium runs only one game page at full speed; the others' frames freeze (joiners then time out). Check two-player timing with unit tests (`tests/net.test.js`) or two real windows.
 
 ### Next steps
 
 1. **Favour the shooter:** rewind other players to where the shooter saw them (about 100 ms) when checking hits.
 2. **Your own shots instantly:** fire your own weapon locally for the flash, sound and ammo, and let the host confirm hits.
 3. **Remote death reactions:** play the proper corpse/scatter on other players' bodies from their `playerDeath` event.
-4. **Teams**, then **bots** (a bot is a seat whose inputs come from code) and **hiding players out of sight** on the authority (stops wallhacks).
+4. **1V1 / 2V2 / 3V3** (listed in `MODES` with `ready: false`), then **bots** (a bot is a seat whose inputs come from code) and **hiding players out of sight** on the authority (stops wallhacks).
 
 ### Moving to a dedicated server
 
@@ -286,6 +347,22 @@ tests/net.test.js       host + joiners over the loopback: join, spawn, loading g
 - Run `HostSession` in Node with no local player (it already has no DOM or three.js; `local` becomes optional). The server then owns item ownership and account checks.
 - Signalling, STUN and TURN are no longer needed: clients connect straight to the server.
 - Game logic does not change.
+
+## Adding a weapon
+
+1. `src/items.js`: a `WEAPONS` entry (id, name, description, controls rows, HUD hints, `input: 'orbs' | 'trigger'`, `smoothCursor`, and for trigger weapons `touchButtons`; optional `adsFire`, `storesCharge`, `tutorial`). Unknown ids fall back to `DEFAULT_WEAPON` everywhere (`weaponOrDefault`), so menus, online messages and saved progress accept the new id automatically.
+2. `src/config/gameplay.js`: its tuning block (named by `stats`).
+3. `src/<weapon>.js`: its rules, a `step<Weapon>(sim, input, dt, geo)` added to `WEAPON_STEPS` in `simulation.js`, and a reset.
+4. Visuals: `<weapon>-view.js` wired in renderer.js; its HUD rows in `weapon-hud.js` / `ability-hud.js` / `aim-overlay.js` where it differs; a 3D preview function in `menu.js` (`previews`; without one the card shows text only).
+5. Deaths: its hits carry a `damageType` (`death-reactions.js`). Dev tools: options with `weapon: '<id>'` in `dev-options.js` get their own dropdown. Tutorial: a course in `tutorial.js` if it needs one.
+6. Tests: `tests/registry.test.js` checks the entry is complete.
+
+## Adding a map
+
+1. `src/maps/<id>.js` exporting the map as plain data (copy `dry-creek.js`; helpers and prop types come from `map-kit.js`). Include `look: { warmth }`, a `spawn`, and a `thumbnail: { x, z, height }` spot for the menu picture.
+2. `src/maps.js`: import it and add it to `MAP_LIST` with `modes` (`'practice'`, `'multiplayer'`) and `menu` (listed on the Practice map page).
+3. That's all the wiring: the map page builds one card per `menuMaps()` entry, multiplayer uses `multiplayerMaps()`, `?map=<id>` loads any map, and unknown ids fall back to `DEFAULT_MAP`. Multiplayer spawns come from the map's building interiors (`net/spawn-points.js`), so give it buildings with rooms.
+4. Tests: `tests/registry.test.js` checks every map has modes and basics.
 
 ## Items, cosmetics and a future store
 
@@ -317,5 +394,5 @@ tests/net.test.js       host + joiners over the loopback: join, spawn, loading g
 
 **Known issues:**
 - Load time on slow laptops and phones, mostly world building.
-- Draw calls on Performance at phone size: about 119 (was 159 before merging the player and targets). Breakable props are now the largest group (one or two draws each); instancing them per type is the next step if needed.
+- Draw calls on Performance at phone size: about 90 (was 159 before merging the player and targets, 119 before the empty-draw skip and weapon/roof bakes). Breakable props are now the largest group (one or two draws each); instancing them per type is the next step if needed.
 - Roof and wall line shimmer: the camera pixel snap is the current fix, not yet confirmed by the owner.

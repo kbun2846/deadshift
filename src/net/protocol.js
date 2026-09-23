@@ -11,14 +11,20 @@
 //   full      host -> client   { t, reason }            (full / wrong version)
 //   removed   host -> client   { t, reason }            (the host took this player out)
 //   input     client -> host   { t, inputs: [ {seq, ...playerInput}, ... ], ack }
-//   choose    client -> host   { t, weapon }            (weapon picked: into the world)
-//   menu      client -> host   { t }                    (back to the weapon menu)
+//   choose    client -> host   { t, weapon, go }        (weapon picked; go: into the world now)
+//   pick      client -> host   { t }                    (dead: pick a weapon again)
+//   respawn   client -> host   { t }                    (practice: back in now)
 //   snapshot  host -> client   { t, tick, players, you, proj, ev, feed, board? }
 //   leave     host -> all      { t, id }
+//   ping      host -> client   { t, s }                 (the host's clock; answered at once)
+//   pong      client -> host   { t, s }                 (the same s back: the round trip)
+// Snapshots also carry `match` (clock / results) and, now and then, `lobby`
+// (players with their round trip, the host's spawn setting).
 // The channel may drop or reorder packets. Inputs repeat the last few, and
 // events are numbered and resent until the client acknowledges them, so
 // shots, deaths and kill-feed lines are never lost.
-export const PROTOCOL_VERSION = 3;
+import { weaponOrDefault } from '../items.js';
+export const PROTOCOL_VERSION = 5;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);
@@ -96,8 +102,9 @@ export function readMessage(data) {
    .map(i => ({ seq: i.seq, ...playerInput(i) }));
   return { t: 'input', inputs, ack: Number.isInteger(data.ack) ? data.ack : 0 };
  }
- if (data.t === 'choose') return { t: 'choose', weapon: ['static', 'rifle', 'shotgun'].includes(data.weapon) ? data.weapon : 'static' };
- if (data.t === 'menu') return { t: 'menu' };
+ if (data.t === 'choose') return { t: 'choose', weapon: weaponOrDefault(data.weapon), go: data.go !== false };
+ if (data.t === 'pick' || data.t === 'respawn') return { t: data.t };
+ if (data.t === 'ping' || data.t === 'pong') return Number.isFinite(data.s) ? { t: data.t, s: data.s } : null;
  if (data.t === 'hello') return { t: 'hello', version: data.version, name: cleanName(data.name) };
  if (data.t === 'snapshot') {
   if (!Number.isInteger(data.tick) || !Array.isArray(data.players)) return null;

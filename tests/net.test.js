@@ -16,7 +16,7 @@ const createSim = m => new Simulation(m);
 
 // A room with a host and `clients` joiners. `weapons` picks what each chooses
 // (host first); null leaves that player on the weapon menu.
-function room({ clients = 1, clock, weapons = [] } = {}) {
+function room({ clients = 1, clock, weapons = [], mode = 'ffa' } = {}) {
  const net = createLoopback();
  const hostSim = createSim(map);
  let time = 0;
@@ -38,6 +38,8 @@ function room({ clients = 1, clock, weapons = [] } = {}) {
   hostSim.drainEvents();
   net.flush();
  };
+ // The host starts a round from the lobby; everyone is then on the weapon pick.
+ if (mode) host.startRound(mode);
  const hostWeapon = weapons[0] === undefined ? 'static' : weapons[0];
  if (hostWeapon) host.choose(hostWeapon);
  joined.forEach((c, i) => { const w = weapons[i + 1] === undefined ? 'static' : weapons[i + 1]; if (w && c.session.welcomed) c.session.choose(w); });
@@ -194,17 +196,19 @@ test('your own blast can kill you, and it counts as a death, not a kill', () => 
  assert.ok(r.host.feed().some(l => l.killer === null && l.victimNames[0] === 'Hosty'));
 });
 
-test('time in game stops on the weapon menu, and the most used weapon wins the column', () => {
+test('time in game stops while picking a weapon again, and the most used weapon wins the column', () => {
  const r = room({ weapons: ['static', 'rifle'] });
- const [c] = r.joined;
+ const [c] = r.joined, seat = [...r.host.remotes.values()][0].seat;
  for (let i = 0; i < 120; i++) r.tick();
- c.session.toMenu(); r.net.flush();
+ r.host.arena.died(seat, null);
+ c.session.pickAgain(); r.net.flush();
  for (let i = 0; i < 300; i++) r.tick();
  const row = r.host.scoreboard().find(b => b.name === 'P0');
  assert.ok(row.time >= 2 && row.time <= 3, 'only the ~2 seconds in the world count: ' + row.time);
- assert.equal(row.present, false);
+ assert.ok(seat.picking, 'still on the weapon pick: the respawn waits for it');
  c.session.choose('shotgun'); r.net.flush();
  for (let i = 0; i < 60; i++) r.tick();
+ assert.equal(seat.weapon, 'shotgun'); assert.ok(seat.present && !seat.dead);
  assert.equal(r.host.scoreboard().find(b => b.name === 'P0').weapon, 'rifle');
 });
 
@@ -289,12 +293,12 @@ test('a joiner still loading is not dropped, and a stall on our own side is forg
  assert.equal(host.remotes.size, 0, 'real silence still times out');
 });
 
-test('developer overrides are forced off for everyone online', () => {
+test('developer overrides online are the host\'s only: joiners are forced off', () => {
  const r = room();
  r.hostSim.dev = { speed: 3, ammo: true };
  r.joined[0].sim.dev = { speed: 3 };
  r.tick([{ moveX: 1 }]);
- assert.deepEqual(r.hostSim.dev, { speed: 1 });
+ assert.deepEqual(r.hostSim.dev, { speed: 3, ammo: true }, 'the host keeps its dev tools');
  for (const remote of r.host.remotes.values()) assert.deepEqual(remote.sim.dev, { speed: 1 });
  assert.deepEqual(r.joined[0].sim.dev, { speed: 1 });
  assert.ok(RULES.speed > 0);
@@ -317,4 +321,182 @@ test('offline play has no other players to bump into and owns its own world', ()
  const before = { ...sim.player };
  sim.step(movementInput({ moveX: 1, moveZ: 0 }));
  assert.ok(sim.player.x > before.x);
+});
+
+// --- Lobby, match clock, map reset, ping --------------------------------------
+
+test('everyone gets the lobby (players, colour slots, spawn setting) and a ping for each joiner', () => {
+ const r = room({ clients: 2 });
+ for (let i = 0; i < 90; i++) r.tick(); // pings go out once a second; lobby with the slow snapshots
+ const lobby = r.host.lobby();
+ assert.deepEqual(lobby.players.map(p => p.name), ['Hosty', 'P0', 'P1']);
+ assert.deepEqual(lobby.players.map(p => p.slot), [0, 1, 2]);
+ assert.ok(lobby.players.slice(1).every(p => Number.isFinite(p.ping)), 'a round trip for each joiner');
+ assert.equal(lobby.spawnMode, 'random');
+ const seen = r.joined[0].session.lobby();
+ assert.deepEqual(seen.players.map(p => p.name), ['Hosty', 'P0', 'P1'], 'joiners see the room too');
+ assert.ok(r.host.scoreboard().every(row => 'ping' in row && 'slot' in row), 'the scoreboard carries ping and colour');
+ // Pongs alone do not keep a silent player in the room (tested by the timeout test);
+ // they are dropped when malformed.
+ assert.equal(readMessage({ t: 'pong', s: 'x' }), null);
+ assert.deepEqual(readMessage({ t: 'ping', s: 1.5, extra: 1 }), { t: 'ping', s: 1.5 });
+});
+
+test('spawning together puts everyone in one building; random spreads them out', () => {
+ const r = room({ clients: 2 });
+ assert.equal(r.host.setSpawnMode('nonsense'), false);
+ assert.equal(r.host.setSpawnMode('together'), true);
+ for (const seat of r.host.arena.seats.values()) r.host.arena.spawn(seat);
+ const inside = [...r.host.arena.seats.values()].map(s => map.buildings.find(b => buildingContains(b, s.sim.player))?.id);
+ assert.ok(inside[0]);
+ assert.ok(inside.every(id => id === inside[0]), `all in ${inside[0]}: ${inside}`);
+ const bodies = [...r.host.arena.seats.values()].map(s => s.sim.player);
+ for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++)
+  assert.ok(Math.hypot(bodies[i].x - bodies[j].x, bodies[i].z - bodies[j].z) >= 1.4, 'a body apart');
+ assert.equal(r.joined[0].session.lobby().spawnMode, 'random', 'joiners learn the setting with the next lobby update');
+ for (let i = 0; i < 40; i++) r.tick();
+ assert.equal(r.joined[0].session.lobby().spawnMode, 'together');
+});
+
+test('the host resets the map: every prop stands again, crops regrow, and every screen is told', () => {
+ const r = room();
+ const world = r.host.arena.world, prop = world.props.find(p => p.hp !== null);
+ prop.hp = 0; world.colliders = world.colliders.filter(c => c.propId !== prop.id);
+ world.crops[0].state = 'burnt';
+ r.host.resetMap();
+ r.tick();
+ assert.equal(prop.hp, prop.health);
+ assert.ok(world.colliders.some(c => c.propId === prop.id));
+ assert.equal(world.crops[0].state, 'standing');
+ const types = r.host.log.map(entry => entry.e.type);
+ assert.ok(types.includes('propRestore') && types.includes('mapReset'));
+ for (let i = 0; i < 10; i++) r.tick();
+ const got = r.joined[0].session.drainEvents().map(entry => entry.e.type);
+ assert.ok(got.includes('mapReset'), 'the joiner clears its debris too');
+});
+
+test('an ffa round lasts ten minutes, then the results, then everyone back in the lobby; the next round starts fresh', () => {
+ const r = room();
+ const arena = r.host.arena;
+ assert.equal(MATCH.length, 600); assert.equal(MATCH.respawn, 5);
+ assert.equal(r.host.match().phase, 'playing');
+ arena.seats.get('host').stats.kills = 3;
+ arena.clock = 1 / 60;
+ r.tick(); r.tick();
+ const over = r.host.match();
+ assert.equal(over.phase, 'results');
+ assert.equal(over.results.winner.name, 'Hosty');
+ assert.equal(over.results.winner.kills, 3);
+ // Nobody moves during the results.
+ const before = { ...r.hostSim.player };
+ for (let i = 0; i < 30; i++) r.tick({ host: { moveX: 1 } });
+ assert.equal(r.hostSim.player.x, before.x);
+ for (let i = 0; i < 20; i++) r.tick();
+ assert.equal(r.joined[0].session.match().phase, 'results', 'joiners see the results');
+ for (let i = 0; i < MATCH.results * 60; i++) r.tick();
+ assert.equal(r.host.match().phase, 'lobby');
+ assert.ok([...arena.seats.values()].every(s => !s.present), 'everyone out of the world');
+ assert.ok(r.host.startRound('ffa'));
+ const next = r.host.match();
+ assert.equal(next.phase, 'playing'); assert.equal(next.number, 2);
+ assert.ok(next.left > MATCH.length - 2);
+ assert.equal(arena.seats.get('host').stats.kills, 0, 'scores reset');
+ assert.ok([...arena.seats.values()].every(s => s.picking), 'everyone picks a weapon first');
+});
+
+// --- Rounds: lobby, weapon pick, modes, settings -----------------------------
+
+test('a room opens in the lobby: nobody in the world, the host picks the mode and settings, unready modes refused', () => {
+ const r = room({ mode: null });
+ assert.equal(r.host.match().phase, 'lobby');
+ assert.ok([...r.host.arena.seats.values()].every(s => !s.present));
+ assert.equal(r.host.choose('rifle'), false, 'no weapon pick in the lobby');
+ assert.equal(r.host.setMode('2v2'), false, 'listed, not ready');
+ assert.equal(r.host.setMode('practice'), true);
+ assert.equal(r.host.setSetting('health', 750), true);
+ assert.equal(r.host.setSetting('health', 1), false);
+ for (let i = 0; i < 40; i++) r.tick();
+ const seen = r.joined[0].session.lobby();
+ assert.equal(seen.mode, 'practice'); assert.equal(seen.settings.health, 750);
+ assert.ok(r.host.startRound('practice'));
+ assert.equal(r.host.setMode('ffa'), false, 'the mode is fixed once the round is on');
+});
+
+test('the weapon pick: GO goes in at once; at zero you go in with your pick, or a random weapon', () => {
+ const r = room({ clients: 2, weapons: [null, null, null] });
+ const [a, b] = r.joined, seats = [...r.host.remotes.values()].map(x => x.seat);
+ assert.ok(seats.every(s => s.picking) && r.host.hostSeat.picking);
+ r.host.choose('shotgun', true);
+ assert.ok(r.host.hostSeat.present, 'GO: in now');
+ a.session.choose('rifle', false); r.net.flush();
+ for (let i = 0; i < 30; i++) r.tick();
+ assert.ok(!seats[0].present && seats[0].picking.weapon === 'rifle', 'picked but waiting for GO or the timer');
+ for (let i = 0; i < 10 * 60; i++) r.tick();
+ assert.ok(seats[0].present && seats[0].weapon === 'rifle', 'the timer sends in the picked weapon');
+ assert.ok(seats[1].present && ['static', 'rifle', 'shotgun'].includes(seats[1].weapon), 'nothing picked: a random weapon');
+ assert.equal(b.session.me.present, true);
+});
+
+test('weapons change only after dying', () => {
+ const r = room();
+ const seat = [...r.host.remotes.values()][0].seat, [c] = r.joined;
+ c.session.pickAgain(); c.session.choose('shotgun'); r.net.flush();
+ for (let i = 0; i < 6; i++) r.tick();
+ assert.equal(seat.weapon, 'static', 'alive: no change');
+ r.host.arena.died(seat, null);
+ c.session.pickAgain(); c.session.choose('shotgun'); r.net.flush();
+ for (let i = 0; i < 5 * 60 + 10; i++) r.tick();
+ assert.equal(seat.weapon, 'shotgun'); assert.ok(seat.present && !seat.dead, 'back in after the respawn wait');
+});
+
+test('practice: the map targets are out and shared; players can hit each other but nothing counts; respawn is instant', () => {
+ const r = room({ mode: 'practice' });
+ const arena = r.host.arena, seat = [...r.host.remotes.values()][0].seat, [c] = r.joined;
+ assert.ok(arena.targets.length > 0, 'targets out');
+ for (let i = 0; i < 6; i++) r.tick();
+ assert.equal(c.sim.targets.length, arena.targets.length, 'the joiner mirrors them');
+ // A hit on a target's stand-in lands on the real target.
+ const target = arena.targets[0], hp = target.hp;
+ arena.before(r.host.hostSeat);
+ r.hostSim.targets.find(t => t.id === target.id).hp -= 30;
+ arena.after(r.host.hostSeat);
+ assert.equal(target.hp, hp - 30);
+ // Killing a player counts for nobody and has no wait.
+ const host = arena.seats.get('host');
+ seat.sim.damagePlayer(9999, 'host', false, false, null, 'gunshot'); arena.died(seat, host);
+ assert.equal(host.stats.kills, 0); assert.equal(seat.stats.deaths, 0);
+ assert.equal(seat.respawnIn, 0);
+ for (let i = 0; i < 120; i++) r.tick();
+ assert.ok(seat.dead, 'no automatic respawn in practice');
+ c.session.respawnNow(); r.net.flush(); r.tick();
+ assert.ok(seat.present && !seat.dead, 'RESPAWN: back at once');
+ assert.equal(r.host.match().left, 0, 'no clock');
+});
+
+test('the kill limit ends an ffa round; the health setting is what everyone spawns with', () => {
+ const r = room({ mode: null });
+ r.host.setSetting('killLimit', 10); r.host.setSetting('health', 250);
+ r.host.startRound('ffa'); r.host.choose('rifle'); r.net.flush();
+ r.joined[0].session.choose('rifle'); r.net.flush();
+ for (let i = 0; i < 6; i++) r.tick();
+ assert.equal(r.hostSim.player.hp, 250); assert.equal(r.hostSim.player.maxHp, 250);
+ r.host.arena.seats.get('host').stats.kills = 10;
+ r.tick();
+ assert.equal(r.host.match().phase, 'results');
+});
+
+test('nobody spawns inside the ground the weapon-pick camera shows; a mid-round joiner goes to the pick', async () => {
+ const { pickArea, inPickArea } = await import('../src/pick-view.js');
+ const r = room();
+ const area = pickArea(map);
+ assert.ok(r.host.arena.rooms.length > 3, 'plenty of rooms left');
+ for (const roomSpots of r.host.arena.rooms) for (const p of roomSpots.points) assert.ok(!inPickArea(area, p.x, p.z));
+ const net = r.net;
+ const sim = createSim(map);
+ const late = new ClientSession({ transport: net.join('ABCDE'), map, local: sim, createSim, now: () => r.time, name: 'Late' });
+ net.flush(); r.tick();
+ const seat = [...r.host.remotes.values()].find(x => x.name === 'Late').seat;
+ assert.ok(seat.picking && !seat.present);
+ for (let i = 0; i < 6; i++) r.tick();
+ assert.ok(late.me.picking, 'the joiner knows it is picking');
 });

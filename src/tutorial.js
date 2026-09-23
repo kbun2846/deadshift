@@ -1,4 +1,5 @@
-import { WEAPONS } from './items.js';
+import { WEAPONS, weapon as weaponById } from './items.js';
+import { RIFLE } from './config/gameplay.js';
 // The training range and its courses.
 //
 // Two kinds of course share the one range. "basics" is what the home screen's
@@ -27,7 +28,8 @@ export const tutorialMap = {
  targets: [-9, -4.5, 0, 4.5, 9].map((x, i) => ({ id: 'training-' + i, x, z: -5, kind: i % 2 ? 'dummy' : 'target' })),
 };
 export function tutorialMapFor(weapon) {
- return weapon === 'shotgun' ? { ...tutorialMap, targets: tutorialMap.targets.map(target => ({ ...target, maxHp: 400 })) } : tutorialMap;
+ const targetHp = weaponById(weapon)?.tutorial?.targetHp;
+ return targetHp ? { ...tutorialMap, targets: tutorialMap.targets.map(target => ({ ...target, maxHp: targetHp })) } : tutorialMap;
 }
 
 // Copy is plain and short. Key names go in [brackets] and are drawn as keycaps,
@@ -60,12 +62,12 @@ export const COURSES = {
  ],
  rifle: [
   lesson('single', 'single shots', 5, 'tap [LMB] / [Q] once to fire a single shot', 'tap [FIRE] once for a single shot', { note: 'let go between shots', highlight: 'seed-pips' }),
-  lesson('auto', 'auto fire', 36, 'hold [LMB] / [Q] and empty two full mags', 'hold [FIRE] and empty two full mags', { note: 'press [R] to reload in between', touchNote: 'tap [RELOAD] in between', highlight: 'seed-pips' }),
+  lesson('auto', 'auto fire', RIFLE.magazine * 2, 'hold [LMB] / [Q] and empty two full mags', 'hold [FIRE] and empty two full mags', { note: 'press [R] to reload in between', touchNote: 'tap [RELOAD] in between', highlight: 'seed-pips' }),
   lesson('aimin', 'aim in', 3, 'hold [RMB] / [SHIFT] and hit a target', 'hold [AIM] and hit a target',
    { note: 'standing still tightens it more', highlight: 'rifle-spread', touchHighlight: 'touch-stream' }),
-  lesson('reload', 'reload', 2, 'fire a shot then press [R]', 'fire a shot then tap [RELOAD]', { note: 'a mag holds 18 rounds', highlight: 'seed-pips', touchHighlight: 'touch-hex' }),
+  lesson('reload', 'reload', 2, 'fire a shot then press [R]', 'fire a shot then tap [RELOAD]', { note: `a mag holds ${RIFLE.magazine} rounds`, highlight: 'seed-pips', touchHighlight: 'touch-hex' }),
   lesson('grenade', 'grenade', 2, 'press [E] to throw a grenade', 'tap [GRENADE] to throw one', { note: 'stay out of the blast', highlight: 'hex-recharge' }),
-  lesson('bigmag', 'big mag', 1, 'press [X] to load a 36 round mag', 'tap [EXTEND] to load a 36 round mag', { note: '[R] goes back to 18', touchNote: '[RELOAD] goes back to 18', highlight: 'extended-recharge' }),
+  lesson('bigmag', 'big mag', 1, `press [X] to load a ${RIFLE.extendedMagazine} round mag`, `tap [EXTEND] to load a ${RIFLE.extendedMagazine} round mag`, { note: `[R] goes back to ${RIFLE.magazine}`, touchNote: `[RELOAD] goes back to ${RIFLE.magazine}`, highlight: 'extended-recharge' }),
  ],
  shotgun: [
   lesson('sfire', 'fire', 4, 'press [LMB] / [Q] and fire two full loads', 'tap [FIRE] and fire two full loads', { note: 'press [R] to reload and watch the kick', touchNote: 'tap [RELOAD] in between and watch the kick', highlight: 'seed-pips' }),
@@ -164,7 +166,7 @@ export class Tutorial {
    case 'stream': return hit && sim.spray.active && this.credit(e.volley);
    case 'pulse': return e.type === 'hexPulse' && this.credit();
    case 'single': return e.type === 'rifleShot' && e.burstIndex === 1 && this.credit(e.id);
-   // Every round counts: two full magazines is 36 shots, reload and all.
+   // Every round counts: two full magazines (RIFLE.magazine * 2 shots), reload and all.
    case 'auto': return e.type === 'rifleShot' && this.credit();
    case 'nomouse': return e.type === 'keyboardShot' && this.credit();
    case 'aimin': return e.type === 'rifleHit' && e.aimed && this.credit(e.id);

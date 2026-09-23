@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { bakeColors } from './bake-colors.js';
 export function makeShotgun(detail=2){
  const root=new THREE.Group(),barrels=new THREE.Group();root.add(barrels);root.userData.barrels=barrels;
  const materials=new Map();const mat=c=>{if(!materials.has(c))materials.set(c,new THREE.MeshLambertMaterial({color:c,flatShading:true}));return materials.get(c);};
@@ -26,6 +27,11 @@ export function makeShotgun(detail=2){
  box(barrels,0,.012,.01,.024,.09,.06,'#a6aaa0');
  root.userData.shells=shells;
  const hinge=new THREE.Vector3(0,-.065,-.10);for(const child of barrels.children)child.position.sub(hinge);barrels.position.copy(hinge);
+ // One draw per rigid part (the body, the barrels that swing open, each shell
+ // that slides out), not one per piece: about forty draws every frame it was
+ // held, now four, same picture (bake-colors.js).
+ for(const part of [root,barrels,...shells])bakeColors(part);
+ materials.forEach(m=>m.dispose());
  return root;
 }
 let cached;

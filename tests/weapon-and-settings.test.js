@@ -102,7 +102,8 @@ test('render caps produce the requested frame count independently of simulation 
 
 test('graphics tiers change resolution, shadow work, texture detail and effect budgets', () => {
   assert.equal(validateSettings({controlHints:false}).controlHints,false);
-  assert.deepEqual(validateSettings({quality:'potato',fps:1}),{quality:'potato',fps:1,motion:true,controlHints:true,mobileOpacity:.4,volume:{...DEFAULT_SETTINGS.volume}});
+  assert.deepEqual(validateSettings({quality:'potato',fps:1}),{quality:'potato',fps:1,motion:true,controlHints:true,mobileOpacity:.4,aimAssist:true,volume:{...DEFAULT_SETTINGS.volume}});
+  assert.equal(validateSettings({aimAssist:false}).aimAssist,false,'aim assist can be turned off');
   assert.ok(GRAPHICS.potato.scale < GRAPHICS.performance.scale);
   assert.equal(GRAPHICS.potato.motes, 0);
   assert.ok(GRAPHICS.potato.particleCap < GRAPHICS.performance.particleCap);
@@ -117,7 +118,7 @@ test('graphics tiers change resolution, shadow work, texture detail and effect b
   assert.ok(GRAPHICS.balanced.antialias && GRAPHICS.quality.antialias);
   assert.ok(GRAPHICS.performance.texture < GRAPHICS.balanced.texture && GRAPHICS.balanced.texture < GRAPHICS.quality.texture);
   assert.ok(GRAPHICS.performance.particleCap < GRAPHICS.quality.particleCap);
-  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', fps: 60, motion: false, controlHints: true, mobileOpacity: .4, volume: {...DEFAULT_SETTINGS.volume} });
+  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', fps: 60, motion: false, controlHints: true, mobileOpacity: .4, aimAssist: true, volume: {...DEFAULT_SETTINGS.volume} });
 });
 
 test('mobile opacity accepts saved presets and rejects invalid values',()=>{

@@ -27,12 +27,14 @@ const STALL = 1;
 export class ClientSession {
  constructor({ transport, map, local, createSim, config = NETWORK, now = () => performance.now() / 1000, name = 'Player' }) {
   Object.assign(this, { transport, map, local, config, now });
-  this.scratch = createSim(map); this.scratch.worldAuthority = false; this.scratch.targets = [];
+  this.scratch = createSim(map); this.scratch.worldAuthority = false;
+  // The map's practice targets as built, for mirroring the host's (practice mode).
+  this.targetBase = new Map(this.scratch.targets.map(t => [t.id, t])); this.scratch.targets = []; this.targetKey = '';
   this.id = null; this.slot = null; this.name = name; this.seq = 0; this.pending = []; this.snapshots = []; this.lastTick = -1;
   this.clockOffset = null; this.ended = null; this.notices = []; this.names = new Map();
   this.correction = 0; this.heard = now(); this.lastInput = this.heard;
   this.ack = 0; this.inbox = []; this.board = []; this.feedLines = []; this.feedSeen = 0;
-  this.mine = { life: 0, present: false, dead: false, respawnIn: 0 };
+  this.mine = { life: 0, present: false, dead: false, respawnIn: 0, picking: null, weapon: null };
   this.projectiles = new ProjectileMirror();
   transport.onMessage = (_from, data) => this.receive(data);
   transport.onLeave = () => { if (!this.ended) this.ended = 'The host left the game.'; };
@@ -57,6 +59,8 @@ export class ClientSession {
    this.accept({ tick: message.tick, players: message.players || [], world: message.world });
    return;
   }
+  // The host measures our round trip: answer at once with its own clock.
+  if (message.t === 'ping') { if (Number.isFinite(message.s)) this.transport.send('host', { t: 'pong', s: message.s }); return; }
   if (message.t === 'leave') { this.snapshots.forEach(s => { s.players = s.players.filter(p => p.id !== message.id); }); this.local.otherPlayers = []; return; }
   if (message.t === 'snapshot' && this.welcomed) this.accept(message);
  }
@@ -78,8 +82,11 @@ export class ClientSession {
    if (entry.e.type === 'propBreak' || entry.e.type === 'propRestore') this.setProp(entry.e.id, entry.e.type === 'propRestore');
   }
   if (snapshot.world) this.applyWorld(snapshot.world);
+  if ('targets' in snapshot) this.applyTargets(snapshot.targets);
   for (const line of snapshot.feed || []) if (line.serial > this.feedSeen) { this.feedLines.push(line); this.feedSeen = line.serial; }
   if (snapshot.board) this.board = snapshot.board;
+  if (snapshot.lobby) this.lobbyState = snapshot.lobby;
+  if (snapshot.match) this.matchState = snapshot.match;
   this.projectiles.update(snapshot.proj, this.now());
   // Others as the host last reported them: what both our prediction and the
   // replay collide with, so the replay matches what the host ran.
@@ -98,6 +105,19 @@ export class ClientSession {
   (world.crops || []).forEach(([state, burnAge, scorch], i) => { const c = this.local.crops[i]; if (c) Object.assign(c, { state, burnAge, scorch }); });
  }
 
+ // Practice targets as the host has them. Your sim holds them (you walk into
+ // them, the views draw them) but never moves or revives them itself.
+ applyTargets(list) {
+  if (!list) { if (this.local.targets.length) this.local.targets = []; this.targetKey = ''; return; }
+  const key = list.map(t => t[0]).join(',');
+  if (key !== this.targetKey) {
+   this.targetKey = key;
+   this.local.targets = list.map(([id]) => this.targetBase.get(id)).filter(Boolean).map(t => ({ ...t, moving: false, respawn: 0 }));
+  }
+  const byId = new Map(this.local.targets.map(t => [t.id, t]));
+  for (const [id, x, z, hp, flash] of list) { const t = byId.get(id); if (t) Object.assign(t, { x, z, baseX: x, hp, flash }); }
+ }
+
  setProp(id, standing) {
   const prop = this.local.props.find(p => p.id === id); if (!prop || prop.hp === null) return;
   prop.hp = standing ? prop.health : 0;
@@ -108,7 +128,8 @@ export class ClientSession {
  // Your health, weapon state, life and whereabouts, as the host has them.
  own(you, me) {
   const newLife = you.life !== this.mine.life;
-  this.mine = { life: you.life, present: !!you.present, dead: !!you.dead, respawnIn: you.respawnIn || 0 };
+  this.mine = { life: you.life, present: !!you.present, dead: !!you.dead, respawnIn: you.respawnIn || 0, picking: you.picking || null, weapon: you.weapon || null };
+  if (you.weapon) this.local.weapon = you.weapon;
   if (newLife && you.present && me) {
    // A new life: a fresh body where the host put it.
    this.local.respawn({ x: me.x, z: me.z }, this.id);
@@ -147,7 +168,8 @@ export class ClientSession {
   if (this.welcomed && !this.ended && this.now() - this.heard > this.config.timeout) this.ended = 'Lost connection to the host.';
   if (!this.welcomed || this.ended) return movementInput({});
   this.local.dev = { speed: 1 };
-  const alive = this.mine.present && !this.mine.dead;
+  // Between matches (the results) everyone stands still, as on the host.
+  const alive = this.mine.present && !this.mine.dead && this.match().phase === 'playing';
   const input = { seq: ++this.seq, ...(alive ? playerInput(raw) : playerInput({})) };
   this.pending.push(input);
   if (this.pending.length > 120) this.pending.shift();
@@ -155,13 +177,19 @@ export class ClientSession {
   return alive ? movementInput(input) : movementInput({});
  }
 
- choose(weapon) { this.local.weapon = weapon; this.transport.send('host', { t: 'choose', weapon }); }
- toMenu() { this.transport.send('host', { t: 'menu' }); this.mine = { ...this.mine, present: false }; }
+ // The weapon pick: picked (go false) or picked and in (go true).
+ choose(weapon, go = true) { this.transport.send('host', { t: 'choose', weapon, go }); }
+ pickAgain() { this.transport.send('host', { t: 'pick' }); }
+ respawnNow() { this.transport.send('host', { t: 'respawn' }); }
 
  // Events that arrived since the last call: [{ s, by, e }].
  drainEvents() { return this.inbox.splice(0); }
  drainFeed() { return this.feedLines.splice(0); }
  scoreboard() { return this.board; }
+ // The room as the host last reported it (players, pings, settings) and the
+ // match clock. Joiners see these but cannot change them.
+ lobby() { return this.lobbyState || { players: [], spawnMode: 'random' }; }
+ match() { return this.matchState || { phase: 'playing', left: 0, number: 1, results: null }; }
 
  // Everyone's shots, to draw (see projectiles.js).
  foreignProjectiles() { return this.projectiles.lists(this.now()); }

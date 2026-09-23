@@ -57,6 +57,23 @@ export function bindFloatingStick(zone, element, { isRunning, onWalkStart, onTap
     if (tap && isRunning()) onTap(stick.x, stick.y);
   };
   for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) zone.addEventListener(name, release);
+  // A lift the zone never hears about must not leave the stick held (walking
+  // stuck in one direction): mobile browsers can drop the capture or send the
+  // end of a touch elsewhere when another finger taps FIRE or a button, or
+  // when the page is interrupted. So the stick also lets go when that pointer
+  // ends anywhere on the page, when no finger is on the screen at all, and
+  // when the page loses focus.
+  const letGo = () => {
+   if (stick.pointer === null) return;
+   clearTimeout(stick.shown); stick.shown = null;
+   stick.pointer = null; stick.dragging = false; knob.style.transform = ''; element.classList.remove('engaged');
+   output.moveX = output.moveZ = 0;
+  };
+  for (const name of ['pointerup', 'pointercancel']) window.addEventListener(name, e => { if (e.pointerId === stick.pointer) release(e); }, true);
+  for (const name of ['touchend', 'touchcancel']) window.addEventListener(name, e => { if (!e.touches.length) letGo(); }, true);
+  window.addEventListener('blur', letGo);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) letGo(); });
+  stick.release = letGo;
   return stick;
 }
 
@@ -73,23 +90,40 @@ function ringPoint(radius,degrees,size,mirrored){
 }
 export function arrangeTouchCluster(){
  const mirrored=document.body.classList.contains('touch-swapped');
+ // Aim-down-sights weapons (main.js sets .ads-fire): AIM at the bottom of the
+ // ring, a little wider, and the bottom slice of FIRE fires while aiming.
+ const ads=document.body.classList.contains('ads-fire');
  const base=innerWidth>innerHeight?TOUCH_CLUSTER.landscapeBase:TOUCH_CLUSTER.portraitBase;
- const fire=byId('touch-launch'),inner=TOUCH_CLUSTER.fire+TOUCH_CLUSTER.gap,outer=inner+TOUCH_CLUSTER.ring;
+ const fire=byId('touch-launch'),aimFire=byId('touch-aimfire'),inner=TOUCH_CLUSTER.fire+TOUCH_CLUSTER.gap,outer=inner+TOUCH_CLUSTER.ring;
  const style=(el,size,shape,label)=>{
   el.classList.add('touch-shaped');
   el.style.setProperty('--size',size+'px');el.style.setProperty('--base',base+'px');el.style.setProperty('--edge','0px');
   el.style.setProperty('--shape',shape);el.style.setProperty('--lx',label.x+'px');el.style.setProperty('--ly',label.y+'px');
  };
  const f=TOUCH_CLUSTER.fire;
- style(fire,f,mirrored?`path('M0 ${f} L0 0 A${f} ${f} 0 0 1 ${f} ${f} Z')`:`path('M${f} ${f} L0 ${f} A${f} ${f} 0 0 1 ${f} 0 Z')`,ringPoint(f*.5,45,f,mirrored));
+ // A slice of FIRE's quarter circle, from a0 to a1 degrees (0 = along the
+ // bottom edge, 90 = up the side), drawn the right way round on either side.
+ const slice=(a0,a1)=>{
+  const p=a=>ringPoint(f,a,f,mirrored),c=mirrored?{x:0,y:f}:{x:f,y:f};
+  const [s,e]=mirrored?[p(a1),p(a0)]:[p(a0),p(a1)];
+  return `path('M${c.x} ${c.y} L${s.x.toFixed(2)} ${s.y.toFixed(2)} A${f} ${f} 0 0 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)} Z')`;
+ };
+ const split=ads&&aimFire&&!aimFire.hidden&&!fire.classList.contains('touch-positioned')&&!fire.classList.contains('touch-removed');
+ const cut=split?TOUCH_CLUSTER.adsFireDegrees:0;
+ style(fire,f,cut?slice(cut,90):slice(0,90),ringPoint(f*.52,cut?(cut+90)/2+4:45,f,mirrored));
+ if(aimFire){aimFire.classList.toggle('touch-split-off',!split);if(split)style(aimFire,f,slice(0,cut-1.6),ringPoint(f*.7,cut/2,f,mirrored));}
  // Buttons pulled out in the editor leave the ring, and it closes up without them.
- const shown=CLUSTER_ORDER.map(byId).filter(button=>button&&!button.hidden&&!button.classList.contains('touch-positioned')&&!button.classList.contains('touch-removed'));
- const n=shown.length,gap=TOUCH_CLUSTER.segmentGap/((inner+outer)/2)*180/Math.PI,span=(90-gap*(n-1))/Math.max(1,n);
- shown.forEach((button,i)=>{
-  const from=i*(span+gap),to=from+span,p=(r,a)=>ringPoint(r,a,outer,mirrored);
+ const order=ads?['touch-stream',...CLUSTER_ORDER.filter(id=>id!=='touch-stream')]:CLUSTER_ORDER;
+ const shown=order.map(byId).filter(button=>button&&!button.hidden&&!button.classList.contains('touch-positioned')&&!button.classList.contains('touch-removed'));
+ const weight=button=>ads&&button.id==='touch-stream'?TOUCH_CLUSTER.aimWeight:1;
+ const n=shown.length,gap=TOUCH_CLUSTER.segmentGap/((inner+outer)/2)*180/Math.PI,total=shown.reduce((sum,b)=>sum+weight(b),0),unit=(90-gap*(n-1))/Math.max(1,total);
+ let from=0;
+ shown.forEach(button=>{
+  const to=from+unit*weight(button),p=(r,a)=>ringPoint(r,a,outer,mirrored);
   const [o1,o2,i2,i1]=[p(outer,from),p(outer,to),p(inner,to),p(inner,from)];
   const out=mirrored?0:1,back=mirrored?1:0;
   const shape=`path('M${o1.x.toFixed(2)} ${o1.y.toFixed(2)} A${outer} ${outer} 0 0 ${out} ${o2.x.toFixed(2)} ${o2.y.toFixed(2)} L${i2.x.toFixed(2)} ${i2.y.toFixed(2)} A${inner} ${inner} 0 0 ${back} ${i1.x.toFixed(2)} ${i1.y.toFixed(2)} Z')`;
   style(button,outer,shape,p((inner+outer)/2,(from+to)/2));
+  from=to+gap;
  });
 }

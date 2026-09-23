@@ -31,7 +31,7 @@ export const GRAPHICS = Object.freeze({
 export const DEMANDING_TIERS = Object.freeze(['quality', 'extreme']);
 export const isDemanding = name => DEMANDING_TIERS.includes(name);
 
-export const DEFAULT_SETTINGS = { quality: 'balanced', fps: 60, motion: true, controlHints: true, mobileOpacity: .4,
+export const DEFAULT_SETTINGS = { quality: 'balanced', fps: 60, motion: true, controlHints: true, mobileOpacity: .4, aimAssist: true,
   volume: { master: .6, ambient: .8, weapons: 1, effects: 1 } };
 // Every channel is a plain 0..1 multiplier so the mixer stays predictable:
 // master scales the bus, the rest scale within it.
@@ -86,24 +86,30 @@ export const FPS_LIMITS = Object.freeze([1, ...FPS_STOPS, 0]);
 export function renderPixelRatio(quality,dpr,width,height){
  return Math.min(Math.min(dpr,quality.pixelRatio)*quality.scale,Math.sqrt(quality.maxPixels/Math.max(1,width*height)));
 }
+// The lowest render scale each tier may drop to under load (absent: fixed).
+export const ADAPTIVE_FLOOR=Object.freeze({performance:.7,balanced:.7,quality:.85,extreme:.8});
 // Adjust only the 3D buffer, never the UI or simulation. Long windows and slower
 // recovery avoid resolution flicker; paused/background/loading time is excluded.
 export class AdaptiveResolution {
   constructor(){this.reset();}
-  reset(){this.scale=1;this.elapsed=0;this.frames=0;this.healthy=0;this.key='';}
+  reset(){this.scale=1;this.elapsed=0;this.frames=0;this.healthy=0;this.key='';this.strained=false;}
   sample(dt, rendered, quality, fps){
     const key=quality+':'+fps;
     if(key!==this.key){this.reset();this.key=key;}
-    // Extreme may shed a little resolution (never below 80%) rather than
-    // frames: its extra passes scale with pixel count. Quality stays fixed.
-    if(!['performance','balanced','extreme'].includes(quality)||fps===1)return 1;
+    // Quality and Extreme may shed a little resolution (never below 85% and
+    // 80%) rather than frames: their extra work scales with pixel count.
+    // Still short of the target at that floor, the tier is `strained`, and the
+    // renderer eases its most expensive extras (setStrain) until it recovers.
+    if(!ADAPTIVE_FLOOR[quality]||fps===1)return 1;
     if(!(dt>0)||dt>.25)return this.scale;
     this.elapsed+=dt;this.frames+=Number(rendered);
     if(this.elapsed<2)return this.scale;
     const target=Math.min(fps||60,60),rate=this.frames/this.elapsed;
-    if(rate<target*.85){this.scale=Math.max(quality==='extreme'?.8:.7,this.scale-.1);this.healthy=0;}
+    const floor=ADAPTIVE_FLOOR[quality];
+    if(rate<target*.85){if(this.scale<=floor+1e-9)this.strained=true;this.scale=Math.max(floor,this.scale-.1);this.healthy=0;}
     else if(rate>=target*.96){
       this.healthy+=this.elapsed;
+      if(this.healthy>=4)this.strained=false;
       if(this.healthy>=8){this.scale=Math.min(1,this.scale+.05);this.healthy=0;}
     }else this.healthy=0;
     this.elapsed=0;this.frames=0;return this.scale;
@@ -117,6 +123,8 @@ export function validateSettings(value = {}, {mobile=false} = {}) {
         ? Math.round(Number(value.fps)) : DEFAULT_SETTINGS.fps,
     motion: typeof value.motion === 'boolean' ? value.motion : true,
     controlHints: typeof value.controlHints === 'boolean' ? value.controlHints : true,
+    // Touch aim assist (aim-assist.js); on unless turned off in Settings > Mobile.
+    aimAssist: typeof value.aimAssist === 'boolean' ? value.aimAssist : true,
     mobileOpacity: [1,.7,.4].includes(Number(value.mobileOpacity)) ? Number(value.mobileOpacity) : DEFAULT_SETTINGS.mobileOpacity,
     volume: validateVolume(value.volume) };
 }
@@ -132,4 +140,7 @@ export class RenderBudget {
     this.elapsed = interval ? Math.max(0, this.elapsed - interval * Math.floor((this.elapsed + 1e-7) / interval)) : 0;
     this.sinceRender = 0; return delta;
   }
+  // A frame not drawn on purpose (the GPU is still busy, see gpuBusy): time
+  // still passes for the cap, and the next drawn frame covers it.
+  hold(dt) { this.elapsed += dt; this.sinceRender += dt; return 0; }
 }

@@ -65,7 +65,7 @@
 .menu-shell .primary{background:#b8d9d9;color:#172323}
 .menu-shell .menu-back{border:0;background:none;padding-left:0;font-size:11px;color:#a8b6b2}
 .menu-shell .map-choice{padding:0;overflow:hidden;width:230px;border-color:#65736c}
-.map-choice #map-thumbnail{height:285px;display:block;background:#302d26;overflow:hidden}
+.map-options{display:flex;flex-wrap:wrap;gap:14px}.map-choice .map-thumbnail{height:285px;display:block;background:#302d26;overflow:hidden}
 .map-choice svg{height:100%;width:100%;display:block}
 .map-choice strong,.map-choice small{display:block;padding:0 16px;letter-spacing:0}
 .map-choice strong{margin-top:17px;font-size:16px}.map-choice small{margin:8px 0 18px;color:#a6b4ae}
@@ -104,7 +104,7 @@ body[data-controls=touch] .icon-button{font-size:9px}
 #hex-recharge.tutorial-highlight,#map-toggle.tutorial-highlight{border-radius:50%}
 @keyframes tutorial-focus{0%,100%{box-shadow:0 0 0 5px #97ddff15,0 0 18px #a8eaff35}50%{box-shadow:0 0 0 12px #97ddff18,0 0 26px #a8eaff70}}
 @media(prefers-reduced-motion:reduce){.tutorial-highlight{animation:none;box-shadow:0 0 15px #a8eaff55}}
-#map-thumbnail img{display:block;width:100%;height:100%;object-fit:cover}
+.map-thumbnail img{display:block;width:100%;height:100%;object-fit:cover}
 /* The dot stays visible; mouse clicks briefly extend four clean crosshair arms. */
 .reticle,.reticle.loaded{width:10px;height:10px}
 .reticle>span{position:absolute;left:50%;top:50%;width:28px;height:28px;transform:translate(-50%,-50%);opacity:0;pointer-events:none;background:linear-gradient(to right,#fff 0 28%,transparent 28% 72%,#fff 72%) center/100% 2px no-repeat,linear-gradient(to bottom,#fff 0 28%,transparent 28% 72%,#fff 72%) center/2px 100% no-repeat;filter:drop-shadow(0 1px 1px #0005)}

@@ -1,4 +1,4 @@
-// The multiplayer rules on the host: free-for-all in one shared world.
+// The multiplayer rules on the host: rounds of a mode in one shared world.
 //
 // Every player keeps their own Simulation (their body, weapon, ammo, orbs,
 // reloads and cooldowns: all the code that already works for one player).
@@ -7,68 +7,187 @@
 //
 //  - One world. Before a player's sim is stepped it is handed the shared
 //    props, colliders and crops, and afterwards whatever it changed is kept
-//    (a prop it broke is broken for everyone). Only the arena burns crops and
-//    fades prop flashes, once per tick, on a world sim nobody plays in.
+//    (a prop it broke is broken for everyone). Only the arena burns crops,
+//    fades prop flashes and runs practice targets, once per tick.
 //  - Everyone else as targets. While a player's sim steps, the other living
-//    players stand in its target list as stand-ins ("proxies") of kind
-//    'player'. Every weapon already knows how to hit targets, so orbs,
-//    bullets, pellets, grenades, blasts, the stream and the hex all hit
+//    players (and in practice the map's targets) stand in its target list as
+//    stand-ins ("proxies"). Every weapon already knows how to hit targets, so
+//    orbs, bullets, pellets, grenades, blasts, the stream and the hex all hit
 //    players with no weapon code changed. Afterwards the health a proxy lost
-//    is dealt to the real player's sim through damagePlayer, which applies
-//    dodge reduction and plays the right death (the kill event carries the
-//    damage type and direction).
+//    is dealt to the real player's sim through damagePlayer (dodge reduction,
+//    the right death) or to the real target.
 //  - Solid bodies. The others are also passed as otherPlayers, so bodies
 //    block each other (see Simulation.movePlayer).
 //
-// It also runs the match: deaths, 5 second respawns in a random building,
-// the kill feed (several kills from one shot are one line) and the
-// scoreboard (kills, deaths, damage dealt and taken, time in game, most
-// used weapon). Nothing here touches the DOM, three.js or the network.
+// The round, as the host runs it (phase):
+//  - 'lobby': nobody is in the world. The host picks the mode and the map and
+//    changes the settings; everyone sees the lobby screen.
+//  - 'playing': a round of the mode. Each player first picks a weapon
+//    (`picking`, PICK.time seconds; GO sends them in at once; at zero they go
+//    in with what they picked, or a random weapon). They pick again only after
+//    dying (CHANGE WEAPON on the death screen).
+//      ffa:      kills count; the round ends when the clock runs out or someone
+//                reaches the kill limit. Respawn after the respawn setting.
+//      practice: the map's targets are out; players can still hit each other
+//                but nothing is counted; no respawn wait (RESPAWN on the
+//                death screen), no clock.
+//  - 'results' (ffa): the standings for RESULTS seconds, then back to 'lobby'.
+// Nobody spawns inside the ground the weapon-pick camera shows (pick-view.js).
+// Nothing here touches the DOM, three.js or the network.
 import { interiorSpawns, pickSpawn } from './spawn-points.js';
 import { stepCrops } from '../crops.js';
 import { segmentBox } from '../simulation.js';
 import { RULES } from '../config/gameplay.js';
+import { weaponOrDefault, WEAPONS } from '../items.js';
+import { mapColliders } from '../maps.js';
+import { pickArea, inPickArea } from '../pick-view.js';
 
-export const MATCH = Object.freeze({ respawn: 5, health: 500 });
+import { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS } from '../config/match.js';
+export { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS };
+// Kept for older callers and tests: the defaults.
+export const MATCH = Object.freeze({ respawn: SETTINGS.respawn.default, health: SETTINGS.health.default, length: SETTINGS.roundLength.default, results: RESULTS });
+export const SPAWN_MODES = SETTINGS.spawnMode.values;
 const IDLE = Object.freeze({ moveX: 0, moveZ: 0, aimX: 0, aimZ: 0 });
+const newStats = () => ({ kills: 0, deaths: 0, dealt: 0, taken: 0, time: 0, weaponTime: {} });
 
 export class Arena {
- constructor({ map, createSim, random = Math.random }) {
+ constructor({ map, createSim, random = Math.random, settings }) {
   Object.assign(this, { map, createSim, random });
   // The world sim: owns crop burning and prop flashes, has no living player.
   this.worldSim = createSim(map);
   this.worldSim.player.hp = 0; this.worldSim.player.dead = true; this.worldSim.targets = [];
   this.world = { props: this.worldSim.props, colliders: this.worldSim.colliders, crops: this.worldSim.crops };
-  this.rooms = interiorSpawns(map, this.world.colliders);
+  this.noSpawn = pickArea(map);
+  this.rooms = interiorSpawns(map, this.world.colliders)
+   .map(room => ({ ...room, points: room.points.filter(p => !inPickArea(this.noSpawn, p.x, p.z)) })).filter(room => room.points.length);
   this.seats = new Map(); this.time = 0;
   this.feed = []; this.feedSerial = 0; this.pendingKills = new Map();
+  this.settings = cleanSettings(settings); this.togetherRoom = null;
+  this.mode = 'ffa'; this.mapId = map.id; this.targets = [];
+  this.phase = 'lobby'; this.clock = 0; this.resultsLeft = 0; this.results = null; this.matchNumber = 0;
+  this.pendingEvents = [];
  }
 
  // A player joins. `sim` is the host's own (main.js) sim for the host seat.
+ // Mid-round they go straight to the weapon pick.
  addSeat(id, name, sim = null) {
   sim ||= this.createSim(this.map);
   sim.worldAuthority = false; sim.targets = []; sim.otherPlayers = []; sim.dev = { speed: 1 };
   sim.player.id = id; sim.player.hp = 0; sim.player.dead = true;
-  const seat = { id, name, sim, present: false, dead: false, respawnIn: 0, life: 0, weapon: null,
-   stats: { kills: 0, deaths: 0, dealt: 0, taken: 0, time: 0, weaponTime: {} }, proxies: null, mark: 0 };
+  const seat = { id, name, sim, present: false, dead: false, respawnIn: 0, life: 0, weapon: null, picking: null,
+   stats: newStats(), proxies: null, mark: 0 };
   this.seats.set(id, seat);
+  if (this.phase === 'playing') this.startPick(seat);
   return seat;
  }
 
  removeSeat(id) { this.seats.delete(id); }
 
- // Weapon picked (first time, after dying, or changing mid-game): into the world.
- choose(id, weapon) {
-  const seat = this.seats.get(id); if (!seat) return false;
-  seat.weapon = ['static', 'rifle', 'shotgun'].includes(weapon) ? weapon : 'static';
-  this.spawn(seat);
+ get counting() { return this.mode === 'ffa'; }
+
+ // --- Host controls (lobby) -------------------------------------------------
+
+ setSetting(key, value) {
+  if (!SETTINGS[key] || !SETTINGS[key].values.includes(value)) return false;
+  this.settings[key] = value;
+  if (key === 'spawnMode') this.togetherRoom = null;
+  return true;
+ }
+ setSpawnMode(mode) { return this.setSetting('spawnMode', mode); }
+ // The mode for the next round, chosen in the lobby (everyone sees it).
+ setMode(mode) {
+  if (this.phase !== 'lobby' || !MODES.find(m => m.id === mode)?.ready) return false;
+  this.mode = mode; return true;
+ }
+
+ // A round of `mode` from the lobby (or restarted mid-round): a fresh map and
+ // scores, and everyone to the weapon pick.
+ startRound(mode = this.mode) {
+  const entry = MODES.find(m => m.id === mode);
+  if (!entry?.ready) return false;
+  this.mode = mode;
+  this.resetWorld();
+  this.feed = []; this.pendingKills.clear(); this.togetherRoom = null;
+  this.targets = mode === 'practice' ? this.createSim(this.map).targets : [];
+  for (const seat of this.seats.values()) { seat.stats = newStats(); this.out(seat); this.startPick(seat); }
+  this.phase = 'playing'; this.clock = this.settings.roundLength; this.resultsLeft = 0; this.results = null; this.matchNumber++;
+  this.pendingEvents.push({ type: 'matchStart', number: this.matchNumber, mode });
+  return true;
+ }
+ newMatch() { return this.startRound(this.mode); }
+
+ // Back to the lobby: everyone out of the world, the targets put away.
+ endRound() {
+  for (const seat of this.seats.values()) { this.out(seat); seat.picking = null; }
+  this.phase = 'lobby'; this.results = null; this.targets = [];
+  this.pendingEvents.push({ type: 'roundEnd', number: this.matchNumber });
+ }
+
+ // The world as it was when the room opened: every prop standing, every crop
+ // grown. Queues the events that tell every screen (propRestore for each
+ // broken prop, then mapReset for blood, scorch marks and bodies).
+ resetWorld() {
+  const fresh = this.createSim(this.map), world = this.world;
+  for (const prop of world.props) {
+   if (prop.hp === null) continue;
+   if (prop.hp <= 0) this.pendingEvents.push({ type: 'propRestore', id: prop.id, x: prop.x, z: prop.z, quiet: true });
+   prop.hp = prop.health; prop.flash = 0;
+  }
+  world.colliders = mapColliders(this.map);
+  world.crops.forEach((crop, i) => { const clean = fresh.crops[i]; if (clean) { for (const key of Object.keys(crop)) delete crop[key]; Object.assign(crop, clean); } });
+  for (const seat of this.seats.values()) this.handWorld(seat.sim);
+  this.handWorld(this.worldSim);
+  if (this.targets.length) this.targets = fresh.targets;
+  this.pendingEvents.push({ type: 'mapReset' });
+ }
+
+ // --- Players in and out of the world ----------------------------------------
+
+ startPick(seat, keep = null) { seat.picking = { left: PICK.time, weapon: keep, go: false }; }
+
+ // A weapon picked (or changed) on the pick screen; `go` sends them in now.
+ choose(id, weapon, go = true) {
+  const seat = this.seats.get(id); if (!seat || this.phase !== 'playing') return false;
+  if (!seat.picking) {
+   // Only after dying: the death screen's CHANGE WEAPON opens the pick.
+   if (seat.present && !seat.dead) return false;
+   this.startPick(seat);
+  }
+  seat.picking.weapon = weaponOrDefault(weapon);
+  if (go) seat.picking.go = true;
+  this.tryEnter(seat);
   return true;
  }
 
- // Back to the weapon menu: out of the world until they choose again. Their
- // orbs and grenades go with them.
- leaveWorld(id) {
-  const seat = this.seats.get(id); if (!seat) return;
+ // Dead: open the weapon pick again (the respawn then waits for it).
+ pickAgain(id) {
+  const seat = this.seats.get(id);
+  if (!seat || this.phase !== 'playing' || !(seat.dead || !seat.present)) return false;
+  if (!seat.picking) this.startPick(seat, seat.weapon);
+  return true;
+ }
+
+ // Practice: back in at once with the same weapon.
+ respawnNow(id) {
+  const seat = this.seats.get(id);
+  if (!seat || this.phase !== 'playing' || this.mode !== 'practice' || !seat.dead || seat.picking) return false;
+  this.spawn(seat); return true;
+ }
+
+ // In the world once the pick is done and any respawn wait is over.
+ tryEnter(seat) {
+  const pick = seat.picking; if (!pick) return;
+  const done = pick.go || pick.left <= 0;
+  if (!done || (seat.dead && seat.respawnIn > 0)) return;
+  seat.weapon = pick.weapon || WEAPONS[Math.floor(this.random() * WEAPONS.length)].id;
+  seat.picking = null;
+  this.spawn(seat);
+ }
+
+ // Old protocol: back to the menu. Now only the pick after a death does that.
+ leaveWorld(id) { const seat = this.seats.get(id); if (seat) this.out(seat); }
+
+ out(seat) {
   seat.present = false; seat.dead = false; seat.respawnIn = 0;
   seat.sim.respawn({ x: this.map.spawn.x, z: this.map.spawn.z }, seat.id);
   seat.sim.player.hp = 0; seat.sim.player.dead = true;
@@ -76,13 +195,17 @@ export class Arena {
 
  spawn(seat) {
   const others = [...this.seats.values()].filter(s => s !== seat && s.present && !s.dead).map(s => s.sim.player);
-  const at = pickSpawn(this.rooms, others, this.random) || this.map.spawn;
-  seat.sim.weapon = seat.weapon;
+  // Together: everyone in one building (picked once per round), a body apart.
+  const together = this.settings.spawnMode === 'together' && this.rooms.length;
+  if (together) this.togetherRoom ||= this.rooms[Math.floor(this.random() * this.rooms.length)];
+  const at = pickSpawn(together ? [this.togetherRoom] : this.rooms, others, this.random, together ? 1.6 : 6) || this.map.spawn;
+  seat.sim.weapon = seat.weapon || weaponOrDefault(null);
   seat.sim.respawn(at, seat.id);
-  seat.sim.player.hp = seat.sim.player.maxHp = MATCH.health;
-  seat.sim.dev = { speed: 1 };
+  seat.sim.player.hp = seat.sim.player.maxHp = this.settings.health;
+  // The host's own sim keeps its developer settings (host-only dev tools).
+  if (seat.id !== 'host') seat.sim.dev = { speed: 1 };
   this.handWorld(seat.sim);
-  seat.present = true; seat.dead = false; seat.respawnIn = 0; seat.life++;
+  seat.present = true; seat.dead = false; seat.respawnIn = 0; seat.picking = null; seat.life++;
  }
 
  living(except) { return [...this.seats.values()].filter(s => s !== except && s.present && !s.dead && s.sim.player.hp > 0); }
@@ -94,12 +217,19 @@ export class Arena {
   const sim = seat.sim;
   this.handWorld(sim);
   seat.proxies = new Map();
-  sim.targets = this.living(seat).map(other => {
+  const players = this.living(seat).map(other => {
    const p = other.sim.player;
    const proxy = { id: other.id, kind: 'player', x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false };
    seat.proxies.set(other.id, { proxy, before: p.hp, seat: other });
    return proxy;
   });
+  // Practice targets: stand-ins too, so this sim never moves or revives them.
+  const targets = this.targets.filter(t => t.hp > 0).map(t => {
+   const proxy = { ...t, moving: false, respawn: 0 };
+   seat.proxies.set(t.id, { proxy, before: t.hp, target: t });
+   return proxy;
+  });
+  sim.targets = [...players, ...targets];
   sim.otherPlayers = this.living(seat).map(o => ({ x: o.sim.player.x, z: o.sim.player.z, hp: o.sim.player.hp }));
   seat.mark = sim.events.length;
  }
@@ -108,7 +238,7 @@ export class Arena {
  after(seat) {
   const sim = seat.sim, events = sim.events.slice(seat.mark);
   this.world.colliders = sim.colliders;
-  for (const e of events) if (e.type === 'playerDamage') { seat.stats.taken += e.damage; }
+  if (this.counting) for (const e of events) if (e.type === 'playerDamage') { seat.stats.taken += e.damage; }
   this.transferDamage(seat, seat.proxies, events);
   sim.targets = []; seat.proxies = null;
   // Their own blast, fire or fall: a death with nobody to credit.
@@ -117,8 +247,13 @@ export class Arena {
 
  transferDamage(attacker, proxies, events) {
   if (!proxies) return;
-  for (const { proxy, before, seat: victim } of proxies.values()) {
+  for (const { proxy, before, seat: victim, target } of proxies.values()) {
    const lost = before - proxy.hp;
+   if (target) {
+    target.flash = Math.max(target.flash || 0, proxy.flash || 0);
+    if (lost > 0 && target.hp > 0) { target.hp = Math.max(0, target.hp - lost); if (target.hp <= 0) target.respawn = RULES.targetRespawn; }
+    continue;
+   }
    if (lost <= 0 || victim.dead) continue;
    const report = [...events].reverse().find(e => (e.type === 'kill' || e.type === 'hit') && e.id === victim.id) || {};
    const damageType = report.damageType || (report.electric ? 'electric' : 'gunshot');
@@ -127,15 +262,21 @@ export class Arena {
    const vp = victim.sim.player, hpBefore = vp.hp;
    // damagePlayer applies the victim's own dodge reduction; fire is environmental.
    const dealt = victim.sim.damagePlayer(lost, owner, !attacker, false, impact.x || impact.z ? impact : null, attacker ? damageType : 'fire');
-   victim.stats.taken += dealt;
-   if (attacker && attacker !== victim) attacker.stats.dealt += dealt;
+   if (this.counting) {
+    victim.stats.taken += dealt;
+    if (attacker && attacker !== victim) attacker.stats.dealt += dealt;
+   }
    if (hpBefore > 0 && vp.hp <= 0) this.died(victim, attacker, attacker ? damageType : 'fire');
   }
  }
 
  died(victim, killer) {
   if (victim.dead) return;
-  victim.dead = true; victim.respawnIn = MATCH.respawn; victim.stats.deaths++;
+  victim.dead = true;
+  // Practice: no wait, nothing counted; RESPAWN on the death screen.
+  victim.respawnIn = this.counting ? this.settings.respawn : 0;
+  if (!this.counting) return;
+  victim.stats.deaths++;
   if (killer && killer !== victim) {
    killer.stats.kills++;
    // Everyone this attacker killed in this tick is one kill-feed line.
@@ -155,7 +296,7 @@ export class Arena {
 
  // A seat that is not in the world, or is dead, still steps (their sim keeps
  // ticking harmlessly) but with idle hands.
- inputFor(seat, input) { return seat.present && !seat.dead ? input : IDLE; }
+ inputFor(seat, input) { return seat.present && !seat.dead && this.phase === 'playing' ? input : IDLE; }
 
  // Step one remote seat for this tick.
  stepSeat(seat, input) {
@@ -164,8 +305,16 @@ export class Arena {
   this.after(seat);
  }
 
- // Once per tick, after every seat has stepped: the world, respawns, clocks,
- // and the kill feed for this tick.
+ // What every screen shows of the round: phase, mode, time left (or the
+ // results), and the round number.
+ matchState() {
+  const left = this.phase === 'playing' ? (this.counting ? this.clock : 0) : this.phase === 'results' ? this.resultsLeft : 0;
+  return { phase: this.phase, mode: this.mode, map: this.mapId, left: Math.max(0, Math.round(left * 10) / 10), number: this.matchNumber,
+   killLimit: this.counting ? this.settings.killLimit : 0, results: this.results };
+ }
+
+ // Once per tick, after every seat has stepped: the world, targets, respawns,
+ // picks, clocks, and the kill feed for this tick.
  endTick(dt = RULES.step) {
   this.time += dt;
   const world = this.worldSim;
@@ -182,16 +331,45 @@ export class Arena {
   for (const prop of world.props) prop.flash = Math.max(0, prop.flash - dt);
   this.transferDamage(null, proxies, world.events.slice(mark));
   world.targets = [];
-  this.worldEvents = world.events.splice(0);
+  // Practice targets: flashes fade, the broken come back, the movers sway.
+  for (const t of this.targets) {
+   t.flash = Math.max(0, (t.flash || 0) - dt);
+   if (t.respawn > 0) { t.respawn -= dt; if (t.respawn <= 0) { t.hp = t.maxHp; t.x = t.baseX = t.spawnX; t.z = t.spawnZ; world.events.push({ type: 'respawn', x: t.x, z: t.z }); } }
+   if (t.moving && t.hp > 0) t.x = t.baseX + Math.sin(this.time * .72) * t.travel;
+  }
+  this.worldEvents = [...world.events.splice(0), ...this.pendingEvents.splice(0)];
   for (const seat of this.seats.values()) {
-   if (!seat.present) continue;
-   seat.stats.time += dt;
-   seat.stats.weaponTime[seat.weapon] = (seat.stats.weaponTime[seat.weapon] || 0) + dt;
-   if (seat.dead) { seat.respawnIn -= dt; if (seat.respawnIn <= 0) this.spawn(seat); }
+   if (seat.picking && this.phase === 'playing') { seat.picking.left -= dt; }
+   if (!seat.present && !seat.picking) continue;
+   // Time in game: in the world, not while picking a weapon.
+   if (seat.present && !seat.picking) {
+    seat.stats.time += dt;
+    seat.stats.weaponTime[seat.weapon] = (seat.stats.weaponTime[seat.weapon] || 0) + dt;
+   }
+   if (seat.dead && seat.respawnIn > 0) seat.respawnIn = Math.max(0, seat.respawnIn - dt);
+   if (this.phase !== 'playing') continue;
+   if (seat.picking) this.tryEnter(seat);
+   // FFA: back in after the wait with the same weapon (unless picking again).
+   else if (seat.dead && this.counting && seat.respawnIn <= 0) this.spawn(seat);
   }
   const lines = [];
   for (const [killer, victims] of this.pendingKills) lines.push(this.pushFeed({ killer, victims, weapon: this.seats.get(killer)?.weapon }));
   this.pendingKills.clear();
+  // The round clock (ffa). At zero, or at the kill limit: the standings for a
+  // few seconds (everyone stands still), then the lobby.
+  if (this.phase === 'playing' && this.counting) {
+   this.clock -= dt;
+   const leader = Math.max(0, ...[...this.seats.values()].map(s => s.stats.kills));
+   if (this.clock <= 0 || (this.settings.killLimit && leader >= this.settings.killLimit)) {
+    const board = this.scoreboard();
+    this.phase = 'results'; this.resultsLeft = RESULTS;
+    this.results = { winner: board[0] && board[0].kills > 0 ? { id: board[0].id, name: board[0].name, kills: board[0].kills } : null, board };
+    this.worldEvents.push({ type: 'matchEnd', number: this.matchNumber });
+   }
+  } else if (this.phase === 'results') {
+   this.resultsLeft -= dt;
+   if (this.resultsLeft <= 0) { this.endRound(); this.worldEvents.push(...this.pendingEvents.splice(0)); }
+  }
   return lines;
  }
 

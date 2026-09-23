@@ -16,7 +16,7 @@ export function createOutgoingFeedback(parent){
     else item.subtotal+=e.damage;
    }else{
     item.subtotal=item.damage;item.added=e.damage;
-    item.tilt=damageFeedbackTilt();item.additionTilt=damageFeedbackTilt();
+    item.tilt=damageFeedbackTilt(item.tilt);item.additionTilt=damageFeedbackTilt(item.additionTilt);
    }
    item.damage+=e.damage;item.hp=e.hp;item.maxHp=e.maxHp;item.volley=e.volley;item.updated=time;
    return;
@@ -29,7 +29,8 @@ export function createOutgoingFeedback(parent){
   expire(sim.time);
   items.forEach(i=>{const age=sim.time-i.born,sinceHit=sim.time-i.updated;
    i.subtotalNode.textContent=format(i.subtotal);i.addedNode.textContent='+'+format(i.added);
-   i.total.style.transform=`rotate(${i.tilt}deg)`;
+   // The total pops back in, in place and with its new tilt, each time it grows.
+   i.total.style.transform=`rotate(${i.tilt}deg) scale(${damageFeedbackScale(sinceHit)})`;
    i.addedNode.style.transform=`rotate(${i.additionTilt}deg)`;
    i.addition.style.opacity=Math.max(0,Math.min(1,(ADDITION_LIFE-sinceHit)/.3));
    i.addition.style.display=i.added>0&&sinceHit<ADDITION_LIFE?'flex':'none';

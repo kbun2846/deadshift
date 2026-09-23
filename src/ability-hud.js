@@ -18,7 +18,7 @@ export function createAbilityHUD() {
   const hexHint = rifle?(ready?'Grenade ready':'Grenade recharging'):sim.hexOrbs.length ? (sim.hexOrbs[0].age<RULES.hexFormationTime?'Hex forming':'Press X to pulse') : sim.hexSpin ? 'Hex spinning' : ready ? 'Hex ability ready' : 'Hex recharging';
   updatePrimaryCooldown(sim.weapon==='shotgun'?{remaining:sim.shotgun.stored?sim.shotgun.hold:0,duration:SHOTGUN.holdTime,binding:'SHIFT / RMB',label:sim.shotgun.stored?'Stored charge expires':'Hold LMB / Q to charge'}:{remaining,duration:cooldown,binding:rifle?'E':'X',label:hexHint});
   extendedCooldownUI.root.classList.toggle('hidden',!rifle);
-  if(rifle)extendedCooldownUI.update({remaining:sim.rifle.extendedCooldown,duration:RIFLE.extendedCooldown,binding:'X',label:sim.rifle.extendedCooldown<1e-8?'36-round magazine ready':'36-round magazine recharging'});
+  if(rifle)extendedCooldownUI.update({remaining:sim.rifle.extendedCooldown,duration:RIFLE.extendedCooldown,binding:'X',label:sim.rifle.extendedCooldown<1e-8?RIFLE.extendedMagazine+'-round magazine ready':RIFLE.extendedMagazine+'-round magazine recharging'});
   const expanding=sim.hexOrbs[0],range=sim.weapon==='shotgun'?sim.shotgun.charge:expanding?Math.min(1,Math.hypot(expanding.x-expanding.originX,expanding.z-expanding.originZ)/RULES.hexRange):0;
   byId('hex-range').classList.toggle('hidden',!expanding&&sim.weapon!=='shotgun');
   byId('hex-range-fill').style.transform=`scaleY(${range})`;

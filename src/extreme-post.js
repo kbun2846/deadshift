@@ -33,6 +33,8 @@ export const EXTREME_POST = Object.freeze({
  // at 0.5 it costs a quarter of full resolution and looks the same from
  // this camera height.
  aoScale: .5,
+ // When the device cannot keep up even at the lowest render scale (setLight).
+ strainedAoScale: .38, strainedDenoiseSamples: 5,
  ao: { radius: 1.6, distanceExponent: 1.2, thickness: 2.5, scale: 1.2, samples: 12 },
  aoIntensity: .9,
  // Indoors, with the roof lifted, the walls close in on every side and full
@@ -120,7 +122,18 @@ export class ExtremePost {
   this.grade = new ShaderPass(GradeShader);
   for (const [k, v] of Object.entries(s.grade)) this.grade.uniforms[k].value = v;
   this.composer.addPass(this.grade);
-  this.size = size.clone();
+  this.size = size.clone(); this.aoScale = s.aoScale; this.bloomDivisor = 2; this.light = false;
+ }
+
+ // Strained (adaptive resolution is at its floor and still short): the AO
+ // runs at a smaller share with a lighter blur, and bloom a size down. Both
+ // are soft effects, so the look barely moves while the frame gets cheaper.
+ // Lifted again once the frame rate recovers.
+ setLight(on) {
+  if (this.light === on) return;
+  this.light = on; this.aoScale = on ? EXTREME_POST.strainedAoScale : EXTREME_POST.aoScale; this.bloomDivisor = on ? 3 : 2;
+  this.ao.updatePdMaterial({ ...EXTREME_POST.denoise, samples: on ? EXTREME_POST.strainedDenoiseSamples : EXTREME_POST.denoise.samples });
+  this.size.set(0, 0); // re-size everything on the next frame
  }
 
  // Follows the canvas's drawing buffer (which already includes the preset's
@@ -131,8 +144,8 @@ export class ExtremePost {
   this.size.copy(size);
   this.composer.setSize(size.x, size.y);
   // The composer resizes every pass to full size; AO wants its own share.
-  this.ao.setSize(Math.max(1, Math.round(size.x * EXTREME_POST.aoScale)), Math.max(1, Math.round(size.y * EXTREME_POST.aoScale)));
-  this.bloom.setSize(size.x / 2, size.y / 2); // it halves again inside: bloom at a quarter
+  this.ao.setSize(Math.max(1, Math.round(size.x * this.aoScale)), Math.max(1, Math.round(size.y * this.aoScale)));
+  this.bloom.setSize(size.x / this.bloomDivisor, size.y / this.bloomDivisor); // it halves again inside: bloom at a quarter
  }
 
  // 0 outdoors, 1 with a roof fully lifted.

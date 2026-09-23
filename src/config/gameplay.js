@@ -13,8 +13,12 @@ export const RULES = Object.freeze({
   step: 1 / 60, speed: 7.2, acceleration: 10, braking: 14, radius: .38,
   // Keyboard and touch-walk turning: how fast it closes on the new direction,
   // its top turn speed (rad/s) and how quickly it spins up to it. Lower is
-  // heavier; heavy is what makes the in-between angles reachable with taps.
-  keyboardAimResponse: 5.5, keyboardAimMaxTurn: 5.5, keyboardAimSpinUp: 12,
+  // heavier. A quarter turn takes about a quarter second and a half turn about
+  // 0.4 s: quick, with just enough weight that a short tap still stops between
+  // the eight directions.
+  keyboardAimResponse: 9, keyboardAimMaxTurn: 10, keyboardAimSpinUp: 24,
+  // A dodge pressed up to this long before it is possible still happens (input buffer, s).
+  dodgeBuffer: .15,
   dodgeDistance: 3.2, dodgeDuration: .24, maxStamina: 2, dodgeStaminaCost: 1, staminaDelay: .6, staminaRecharge: 1.6, dodgeHitRadius: .18, dodgeDamageMultiplier: .5,
   sprayWarmup: .2, sprayAmmoTime: .25, sprayRange: 8, sprayInnerAngle: Math.PI * 8 / 180, sprayOuterAngle: Math.PI * 22 / 180,
   sprayInnerDPS: 196, sprayOuterDPS: 77, sprayTurnRate: Math.PI * .65, sprayRecoil: 2.8,
@@ -37,7 +41,7 @@ export const SPLASH = Object.freeze({ edge: .28, heavyCore: .06, heavyFrom: 4, h
 
 // ---- Nominal (rifle) ----
 // Baseline conventional weapon: metres, seconds, damage per bullet.
-export const RIFLE=Object.freeze({interval:.18,magazine:18,extendedMagazine:36,extendedCooldown:60,reload:1.8,damage:20,minDamage:14,effectiveRange:10,falloffEnd:22,maxRange:55,magazineLife:30,bulletSpeed:90,aimMoveMultiplier:.55,maxStamina:3,stationaryStamina:1.3,
+export const RIFLE=Object.freeze({interval:.165,magazine:20,extendedMagazine:40,extendedCooldown:60,reload:1.8,damage:22,minDamage:16,effectiveRange:10,falloffEnd:22,maxRange:55,magazineLife:30,bulletSpeed:90,aimMoveMultiplier:.55,maxStamina:3,stationaryStamina:1.3,
  // Shot spread in radians: from the hip, aimed in, and how much running at full speed widens either.
  hipSpread:.105,aimSpread:.054,movingSpread:.7});
 // Where the barrel actually is: a metre out in front of the player and a
@@ -66,6 +70,18 @@ export const GRENADE=Object.freeze({range:12,fuse:1.4,windup:.18,cooldown:25,rad
 // ---- Aim assist for direction-only aim (see auto-range.js) ----
 export const AUTO_RANGE = Object.freeze({
  min: 1.2, max: 14,
- halfAngle: { keyboard: 12 * Math.PI / 180, touch: 15 * Math.PI / 180 },
+ halfAngle: { keyboard: 12 * Math.PI / 180, touch: 18 * Math.PI / 180 },
  lateral: .8, keep: 1.35, settle: .35, playerBonus: .6,
+});
+
+// ---- Aim assist: sticking to a target (see aim-assist.js) ----
+// Angles in radians, times in seconds. pull: share of the gap to the target
+// the aim is bent by (1 = dead on). hold: how far the target may drift off the
+// player's own aim (from movement) before the lock breaks. release: how far
+// the player must turn away to let go. reacquire: how exactly they must aim
+// back to grab a target they just let go of within cooldown.
+const DEG = Math.PI / 180;
+export const AIM_ASSIST = Object.freeze({
+ touch: Object.freeze({ pull: .85, hold: 40 * DEG, release: 14 * DEG, cooldown: .5, reacquire: 4 * DEG, maxRange: 16 }),
+ keyboard: Object.freeze({ pull: .5, hold: 26 * DEG, release: 9 * DEG, cooldown: .5, reacquire: 3 * DEG, maxRange: 14 }),
 });

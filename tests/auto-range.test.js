@@ -21,20 +21,39 @@ test('a lock holds while two targets sit side by side, so the aim point does not
  assert.equal(autoRangeTarget({...player,aimZ:.02,aimX:Math.sqrt(1-.0004)},[left,right],'l').id,'l','a small drift keeps the lock');
 });
 
-test('assist only slides the reach out to the target, never moves the aim line, and never jumps',()=>{
+test('assist slides the reach out and bends the aim toward the target, without snapping',()=>{
  const sim=new Simulation({width:80,depth:80,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[{id:'t',x:10,z:.4,kind:'target'}]});
  sim.step({aimX:1,aimZ:0,autoRange:'keyboard'});
  const p=sim.player,first=Math.hypot(p.aimPointX-p.x,p.aimPointZ-p.z);
  assert.equal(p.autoTargetId,'t');
- assert.ok(first<RULES.focusDistance+.3,'it drifts rather than snapping onto the target');
- assert.ok(Math.abs(p.aimPointZ-p.z)<1e-9,'the dot stays on the line the player aimed');
+ assert.ok(first<RULES.focusDistance+.3,'the reach drifts rather than snapping onto the target');
  for(let i=0;i<90;i++)sim.step({aimX:1,aimZ:0,autoRange:'keyboard'});
- assert.ok(Math.abs(p.aimPointX-p.x-10)<.05,'it settles at the target distance');
+ assert.ok(Math.abs(Math.hypot(p.aimPointX-p.x,p.aimPointZ-p.z)-10)<.1,'it settles at the target distance');
+ assert.ok(p.aimZ>0,'the aim leans toward the target');
  for(let i=0;i<90;i++)sim.step({aimX:0,aimZ:1,autoRange:'keyboard'});
  assert.equal(p.autoTargetId,null);
  assert.ok(Math.abs(Math.hypot(p.aimPointX-p.x,p.aimPointZ-p.z)-RULES.focusDistance)<.05,'back to the default reach with nothing ahead');
  sim.step({aimX:1,aimZ:0,autoRange:false});
  assert.equal(p.autoTargetId,null,'mouse aim is never assisted');
+});
+
+test('touch assist sticks to the target while strafing, and lets go when the player turns away',()=>{
+ const target={id:'t',x:10,z:0,kind:'target'};
+ const sim=new Simulation({width:80,depth:80,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[target]});
+ const p=sim.player;
+ for(let i=0;i<30;i++)sim.step({aimX:1,aimZ:.15,autoRange:'touch'});
+ assert.equal(p.assistTargetId,'t','a rough aim picks it up');
+ // Strafe sideways for a second with the thumb held still: the aim follows.
+ for(let i=0;i<60;i++)sim.step({moveZ:1,aimX:1,aimZ:0,autoRange:'touch'});
+ assert.equal(p.assistTargetId,'t','moving does not break the lock');
+ const toTarget=Math.atan2(sim.targets[0].z-p.z,sim.targets[0].x-p.x),facing=Math.atan2(p.aimZ,p.aimX);
+ const raw=0;
+ assert.ok(Math.abs(facing-toTarget)<Math.abs(raw-toTarget)*.3,'the aim stays mostly on the target, not on the thumb');
+ // Now turn the aim steadily away from it.
+ let angle=0;for(let i=0;i<40;i++){angle+=.01;sim.step({aimX:Math.cos(angle),aimZ:Math.sin(angle),autoRange:'touch'});}
+ assert.equal(p.assistTargetId,null,'turning away lets go');
+ sim.step({aimX:Math.cos(angle),aimZ:Math.sin(angle),autoRange:'touch'});
+ assert.equal(p.assistTargetId,null,'and it does not grab straight back');
 });
 
 test('players outrank props and dummies, and touch gets a slightly wider cone than keys',()=>{

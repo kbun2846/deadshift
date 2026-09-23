@@ -1,31 +1,34 @@
 import {shotgunPreview} from './shotgun-model.js';
 import { staticPreview } from './weapon-preview.js';
 import { riflePreview } from './rifle-model.js';
-import { WEAPONS } from './items.js';
+import { WEAPONS, DEFAULT_WEAPON } from './items.js';
+import { DEFAULT_MAP, menuMaps } from './maps.js';
 import { NETWORK } from './config/network.js';
 import { savedName } from './online-play.js';
+import { createSettingsRows } from './lobby-settings.js';
+import { cleanSettings } from './config/match.js';
 
 export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete, online }) {
  let page=document.querySelector('[data-page]:not([hidden])')?.dataset.page||'home';
- let selectedMap='deadwater';
+ let selectedMap=DEFAULT_MAP;
  let weaponBack='maps';
  // In a multiplayer game the weapon page is the in-game picker; its back
  // arrow leaves multiplayer (see pickOnline below).
  let onlinePick=null,onlineBack=null;
- const back=()=>{if(onlinePick&&page==='weapons'){onlineBack?.();return;}if(page!=='home')show(page==='weapons'?weaponBack:page==='maps'||page==='online'?'modes':'home');};
+ const back=()=>{if(onlinePick&&page==='weapons'){onlineBack?.();return;}if(page!=='home')show(page==='weapons'?weaponBack:page==='host-setup'?'online':page==='maps'||page==='online'?'modes':'home');};
  const show=name=>{if(name==='maps')loadThumbnail();page=name;document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
  $('tutorial-entry').hidden=tutorialComplete;$('tutorial-mode').hidden=false;
  $('gamemodes').onclick=()=>show('modes');$('practice-mode').onclick=()=>show('maps');
  // Online: host a room (you get a code to share) or type a friend's code.
  // main.js does the connecting; this page only shows how it is going.
- const status=text=>{$('online-status').textContent=text||'';};
+ const status=text=>{$('online-status').textContent=text||'';$('host-status').textContent=text||'';};
  let connecting=false;
  const go=async request=>{
   if(connecting)return;connecting=true;
-  $('online-host').disabled=$('online-join').disabled=true;
+  $('online-host').disabled=$('online-join').disabled=$('host-create').disabled=true;
   try{await online(request,status);}
   catch(error){status(error.message||'Could not connect.');}
-  finally{connecting=false;$('online-host').disabled=$('online-join').disabled=false;}
+  finally{connecting=false;$('online-host').disabled=$('online-join').disabled=$('host-create').disabled=false;}
  };
  $('online-mode').hidden=!NETWORK.enabled;
  $('online-mode').onclick=()=>{status('');show('online');};
@@ -33,7 +36,15 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  // Room codes are always shown in capitals, whatever was typed.
  $('online-code').addEventListener('input',e=>{const el=e.target,at=el.selectionStart;el.value=el.value.toUpperCase();try{el.setSelectionRange(at,at);}catch{}});
  $('online-name').value=savedName();
- $('online-host').onclick=()=>go({role:'host',...who()});
+ // HOST A GAME: first the host sets up the game (the round settings, which
+ // they can change later in the lobby), then CREATE GAME opens the room and the
+ // lobby screen. The last setup is remembered.
+ const SETUP_KEY='deadshift-host-settings';
+ let hostSettings=(()=>{try{return cleanSettings(JSON.parse(localStorage.getItem(SETUP_KEY)||'{}'));}catch{return cleanSettings();}})();
+ const setupRows=createSettingsRows($('host-settings'),{onChange:(key,value)=>{hostSettings={...hostSettings,[key]:value};try{localStorage.setItem(SETUP_KEY,JSON.stringify(hostSettings));}catch{}setupRows.render({settings:hostSettings,editable:true});}});
+ setupRows.render({settings:hostSettings,editable:true});
+ $('online-host').onclick=()=>{if(!who().name.trim()){status('Enter a username first.');$('online-name').focus();return;}status('');show('host-setup');};
+ $('host-create').onclick=()=>go({role:'host',...who(),settings:hostSettings});
  $('online-join-form').onsubmit=e=>{e.preventDefault();go({role:'join',code:$('online-code').value,...who()});};
  // A shared link (?join=CODE) lands straight on this page and joins.
  const invite=NETWORK.enabled&&new URLSearchParams(location.search).get('join');
@@ -46,7 +57,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  // Home's tutorial goes straight into the basics: no weapon to pick for
  // walking and dashing. Gamemodes > Tutorial picks a weapon's own course.
  const goTutorial=()=>{weaponBack='modes';selectedMap='tutorial';chooseWeapons();};
- $('tutorial-entry').onclick=()=>{selectedMap='tutorial';launch('static','basics');};$('tutorial-mode').onclick=goTutorial;
+ $('tutorial-entry').onclick=()=>{selectedMap='tutorial';launch(DEFAULT_WEAPON,'basics');};$('tutorial-mode').onclick=goTutorial;
  const launch=(weapon,course)=>{
   if(onlinePick){const pick=onlinePick;onlinePick=onlineBack=null;$('intro').classList.add('hidden');document.querySelector('[data-page="weapons"] h2').textContent='weapons';pick(weapon);return;}
   const query=new URLSearchParams({map:selectedMap,weapon,play:'1',mode:selectedMap==='tutorial'?'tutorial':'practice'});
@@ -55,7 +66,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   else location.href='?'+query;
  };
  // Names and descriptions come from the item registry; only the 3D preview
- // renderers are wired up here.
+ // renderers are wired up here (a new weapon adds its preview function).
  const previews={static:staticPreview,rifle:riflePreview,shotgun:shotgunPreview};
  const weapons=WEAPONS.map(w=>({...w,preview:previews[w.id]}));
  for(const weapon of weapons){
@@ -67,7 +78,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   const description=document.createElement('span');description.className='weapon-description';description.textContent=weapon.description;
   select.append(picture,title,description);select.onclick=()=>launch(weapon.id);
   card.append(select);$('weapon-options').append(card);
-  card.loadPreview=()=>{if(!picture.src)picture.src=weapon.preview();};
+  // A weapon without a 3D preview yet simply shows its name and description.
+  card.loadPreview=()=>{if(!picture.src&&weapon.preview)picture.src=weapon.preview();};
  }
  const weaponList=$('weapon-options');
  const scrollFrame=document.createElement('div');scrollFrame.className='weapon-scroll-frame';
@@ -78,8 +90,20 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  weaponList.addEventListener('scroll',updateScrollCue,{passive:true});
  const scrollResize=new ResizeObserver(updateScrollCue);scrollResize.observe(weaponList);
  for(const card of weaponList.children)scrollResize.observe(card);
- $('tutorial-basics').onclick=()=>launch('static','basics');
- $('start').onclick=()=>{selectedMap=$('start').dataset.map||'deadwater';weaponBack='maps';chooseWeapons();};
+ $('tutorial-basics').onclick=()=>launch(DEFAULT_WEAPON,'basics');
+ // One card per map the Practice menu offers (maps.js menuMaps): the stretched
+ // name, and a top-down preview for the map already loaded on this page.
+ const stretched=text=>`<svg viewBox="0 0 166 19" preserveAspectRatio="none" aria-hidden="true"><text x="0" y="19" textLength="166" lengthAdjust="spacingAndGlyphs">${text}</text></svg>`;
+ const nameLines=name=>{const words=name.toUpperCase().split(/\s+/);const half=Math.ceil(words.length/2);return [words.slice(0,half).join(' '),words.slice(half).join(' ')||'\u00a0'];};
+ const mapCards=new Map();
+ for(const option of menuMaps()){
+  const card=document.createElement('button');card.className='map-choice';card.dataset.map=option.id;
+  const [first,second]=nameLines(option.name);
+  card.innerHTML=`<span class="map-thumbnail"></span><small class="map-mode">Practice</small><span class="map-caption"><strong>${stretched(first)}${stretched(second)}</strong></span>`;
+  card.querySelector('strong').setAttribute('aria-label',option.name);
+  card.onclick=()=>{selectedMap=option.id;weaponBack='maps';chooseWeapons();};
+  $('map-options').append(card);mapCards.set(option.id,card);
+ }
  let thumbnailScheduled=false;
  function loadThumbnail(){
   if(!thumbnail||thumbnailScheduled)return;thumbnailScheduled=true;
@@ -88,7 +112,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
    try{
     const source=typeof thumbnail==='function'?thumbnail():thumbnail;
     if(!source)return;
-    const image=document.createElement('img');image.src=source;image.alt='Top-down view of Deadwater Outpost spawn';$('map-thumbnail').replaceChildren(image);
+    const slot=mapCards.get(map.id)?.querySelector('.map-thumbnail');if(!slot)return;
+    const image=document.createElement('img');image.src=source;image.alt='Top-down view of '+map.name;slot.replaceChildren(image);
    }catch(error){thumbnailScheduled=false;console.warn('Map preview unavailable:',error);}
   }));
  }
@@ -119,6 +144,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const list=rows=>'<table class="controls-grid"><thead><tr><th scope="col">Action</th><th scope="col">Keybind</th></tr></thead><tbody>'+rows.map(([action,binding,note])=>'<tr><th scope="row">'+action+'</th><td>'+binding+(note?'<small>'+note+'</small>':'')+'</td></tr>').join('')+'</tbody></table>';
   $('settings-controls').innerHTML='<h3 class="controls-heading">General</h3>'+list(generalControls)+'<details class="weapon-control-entry weapons-group"><summary>Weapons</summary><div class="weapon-control-list">'+WEAPONS.map(weapon=>'<details class="weapon-control-entry"><summary>'+weapon.name+'</summary>'+list(weapon.controls||[])+'</details>').join('')+'</div></details>';
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">SHOW HUD CONTROL HINTS<input id="control-hints" type="checkbox" checked/></label>');
+ // Moved into Settings > Mobile by mobile-settings.js, with the opacity.
+ $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">AIM ASSIST<input id="aim-assist" type="checkbox" checked/></label>');
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting select-setting">MOBILE BUTTON OPACITY<select id="mobile-opacity"><option value="1">Solid · 100%</option><option value="0.7">Medium · 70%</option><option value="0.4">Faint · 40%</option></select></label>');
  const channels=[
   ['master','MASTER','Everything, including the mute bound to N.'],
@@ -143,5 +170,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   for(const card of $('weapon-options').children)card.loadPreview();
  };
  const cancelOnlinePick=()=>{if(!onlinePick)return;onlinePick=onlineBack=null;document.querySelector('[data-page="weapons"] h2').textContent='weapons';};
- return {back,openTab,pickOnline,cancelOnlinePick,get pickingOnline(){return !!onlinePick;}};
+ // The weapon page for a map (practice death screen: CHANGE WEAPON).
+ const pickWeapons=id=>{selectedMap=id;weaponBack=id==='tutorial'?'modes':'maps';chooseWeapons();};
+ return {back,openTab,pickOnline,cancelOnlinePick,pickWeapons,get pickingOnline(){return !!onlinePick;}};
 }

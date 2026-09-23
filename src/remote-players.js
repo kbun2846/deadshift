@@ -1,35 +1,28 @@
 // Other players in an online game. Same silhouette as your own gunslinger so
-// the world stays consistent, in a different colourway (dusty plum coat,
-// mustard scarf and base ring) so you never lose track of which one is you.
-// Each body is merged into one draw, and a name tag floats overhead.
+// the world stays consistent, in a colourway of their own, one per player slot
+// (coat, arms, hat band, scarf and base ring), so you never lose track of which
+// one is you and players can be told apart. No name floats over anyone: names
+// are in the lobby and on the scoreboard (Tab), next to the same colour.
+// Each body is merged into one draw.
 import * as THREE from 'three';
 import { RULES } from './config/gameplay.js';
 
-const COLOURS = { legs: '#3a3440', coat: '#6d5a78', face: '#d6b58a', brim: '#e7d3ad', crown: '#cdb487', band: '#4b3f5a', collar: '#d9b44a', arm: '#6a5876', gun: '#4e5458', ring: '#d9b44a' };
-
-// The canvas is cut to the text, so a short name is not a speck in a wide box.
-const TAG_HEIGHT = .5;
-function nameTag(name) {
- const font = '700 40px Arial', canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
- ctx.font = font;
- canvas.width = Math.ceil(ctx.measureText(name).width + 24); canvas.height = 56;
- ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
- ctx.lineJoin = 'round'; ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(28,22,16,.8)'; ctx.strokeText(name, canvas.width / 2, 30);
- ctx.fillStyle = '#f3e7c5'; ctx.fillText(name, canvas.width / 2, 30);
- const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
- const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false }));
- sprite.scale.set(TAG_HEIGHT * canvas.width / canvas.height, TAG_HEIGHT, 1);
- // Above the hat and a little north, which is "up" on screen, so the tag sits
- // over the head rather than on it. It does not turn with the player.
- sprite.position.set(0, 1.9, -.6); sprite.renderOrder = 20;
- return sprite;
-}
+const BASE = { legs: '#3a3440', face: '#d6b58a', brim: '#e7d3ad', crown: '#cdb487', gun: '#4e5458' };
+// One colourway per slot (0 is the host). `swatch` is the colour shown next to
+// the player's name in the lobby and on the scoreboard.
+export const PLAYER_COLOURS = Object.freeze([
+ { coat: '#4f6b5a', arm: '#4b6556', band: '#34463b', collar: '#c9d6a3', ring: '#b9d98a', swatch: '#b9d98a' },
+ { coat: '#6d5a78', arm: '#6a5876', band: '#4b3f5a', collar: '#d9b44a', ring: '#d9b44a', swatch: '#d9b44a' },
+ { coat: '#3f6474', arm: '#3c5f6e', band: '#2c4652', collar: '#8fd3e0', ring: '#8fd3e0', swatch: '#8fd3e0' },
+ { coat: '#7a4b3c', arm: '#744737', band: '#553328', collar: '#f0a07a', ring: '#f0a07a', swatch: '#f0a07a' },
+]);
+export const playerColour = slot => PLAYER_COLOURS[((slot | 0) % PLAYER_COLOURS.length + PLAYER_COLOURS.length) % PLAYER_COLOURS.length];
 
 export class RemotePlayers {
  constructor(view) { this.view = view; this.avatars = new Map(); }
 
- build(id, name) {
-  const v = this.view, c = COLOURS, root = new THREE.Group(), g = new THREE.Group(), body = new THREE.Group();
+ build(id, slot) {
+  const v = this.view, c = { ...BASE, ...playerColour(slot) }, root = new THREE.Group(), g = new THREE.Group(), body = new THREE.Group();
   root.add(g); g.add(body); v.scene.add(root);
   for (const x of [-.15, .15]) v.box(x, .14, 0, .18, .27, .27, c.legs, body);
   v.cylinder(0, .57, 0, .29, .63, c.coat, body, 8, .24);
@@ -44,8 +37,7 @@ export class RemotePlayers {
   v.batch(body);
   const ring = new THREE.Mesh(new THREE.RingGeometry(.49, .53, 40), new THREE.MeshBasicMaterial({ color: c.ring, transparent: true, opacity: .55, side: THREE.DoubleSide, depthWrite: false }));
   ring.rotation.x = -Math.PI / 2; ring.position.y = .065; g.add(ring);
-  const tag = nameTag(name || 'Player'); root.add(tag);
-  const avatar = { root, group: g, body, tag, name, seen: true };
+  const avatar = { root, group: g, body, slot, seen: true };
   this.avatars.set(id, avatar);
   return avatar;
  }
@@ -55,7 +47,9 @@ export class RemotePlayers {
  update(players, time) {
   for (const avatar of this.avatars.values()) avatar.seen = false;
   for (const p of players) {
-   const avatar = this.avatars.get(p.id) || this.build(p.id, p.name);
+   let avatar = this.avatars.get(p.id);
+   if (avatar && avatar.slot !== (p.slot ?? 1)) { this.remove(p.id); avatar = null; }
+   avatar ||= this.build(p.id, p.slot ?? 1);
    avatar.seen = true;
    avatar.root.position.set(p.x, 0, p.z);
    avatar.group.rotation.y = Math.atan2(-p.aimX, -p.aimZ);
@@ -72,12 +66,8 @@ export class RemotePlayers {
   const avatar = this.avatars.get(id); if (!avatar) return;
   avatar.root.removeFromParent();
   // The merged body geometry is this avatar's own; its material is shared with
-  // the world and stays. Sprites share one geometry across three.js, so only
-  // their texture and material go.
-  avatar.root.traverse(o => {
-   if (o.isMesh) { o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); }
-   if (o.isSprite) { o.material.map?.dispose(); o.material.dispose(); }
-  });
+  // the world and stays. The base ring's material is its own.
+  avatar.root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });
   this.avatars.delete(id);
  }
 

@@ -33,6 +33,7 @@ export function installSettingsPanel(settings, hooks) {
   // Paint the travelled part of the track; the thumb pseudo-element cannot.
   byId('fps-limit').style.setProperty('--fill', sliderFraction(settled) * 100 + '%');
   settings.controlHints = byId('control-hints').checked;
+  settings.aimAssist = byId('aim-assist').checked;
   settings.mobileOpacity = Number(byId('mobile-opacity').value);
   document.body.style.setProperty('--mobile-opacity', settings.mobileOpacity);
   byId('weapon').classList.toggle('hide-control-hints', !settings.controlHints);
@@ -51,8 +52,9 @@ export function installSettingsPanel(settings, hooks) {
  }));
  byId('graphics-preset').value = settings.quality; byId('fps-limit').value = String(fpsToSlider(settings.fps));
  byId('control-hints').checked = settings.controlHints;
+ byId('aim-assist').checked = settings.aimAssist;
  byId('mobile-opacity').value = String(settings.mobileOpacity);
- for (const id of ['graphics-preset', 'fps-limit', 'control-hints', 'mobile-opacity']) byId(id).addEventListener('change', applySettings);
+ for (const id of ['graphics-preset', 'fps-limit', 'control-hints', 'mobile-opacity', 'aim-assist']) byId(id).addEventListener('change', applySettings);
  // The slider needs to read live while dragged, not only on release.
  byId('fps-limit').addEventListener('input', applySettings);
  for (const channel of VOLUME_CHANNELS) {

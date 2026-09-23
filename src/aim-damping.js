@@ -16,13 +16,15 @@
 // the last degree so the turn settles instead of stopping dead.
 //
 // Nominal and Ballast only: Static aims by direction and never reads a point.
+import { usesTrigger } from './items.js';
 export const AIM_FEEL = Object.freeze({
  closeRange: 2,
  turnRate: 120,
  maxTurnSpeed: 18,
 });
 
-export const aimsByPoint = weapon => weapon === 'rifle' || weapon === 'shotgun';
+// Trigger weapons aim at a point (items.js input: 'trigger').
+export const aimsByPoint = weapon => usesTrigger(weapon);
 
 const wrap = angle => Math.atan2(Math.sin(angle), Math.cos(angle));
 

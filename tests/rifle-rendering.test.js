@@ -39,7 +39,7 @@ test('all presets keep projectiles and casings while scaling model and cosmetic 
   assert.equal(view.casings.count,1);assert.equal(view.bullets.count,1);assert.equal(view.trails.count,q.trail?1:0);
   assert.equal(view.casings.geometry.parameters.radialSegments,q.radialSegments);
   assert.equal(host.scene.children.length,sceneCount);
-  const model=makeRifle(q.detail),triangles=model.children.reduce((sum,o)=>sum+o.geometry.index.count/3,0);
+  const model=makeRifle(q.detail),triangles=model.children.reduce((sum,o)=>sum+(o.geometry.index?o.geometry.index.count:o.geometry.attributes.position.count)/3,0);
   // The ladder never goes down, and buys more geometry whenever the detail
   // level actually rises. Tiers that share a detail level — Extreme sits on
   // Quality's budget for now — share the model.

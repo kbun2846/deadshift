@@ -3,15 +3,19 @@
 // Each splat is one flat textured quad lying on whatever floor is under the
 // body (the ground outdoors, the floorboards inside), thrown along the
 // direction of the killing hit: a main pool, droplets flung ahead of it and a
-// few long streaks. It grows in over a fraction of a second, stays a minute,
-// then fades. The textures are drawn once on canvases (three shapes, so two
+// few long streaks. It grows in over a fraction of a second.
+// One stain per player: a death with an `owner` (you, or another player's slot
+// online) keeps that player's stain, like their body, until their next death;
+// then the older one fades out in REPLACE seconds and the ground is clean
+// again, so a player leaves at most their last death behind. A stain with no
+// owner stays a minute, then fades. The textures are drawn once on canvases (three shapes, so two
 // deaths never look stamped), shared by every splat; a splat only owns its
 // material, for the fade. Splats are capped per preset so a long match cannot
 // pile up blended quads on a phone (the oldest goes first).
 import * as THREE from 'three';
 
 export const SPLAT_CAP = Object.freeze({ potato: 6, performance: 8, balanced: 12, quality: 16, extreme: 20 });
-const LIFE = 60, FADE = 4, GROW = .35;
+const LIFE = 60, FADE = 4, GROW = .35, REPLACE = .6;
 
 // A splatter texture pointing along +x. `seed` varies the shape.
 function splatterTexture(seed) {
@@ -74,7 +78,9 @@ export class BloodSplatters {
  }
 
  // A death at (x, z). The hit came from direction (dx, dz): blood flies that way.
- add(x, z, dx = 0, dz = 0) {
+ add(x, z, dx = 0, dz = 0, owner = null) {
+  // That player's last stain gives way to this one.
+  if (owner !== null) for (const old of this.splats) if (old.owner === owner && !old.leaving) { old.leaving = true; old.leaveAge = 0; }
   this.textures ||= [1, 2, 3].map(splatterTexture);
   const length = Math.hypot(dx, dz), angle = length > 1e-6 ? Math.atan2(dz, dx) : Math.random() * Math.PI * 2;
   const material = new THREE.MeshBasicMaterial({ map: this.textures[Math.floor(Math.random() * 3)], transparent: true, depthWrite: false,
@@ -85,7 +91,7 @@ export class BloodSplatters {
   mesh.rotation.y = -angle; mesh.renderOrder = 2; mesh.scale.setScalar(size * .25);
   mesh.userData.size = size;
   this.view.scene.add(mesh);
-  this.splats.push({ mesh, age: 0 });
+  this.splats.push({ mesh, age: 0, owner, leaving: false, leaveAge: 0 });
   while (this.splats.length > this.cap) this.remove(this.splats.shift());
  }
 
@@ -94,8 +100,11 @@ export class BloodSplatters {
    splat.age += dt;
    const grow = Math.min(1, splat.age / GROW), eased = 1 - (1 - grow) ** 3;
    splat.mesh.scale.setScalar(splat.mesh.userData.size * (.25 + .75 * eased));
-   splat.mesh.material.opacity = Math.min(1, Math.max(0, (LIFE + FADE - splat.age) / FADE));
-   if (splat.age >= LIFE + FADE) { this.remove(splat); this.splats.splice(this.splats.indexOf(splat), 1); }
+   let opacity = 1, gone = false;
+   if (splat.leaving) { splat.leaveAge += dt; opacity = Math.max(0, 1 - splat.leaveAge / REPLACE); gone = splat.leaveAge >= REPLACE; }
+   else if (splat.owner === null) { opacity = Math.min(1, Math.max(0, (LIFE + FADE - splat.age) / FADE)); gone = splat.age >= LIFE + FADE; }
+   splat.mesh.material.opacity = opacity;
+   if (gone) { this.remove(splat); this.splats.splice(this.splats.indexOf(splat), 1); }
   }
  }
 

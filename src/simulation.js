@@ -7,9 +7,17 @@ import { RIFLE, resetRifle, stepRifle } from './rifle.js';
 import { targetRadius } from './target-radius.js';
 export { targetRadius };
 import { resetGrenades, stepGrenades } from './grenade.js';
-import { autoRangeTarget, autoRangeDistance, AUTO_RANGE } from './auto-range.js';
+import { autoRangeDistance, AUTO_RANGE } from './auto-range.js';
+import { assistAim, clearAssist } from './aim-assist.js';
+import { AIM_ASSIST } from './config/gameplay.js';
+const AIM_ASSIST_RANGE = Math.max(...Object.values(AIM_ASSIST).map(l => l.maxRange));
 // Tunable numbers live in config/gameplay.js; re-exported so existing imports keep working.
 import { RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_DAMAGE_MULTIPLIER, boostedHexDamage } from './config/gameplay.js';
+import { usesTrigger } from './items.js';
+
+// Each trigger weapon's own tick (fire, reload, its extras). Static's orbs,
+// hex and stream run inline in step() below. A new weapon adds its line here.
+const WEAPON_STEPS = { rifle: stepRifle, shotgun: stepShotgun };
 export { RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH };
 
 
@@ -164,6 +172,25 @@ export class Simulation {
     return !buildingWalls(room).some(b => !b.playerOnly && segmentBox(this.player.x, this.player.z, x, z, b, .09) !== null);
   }
 
+  // Targets aim assist may use: near enough to matter, then only those the
+  // player can see (the cheap range check first; sight rays are the cost).
+  assistTargets() {
+    const p = this.player, reach = AIM_ASSIST_RANGE;
+    return this.targets.filter(t => !(t.hp !== undefined && t.hp <= 0) && Math.hypot(t.x - p.x, t.z - p.z) <= reach && this.canSeeTarget(t.x, t.z));
+  }
+
+  // Can the player actually see something standing at (x, z)? Not if it is
+  // under a roof (inside a building the player is not in: its roof is down),
+  // not through a wall from indoors (only out through doors and windows, the
+  // same sight lines the dark interior shading shows), and not behind cover
+  // that blocks sight outdoors. Aim assist and target lock only use what
+  // passes this.
+  canSeeTarget(x, z, radius = .2) {
+    const room = this.map.buildings.find(b => buildingContains(b, { x, z }));
+    if (room && room !== this.interior) return false;
+    return this.canSeeEntity(x, z, radius);
+  }
+
   canSeeEntity(x, z, radius=.5, includeInterior=true) {
     if(includeInterior&&!this.canAimAt(x,z))return false;
     const dx=x-this.player.x,dz=z-this.player.z,length=Math.hypot(dx,dz)||1;
@@ -177,7 +204,7 @@ export class Simulation {
 
   step(input, dt = RULES.step) {
     if(this.player.hp<=0){this.killPlayer();return;}
-    if(this.weapon==='rifle'||this.weapon==='shotgun')input={...input,spray:false,hex:false,seed:false,launch:false};
+    if(usesTrigger(this.weapon))input={...input,spray:false,hex:false,seed:false,launch:false};
     if (this.worldAuthority) stepCrops(this, dt, (a, b) => !this.colliders.some(c => !c.playerOnly && segmentBox(a.x, a.z, b.x, b.z, c) !== null));
     if(this.player.dead)return;
     if(this.dev.ammo||this.dev.orbs)this.ammo=RULES.maxSeeds; if(this.dev.cooldowns)this.hexCooldown=0; if(this.dev.stamina)this.player.stamina=this.maxStamina;
@@ -200,7 +227,12 @@ export class Simulation {
     const iz = length ? (input.moveZ || 0) / Math.max(1, length) : 0;
     const moveSpeed=RULES.speed*(input.aiming?RIFLE.aimMoveMultiplier:1);
     if (wasDodging && !p.dodgeRemaining) { p.vx = ix * moveSpeed; p.vz = iz * moveSpeed; }
-    if (input.dodge && !p.dodgeRemaining && p.stamina + 1e-8 >= RULES.dodgeStaminaCost && p.hp > 0) {
+    // A dodge pressed a moment too early (still mid-dodge, or a charge just
+    // short) is held for RULES.dodgeBuffer and happens the instant it can,
+    // instead of being dropped.
+    p.dodgeQueued = input.dodge ? RULES.dodgeBuffer : Math.max(0, (p.dodgeQueued || 0) - dt);
+    if (p.dodgeQueued > 0 && !p.dodgeRemaining && p.stamina + 1e-8 >= RULES.dodgeStaminaCost && p.hp > 0) {
+      p.dodgeQueued = 0;
       // Movement input first, then whatever momentum is left, and failing both
       // the way the player is facing: standing still and hitting dodge used to
       // do nothing at all, which reads as the input being dropped.
@@ -224,8 +256,12 @@ export class Simulation {
       const distance = RULES.dodgeDistance / RULES.dodgeDuration * ((end - age) + .4 * RULES.dodgeDuration / Math.PI * (Math.sin(Math.PI * end / RULES.dodgeDuration) - Math.sin(Math.PI * age / RULES.dodgeDuration)));
       p.vx = p.dodgeX * distance / dt; p.vz = p.dodgeZ * distance / dt;
     }
-    if (Math.hypot(input.aimX, input.aimZ) > .001) {
-      const desired = Math.atan2(input.aimZ, input.aimX), current = Math.atan2(p.aimZ, p.aimX);
+    // Aim assist (aim-assist.js) bends the asked-for direction toward a locked
+    // target; mouse aim (autoRange false) goes through untouched.
+    const hasAim = Math.hypot(input.aimX, input.aimZ) > .001;
+    if (!input.autoRange || !hasAim) clearAssist(p);
+    if (hasAim) {
+      const desired = input.autoRange ? assistAim(p, this.assistTargets(), Math.atan2(input.aimZ, input.aimX), input.autoRange) : Math.atan2(input.aimZ, input.aimX), current = Math.atan2(p.aimZ, p.aimX);
       const delta = Math.atan2(Math.sin(desired - current), Math.cos(desired - current));
       const limit = this.spray.active ? RULES.sprayTurnRate * dt : Math.PI;
       // Ease digital aim along the shortest arc, keeping shots and the model aligned.
@@ -251,16 +287,22 @@ export class Simulation {
     // Aim assist for direction-only aim helps with distance and nothing else:
     // the aim point stays on the line the player chose and slides, unhurried,
     // out or in to whatever that line points at. Mouse aim never gets it.
-    const assisted = input.autoRange && !Number.isFinite(input.aimPointX);
-    const lock = assisted ? autoRangeTarget(p, this.targets, p.autoTargetId, input.autoRange) : null;
+    // With a lock, the reach slides to the target (a finger's own point is
+    // overridden: the assist has decided what it is aiming at). Without one, a
+    // finger or cursor point is used as given, and direction-only aim reaches
+    // the default distance.
+    const lock = input.autoRange && p.assistTargetId != null ? this.targets.find(t => t.id === p.assistTargetId) : null;
     p.autoTargetId = lock ? lock.id : null;
+    const pointed = Number.isFinite(input.aimPointX) && Number.isFinite(input.aimPointZ);
+    const assistedReach = input.autoRange && (lock || !pointed);
     const wantedReach = lock ? autoRangeDistance(p, lock) : RULES.focusDistance;
-    p.aimReach = assisted ? (p.aimReach ?? RULES.focusDistance) + (wantedReach - (p.aimReach ?? RULES.focusDistance)) * (1 - Math.exp(-dt / AUTO_RANGE.settle)) : RULES.focusDistance;
-    p.aimPointX = Number.isFinite(input.aimPointX) ? input.aimPointX : p.x + p.aimX * p.aimReach;
-    p.aimPointZ = Number.isFinite(input.aimPointZ) ? input.aimPointZ : p.z + p.aimZ * p.aimReach;
+    if (!assistedReach) p.aimReach = pointed ? Math.hypot(input.aimPointX - p.x, input.aimPointZ - p.z) : RULES.focusDistance;
+    else p.aimReach = (p.aimReach ?? RULES.focusDistance) + (wantedReach - (p.aimReach ?? RULES.focusDistance)) * (1 - Math.exp(-dt / AUTO_RANGE.settle));
+    const usePoint = pointed && !lock;
+    p.aimPointX = usePoint ? input.aimPointX : p.x + p.aimX * p.aimReach;
+    p.aimPointZ = usePoint ? input.aimPointZ : p.z + p.aimZ * p.aimReach;
     stepGrenades(this,input,dt,segmentBox);
-    if(this.weapon==='rifle')stepRifle(this,input,dt,{segmentBox,segmentCircle});
-    if(this.weapon==='shotgun')stepShotgun(this,input,dt,{segmentBox,segmentCircle});
+    WEAPON_STEPS[this.weapon]?.(this,input,dt,{segmentBox,segmentCircle});
     this.recharge(dt);
     this.seedCooldown -= dt;
     if (this.worldAuthority) for (const prop of this.props) prop.flash = Math.max(0, prop.flash - dt);

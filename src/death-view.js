@@ -85,6 +85,13 @@ export class DeathView{
    b.model.rotation.set((b.angle+age*b.spin)*(1-flat)+b.flatAngle*flat,b.angle,landed?0:(1-flat)*age*b.spin*.45);
   }
  }
+ // Respawned: the body stays where it fell (it goes at the next death, a map
+ // reset or leaving), settled, and the camera and the player are handed back.
+ release(){
+  if(!this.active)return;
+  this.update(Math.max(0,6-this.age));
+  this.active=false;this.view.player.visible=true;
+ }
  clear(){
   this.active=false;this.view.player.visible=true;
   this.corpse?.dispose();this.corpse=null;

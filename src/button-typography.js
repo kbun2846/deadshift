@@ -3,7 +3,15 @@ export function installButtonTypography(root){
  const context=document.createElement('canvas').getContext('2d');
  const tracked=new Set();let queued=false;
  const schedule=()=>{if(!queued){queued=true;requestAnimationFrame(()=>{queued=false;refresh();});}};
- const resize=new ResizeObserver(schedule);
+ // Fitted before the first paint, not a frame later: a page that has just been
+ // shown gets its size (ResizeObserver) and new buttons arrive (MutationObserver)
+ // after layout but before the browser paints, so fitting right there means the
+ // stretched lettering is what is painted first. Deferring it to the next frame
+ // painted one frame of plain text first. Labels not fitted yet stay invisible
+ // (menu-theme.css), so nothing unfitted is ever shown.
+ let fitting=false;
+ const now=()=>{if(fitting)return;fitting=true;try{refresh();}finally{fitting=false;}};
+ const resize=new ResizeObserver(now);
  function refresh(){
   // All map-mode badges use the same fitted ink treatment, including new cards.
   for(const badge of root.querySelectorAll('.map-mode')){
@@ -46,10 +54,11 @@ export function installButtonTypography(root){
    const sx=Math.min(.86,available/Math.max(1,inkWidth,m.width)),sy=height*1.08/(ascent+descent);
    const x=css.textAlign==='right'?available-m.actualBoundingBoxRight*sx:Math.max(0,m.actualBoundingBoxLeft)*sx;
    label.style.transform=`matrix(${sx},0,0,${sy},${x},${-top*sy-height*.04})`;
+   label.dataset.fit='';
   }
  }
  new MutationObserver(records=>{
-  if(records.some(r=>r.target.nodeType===1&&(r.target.closest('button')||[...r.addedNodes].some(n=>n.nodeType===1&&(n.matches('button')||n.querySelector('button'))))))schedule();
+  if(records.some(r=>r.target.nodeType===1&&(r.target.closest('button')||[...r.addedNodes].some(n=>n.nodeType===1&&(n.matches('button')||n.querySelector('button'))))))now();
  }).observe(root,{childList:true,subtree:true});
  document.fonts.ready.then(schedule);refresh();
 }

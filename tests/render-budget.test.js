@@ -14,7 +14,7 @@ test('45 fps persists and adaptive resolution respects capped frame pacing',()=>
  }
 });
 
-test('adaptive resolution lowers sustained overload, recovers slowly and leaves quality unchanged',()=>{
+test('adaptive resolution lowers sustained overload, recovers slowly, and strains only at its floor',()=>{
  const adaptive=new AdaptiveResolution();
  for(let i=0;i<360;i++)adaptive.sample(1/30,true,'performance',60);
  assert.ok(Math.abs(adaptive.scale-.7)<1e-6);
@@ -23,12 +23,18 @@ test('adaptive resolution lowers sustained overload, recovers slowly and leaves 
  assert.equal(adaptive.scale,low,'brief recovery must not cause flicker');
  for(let i=0;i<360;i++)adaptive.sample(1/60,true,'performance',60);
  assert.ok(adaptive.scale>low&&adaptive.scale<1);
- assert.equal(adaptive.sample(1/30,true,'quality',60),1);
+ assert.equal(adaptive.sample(1/30,true,'potato',60),1,'Potato stays fixed');
  adaptive.reset();assert.equal(adaptive.scale,1);
  // Extreme sheds at most a fifth of its resolution.
  const extreme=new AdaptiveResolution();
  for(let i=0;i<600;i++)extreme.sample(1/30,true,'extreme',60);
  assert.ok(Math.abs(extreme.scale-.8)<1e-6);
+ assert.ok(extreme.strained,'still slow at the floor: strained');
+ for(let i=0;i<300;i++)extreme.sample(1/60,true,'extreme',60);
+ assert.ok(!extreme.strained,'a long healthy run lifts the strain first');
+ const quality=new AdaptiveResolution();
+ for(let i=0;i<600;i++)quality.sample(1/30,true,'quality',60);
+ assert.ok(Math.abs(quality.scale-.85)<1e-6,'Quality sheds at most 15%');
 });
 
 test('every graphics tier bounds pixel work on phones and large high-DPI monitors',()=>{
@@ -68,4 +74,11 @@ test('grenade renderer does not hide Ballast supporting hand or show a held gren
  assert.equal(grenades.arm.visible,true);
  assert.equal(grenades.held.visible,false);
  assert.equal(grenades.rangeMarker.visible,false);
+});
+
+test('a frame held back while the GPU is busy still counts toward the next one',()=>{
+ const budget=new RenderBudget(60);
+ assert.equal(budget.hold(1/60),0,'nothing drawn');
+ const delta=budget.tick(1/60);
+ assert.ok(Math.abs(delta-2/60)<1e-9,'the next drawn frame covers both');
 });
