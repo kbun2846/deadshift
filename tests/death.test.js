@@ -75,3 +75,13 @@ test('death drops a visible gun, spreads blood, lands particles and cleans resou
  geometry.dispose();material.dispose();
 });
 
+
+test('every player death leaves blood on the floor: your own and other players online', async () => {
+ const { readFileSync } = await import('node:fs');
+ const { SPLAT_CAP } = await import('../src/blood-splatter.js');
+ const renderer = readFileSync(new URL('../src/renderer.js', import.meta.url), 'utf8');
+ assert.ok(/e\.type==='playerDeath'\)\{this\.blood\.add\(/.test(renderer), 'your death splats');
+ assert.ok(/e\.type === 'playerDeath'\) \{ this\.blood\.add\(/.test(renderer), 'other players\' deaths splat too');
+ for (const [preset, cap] of Object.entries(SPLAT_CAP)) assert.ok(cap >= 6 && cap <= 20, preset);
+ assert.ok(SPLAT_CAP.potato <= SPLAT_CAP.extreme, 'cheaper presets keep fewer');
+});

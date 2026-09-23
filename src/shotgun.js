@@ -1,4 +1,5 @@
 import { SHOTGUN } from './config/gameplay.js';
+import { targetRadius } from './target-radius.js';
 export { SHOTGUN };
 export const shotgunRange=charge=>SHOTGUN.range+(SHOTGUN.chargedRange-SHOTGUN.range)*charge;
 export const shotgunDamage=(charge,firstShell=false)=>100+200*charge+(firstShell?15:0);
@@ -9,7 +10,7 @@ export function shotgunPelletContact(b,target){
  // At full charge, centered shells usually total 230–280; perfect 300s stay rare.
  const heavy=Math.min(1,(b.charge-.5)*2);
  const contact=b.contactSample<.9-.25*heavy?1:.55*heavy;
- const radius=target.kind==='dummy'?.42:.55;
+ const radius=targetRadius(target);
  const offCenter=Math.abs((target.x-b.x)*b.dz-(target.z-b.z)*b.dx);
  return contact*(offCenter<=radius*.55?1:.55);
 }
@@ -37,7 +38,7 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
   const travel=Math.min(85*dt,b.range-b.travel),ex=b.x+b.dx*travel,ez=b.z+b.dz*travel;
   let first=1,target=null,prop=null,blocked=false;
   for(const c of sim.colliders){if(c.playerOnly)continue;const t=segmentBox(b.x,b.z,ex,ez,c,.025);if(t!==null&&t<=first){first=t;target=null;prop=sim.props.find(v=>v.id===c.propId);blocked=true;}}
-  for(const t of sim.targets){if(t.hp<=0)continue;const f=segmentCircle(b.x,b.z,ex,ez,t.x,t.z,t.kind==='dummy'?.42:.55);if(f!==null&&f<first){first=f;target=t;prop=null;blocked=true;}}
+  for(const t of sim.targets){if(t.hp<=0)continue;const f=segmentCircle(b.x,b.z,ex,ez,t.x,t.z,targetRadius(t));if(f!==null&&f<first){first=f;target=t;prop=null;blocked=true;}}
   b.x+=(ex-b.x)*first;b.z+=(ez-b.z)*first;b.travel+=travel*first;
   if(blocked){
    const damage=b.damage*shotgunFalloff(b.travel,b.range);

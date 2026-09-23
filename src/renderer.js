@@ -50,6 +50,7 @@ import { freezeTransforms } from './frozen-transforms.js';
 import { BlobShadows } from './blob-shadows.js';
 import { DetailFX, ELECTRIC as FX_ELECTRIC, orbBlastScale } from './effects-detail.js';
 import { mapLook } from './map-look.js';
+import { BloodSplatters } from './blood-splatter.js';
 import { RIFLE_MUZZLE } from './config/gameplay.js';
 import { setExtremeSurfaces } from './extreme-surfaces.js';
 
@@ -236,6 +237,8 @@ export class WorldView {
     this.cursorWorld = new THREE.Vector3();
     this.makeAmbient();
     this.surfaceMarks = new SurfaceMarks(this);
+    // Blood on the floor wherever a player dies (blood-splatter.js).
+    this.blood = new BloodSplatters(this);
     // A canvas, not a masked div. The shroud used to be a full-viewport SVG
     // data URI carrying an erode and a gaussian blur, rebuilt twenty times a
     // second and handed to `mask-image`. Three separate problems came out of
@@ -1466,8 +1469,32 @@ export class WorldView {
     this.fxLightLevel = Math.max(this.fxLightLevel, level);
   }
 
+  // An event from another player's gun or body (multiplayer). The handlers
+  // below assume the shooter is you (muzzle flashes at your gun, trails from
+  // your muzzle), so for the length of the call the shooter stands in for you.
+  // Orb ids are made unique per player (projectiles.js), and so are the beam
+  // ids of their launches and trails.
+  netEvent(e, shooter, slot = 0) {
+    if (!shooter) shooter = { x: e.x ?? 0, z: e.z ?? 0, aimX: 1, aimZ: 0 };
+    const base = (slot + 1) * 1e6;
+    if (e.type === 'playerDeath') { this.blood.add(e.x, e.z, e.directionX, e.directionZ); this.burst(e.x, e.z, 34, 'kill'); this.fx.impact?.(e.x, e.z, this.kickedDustColor(e.x, e.z)); return; }
+    if (['grenadeThrow', 'shotgunReload', 'rifleReloaded', 'playerDamage', 'outgoingDamage', 'sprayStart'].includes(e.type)) return;
+    if (e.type === 'rifleShot') {
+      this.muzzleLight(1.15, 5);
+      this.fx.muzzle('rifle', shooter.x + shooter.aimX * (RIFLE_MUZZLE.forward + .12) - shooter.aimZ * RIFLE_MUZZLE.lateral, .76, shooter.z + shooter.aimZ * (RIFLE_MUZZLE.forward + .12) + shooter.aimX * RIFLE_MUZZLE.lateral, shooter.aimX, shooter.aimZ);
+      return;
+    }
+    if (e.type === 'shotgunShot') { this.fx.muzzle('ballast', e.x, .77, e.z, shooter.aimX, shooter.aimZ, e.charge || 0); return; }
+    if (e.type === 'launch') e = { ...e, paths: (e.paths || []).map(p => ({ ...p, id: base + p.id })) };
+    if (e.type === 'trailEnd') e = { ...e, id: base + e.id };
+    const savedSim = this.lastSim, savedMuzzle = this.staticMuzzle.clone();
+    this.lastSim = Object.assign(Object.create(savedSim || {}), { player: { ...shooter, dodgeX: shooter.vx || 0, dodgeZ: shooter.vz || 0 } });
+    this.staticMuzzle.set(shooter.x + shooter.aimX * .95 + shooter.aimZ * .25, .76, shooter.z + shooter.aimZ * .95 - shooter.aimX * .25);
+    try { this.event(e); } finally { this.lastSim = savedSim; this.staticMuzzle.copy(savedMuzzle); }
+  }
+
   event(e) {
-    if(e.type==='playerDeath'){this.deathView??=new DeathView(this);this.deathView.start(e);return;}
+    if(e.type==='playerDeath'){this.blood.add(e.x,e.z,e.directionX,e.directionZ);this.deathView??=new DeathView(this);this.deathView.start(e);return;}
     if(e.type==='grenadeExplosion'){this.explosion(e);return;}
     if(e.type==='grenadeThrow'){this.grenadeView?.thrown(e);}
     if(e.type==='shotgunShot'){this.muzzleLight(1.1,14+(e.charge||0)*14);const p=this.lastSim?.player;if(p)this.fx.muzzle('ballast',e.x,.77,e.z,p.aimX,p.aimZ,e.charge||0);}
@@ -1740,7 +1767,9 @@ export class WorldView {
     this.player.position.set(renderX, 0, renderZ);
     // Dev "remove my player" hides the body (the death view hides it too, so
     // only give it back when no death is playing).
-    const ghost = !!sim.dev?.ghost;
+    // Online, a player on the weapon menu (or down after their death has
+    // played out) has no body in the world either.
+    const ghost = !!sim.dev?.ghost || (sim.player.dead && !this.deathView?.active);
     if (ghost) this.player.visible = false; else if (!this.deathView?.active) this.player.visible = true;
     this.updateFootprints(sim, dt, active && !ghost, renderX, renderZ);
     this.player.rotation.y = Math.atan2(-p.aimX, -p.aimZ);
@@ -1817,8 +1846,10 @@ export class WorldView {
         roof.castsShadow=castsShadow;
       }
     }
+    // Practice targets not in the sim's list (multiplayer has none) stay hidden.
+    if (sim.targets.length !== this.targets.size) for (const g of this.targets.values()) g.visible = false;
     for (const t of sim.targets) {
-      const g = this.targets.get(t.id); g.position.set(t.x, 0, t.z);
+      const g = this.targets.get(t.id); if (!g) continue; g.position.set(t.x, 0, t.z);
       // Portal shaders clip body, health bar and shadows indoors. Outdoors,
       // normal camera depth handles cover; ground-level sight rays must not hide
       // an entity that is exposed in the overhead view.
@@ -1931,7 +1962,7 @@ export class WorldView {
       this.blobShadows.update(i => sim.props[i]?.hp > 0, movers);
     }
     this.cropView.update(sim, dt);
-    this.updateParticles(dt); this.updateBlasts(dt);this.electric.updateAftershocks(dt,sim); this.electric.drift(sim.seeds,sim.player,sim.colliders,dt); this.electric.charge(sim.hexOrbs,dt,sim.player); this.electric.syncSpin(sim.hexSpin,sim.player,dt); this.electric.update(dt); this.electric.boundary(sim.hexOrbs);
+    this.updateParticles(dt); this.updateBlasts(dt); this.blood.update(dt);this.electric.updateAftershocks(dt,sim); this.electric.drift(sim.seeds,sim.player,sim.colliders,dt); this.electric.charge(sim.hexOrbs,dt,sim.player); this.electric.syncSpin(sim.hexSpin,sim.player,dt); this.electric.update(dt); this.electric.boundary(sim.hexOrbs);
     for (const ring of this.rings) {
       ring.age += dt; ring.mesh.scale.setScalar(1 + ring.age * 8); ring.mesh.material.opacity = Math.max(0, 1 - ring.age * 2.5);
     }

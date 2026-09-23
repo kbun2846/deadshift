@@ -36,3 +36,21 @@ test('putting one control back forgets only that control, so it rejoins the corn
  assert.deepEqual(next['touch-hex'],saved['touch-hex']);
  assert.ok(saved['touch-dodge'],'the saved layout it came from is left alone');
 });
+
+test('the layout editor also opens from the menus, over a still frame of the map with no HUD', async () => {
+ const { readFileSync } = await import('node:fs');
+ const settings = readFileSync(new URL('../src/mobile-settings.js', import.meta.url), 'utf8');
+ const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+ const css = readFileSync(new URL('../src/mobile-controls.css', import.meta.url), 'utf8');
+ assert.ok(settings.includes("if (!started) { preview?.(); return; }"), 'outside a match the button opens the preview');
+ assert.ok(!settings.includes('Start a match to edit'), 'and no longer asks for a match');
+ assert.ok(/function openLayoutPreview\(\)\{[\s\S]*view\.render\(\)[\s\S]*touchLayout\.start\(\)/.test(main), 'renders the map, then edits');
+ assert.ok(main.includes('canEdit:()=>(started||layoutPreview)&&!deathActive'));
+ assert.ok(/body\.layout-preview #game :is\([^)]*health-hud[^)]*#weapon/.test(css), 'the HUD is hidden');
+});
+
+test('the tutorial weapon list is titled "tutorial weapons"', async () => {
+ const { readFileSync } = await import('node:fs');
+ const menu = readFileSync(new URL('../src/menu.js', import.meta.url), 'utf8');
+ assert.ok(menu.includes("textContent=selectedMap==='tutorial'?'tutorial weapons':'weapons'"));
+});

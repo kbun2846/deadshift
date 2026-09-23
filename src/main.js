@@ -26,6 +26,8 @@ import { tutorialMapFor, Tutorial } from './tutorial.js';
 import { createTutorialCard } from './tutorial-card.js';
 import { installMenu } from './menu.js';
 import { createOnlinePlay } from './online-play.js';
+import { drawSim } from './net/projectiles.js';
+import { createMultiplayerHud } from './multiplayer-hud.js';
 import { TAB_TITLE } from './version.js';
 import { installUiSounds } from './ui-sounds.js';
 import { maps } from './maps.js';
@@ -162,6 +164,7 @@ async function start(weapon=sim.weapon,course) {
 
 function returnToMenu(){
   online.close();perfReadout.reset();devWindow.hide();
+  if(choosing)menuFlow.cancelOnlinePick();choosing=false;lastKiller=null;onlineMenus(false);view.deathView?.clear();
   running=false;started=false;paused=false;mapOpen=false;mapWasPaused=false;settingsOpen=false;
   releaseInput();reset();sound.suspend(true);
   document.body.classList.remove('playing','paused');
@@ -184,7 +187,7 @@ function releaseInput() {
 
 function setPaused(value) {
   if (!started || deathActive || value === paused) return;
-  paused = value; running = !value; releaseInput();
+  paused = value; running = !value && !choosing; releaseInput();
   $('pause-panel').classList.toggle('hidden', !value); $('reticle').classList.toggle('hidden', value);
   document.body.classList.toggle('paused', value); sound.suspend(value); dirty = true;
   if (value) $('resume').focus(); else $('world').focus();
@@ -332,8 +335,80 @@ function thumbnail(){
 // Online play (see AGENTS.md > Networking). Practice overrides never go online:
 // the sessions reset sim.dev every tick and P / O / map teleport are refused.
 const online=createOnlinePlay({$,map,sim,createSim:m=>new Simulation(m),start,toast:text=>toast(text,2600),leave:()=>$('main-menu').click(),
- server:import.meta.env.DEV?params.get('peerhost'):null});
+ server:import.meta.env.DEV?params.get('peerhost'):null,pickWeapon:()=>openWeaponPicker()});
 const menuFlow=installMenu({$,map,thumbnail,start,openSettings,closeSettings,returnToMenu,tutorialComplete:readTutorialComplete(),online:(request,status)=>online.request(request,status)});
+// Multiplayer flow (see AGENTS.md > Multiplayer): pick a weapon over the
+// running game, fight, die, respawn after 5 s or change weapon, leave.
+let choosing=false,lastKiller=null;
+// Online the death card comes up quickly: the respawn is only 5 seconds away.
+const ONLINE_DEATH_CARD=1.2;
+const mpHud=createMultiplayerHud($('game'),{changeWeapon:()=>changeWeaponOnline(),leave:()=>$('main-menu').click()});
+const changeWeaponBtn=document.createElement('button');changeWeaponBtn.id='change-weapon';changeWeaponBtn.className='secondary';changeWeaponBtn.textContent='CHANGE WEAPON';changeWeaponBtn.hidden=true;
+$('pause-settings').before(changeWeaponBtn);changeWeaponBtn.onclick=()=>changeWeaponOnline();
+function onlineMenus(on){
+ changeWeaponBtn.hidden=!on;$('reset').hidden=on;
+ $('main-menu').textContent=on?'LEAVE MULTIPLAYER':'MAIN MENU';
+ mpHud.active=on;
+}
+// Death screen and body from the last life, gone.
+function clearDeath(){
+ if(deathActive){deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');}
+ view.deathView?.clear();mpHud.hideDeath();
+}
+function openWeaponPicker(){
+ if(!online.active)return;
+ onlineMenus(true);
+ choosing=true;running=false;paused=false;releaseInput();
+ for(const id of ['pause-panel','settings-panel','map-panel'])$(id).classList.add('hidden');
+ settingsOpen=mapOpen=false;document.body.classList.remove('paused');mpHud.hideBoard();
+ menuFlow.pickOnline(weapon=>chooseWeaponOnline(weapon),()=>$('main-menu').click());
+}
+function chooseWeaponOnline(weapon){
+ choosing=false;clearDeath();
+ sim.weapon=['rifle','shotgun'].includes(weapon)?weapon:'static';
+ online.choose(sim.weapon);
+ applyInputPreference();
+ running=true;paused=false;sound.suspend(false);
+ ['weapon','reticle'].forEach(id=>$(id).classList.remove('hidden'));
+ previousPlayer={...sim.player};$('world').focus();updateHUD();
+}
+// Back to the weapon menu mid-game (pause or death card): out of the world
+// until the next pick, which spawns you fresh in a random building.
+function changeWeaponOnline(){
+ if(!online.active)return;
+ online.toMenu();clearDeath();openWeaponPicker();
+}
+// Loud enough to hear from anyone's gun; the rest stay with their owner.
+const NET_SOUNDS=new Set(['rifleShot','shotgunShot','launch','explosion','grenadeExplosion','propBreak','hexPulse','sprayStart']);
+function netEvents(){
+ const myId=online.myId,isClient=!online.isHost;
+ for(const {by,e,shooter,slot} of online.events()){
+  if(by===myId){
+   // A joiner's own gun, as the host fired it: your walking already made its
+   // own dust, and your orbs are drawn under ids unique to your slot.
+   if(e.type==='dodge')continue;
+   const base=(slot+1)*1e6;
+   const own=e.type==='launch'?{...e,paths:(e.paths||[]).map(p=>({...p,id:base+p.id}))}:e.type==='trailEnd'?{...e,id:base+e.id}:e;
+   if(isClient)event(own);
+   continue;
+  }
+  view.netEvent(e,shooter,slot);
+  if(NET_SOUNDS.has(e.type))sound.event(e);
+ }
+}
+function multiplayerFrame(){
+ const myId=online.myId,lines=online.feed();
+ for(const line of lines)if(line.victims.includes(myId)){lastKiller=line.killer&&line.killer!==myId?line.killerName:null;mpHud.setKiller(lastKiller);}
+ if(lines.length)mpHud.addFeed(lines,myId,elapsed);else mpHud.renderFeed(elapsed);
+ if(mpHud.boardOpen)mpHud.setBoard(online.scoreboard(),myId);
+ const me=online.me;
+ if(deathActive&&me)mpHud.setTimer(me.respawnIn);
+}
+function reviveOnline(){
+ clearDeath();previousPlayer={...sim.player};
+ if(!paused&&!choosing){running=true;$('world').focus();}
+ updateHUD();
+}
 $('overhead-image').addEventListener('click',e=>{
   if(!mapOpen||!sim.dev.teleport||online.active)return;
   const svg=$('overhead-image').querySelector('svg'),matrix=svg?.getScreenCTM();if(!matrix)return;
@@ -364,7 +439,7 @@ const selectMenus=installSelectMenus($('settings-panel'));
 $('mute-all').onclick=toggleAudio;
 sticks.set('move',bindFloatingStick($('move-zone'),$('move-stick'),{isRunning:()=>running,onTap:touchTapFire,output:touch,
  onWalkStart:()=>{if(touchAimPointer===null)inputMode='keyboard';}}));
-window.addEventListener('resize', () => { view.resize(); dirty = true; });
+window.addEventListener('resize', () => { view.resize(); dirty = true; if(layoutPreview){view.update(sim,RULES.step,false,elapsed,sim.player,1);view.render();} });
 // The cached canvas rect is in page coordinates, so a scroll moves it even
 // though nothing resized.
 window.addEventListener('scroll', () => { view.cachedRect = null; }, { passive: true });
@@ -445,6 +520,11 @@ $('world').addEventListener('pointercancel',()=>{rifleFiring=false;rifleAiming=f
 const navigateMenu=createMenuNavigation();
 window.addEventListener('keydown', e => {
   if(document.body.classList.contains('loading'))return;
+  // Multiplayer: hold Tab for the scoreboard (Tab has no game action).
+  if(e.code==='Tab'&&online.active&&started&&!settingsOpen&&!mapOpen&&!paused&&!choosing&&!devDialog.isOpen){
+   e.preventDefault();if(!e.repeat){mpHud.setBoard(online.scoreboard(),online.myId);mpHud.showBoard();}return;
+  }
+  if(online.active&&deathActive&&mpHud.deathOpen){navigateMenu(e,mpHud.death,()=>{});if(['Space','Tab','KeyQ','KeyE','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();return;}
   if(devDialog.isOpen){devDialog.keydown(e);return;}
   if(deathActive){
    if(deathMenuOpen)navigateMenu(e,deathScreen.root,()=>{});
@@ -457,7 +537,7 @@ window.addEventListener('keydown', e => {
    if(devTools.isUnlocked()){setPaused(false);devWindow.show();}else devDialog.show();
    return;
   }
-  const menuRoot=settingsOpen?$('settings-panel'):mapOpen?$('map-panel'):paused?$('pause-panel'):!started?$('intro'):null;
+  const menuRoot=settingsOpen?$('settings-panel'):mapOpen?$('map-panel'):paused?$('pause-panel'):!started||choosing?$('intro'):null;
   if(navigateMenu(e,menuRoot,()=>{if(settingsOpen)closeSettings();else if(mapOpen)toggleMap();else if(paused)setPaused(false);else menuFlow.back();}))return;
   if(settingsOpen){
     if(e.code==='Escape'){e.preventDefault();closeSettings();}
@@ -502,7 +582,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyQ') { pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = inputMode === 'mouse'&&!keyboardAim(keys,tappedKeys).active ? view.aim(mouse.x, mouse.y, sim.player) : null; }
   if (e.code === 'KeyR') e.preventDefault();
 });
-window.addEventListener('keyup', e => keys.delete(e.code));
+window.addEventListener('keyup', e => {keys.delete(e.code);if(e.code==='Tab'&&mpHud.boardOpen)mpHud.hideBoard();});
 window.addEventListener('blur', releaseInput);
 document.addEventListener('visibilitychange', () => { if(document.hidden){releaseInput();lastTime=null;accumulator=0;} });
 
@@ -515,11 +595,11 @@ function frame(time) {
   }
   // Online the world does not stop for your pause menu: everyone else is
   // still playing, so the simulation keeps running with your hands off.
-  const stepping = running || (online.active && started && !deathActive);
+  const stepping = running || (online.active && started);
   if (stepping) {
     // Dev game speed stretches or squeezes time; online sim.dev is reset so it is always 1 there.
     accumulator += dt * (sim.dev.timeScale || 1);
-    while (accumulator >= RULES.step && (running || (online.active && started && !deathActive))) {
+    while (accumulator >= RULES.step && (running || (online.active && started))) {
       previousPlayer = { ...sim.player };
       if(smoothedCursor()&&inputMode==='mouse')advanceAimCursor(mouse,cursorTarget,RULES.step,aimingNow(),sim.weapon);
       const held = key => keys.has(key) || tappedKeys.has(key);
@@ -556,6 +636,7 @@ function frame(time) {
       tappedKeys.clear(); pendingQuickShot=false; pendingLaunch = pendingSeed = false; pendingAimPoint = null; accumulator -= RULES.step;
       for (const e of sim.drainEvents()) event(e);
     }
+    if(online.active)netEvents();
     sound.update(sim.player, sim.time);
     sound.updateHex(sim);
   }
@@ -567,7 +648,7 @@ function frame(time) {
     if (renderDelta > 0) {
       view.tutorialGuide=tutorial&&!tutorial.complete?{zone:tutorial.zone,target:tutorial.pointer(sim)}:null;
       view.remotePlayers = online.others(running ? accumulator / RULES.step : 1);
-      view.update(sim, renderDelta, running, elapsed, previousPlayer, running ? accumulator / RULES.step : 1);
+      view.update(online.active?drawSim(sim,online.foreign()):sim, renderDelta, running||online.active, elapsed, previousPlayer, running ? accumulator / RULES.step : 1);
       updateReticle(); dirty = false; renderedFrames++;
     }
     if(running&&!document.hidden) view.setResolutionScale(adaptiveResolution.sample(dt,renderDelta>0,settings.quality,settings.fps));
@@ -576,7 +657,8 @@ function frame(time) {
     if (fpsTime >= 1) { measuredFPS = Math.round(renderedFrames / fpsTime); fpsTime = 0; renderedFrames = 0; }
   }
   if(paused)adaptiveResolution.reset();
-  online.frame();
+  online.frame({onRespawn:reviveOnline});
+  if(online.active)multiplayerFrame();
   perfReadout.update(started && !paused ? dt : 0, measuredFPS);
   syncGameCursor();
   updateHealthHUD(sim);
@@ -584,7 +666,12 @@ function frame(time) {
   damageFeedback.update(sim,view);outgoingFeedback.update(sim,view);
   if(deathActive&&!deathMenuOpen){
    deathElapsed+=dt;
-   if(deathElapsed>=DEATH_MENU_DELAY){deathMenuOpen=true;paused=true;document.body.classList.add('dead-menu');deathScreen.show();sound.suspend(true);}
+   if(deathElapsed>=(online.active?ONLINE_DEATH_CARD:DEATH_MENU_DELAY)){
+    deathMenuOpen=true;
+    // Online the world goes on: a death card with the respawn countdown instead.
+    if(online.active){mpHud.showDeath();mpHud.death.querySelector('button')?.focus();}
+    else{paused=true;document.body.classList.add('dead-menu');deathScreen.show();sound.suspend(true);}
+   }
   }
   requestAnimationFrame(frame);
 }
@@ -666,11 +753,28 @@ bindAction($('touch-launch'),()=>{
  pendingAimPoint=inputMode==='mouse'&&!keyboardAim(keys,tappedKeys).active?view.aim(mouse.x,mouse.y,sim.player):null;
  if(sim.weapon!=='static')rifleFiring=true;
 },()=>{rifleFiring=false;});
+// Editing the touch layout from the menus, outside a match: the controls go
+// over a still frame of the map exactly as a match opens on it (no HUD), and
+// DONE comes back to Settings > Mobile.
+let layoutPreview=false;
+function openLayoutPreview(){
+ layoutPreview=true;settingsOpen=false;selectMenus.reset();
+ $('settings-panel').classList.add('hidden');$('intro').classList.add('hidden');
+ document.body.classList.add('playing','layout-preview');
+ applyInputPreference();arrangeTouchCluster();
+ view.update(sim,RULES.step,false,elapsed,sim.player,1);view.render();
+ if(!touchLayout.start())closeLayoutPreview();
+}
+function closeLayoutPreview(){
+ if(!layoutPreview)return;layoutPreview=false;
+ document.body.classList.remove('playing','layout-preview');
+ $('intro').classList.remove('hidden');openSettings();menuFlow.openTab('mobile');$('touch-edit-layout').focus();
+}
 const touchLayout=installTouchLayout({root:$('game'),controls:$('touch-controls'),
- canEdit:()=>started&&!deathActive,onChange:()=>syncMobileSettings(),restoreCluster:()=>arrangeTouchCluster(),
- onEditing:editing=>{releaseInput();running=!editing&&started&&!paused&&!deathActive;accumulator=0;sound.suspend(editing||paused);dirty=true;}
+ canEdit:()=>(started||layoutPreview)&&!deathActive,onChange:()=>syncMobileSettings(),restoreCluster:()=>arrangeTouchCluster(),
+ onEditing:editing=>{releaseInput();running=!editing&&started&&!paused&&!deathActive&&!choosing;accumulator=0;sound.suspend(editing||paused||!started);dirty=true;if(!editing)closeLayoutPreview();}
 });
-const mobileSettings=installMobileSettings({touchLayout,closeSettings,setPaused,
+const mobileSettings=installMobileSettings({touchLayout,closeSettings,setPaused,preview:()=>openLayoutPreview(),
  state:()=>({started,paused,deathActive,touchPrompts}),arrange:arrangeTouchCluster});
 function syncMobileSettings(){mobileSettings.sync();}
 syncMobileSettings();

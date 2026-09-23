@@ -15,7 +15,7 @@ body[data-controls=touch] #game .top-actions .icon-button{
  width:auto;min-width:48px;height:44px;min-height:44px;padding:8px;border-radius:8px;font-size:12px!important;
  background:#242928dd;border:1px solid #7f8a84;color:#fff;
 }
-body[data-controls=touch].playing #game .health-hud{top:86px;width:160px;max-width:none}
+body[data-controls=touch].playing #game .health-hud{top:86px;width:min(300px,72vw);max-width:none}
 body[data-controls=touch] #game .health-number{font-size:18px}
 body[data-controls=touch] #game .health-readout{margin-top:5px}
 body[data-controls=touch].playing #game .footer{display:none}
@@ -66,7 +66,7 @@ body[data-controls=touch] #game #weapon .hex-recharge-center kbd{font-size:8px}
 body[data-controls=touch] #game #weapon .seed-pips{gap:3px}
 body[data-controls=touch] #game #weapon .seed-pips[data-capacity="36"]{display:grid;grid-template-columns:repeat(18,minmax(0,1fr));gap:3px}
 @media(orientation:landscape){
- body[data-controls=touch].playing #game .health-hud{left:max(20px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));width:150px;transform:none}
+ body[data-controls=touch].playing #game .health-hud{left:max(20px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));width:clamp(230px,30vw,320px);transform:none}
  body[data-controls=touch].playing:not(.paused) #game #touch-controls{bottom:calc(16px + env(safe-area-inset-bottom))}
  body[data-controls=touch] #game .touch-right{grid-template-columns:repeat(2,72px);gap:7px}
  body[data-controls=touch] #game #touch-controls button{width:72px;height:58px;min-height:58px;font-size:12px!important}
@@ -154,3 +154,14 @@ body.editing-touch-layout #game #touch-controls .touch-positioned .touch-edit-ha
 body.editing-touch-layout #game #touch-controls .touch-positioned .touch-edit-remove{top:-8px;right:-8px}
 body.editing-touch-layout #game #touch-controls .touch-positioned .touch-edit-resize{bottom:-8px;right:-8px}
 body.editing-touch-layout #game #touch-controls .touch-positioned .touch-edit-restore{top:-8px;left:-8px}
+
+/* Editing the layout from the menus: the map and the touch controls, nothing else. */
+body.layout-preview #game :is(.masthead,.footer,.health-hud,#weapon,#reticle,.stats,.damage-feedback,#kill-feed,#online-badge,.rifle-spread,.aim-cone){visibility:hidden!important}
+
+/* Touch: the health bar is bigger (thicker track, larger number). The kill
+   feed moves off the bottom left, where the move stick lives: top right under
+   the MAP / SOUND / PAUSE buttons. */
+body[data-controls=touch] #game .health-track{height:16px}
+body[data-controls=touch] #game .health-number{font-size:21px}
+body[data-controls=touch] #game .kill-feed{bottom:auto;left:auto;top:calc(max(12px,env(safe-area-inset-top)) + 54px);right:max(16px,env(safe-area-inset-right));align-items:flex-end;max-width:46vw;font-size:12px}
+@media(orientation:portrait){body[data-controls=touch] #game .kill-feed{top:calc(max(12px,env(safe-area-inset-top)) + 150px);max-width:60vw}}

@@ -393,3 +393,47 @@ body:not(.playing) #game .online-badge{display:none}
 #game .online-players-heading{font:700 11px/1.4 var(--hud-font);letter-spacing:.14em;color:#9fb0aa;margin-bottom:6px}
 #game .online-player{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0;font:700 14px/1.2 var(--hud-font);color:#eee9df}
 #game #pause-panel button.online-player-remove{flex:none;width:auto;margin:0;min-height:30px;height:30px;padding:0 12px;font:700 12px/30px var(--hud-font);letter-spacing:.08em}
+
+/* Multiplayer (multiplayer-hud.js). Pink for everyone else, blue for you. */
+:root{--mp-enemy:#e8afb9;--mp-you:#8fd3ff}
+#game .online-identity{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
+#game .online-field{display:flex;flex-direction:column;gap:5px;font:700 11px/1.2 Arial,sans-serif;letter-spacing:.12em;color:#a8b6b2;text-transform:uppercase!important}
+#game .online-field input{height:auto;padding:9px 12px;background:#191c1c;border:1px solid #67746e;border-radius:3px;color:#fff;font:700 16px Arial,sans-serif;letter-spacing:.02em;text-transform:none!important}
+#game .online-field input::placeholder{color:#8b948f;font-size:13px}
+#game .online-field input:focus{outline:2px solid var(--ui-accent);outline-offset:2px}
+#game .kill-feed{position:absolute;z-index:6;bottom:max(96px,calc(env(safe-area-inset-bottom) + 96px));left:max(24px,env(safe-area-inset-left));display:flex;flex-direction:column;align-items:flex-start;gap:5px;pointer-events:none;font:700 13px/1.3 var(--hud-font);color:#eee9df;text-shadow:0 1px 3px #14100c}
+#game .kill-feed-line{background:#191c1ccc;border-radius:3px;padding:5px 10px;animation:feed-in .18s ease-out}
+#game .kill-feed .feed-enemy,#game .mp-death .feed-enemy{color:var(--mp-enemy)}
+#game .kill-feed .feed-you{color:var(--mp-you)}
+#game .kill-feed .feed-verb{color:#c9c3b6;font-weight:600;text-transform:lowercase!important}
+@keyframes feed-in{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+#game .scoreboard{position:absolute;inset:0;z-index:45;display:grid;place-items:center;background:#11151499;pointer-events:none}
+#game .scoreboard.hidden{display:none}
+#game .scoreboard-card{background:#232827;color:#eee9df;border:1px solid #3c4543;border-radius:6px;padding:20px 22px;width:min(760px,94vw);max-height:86dvh;overflow:auto;box-shadow:0 18px 60px #0008}
+#game .scoreboard-card h2{margin:0 0 12px;font:900 26px/1 Arial Black,Arial,sans-serif}
+#game .scoreboard table{width:100%;border-collapse:collapse;font:600 13px/1.4 var(--hud-font);font-variant-numeric:tabular-nums}
+#game .scoreboard th,#game .scoreboard td{padding:8px 8px;text-align:right;border-bottom:1px solid #333c39;white-space:nowrap}
+#game .scoreboard thead th{font-size:10px;letter-spacing:.12em;color:#a8b6b2;text-transform:uppercase!important}
+#game .scoreboard th:nth-child(2),#game .scoreboard td:first-child,#game .scoreboard tbody th{text-align:left}
+#game .scoreboard tbody th{color:var(--mp-enemy);font-weight:700;text-transform:none!important}
+#game .scoreboard tr.board-you th{color:var(--mp-you)}
+#game .scoreboard tr.board-away{opacity:.55}
+#game .scoreboard td:last-child{text-transform:none!important}
+#game .scoreboard-hint{margin:10px 0 0;font:600 11px Arial,sans-serif;color:#8b948f}
+#game .mp-death{position:absolute;inset:0;z-index:41;display:grid;place-items:center;background:#661f3059}
+#game .mp-death.hidden{display:none}
+#game .mp-death .modal-card{background:#232827;color:#eee9df;border:0;width:min(380px,92vw);padding:26px 28px;text-align:left}
+#game .mp-death h2{margin:0 0 10px;font:900 30px/1 Arial Black,Arial,sans-serif}
+#game .mp-death p{margin:6px 0;font:700 14px/1.4 Arial,sans-serif;color:#c9c3b6;text-transform:none!important}
+#game .mp-death .mp-death-timer{color:var(--ui-accent);font-size:16px;margin-bottom:16px}
+#game #scores-toggle{width:auto;padding:0 10px;font:700 10px/1 var(--hud-font);letter-spacing:.08em}
+@media(max-width:600px){#game .scoreboard th:nth-child(5),#game .scoreboard td:nth-child(5),#game .scoreboard th:nth-child(6),#game .scoreboard td:nth-child(6){display:none}#game .kill-feed{font-size:12px}#game .online-identity{grid-template-columns:1fr}}
+
+/* Player names keep the case they were typed in. */
+#game :is(.kill-feed,.kill-feed *,.mp-death p,.mp-death p *,.scoreboard tbody th,#online-players span){text-transform:none!important}
+body[data-controls=keyboard] #game #scores-toggle{display:none}
+
+/* Health bar: bigger and wider everywhere (it read too small on phones). */
+.health-hud{width:clamp(260px,30vw,400px)}
+.health-track{height:15px}
+.health-number{font-size:22px}

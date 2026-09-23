@@ -22,10 +22,10 @@ These come first and are never removed.
 | Engine | **No game engine.** The rendering library is **three.js 0.180**; the game loop, physics, input, UI and audio are all hand-written. |
 | Language | JavaScript (ES modules, no TypeScript). HTML and CSS for every menu and HUD. |
 | Build | **Vite 7** |
-| Tests | Node's built-in runner, `node --test tests/*.test.js` (about 474 tests) |
+| Tests | Node's built-in runner, `node --test tests/*.test.js` (about 485 tests) |
 | Package manager | pnpm on the owner's PC and in CI; npm works too |
 | Deploy | `.github/workflows/deploy.yml` builds and publishes to GitHub Pages on every push to `main` |
-| Networking | **PeerJS 1.5.5** (WebRTC data channels, P2P) behind a swappable transport; see Networking |
+| Networking | **PeerJS 1.5.5** (WebRTC data channels, P2P) behind a swappable transport; see Multiplayer |
 | Audio | Synthesized in the browser (Web Audio). There are no sound files. |
 
 ### Run and build
@@ -47,7 +47,7 @@ Player-facing links: `?join=CODE` joins a room, `?host=1` opens one.
 
 **Claude artifact build.** This is a single self-contained HTML page for claude.ai. `vite.artifact.mjs` builds without code splitting. A small bundler script then inlines the JS and CSS into one file that is published as an artifact. The artifact host provides its own page shell, so viewport settings in `index.html` may not apply there.
 
-**Version:** `src/version.js` is the one place the version lives (`0.55a`, the a is alpha). The browser tab reads `deadshift v0.55a` (`TAB_TITLE`); keep `index.html`'s `<title>` in step when it changes.
+**Version:** `src/version.js` is the one place the version lives (`0.6a`, the a is alpha). The browser tab reads `deadshift v0.6a` (`TAB_TITLE`); keep `index.html`'s `<title>` in step when it changes.
 
 ## Where the code lives
 
@@ -96,7 +96,7 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
   - `sim.step(input)` advances one fixed 1/60 s tick from a plain input object (move, aim, fire, dodge, abilities).
   - It pushes **events** (`hit`, `kill`, `propBreak`, `dodge`, and so on) that the renderer, audio and HUD react to via `sim.drainEvents()`.
   - It knows nothing about three.js or the DOM.
-- **Assumes one player** (`sim.player`, about 40 places). Online movement sidesteps this with one `Simulation` per player on the host; weapons online will need a list of players (see Networking > Next milestones).
+- **One player per sim** (`sim.player`). Multiplayer keeps it that way: one sim per player sharing one world through `net/arena.js` (see Multiplayer). `respawn(at)` gives a fresh body and loadout without touching the world; `worldAuthority` says whether this sim burns crops.
 
 ### Movement
 - **Where:** `simulation.js`. Speed, acceleration, braking and dodge values are in `RULES` (`config/gameplay.js`).
@@ -156,6 +156,7 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
 - **Dust wisps** are flat drifting sheets that clear around the player and the aim point (never over the fight); Extreme has five.
 - **Interior shroud** repaints on any frame the camera moved (it used to lag the walls on entering a room); **roofs** count as solid for AO until half faded, so a closing roof no longer shows the room's outline.
 - **UI sounds** (`ui-sounds.js`): a clack on buttons, a lower falling one for back/close/Esc, on their own audio context so they work while the game is paused.
+- **Blood on death** (`blood-splatter.js`): every player death (yours, and every other player's online via `netEvent`) lays a splatter on the floor under the body, thrown along the killing hit: pool, lobes, streaks and droplets on one textured quad (three canvas shapes, shared), grows in over 0.35 s, stays 60 s, fades over 4 s. Capped per preset (`SPLAT_CAP`, Potato 6 to Extreme 20), oldest first. Not cleared on restart or respawn.
 - **Muzzle light:** rifle and Ballast shots flash the existing effects light (warm, a few hundredths of a second) on every preset that has it; no new shader variants.
 - **Defaults:** phones default to Performance, desktop to Balanced.
 - **What the presets set:** pixel ratio and scale, shadow map size and refresh rate, particle caps, textures and bump relief, and which detail layers are shown.
@@ -166,7 +167,7 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
 ### UI
 - **Settings > Controls:** General controls, then one Weapons dropdown with a dropdown per weapon. Each weapon's rows are `controls` on its entry in `items.js`, so a new weapon brings its own.
 - **Menus:** `menu.js`, `menu-navigation.js`, `select-menu.js`, `button-typography.js`. The settings panel has tabs for Graphics, Audio, Controls and Mobile (`settings-panel.js`, `mobile-settings.js`).
-- **HUD:** `weapon-hud.js`, `health-hud.js`, `ability-cooldown.js`, `damage-feedback.js`, `outgoing-feedback.js`, `perf-readout.js`, `overhead-map.js` (M).
+- **HUD:** health bar top centre on desktop (260-400 px wide, 15 px track), top left on touch landscape (230-320 px), top centre on touch portrait (up to 300 px); `weapon-hud.js`, `health-hud.js`, `ability-cooldown.js`, `damage-feedback.js`, `outgoing-feedback.js`, `perf-readout.js`, `overhead-map.js` (M).
 - **Cursor and aim overlay** (`aim-overlay.js`): with a mouse, the aim dot is the only pointer, over the UI too. UI clicks never reach the game.
 - **Charge ring** (`aim-overlay.js`): Ballast charge and Static hex expansion show as a ring around the cursor. Ability dials and stamina: `ability-hud.js`.
 - **Touch** (`touch-controls.js` + `touch-layout.js` + `touch-action.js`, feel in `config/controls.js`; `main.js` decides what taps and drags do):
@@ -174,6 +175,7 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
   - A **tap** anywhere fires at that spot, and a drag never fires.
   - FIRE is a quarter circle in the corner, with the other actions as ring segments around it (`arrangeTouchCluster`).
   - Settings > Mobile holds Edit layout (dragged buttons become free circles), Swap sides and Reset.
+  - **From the menus too:** outside a match, Settings > Mobile > EDIT LAYOUT hides the menus and renders one still frame of the map where a match opens (`openLayoutPreview` in main.js; body class `layout-preview` hides the HUD), then edits the controls over it; DONE returns to Settings > Mobile.
   - While editing, each dragged-out button has three handles: × removes it, ↘ resizes it, and ↺ puts just that button back in the corner cluster. It is forgotten from the saved layout (`withoutControl`), so it rejoins the cluster on the player's side: bottom right normally, bottom left with Swap sides. `restoreCluster` (main passes `arrangeTouchCluster`) lays the cluster out again afterwards.
 - **Tutorial:** `tutorial.js` (courses and lessons), `tutorial-card.js` (the lesson card), `tutorial-markers.js` (pink zone and arrow), `tutorial-progress.js`.
   - The home screen's tutorial runs **basics**. Gamemodes > Tutorial > weapon runs that weapon's course.
@@ -210,11 +212,9 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
 - Visual changes are checked in a hidden headless browser, never the owner's tab.
 - **main.js has no unit tests**, so after touching it (or anything it wires up) load the game headlessly and confirm it starts with no console errors, and run a static undefined-name check, e.g. ESLint with only `no-undef` enabled. A refactor once left a stray `$` in a moved function and the tests all passed while the game failed to start.
 
-## Networking (milestone 1 built, shelved for a later alpha)
+## Multiplayer (free-for-all, in this alpha)
 
-**Not in this alpha.** The owner decided multiplayer ships in a later alpha build. `NETWORK.enabled` is `false` in `config/network.js`, which hides Gamemodes > ONLINE and ignores `?join=` / `?host=` links. The code and its tests stay. Do not start milestone 2 (weapons online) until he says so.
-
-**Goal:** peer-to-peer (P2P) now, a dedicated server later. Switching is a config change plus one new transport file, not a rewrite.
+**On.** `NETWORK.enabled` is `true`: Gamemodes > MULTIPLAYER. Up to 4 players, free-for-all on Deadwater, P2P (one player hosts). No teams yet.
 
 ### Files
 
@@ -222,35 +222,41 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
 src/config/network.js   every network setting: transport, signalling server, STUN/TURN, room codes, rates, timeouts
 src/net/transport.js    the Transport interface (the only thing sessions talk to), room codes, an in-memory loopback for tests
 src/net/peer-transport.js  WebRTC via PeerJS 1.5.5 (loaded only when someone goes online)
-src/net/protocol.js     message shapes, what a client may send, snapshot packing
-src/net/host-session.js the authority: runs every player's simulation, sends snapshots
-src/net/client-session.js a joiner: prediction, reconciliation, interpolation of others
+src/net/protocol.js     message shapes, input cleaning (playerInput), usernames, snapshot/loadout packing
+src/net/arena.js        THE MATCH RULES: shared world, players as targets, damage, deaths, respawns, kill feed, scoreboard
+src/net/spawn-points.js random spawn spots inside buildings, clear of furniture
+src/net/projectiles.js  everyone's orbs/bullets/pellets/grenades packed for snapshots and drawn through a "draw sim"
+src/net/host-session.js the authority: steps every seat through the arena, numbered event log, snapshots per joiner
+src/net/client-session.js a joiner: movement prediction, host-fired weapon, events/feed/scoreboard/world sync
 src/net/online.js       picks the transport from config and starts the right session
-src/online-play.js      page glue: menu requests, the room badge, what the local sim runs, leaving
-src/remote-players.js   how other players are drawn (plum coat, mustard ring, name tag), one merged draw each
-tests/net.test.js       host + clients over the loopback: connect, move, agree, lose packets, time out, fill up
+src/online-play.js      page glue: menu requests, badge, host player list (REMOVE), events and projectiles for main.js
+src/multiplayer-hud.js  kill feed, scoreboard (Tab / SCORES on touch), death card with respawn countdown
+src/remote-players.js   how other players are drawn (plum coat, mustard ring, name tag)
+tests/net.test.js       host + joiners over the loopback: join, password, spawn, shoot to death, multi-kill line, self-kill, time, props, lost packets
 ```
 
-### How to host and join
+### How a game goes
+- **Menu:** Gamemodes > MULTIPLAYER. USERNAME (saved in `deadshift-username`) and PASSWORD. HOST A GAME sets the room password; JOIN needs the room code and that password. Wrong password: "Wrong password." Names are unique per room ("Sam 2").
+- **Weapon pick:** after loading in, every player picks a weapon on the weapons page drawn over the running game (`menuFlow.pickOnline`). Nobody is in the world until they pick. The back arrow leaves multiplayer.
+- **Spawning:** always at a random spot inside a random building (rooms at least 6 m across), preferring spots 6 m from anyone alive. 500 HP (`MATCH.health`).
+- **Death:** your death reaction plays; after 1.2 s a death card shows "killed by NAME" (or "you took yourself out") and a countdown; you respawn 5 s after dying (`MATCH.respawn`) in a random building. The card also has CHANGE WEAPON and LEAVE MULTIPLAYER. Other players are unaffected; their name goes in the kill feed.
+- **Pause:** your own only (the world keeps running). RESUME, CHANGE WEAPON, SETTINGS, the host's PLAYERS list with REMOVE, LEAVE MULTIPLAYER (replaces MAIN MENU); RESTART is hidden.
+- **Kill feed:** bottom left on desktop; on touch it sits top right under MAP / SOUND / PAUSE (the bottom left is the move stick), in portrait a little lower. 6 s per line, "KILLER killed A, B" (everyone one attacker killed in the same tick is one line) or "NAME died". Your name blue, everyone else pink; names keep their case.
+- **Scoreboard:** hold Tab (SCORES button on touch). Rank, name, kills, deaths, damage dealt, damage taken, time in game, most used weapon, ranked by kills then fewer deaths. Time in game counts only while in the world (dead included, pause and settings included, the weapon menu excluded). Most used = the weapon with the most time in the world.
+- **Own blasts hurt you** online too; dying to them is a death, not a kill.
 
-- **Host:** Gamemodes > ONLINE > HOST A GAME. You get a 5-character room code (no O/0/I/1). The badge under the title shows `ROOM CODE · players/4`; tap it to copy an invite link (`?join=CODE`).
-- **Join:** Gamemodes > ONLINE, type the code, JOIN. Or open an invite link, which goes straight in.
-- Online runs on Deadwater only. From the tutorial map the page reloads onto Deadwater first (`?host=1` / `?join=CODE`).
-- **Where it works:** GitHub Pages and the dev server. The claude.ai artifact has no network access, so ONLINE there fails with "Could not reach the matchmaking server".
-- **Local testing without the internet:** run a PeerJS server (`npx peer --port 9000`, or the `peer` package's `ExpressPeerServer` bound to 127.0.0.1) and open the dev build with `?peerhost=127.0.0.1:9000` on two browsers. Headless tests need two separate browser processes: two pages in one headless browser starve each other's frames and the host drops the slow one.
-
-### What's authoritative
-
-- **The host decides everything.** Its own player is the normal local `Simulation`. Each joiner gets their own `Simulation` on the host, stepped once per tick with that joiner's inputs, in order.
-- **Clients send only inputs** (move, aim direction, dodge), numbered, never positions or results. `protocol.readMessage` drops anything else, clamps movement to length 1 and normalises aim. Each message repeats the last 4 inputs, so a lost packet costs nothing. Data channels are unordered, so one late packet never stalls the rest; old snapshots are ignored by tick.
-- **Snapshots:** 20 per second (every 3rd tick), every player's position, velocity, aim, dodge and stamina state, plus `lastSeq`, the last input the host ran for that player.
-- **Your own player is predicted:** your inputs move you locally at once. When a snapshot arrives the client re-runs its unacknowledged inputs on a spare `Simulation` from the host's state and compares. Same code and same inputs usually agree exactly; a gap under 1.5 m eases out (35% per snapshot), a bigger one snaps.
-- **Other players are interpolated:** drawn 0.1 s in the past, gliding between the two snapshots either side, on a clock mapped from the host's tick.
-- **Late or missing inputs:** the host repeats the last input for up to 0.25 s (never a dodge), then stands the player still. A backlog is worked off a few inputs per tick. No message for 6 real seconds drops a player; a client that hears nothing from the host for 6 s leaves with "Lost connection to the host".
-- **Weapons are off online for now.** Only movement inputs survive. Joiners and the host show Static but cannot fire.
-- **Developer overrides never go online.** Sessions reset `sim.dev` to `{speed:1}` every tick on every simulation, P and O show "DEV TOOLS ARE OFF ONLINE" (only to someone who has unlocked them), Shift+P does nothing online, and map teleport is refused.
-- **Removing a player:** the host's pause menu lists everyone else in the room with a REMOVE button (`online-play.js`). `HostSession.kick(id)` sends them `{t:'removed'}` (they leave with "The host removed you from the game."), drops them, and refuses that peer for the rest of the room. The host could still cheat on its own machine by editing code: that is the P2P trade-off a dedicated server removes.
-- **The world does not pause online.** Opening the pause menu keeps the simulation running with your hands off, because everyone else is still playing.
+### How it works
+- **One world, one sim per player (arena.js).** Each player keeps their own `Simulation` (body, weapon, ammo, orbs, cooldowns: all the single-player weapon code, unchanged). Before a player's sim steps, the arena hands it the shared `props`, `colliders` and `crops`, and puts every other living player in its `targets` as a proxy of kind `'player'` (radius `RULES.radius + .04`, see `target-radius.js`). Every weapon already hits targets, so all of them hit players. After the step, whatever health a proxy lost is dealt to the real player with `damagePlayer` (dodge reduction, damage type and direction from the kill/hit event, so the right death plays), and a changed collider list is kept for everyone.
+- **World authority:** player sims have `worldAuthority = false`; crops burn and prop flashes fade once per tick in the arena's own world sim (`endTick`), whose proxies are every living player, so fire damages everyone once.
+- **Host tick:** main.js calls `online.input(raw)` (host: `beforeLocal`) then steps its own sim, then `online.afterStep()` (host: `step()`): the arena finishes the host seat, steps every joiner's queued inputs, burns the world, runs respawns, clocks and the kill feed, and every 3rd tick sends each joiner a snapshot.
+- **Joiners send full inputs** (`playerInput`: moves, aim point, every button), numbered, repeated 4 times. Their own sim only walks (prediction and reconciliation as before). **Weapons are fired by the host**, so hits have one truth; your own shots show one round trip late (simple on purpose; "favour the shooter" rewind can come later).
+- **Snapshots carry:** every player (position, aim, hp, weapon, present, dead, life), your `loadout` (ammo, reloads, charges, cooldowns for the HUD), everyone's projectiles (`pack`), events not yet acknowledged, the last kill-feed lines, the scoreboard (every 30 ticks) and the world (broken props and crop fires, every 30 ticks and on joining).
+- **Events are reliable:** the host numbers every shared event (`SHARED_EVENTS`) and keeps 3 s of them; each joiner's inputs carry `ack`, and the host resends everything newer. So shots, deaths and kill-feed lines are never lost on the unreliable channel.
+- **Drawing others:** `view.netEvent(e, shooter, slot)` plays another player's event with them standing in for you (muzzle flashes, trails, arcs), and `drawSim` hands the views your sim plus everyone else's projectiles (orb ids made unique per slot). A joiner's own events come back from the host and go through the ordinary `event()` path (hit markers, damage numbers, death reaction).
+- **Other players' deaths** are a burst of particles and their body disappearing until they respawn (no corpse or death reaction on remote bodies yet).
+- **Removing a player:** the host's pause menu lists everyone else with REMOVE (`HostSession.kick`): they get `{t:'removed'}`, leave with "The host removed you from the game.", and that peer is refused for the rest of the room.
+- **Developer overrides never go online.** Sessions reset `sim.dev` to `{speed:1}` every tick, P and O show "DEV TOOLS ARE OFF ONLINE" (only to someone who unlocked them), Shift+P does nothing online, map teleport is refused.
+- **Local testing without the internet:** run a PeerJS server bound to 127.0.0.1 (`PeerServer({port:9000,host:'127.0.0.1',path:'/'})` from the `peer` package) and open the dev build with `?peerhost=127.0.0.1:9000` in two separate browser processes. On Potato the sandbox runs fast enough to play a round.
 
 ### NAT traversal and relays
 
@@ -260,18 +266,16 @@ tests/net.test.js       host + clients over the loopback: connect, move, agree, 
 
 ### Keep in mind
 
-- The host's tab must stay in front. Browsers stop animation frames in background tabs, which stops the host's simulation for everyone. A dedicated server removes this.
-- **Players are solid to each other.** Each `Simulation` has `otherPlayers` (empty offline): round bodies it stops against, two body radii apart, like targets (`pushOutOfCircle` in `movePlayer`, plus an idle push-out via `touchingPlayer`). The host fills each sim's list from every other sim before stepping it, and its own after (`bodiesExcept`). A joiner fills it from the latest snapshot, for both prediction and the reconcile replay, so they match what the host ran. You can't shove someone; you stop at their edge. When the simulation holds a real player list (milestone 1 of Next milestones), this becomes that list.
+- The host's tab must stay in front. Browsers stop animation frames in background tabs, which stops the host's simulation for everyone (joiners are dropped after 6 s). A dedicated server removes this.
 - Other players are not hidden by walls or cover the way targets are.
-- Names are seats (P1 is the host, P2-P4 joiners) until accounts exist.
+- Names are typed usernames until accounts exist.
 
-### Next milestones
+### Next steps
 
-1. **Weapons online.** Clients add fire/aim/ability inputs; the host runs them in the joiner's simulation and hit tests against every player. That needs the simulation to hold several players (today each `Simulation` has one `player`), so the plan is one shared world `Simulation` with a player list, keeping the single-player API as a wrapper. Events (shots, hits, deaths, props breaking) go out with snapshots so every screen shows the same effects. Death reactions still come from `damageType` in `death-reactions.js`.
-2. **Ballast launch:** the authority owns it, since it is movement caused by firing. The shooter predicts its own launch at once (it depends only on its own charge and aim inputs, so prediction matches) and reconciles like any movement. Knockback from *other* players is never predicted; it arrives in snapshots.
-3. **Randomness:** only the authority rolls dice that affect outcomes (spread, props). Cosmetic randomness stays local.
-4. **Bots** run on the host as extra input producers: a bot is a remote entry whose inputs come from code instead of the wire. No networking changes.
-5. **Hide players out of sight** on the authority (don't send them), which also stops wallhacks.
+1. **Favour the shooter:** rewind other players to where the shooter saw them (about 100 ms) when checking hits.
+2. **Your own shots instantly:** fire your own weapon locally for the flash, sound and ammo, and let the host confirm hits.
+3. **Remote death reactions:** play the proper corpse/scatter on other players' bodies from their `playerDeath` event.
+4. **Teams**, then **bots** (a bot is a seat whose inputs come from code) and **hiding players out of sight** on the authority (stops wallhacks).
 
 ### Moving to a dedicated server
 
@@ -296,7 +300,7 @@ tests/net.test.js       host + clients over the loopback: connect, move, agree, 
 ## Known bugs, unfinished work, priorities
 
 **Next up, in order:**
-1. Multiplayer is shelved until a later alpha (owner's call). Don't resume it unprompted.
+1. Multiplayer is live (free-for-all). See Multiplayer > Next steps.
 2. Keep splitting when touched: `main.js` (still ~640 lines: input routing, loop, menus flow; next to move out is keyboard/mouse input into its own module) and `renderer.js` (~2150 lines: world building could move out from per-frame drawing).
 
 **Queued:**

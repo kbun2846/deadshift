@@ -4,6 +4,8 @@ import {resetShotgun,stepShotgun} from './shotgun.js';
 import { mapColliders, mapProps, buildingContains, buildingWalls } from './maps.js';
 import { cropSegments, cropPoint, affectCrop, cropCircle, stepCrops } from './crops.js';
 import { RIFLE, resetRifle, stepRifle } from './rifle.js';
+import { targetRadius } from './target-radius.js';
+export { targetRadius };
 import { resetGrenades, stepGrenades } from './grenade.js';
 import { autoRangeTarget, autoRangeDistance, AUTO_RANGE } from './auto-range.js';
 // Tunable numbers live in config/gameplay.js; re-exported so existing imports keep working.
@@ -94,6 +96,10 @@ export class Simulation {
     // own sims, a joiner from the latest snapshot. Offline it stays empty.
     // Players are solid to each other: you stop against them like a target.
     this.otherPlayers = [];
+    // Offline (and on the multiplayer host's world sim) this simulation owns
+    // the shared world: crops burn and prop flashes fade here. Online every
+    // player's sim shares one world, so only the arena steps it (arena.js).
+    this.worldAuthority = true;
     this.reset();
   }
   // How close another player's centre can come to ours: two body radii.
@@ -104,12 +110,7 @@ export class Simulation {
     resetRifle(this);resetShotgun(this);
     resetGrenades(this);
     this.time = 0; this.serial = 0; this.volley = 0; this.shots = []; this.hexOrbs = []; this.hexSpin = null; this.hexCooldown = 0; this.events = [];
-    this.player = { id: 'local', team: 0, ...this.map.spawn, vx: 0, vz: 0, aimX: 1, aimZ: 0, hp: RULES.playerHealth, maxHp: RULES.playerHealth,
-      dodgeRemaining: 0, stamina: 0, staminaWait: 0, dodgeX: 0, dodgeZ: 0, dead:false, blastVX:0, blastVZ:0, ballastLaunch:false };
-    // Filled after the player exists, because maxStamina reads this.weapon and
-    // the constructor calls reset() before any weapon has been chosen — which
-    // is why a fresh Nominal sim used to start on two charges instead of three.
-    this.player.stamina = this.maxStamina;
+    this.player = this.freshPlayer('local', this.map.spawn);
     this.targets = this.map.targets.map(t => {
       const maxHp = t.maxHp ?? (t.kind === 'dummy' ? RULES.dummyHealth : RULES.targetHealth);
       return { ...t, baseX: t.x, spawnX: t.x, spawnZ: t.z, hp: maxHp, maxHp, respawn: 0, flash: 0 };
@@ -121,6 +122,28 @@ export class Simulation {
     this.ammo = RULES.maxSeeds; this.rechargeProgress = 0; this.rechargeWait = 0; this.firstRefill = false;
     this.spray = { active: false, warmup: 0, credit: 0, exhausted: false, effectClock: 0, volley: 0 };
     this.crops = cropSegments(this.map);
+  }
+
+  // A new player body at full health. Stamina is filled after the player
+  // exists, because maxStamina reads this.weapon and the constructor calls
+  // reset() before any weapon has been chosen — which is why a fresh Nominal
+  // sim used to start on two charges instead of three.
+  freshPlayer(id, at) {
+    const player = { id, team: 0, x: at.x, z: at.z, vx: 0, vz: 0, aimX: 1, aimZ: 0, hp: RULES.playerHealth, maxHp: RULES.playerHealth,
+      dodgeRemaining: 0, stamina: 0, staminaWait: 0, dodgeX: 0, dodgeZ: 0, dead:false, blastVX:0, blastVZ:0, ballastLaunch:false };
+    this.player = player; player.stamina = this.maxStamina;
+    return player;
+  }
+
+  // Online: back into the world after dying or picking a weapon. A fresh body
+  // and a full loadout, but the world (props, crops, the clock) is untouched.
+  respawn(at, id = this.player.id) {
+    resetRifle(this); resetShotgun(this); resetGrenades(this);
+    this.shots = []; this.hexOrbs = []; this.hexSpin = null; this.hexCooldown = 0;
+    this.volleyKills = new Map(); this.volleys = new Map(); this.seedCooldown = 0;
+    this.ammo = RULES.maxSeeds; this.rechargeProgress = 0; this.rechargeWait = 0; this.firstRefill = false;
+    this.spray = { active: false, warmup: 0, credit: 0, exhausted: false, effectClock: 0, volley: 0 };
+    return this.freshPlayer(id, at);
   }
 
   get seeds() { return this.shots.filter(s => !s.launched); }
@@ -155,7 +178,7 @@ export class Simulation {
   step(input, dt = RULES.step) {
     if(this.player.hp<=0){this.killPlayer();return;}
     if(this.weapon==='rifle'||this.weapon==='shotgun')input={...input,spray:false,hex:false,seed:false,launch:false};
-    stepCrops(this, dt, (a, b) => !this.colliders.some(c => !c.playerOnly && segmentBox(a.x, a.z, b.x, b.z, c) !== null));
+    if (this.worldAuthority) stepCrops(this, dt, (a, b) => !this.colliders.some(c => !c.playerOnly && segmentBox(a.x, a.z, b.x, b.z, c) !== null));
     if(this.player.dead)return;
     if(this.dev.ammo||this.dev.orbs)this.ammo=RULES.maxSeeds; if(this.dev.cooldowns)this.hexCooldown=0; if(this.dev.stamina)this.player.stamina=this.maxStamina;
     this.time += dt; this.hexCooldown = Math.max(0, this.hexCooldown - dt);
@@ -240,7 +263,7 @@ export class Simulation {
     if(this.weapon==='shotgun')stepShotgun(this,input,dt,{segmentBox,segmentCircle});
     this.recharge(dt);
     this.seedCooldown -= dt;
-    for (const prop of this.props) prop.flash = Math.max(0, prop.flash - dt);
+    if (this.worldAuthority) for (const prop of this.props) prop.flash = Math.max(0, prop.flash - dt);
     if (input.launch && !this.spray.active) this.launch(input.launchPointX, input.launchPointZ, input.quickShot);
     if (input.hex && !this.spray.active) this.hex();
     this.stepHex(dt);
@@ -254,7 +277,7 @@ export class Simulation {
       if (t.moving && t.hp > 0 && !this.dev.freezeTargets) t.x = t.baseX + Math.sin(this.time * .72) * t.travel;
     }
     // Moving and freshly respawned targets also separate from an idle player.
-    if(this.targets.some(t=>t.hp>0&&Math.hypot(t.x-p.x,t.z-p.z)<RULES.radius+(t.kind==='dummy'?.42:.55))||this.touchingPlayer())this.movePlayer(0,0);
+    if(this.targets.some(t=>t.hp>0&&Math.hypot(t.x-p.x,t.z-p.z)<RULES.radius+targetRadius(t))||this.touchingPlayer())this.movePlayer(0,0);
     this.stepSpray(dt);
     for (const s of this.shots) {
       const travel = s.launched ? Math.max(0, Math.min(dt, s.travelDuration - s.age)) : dt;
@@ -411,7 +434,7 @@ export class Simulation {
       for (let pass = 0; pass < 3; pass++) {
         // Round bodies: targets, then other players online. Pushed straight
         // out along the line between centres, and any speed into them removed.
-        for(const target of this.targets) if(target.hp>0)this.pushOutOfCircle(target.x,target.z,r+(target.kind==='dummy'?.42:.55),previousX,previousZ);
+        for(const target of this.targets) if(target.hp>0)this.pushOutOfCircle(target.x,target.z,r+targetRadius(target),previousX,previousZ);
         for(const other of this.otherPlayers) if(!(other.hp<=0))this.pushOutOfCircle(other.x,other.z,r*2,previousX,previousZ);
         for (const b of this.colliders) {
         // Floor clutter is stepped over, not walked into.

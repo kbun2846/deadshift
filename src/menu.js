@@ -3,12 +3,16 @@ import { staticPreview } from './weapon-preview.js';
 import { riflePreview } from './rifle-model.js';
 import { WEAPONS } from './items.js';
 import { NETWORK } from './config/network.js';
+import { savedName } from './online-play.js';
 
 export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete, online }) {
  let page=document.querySelector('[data-page]:not([hidden])')?.dataset.page||'home';
  let selectedMap='deadwater';
  let weaponBack='maps';
- const back=()=>{if(page!=='home')show(page==='weapons'?weaponBack:page==='maps'||page==='online'?'modes':'home');};
+ // In a multiplayer game the weapon page is the in-game picker; its back
+ // arrow leaves multiplayer (see pickOnline below).
+ let onlinePick=null,onlineBack=null;
+ const back=()=>{if(onlinePick&&page==='weapons'){onlineBack?.();return;}if(page!=='home')show(page==='weapons'?weaponBack:page==='maps'||page==='online'?'modes':'home');};
  const show=name=>{if(name==='maps')loadThumbnail();page=name;document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
  $('tutorial-entry').hidden=tutorialComplete;$('tutorial-mode').hidden=false;
  $('gamemodes').onclick=()=>show('modes');$('practice-mode').onclick=()=>show('maps');
@@ -25,19 +29,24 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  };
  $('online-mode').hidden=!NETWORK.enabled;
  $('online-mode').onclick=()=>{status('');show('online');};
- $('online-host').onclick=()=>go({role:'host'});
- $('online-join-form').onsubmit=e=>{e.preventDefault();go({role:'join',code:$('online-code').value});};
+ const who=()=>({name:$('online-name').value,password:$('online-password').value});
+ $('online-name').value=savedName();
+ $('online-host').onclick=()=>go({role:'host',...who()});
+ $('online-join-form').onsubmit=e=>{e.preventDefault();go({role:'join',code:$('online-code').value,...who()});};
  // A shared link (?join=CODE) lands straight on this page and joins.
  const invite=NETWORK.enabled&&new URLSearchParams(location.search).get('join');
- if(invite&&online){$('online-code').value=invite;show('online');go({role:'join',code:invite});}
- else if(NETWORK.enabled&&new URLSearchParams(location.search).get('host')==='1'&&online){show('online');go({role:'host'});}
+ // The link fills in the room code; the username and password are typed here.
+ if(invite&&online){$('online-code').value=invite;show('online');status('Enter your username and the room password, then JOIN.');}
+ else if(NETWORK.enabled&&new URLSearchParams(location.search).get('host')==='1'&&online){show('online');status('Enter your username and a room password, then HOST A GAME.');}
  document.querySelectorAll('.menu-back').forEach(b=>b.onclick=back);
- const chooseWeapons=()=>{$('tutorial-basics').hidden=selectedMap!=='tutorial';show('weapons');for(const card of $('weapon-options').children)card.loadPreview();};
+ // The page title says which weapon list this is: a tutorial course or a match.
+ const chooseWeapons=()=>{$('tutorial-basics').hidden=selectedMap!=='tutorial';document.querySelector('[data-page="weapons"] h2').textContent=selectedMap==='tutorial'?'tutorial weapons':'weapons';show('weapons');for(const card of $('weapon-options').children)card.loadPreview();};
  // Home's tutorial goes straight into the basics: no weapon to pick for
  // walking and dashing. Gamemodes > Tutorial picks a weapon's own course.
  const goTutorial=()=>{weaponBack='modes';selectedMap='tutorial';chooseWeapons();};
  $('tutorial-entry').onclick=()=>{selectedMap='tutorial';launch('static','basics');};$('tutorial-mode').onclick=goTutorial;
  const launch=(weapon,course)=>{
+  if(onlinePick){const pick=onlinePick;onlinePick=onlineBack=null;$('intro').classList.add('hidden');document.querySelector('[data-page="weapons"] h2').textContent='weapons';pick(weapon);return;}
   const query=new URLSearchParams({map:selectedMap,weapon,play:'1',mode:selectedMap==='tutorial'?'tutorial':'practice'});
   if(course)query.set('course',course);
   if(map.id===selectedMap){try{history.replaceState(null,'','?'+query);}catch{}start(weapon,selectedMap==='tutorial'?course||null:undefined);}
@@ -121,5 +130,16 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   '<output class="slider-value" id="volume-'+key+'-value" for="volume-'+key+'"></output></span></label>'+
   '<p class="settings-note">'+note+'</p>').join('')+
   '<button type="button" id="mute-all" class="secondary" aria-pressed="false">MUTE ALL</button>';
- return {back,openTab};
+ // Multiplayer: pick a weapon over the running game (after joining, after
+ // dying, or from the pause menu). Picking hands the weapon to `onPick`; the
+ // back arrow is `onBack` (leave multiplayer).
+ const pickOnline=(onPick,onBack)=>{
+  onlinePick=onPick;onlineBack=onBack;
+  $('tutorial-basics').hidden=true;
+  document.querySelector('[data-page="weapons"] h2').textContent='choose your weapon';
+  $('intro').classList.remove('hidden');show('weapons');
+  for(const card of $('weapon-options').children)card.loadPreview();
+ };
+ const cancelOnlinePick=()=>{if(!onlinePick)return;onlinePick=onlineBack=null;document.querySelector('[data-page="weapons"] h2').textContent='weapons';};
+ return {back,openTab,pickOnline,cancelOnlinePick,get pickingOnline(){return !!onlinePick;}};
 }

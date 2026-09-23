@@ -6,7 +6,7 @@
 export const NETWORK = Object.freeze({
  // Multiplayer ships in a later alpha. The code is built and tested; this
  // keeps the ONLINE menu and ?join= / ?host= links out of this build.
- enabled: false,
+ enabled: true,
  // 'peerjs' = browser-to-browser WebRTC, one player hosts.
  // 'websocket' = a dedicated server (not built yet; see AGENTS.md).
  transport: 'peerjs',

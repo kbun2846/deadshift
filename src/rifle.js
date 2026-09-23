@@ -1,4 +1,5 @@
 import { RIFLE, RIFLE_MUZZLE, RIFLE_CONVERGE, RULES } from './config/gameplay.js';
+import { targetRadius } from './target-radius.js';
 export { RIFLE, RIFLE_MUZZLE, RIFLE_CONVERGE };
 export const rifleDamage=distance=>RIFLE.damage-(RIFLE.damage-RIFLE.minDamage)*Math.max(0,Math.min(1,(distance-RIFLE.effectiveRange)/(RIFLE.falloffEnd-RIFLE.effectiveRange)));
 export function rifleSpread(distance,speed=0,aiming=false){
@@ -40,7 +41,7 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
   const ex=bullet.x+bullet.dx*travel,ez=bullet.z+bullet.dz*travel;
   let first=1,target=null,prop=null;
   for(const b of sim.colliders){if(b.playerOnly)continue;const t=segmentBox(bullet.x,bullet.z,ex,ez,b,.025);if(t!==null&&t<=first){first=t;target=null;prop=sim.props.find(v=>v.id===b.propId);}}
-  for(const t of sim.targets){if(t.hp<=0)continue;const hit=segmentCircle(bullet.x,bullet.z,ex,ez,t.x,t.z,(t.kind==='dummy'?.42:.55)+.025);if(hit!==null&&hit<first){first=hit;target=t;prop=null;}}
+  for(const t of sim.targets){if(t.hp<=0)continue;const hit=segmentCircle(bullet.x,bullet.z,ex,ez,t.x,t.z,targetRadius(t)+.025);if(hit!==null&&hit<first){first=hit;target=t;prop=null;}}
   bullet.x+=(ex-bullet.x)*first;bullet.z+=(ez-bullet.z)*first;bullet.travel+=travel*first;
   if(first<1||target||prop){
    const shot={damage:rifleDamage(bullet.travel),owner:p.id,volley:bullet.id,x:bullet.x,z:bullet.z,vx:bullet.dx,vz:bullet.dz};
