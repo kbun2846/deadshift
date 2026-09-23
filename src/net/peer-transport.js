@@ -7,7 +7,9 @@
 // Data channels are opened unordered, so one late packet never holds up the
 // ones behind it. The protocol copes: snapshots carry a tick and old ones are
 // ignored, and inputs repeat so a lost one is resent in the next message.
+// Two windows of the same browser skip WebRTC and use net/local-link.js.
 import { NETWORK } from '../config/network.js';
+import { listenLocal, knockLocal } from './local-link.js';
 
 let peerLibrary = null;
 // Loaded only when someone goes online, so single-player never downloads it.
@@ -53,7 +55,7 @@ export async function hostRoom(code, { config = NETWORK, server } = {}) {
   send(to, message) { const c = connections.get(to); if (c?.open) c.send(message); },
   broadcast(message) { for (const c of connections.values()) if (c.open) c.send(message); },
   dropped(id) { if (connections.delete(id)) transport.onLeave(id); },
-  close() { for (const c of connections.values()) c.close(); connections.clear(); peer.destroy(); },
+  close() { for (const c of connections.values()) c.close(); connections.clear(); local?.close(); peer.destroy(); },
   get peers() { return [...connections.keys()]; },
  };
  await new Promise((resolve, reject) => {
@@ -64,6 +66,12 @@ export async function hostRoom(code, { config = NETWORK, server } = {}) {
  // Losing the signalling server does not end a running game; it only stops
  // new players joining until it comes back.
  peer.on('disconnected', () => { if (!peer.destroyed) peer.reconnect(); });
+ // Other windows of this browser join over a BroadcastChannel (local-link.js).
+ const local = listenLocal(code, {
+  onOpen: (id, link) => { connections.set(id, link); transport.onJoin(id); },
+  onData: (id, message) => transport.onMessage(id, message),
+  onClose: id => transport.dropped(id),
+ });
  peer.on('connection', connection => {
   const id = connection.peer;
   connection.on('open', () => { connections.set(id, connection); wire(transport, connection, id); transport.onJoin(id); });
@@ -72,6 +80,20 @@ export async function hostRoom(code, { config = NETWORK, server } = {}) {
 }
 
 export async function joinRoom(code, { config = NETWORK, server, timeout = 15000 } = {}) {
+ // Hosted in another window of this browser? Then no WebRTC needed.
+ const nearby = await knockLocal(code);
+ if (nearby) {
+  const transport = {
+   role: 'client', id: nearby.id, code,
+   onMessage() {}, onJoin() {}, onLeave() {}, onError() {},
+   send(_to, message) { nearby.send(message); },
+   broadcast() {},
+   close() { transport.closed = true; nearby.close(); },
+  };
+  nearby.onData = message => transport.onMessage('host', message);
+  nearby.onClose = () => { if (!transport.closed) { transport.closed = true; transport.onLeave('host'); } };
+  return transport;
+ }
  const Peer = await loadPeer();
  const peer = new Peer(peerOptions(config, server));
  const transport = {
@@ -85,7 +107,7 @@ export async function joinRoom(code, { config = NETWORK, server, timeout = 15000
  let connection = null;
  try {
   await new Promise((resolve, reject) => {
-   const timer = setTimeout(() => reject(new Error('The host did not answer. Their network may block direct connections (see TURN in AGENTS.md).')), timeout);
+   const timer = setTimeout(() => reject(new Error('The host did not answer. Check the code, keep the host\'s game open in front, and try again. Some networks block direct connections (see TURN in AGENTS.md).')), timeout);
    peer.once('error', error => { clearTimeout(timer); reject(new Error(errorText(error))); });
    peer.once('open', id => {
     transport.id = id;

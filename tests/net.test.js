@@ -16,16 +16,16 @@ const createSim = m => new Simulation(m);
 
 // A room with a host and `clients` joiners. `weapons` picks what each chooses
 // (host first); null leaves that player on the weapon menu.
-function room({ clients = 1, clock, weapons = [], password = '', passwords = [] } = {}) {
+function room({ clients = 1, clock, weapons = [] } = {}) {
  const net = createLoopback();
  const hostSim = createSim(map);
  let time = 0;
  const now = clock || (() => time);
- const host = new HostSession({ transport: net.host('ABCDE'), map, local: hostSim, createSim, now, name: 'Hosty', password, random: seeded(7) });
+ const host = new HostSession({ transport: net.host('ABCDE'), map, local: hostSim, createSim, now, name: 'Hosty', random: seeded(7) });
  const joined = [];
  for (let i = 0; i < clients; i++) {
   const sim = createSim(map);
-  joined.push({ sim, session: new ClientSession({ transport: net.join('ABCDE'), map, local: sim, createSim, now, name: 'P' + i, password: passwords[i] ?? password }) });
+  joined.push({ sim, session: new ClientSession({ transport: net.join('ABCDE'), map, local: sim, createSim, now, name: 'P' + i }) });
  }
  net.flush();
  const tick = (inputs = []) => {
@@ -71,16 +71,15 @@ test('multiplayer is switched on and called Multiplayer in the game modes', asyn
  const { readFileSync } = await import('node:fs');
  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
  assert.match(html, /id="online-mode"[^>]*>MULTIPLAYER</);
- assert.match(html, /id="online-name"/); assert.match(html, /id="online-password"/);
+ assert.match(html, /id="online-name"/); assert.doesNotMatch(html, /password/i);
 });
 
-test('players join with a username, need the password, and names stay unique', () => {
- const r = room({ clients: 2, password: 'hunter', passwords: ['hunter', 'nope'] });
- assert.ok(r.joined[0].session.welcomed);
- assert.match(r.joined[1].session.ended, /Wrong password/);
- assert.equal(r.host.remotes.size, 1);
+test('players join with a username and the room code alone, and names stay unique', () => {
+ const r = room({ clients: 2 });
+ assert.ok(r.joined[0].session.welcomed && r.joined[1].session.welcomed);
+ assert.equal(r.host.remotes.size, 2);
  assert.equal([...r.host.remotes.values()][0].name, 'P0');
- const twin = new ClientSession({ transport: r.net.join('ABCDE'), map, local: createSim(map), createSim, now: () => 0, name: 'p0', password: 'hunter' });
+ const twin = new ClientSession({ transport: r.net.join('ABCDE'), map, local: createSim(map), createSim, now: () => 0, name: 'p0' });
  r.net.flush();
  assert.equal(twin.name, 'p0 2', 'a second P0 plays under its own name');
  assert.equal(cleanName('  <b>Sam</b>!! '), 'bSamb');
@@ -267,6 +266,27 @@ test('a silent player times out; a vanished host ends the client game', () => {
  r3.host.step = () => {};
  for (let i = 0; i < Math.ceil(NETWORK.timeout * 60) + 2; i++) r3.tick();
  assert.match(r3.joined[0].session.ended, /Lost connection/);
+});
+
+test('a joiner still loading is not dropped, and a stall on our own side is forgiven', () => {
+ // Welcomed, then silent while building the world: longer than the normal timeout is fine.
+ const net = createLoopback(); let time = 0; const now = () => time;
+ const host = new HostSession({ transport: net.host('ABCDE'), map, local: createSim(map), createSim, now });
+ const client = new ClientSession({ transport: net.join('ABCDE'), map, local: createSim(map), createSim, now, name: 'Slow' });
+ net.flush();
+ assert.ok(client.welcomed);
+ for (let i = 0; i < (NETWORK.timeout + 2) * 60; i++) { time += 1 / 60; host.step(); }
+ assert.equal(host.remotes.size, 1, 'kept while loading');
+ // The joiner's own page froze for 14 s, with the host's snapshots queued behind it.
+ time += 14; net.flush(); client.input({});
+ assert.equal(client.ended, null, 'the client forgives its own freeze');
+ // Now loaded and talking: a 10 s freeze of the host's own page is not the client's silence.
+ net.flush(); time += 1 / 60; host.step(); net.flush();
+ assert.ok([...host.remotes.values()][0].loaded);
+ time += 10; host.step();
+ assert.equal(host.remotes.size, 1, 'the host forgives its own freeze');
+ for (let i = 0; i < (NETWORK.timeout + 1) * 60; i++) { time += 1 / 60; host.step(); }
+ assert.equal(host.remotes.size, 0, 'real silence still times out');
 });
 
 test('developer overrides are forced off for everyone online', () => {

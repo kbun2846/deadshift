@@ -6,9 +6,9 @@
 // it pressed, which it could do anyway by pressing them.
 //
 // Messages are plain JSON objects with a `t` (type) field:
-//   hello     client -> host   { t, version, name, password }
+//   hello     client -> host   { t, version, name }
 //   welcome   host -> client   { t, id, slot, name, tick, map, players }
-//   full      host -> client   { t, reason }            (full / wrong version / wrong password)
+//   full      host -> client   { t, reason }            (full / wrong version)
 //   removed   host -> client   { t, reason }            (the host took this player out)
 //   input     client -> host   { t, inputs: [ {seq, ...playerInput}, ... ], ack }
 //   choose    client -> host   { t, weapon }            (weapon picked: into the world)
@@ -18,7 +18,7 @@
 // The channel may drop or reorder packets. Inputs repeat the last few, and
 // events are numbered and resent until the client acknowledges them, so
 // shots, deaths and kill-feed lines are never lost.
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);
@@ -98,7 +98,7 @@ export function readMessage(data) {
  }
  if (data.t === 'choose') return { t: 'choose', weapon: ['static', 'rifle', 'shotgun'].includes(data.weapon) ? data.weapon : 'static' };
  if (data.t === 'menu') return { t: 'menu' };
- if (data.t === 'hello') return { t: 'hello', version: data.version, name: cleanName(data.name), password: String(data.password ?? '').slice(0, 64) };
+ if (data.t === 'hello') return { t: 'hello', version: data.version, name: cleanName(data.name) };
  if (data.t === 'snapshot') {
   if (!Number.isInteger(data.tick) || !Array.isArray(data.players)) return null;
   return { ...data, players: data.players.filter(p => p && typeof p.id === 'string' && Number.isFinite(p.x) && Number.isFinite(p.z)) };

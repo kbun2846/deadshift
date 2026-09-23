@@ -29,15 +29,17 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  };
  $('online-mode').hidden=!NETWORK.enabled;
  $('online-mode').onclick=()=>{status('');show('online');};
- const who=()=>({name:$('online-name').value,password:$('online-password').value});
+ const who=()=>({name:$('online-name').value});
+ // Room codes are always shown in capitals, whatever was typed.
+ $('online-code').addEventListener('input',e=>{const el=e.target,at=el.selectionStart;el.value=el.value.toUpperCase();try{el.setSelectionRange(at,at);}catch{}});
  $('online-name').value=savedName();
  $('online-host').onclick=()=>go({role:'host',...who()});
  $('online-join-form').onsubmit=e=>{e.preventDefault();go({role:'join',code:$('online-code').value,...who()});};
  // A shared link (?join=CODE) lands straight on this page and joins.
  const invite=NETWORK.enabled&&new URLSearchParams(location.search).get('join');
- // The link fills in the room code; the username and password are typed here.
- if(invite&&online){$('online-code').value=invite;show('online');status('Enter your username and the room password, then JOIN.');}
- else if(NETWORK.enabled&&new URLSearchParams(location.search).get('host')==='1'&&online){show('online');status('Enter your username and a room password, then HOST A GAME.');}
+ // The link fills in the room code; the username is typed here.
+ if(invite&&online){$('online-code').value=invite.toUpperCase();show('online');status('Enter your username, then JOIN.');}
+ else if(NETWORK.enabled&&new URLSearchParams(location.search).get('host')==='1'&&online){show('online');status('Enter your username, then HOST A GAME.');}
  document.querySelectorAll('.menu-back').forEach(b=>b.onclick=back);
  // The page title says which weapon list this is: a tutorial course or a match.
  const chooseWeapons=()=>{$('tutorial-basics').hidden=selectedMap!=='tutorial';document.querySelector('[data-page="weapons"] h2').textContent=selectedMap==='tutorial'?'tutorial weapons':'weapons';show('weapons');for(const card of $('weapon-options').children)card.loadPreview();};

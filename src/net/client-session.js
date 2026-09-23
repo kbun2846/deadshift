@@ -21,19 +21,22 @@ import { blend } from './host-session.js';
 import { ProjectileMirror } from './projectiles.js';
 import { mapColliders } from '../maps.js';
 
+// Seconds between our own ticks that count as us being frozen, not them.
+const STALL = 1;
+
 export class ClientSession {
- constructor({ transport, map, local, createSim, config = NETWORK, now = () => performance.now() / 1000, name = 'Player', password = '' }) {
+ constructor({ transport, map, local, createSim, config = NETWORK, now = () => performance.now() / 1000, name = 'Player' }) {
   Object.assign(this, { transport, map, local, config, now });
   this.scratch = createSim(map); this.scratch.worldAuthority = false; this.scratch.targets = [];
   this.id = null; this.slot = null; this.name = name; this.seq = 0; this.pending = []; this.snapshots = []; this.lastTick = -1;
   this.clockOffset = null; this.ended = null; this.notices = []; this.names = new Map();
-  this.correction = 0; this.heard = now();
+  this.correction = 0; this.heard = now(); this.lastInput = this.heard;
   this.ack = 0; this.inbox = []; this.board = []; this.feedLines = []; this.feedSeen = 0;
   this.mine = { life: 0, present: false, dead: false, respawnIn: 0 };
   this.projectiles = new ProjectileMirror();
   transport.onMessage = (_from, data) => this.receive(data);
   transport.onLeave = () => { if (!this.ended) this.ended = 'The host left the game.'; };
-  transport.send('host', { t: 'hello', version: PROTOCOL_VERSION, name, password });
+  transport.send('host', { t: 'hello', version: PROTOCOL_VERSION, name });
  }
 
  get role() { return 'client'; }
@@ -137,6 +140,10 @@ export class ClientSession {
  // Simulation should run: movement only (the host fires), and nothing while
  // you are out of the world, dead, or not let in yet.
  input(raw) {
+  // A stall on our side (loading the world, a hidden window) is not the host
+  // going quiet: its snapshots are waiting in the queue. Forgive it.
+  const t = this.now(), gap = this.lastInput === undefined ? 0 : t - this.lastInput; this.lastInput = t;
+  if (gap > STALL) this.heard += Math.min(gap, Math.max(0, t - this.heard));
   if (this.welcomed && !this.ended && this.now() - this.heard > this.config.timeout) this.ended = 'Lost connection to the host.';
   if (!this.welcomed || this.ended) return movementInput({});
   this.local.dev = { speed: 1 };

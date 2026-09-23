@@ -54,12 +54,12 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   badge.textContent = (session.role === 'host' ? 'ROOM ' : 'MULTIPLAYER · ROOM ') + code + ' · ' + count + '/' + NETWORK.maxPlayers;
  };
 
- async function request({ role, code: typed, name: typedName, password = '' }, status) {
+ async function request({ role, code: typed, name: typedName }, status) {
   const name = cleanName(typedName);
   if (!name) throw new Error('Enter a username first.');
   saveName(name);
   // Multiplayer runs on Deadwater. From anywhere else (the tutorial map)
-  // reload onto it and carry on there; the password is typed again there.
+  // reload onto it and carry on there.
   if (map.training || map.id !== 'deadwater') {
    location.href = '?' + (role === 'host' ? 'host=1' : 'join=' + encodeURIComponent(typed || ''));
    return;
@@ -68,7 +68,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   if (!code) throw new Error('Room codes are ' + NETWORK.codeLength + ' letters and numbers.');
   status(role === 'host' ? 'Opening room…' : 'Finding room ' + code + '…');
   const { goOnline } = await import('./net/online.js');
-  const joined = await goOnline({ role: role === 'host' ? 'host' : 'client', code, map, local: sim, createSim, server, name, password });
+  const joined = await goOnline({ role: role === 'host' ? 'host' : 'client', code, map, local: sim, createSim, server, name });
   if (role !== 'host') {
    // Wait for the host to let us in (or turn us away) before leaving the menu.
    const deadline = performance.now() + 8000;

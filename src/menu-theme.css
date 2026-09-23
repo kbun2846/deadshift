@@ -25,7 +25,7 @@ html,body,#game,.modal,button,input,select{touch-action:manipulation}
 #dev-code-dialog .dev-code-hint{margin-bottom:0;opacity:.65}
 #game #weapon{transform:translateX(-50%) scale(1.1);transform-origin:50% 100%}
 /* Alternate action labels while retaining the shared stretched glyph treatment. */
-#game #pause-panel #reset,#game #pause-panel #main-menu{text-align:right}
+#game #pause-panel #reset,#game #pause-panel #change-weapon,#game #pause-panel #main-menu,#game #mp-death #mp-leave{text-align:right}
 #game .menu-shell button{text-align:left}
 .game-version{display:block;margin-top:8px;font-size:.34em;line-height:1.2;letter-spacing:.08em;font-weight:700;color:var(--ui-accent)}
 /* Match the borderless input selector so cropped lettering meets the highlight. */
@@ -376,13 +376,12 @@ body.game-cursor.paused #game #reticle>span{display:none}
 /* Positioned by transform from main.js (placeReticle), not by left/top. */
 #game #reticle{left:0;top:0;will-change:transform}
 /* Online page: host button, a code box with JOIN beside it, and a status line. */
-#game .online-join{display:flex;gap:8px;margin-top:10px;align-items:stretch}
-#game .online-join input{flex:1 1 0;width:0;min-width:0;height:auto;padding:8px 14px;background:#191c1c;border:1px solid #67746e;border-radius:3px;color:#fff;font:700 20px Arial,sans-serif;letter-spacing:.3em;text-transform:uppercase}
-#game .online-join input::placeholder{color:#8b948f;letter-spacing:.12em;font-size:14px}
+#game .online-join{display:flex;gap:8px;margin:0 0 12px;align-items:stretch}
+#game .online-join input{flex:1 1 0;width:0;min-width:0;height:auto;padding:8px 14px;background:#191c1c;border:1px solid #67746e;border-radius:3px;color:#fff;font:700 20px Arial,sans-serif;letter-spacing:.3em;text-transform:uppercase!important}
+#game .online-join input::placeholder{color:#8b948f;letter-spacing:.12em;font-size:14px;text-transform:uppercase!important}
 #game .online-join input:focus{outline:2px solid var(--ui-accent);outline-offset:2px}
 #game .online-join button{width:auto;height:auto;min-height:0;margin:0;flex:0 0 96px}
 #game .online-status{min-height:18px;margin:12px 0 0;font:700 12px/1.5 Arial,sans-serif;color:var(--ui-accent);letter-spacing:.03em}
-#game .online-note{margin:6px 0 0;font:600 11px/1.5 Arial,sans-serif;color:#d9d3c6;opacity:.7}
 /* In game: the room badge under the title. Tap it to copy an invite link. */
 #game .online-badge{min-height:0;height:auto;width:auto;top:calc(max(14px,env(safe-area-inset-top)) + 72px);left:max(24px,env(safe-area-inset-left));z-index:5;padding:6px 10px;position:absolute;border:0;border-radius:3px;background:#242928cc;color:#fff;font:700 10px/1 Arial,sans-serif;letter-spacing:.12em;pointer-events:auto}
 #game .online-badge:hover{background:var(--ui-accent);color:#151718}
@@ -396,7 +395,7 @@ body:not(.playing) #game .online-badge{display:none}
 
 /* Multiplayer (multiplayer-hud.js). Pink for everyone else, blue for you. */
 :root{--mp-enemy:#e8afb9;--mp-you:#8fd3ff}
-#game .online-identity{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
+#game .online-identity{display:grid;grid-template-columns:1fr;gap:8px;margin:0 0 12px}
 #game .online-field{display:flex;flex-direction:column;gap:5px;font:700 11px/1.2 Arial,sans-serif;letter-spacing:.12em;color:#a8b6b2;text-transform:uppercase!important}
 #game .online-field input{height:auto;padding:9px 12px;background:#191c1c;border:1px solid #67746e;border-radius:3px;color:#fff;font:700 16px Arial,sans-serif;letter-spacing:.02em;text-transform:none!important}
 #game .online-field input::placeholder{color:#8b948f;font-size:13px}
@@ -427,7 +426,7 @@ body:not(.playing) #game .online-badge{display:none}
 #game .mp-death p{margin:6px 0;font:700 14px/1.4 Arial,sans-serif;color:#c9c3b6;text-transform:none!important}
 #game .mp-death .mp-death-timer{color:var(--ui-accent);font-size:16px;margin-bottom:16px}
 #game #scores-toggle{width:auto;padding:0 10px;font:700 10px/1 var(--hud-font);letter-spacing:.08em}
-@media(max-width:600px){#game .scoreboard th:nth-child(5),#game .scoreboard td:nth-child(5),#game .scoreboard th:nth-child(6),#game .scoreboard td:nth-child(6){display:none}#game .kill-feed{font-size:12px}#game .online-identity{grid-template-columns:1fr}}
+@media(max-width:600px){#game .scoreboard th:nth-child(5),#game .scoreboard td:nth-child(5),#game .scoreboard th:nth-child(6),#game .scoreboard td:nth-child(6){display:none}#game .kill-feed{font-size:12px}}
 
 /* Player names keep the case they were typed in. */
 #game :is(.kill-feed,.kill-feed *,.mp-death p,.mp-death p *,.scoreboard tbody th,#online-players span){text-transform:none!important}

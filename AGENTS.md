@@ -47,7 +47,7 @@ Player-facing links: `?join=CODE` joins a room, `?host=1` opens one.
 
 **Claude artifact build.** This is a single self-contained HTML page for claude.ai. `vite.artifact.mjs` builds without code splitting. A small bundler script then inlines the JS and CSS into one file that is published as an artifact. The artifact host provides its own page shell, so viewport settings in `index.html` may not apply there.
 
-**Version:** `src/version.js` is the one place the version lives (`0.6a`, the a is alpha). The browser tab reads `deadshift v0.6a` (`TAB_TITLE`); keep `index.html`'s `<title>` in step when it changes.
+**Version:** `src/version.js` is the one place the version lives (`0.65a`, the a is alpha). The browser tab reads `deadshift v0.65a` (`TAB_TITLE`); keep `index.html`'s `<title>` in step when it changes.
 
 ## Where the code lives
 
@@ -222,6 +222,7 @@ vite.config.js      normal build; vite.artifact.mjs is the single-file artifact 
 src/config/network.js   every network setting: transport, signalling server, STUN/TURN, room codes, rates, timeouts
 src/net/transport.js    the Transport interface (the only thing sessions talk to), room codes, an in-memory loopback for tests
 src/net/peer-transport.js  WebRTC via PeerJS 1.5.5 (loaded only when someone goes online)
+src/net/local-link.js   two windows of the same browser: BroadcastChannel instead of WebRTC (joining knocks here first, 0.5 s; hosting listens on both)
 src/net/protocol.js     message shapes, input cleaning (playerInput), usernames, snapshot/loadout packing
 src/net/arena.js        THE MATCH RULES: shared world, players as targets, damage, deaths, respawns, kill feed, scoreboard
 src/net/spawn-points.js random spawn spots inside buildings, clear of furniture
@@ -232,11 +233,13 @@ src/net/online.js       picks the transport from config and starts the right ses
 src/online-play.js      page glue: menu requests, badge, host player list (REMOVE), events and projectiles for main.js
 src/multiplayer-hud.js  kill feed, scoreboard (Tab / SCORES on touch), death card with respawn countdown
 src/remote-players.js   how other players are drawn (plum coat, mustard ring, name tag)
-tests/net.test.js       host + joiners over the loopback: join, password, spawn, shoot to death, multi-kill line, self-kill, time, props, lost packets
+tests/net.test.js       host + joiners over the loopback: join, spawn, loading grace, stall forgiveness, shoot to death, multi-kill line, self-kill, time, props, lost packets
 ```
 
 ### How a game goes
-- **Menu:** Gamemodes > MULTIPLAYER. USERNAME (saved in `deadshift-username`) and PASSWORD. HOST A GAME sets the room password; JOIN needs the room code and that password. Wrong password: "Wrong password." Names are unique per room ("Sam 2").
+- **Menu:** Gamemodes > MULTIPLAYER: USERNAME (saved in `deadshift-username`), then ROOM CODE + JOIN, then HOST A GAME. No password: the room code is the only key. The code box always shows capitals. Names are unique per room ("Sam 2").
+- **Same computer:** two windows of one browser connect through `net/local-link.js` (BroadcastChannel), so local testing never depends on WebRTC. Players on other devices still use WebRTC.
+- **Timeouts:** 6 s of silence drops a player (`timeout`), but a joiner still loading the map gets `loadGrace` (45 s) before its first message, and a freeze on our own side (loading, hidden window; any gap over 1 s between our own ticks) is not counted as the other side's silence.
 - **Weapon pick:** after loading in, every player picks a weapon on the weapons page drawn over the running game (`menuFlow.pickOnline`). Nobody is in the world until they pick. The back arrow leaves multiplayer.
 - **Spawning:** always at a random spot inside a random building (rooms at least 6 m across), preferring spots 6 m from anyone alive. 500 HP (`MATCH.health`).
 - **Death:** your death reaction plays; after 1.2 s a death card shows "killed by NAME" (or "you took yourself out") and a countdown; you respawn 5 s after dying (`MATCH.respawn`) in a random building. The card also has CHANGE WEAPON and LEAVE MULTIPLAYER. Other players are unaffected; their name goes in the kill feed.

@@ -14,6 +14,9 @@ import { PROTOCOL_VERSION, playerInput, playerState, readMessage, loadout } from
 import { Arena } from './arena.js';
 import { pack } from './projectiles.js';
 
+// Seconds between our own ticks that count as us being frozen, not them.
+const STALL = 1;
+
 const IDLE = Object.freeze(playerInput({}));
 // Events that other screens need to see. Everything else stays with its sim.
 export const SHARED_EVENTS = new Set(['explosion', 'grenadeExplosion', 'propBreak', 'propHit', 'propRestore', 'impactMark', 'rifleImpact',
@@ -24,8 +27,8 @@ export const SHARED_EVENTS = new Set(['explosion', 'grenadeExplosion', 'propBrea
 const EVENT_KEEP = 180;
 
 export class HostSession {
- constructor({ transport, map, local, createSim, config = NETWORK, name = 'Host', password = '', now = () => performance.now() / 1000, random = Math.random }) {
-  Object.assign(this, { transport, map, local, createSim, config, now, password: String(password || '') });
+ constructor({ transport, map, local, createSim, config = NETWORK, name = 'Host', now = () => performance.now() / 1000, random = Math.random }) {
+  Object.assign(this, { transport, map, local, createSim, config, now });
   this.tick = 0; this.remotes = new Map(); this.ended = null; this.notices = []; this.removed = new Set();
   this.arena = new Arena({ map, createSim, random });
   this.hostSeat = this.arena.addSeat('host', name || 'Host', local);
@@ -47,7 +50,7 @@ export class HostSession {
   if (message.t === 'hello') return this.admit(from, message);
   const remote = this.remotes.get(from);
   if (!remote) return;
-  remote.silent = 0; remote.heard = this.now();
+  remote.silent = 0; remote.heard = this.now(); remote.loaded = true;
   if (message.t === 'input') {
    remote.ack = Math.max(remote.ack, message.ack || 0);
    // Inputs repeat across messages for safety; keep only the new ones, in order.
@@ -65,7 +68,6 @@ export class HostSession {
   // Someone the host removed stays out for the rest of this room.
   if (this.removed.has(id)) return this.transport.send(id, { t: 'removed', reason: 'The host removed you from the game.' });
   if (hello.version !== PROTOCOL_VERSION) return this.transport.send(id, { t: 'full', reason: 'This game is running a different version. Reload the page on both devices.' });
-  if (this.password && hello.password !== this.password) return this.transport.send(id, { t: 'full', reason: 'Wrong password.' });
   if (this.playerCount >= this.config.maxPlayers) return this.transport.send(id, { t: 'full', reason: 'That game is full.' });
   const used = new Set([0, ...[...this.remotes.values()].map(r => r.slot)]);
   let slot = 1; while (used.has(slot)) slot++;
@@ -117,6 +119,10 @@ export class HostSession {
  // One 60 Hz tick, run right after the host's own player has stepped.
  step() {
   this.tick++;
+  // A stall on our side (the page busy loading, a hidden window) is not the
+  // others going quiet: their messages are waiting in the queue. Forgive it.
+  const t = this.now(), gap = this.lastStep === undefined ? 0 : t - this.lastStep; this.lastStep = t;
+  if (gap > STALL) for (const remote of this.remotes.values()) remote.heard += Math.min(gap, Math.max(0, t - remote.heard));
   this.local.dev = { speed: 1 };
   this.arena.after(this.hostSeat);
   const hostMark = this.hostSeat.mark;
@@ -137,7 +143,8 @@ export class HostSession {
    }
    remote.silent += 1 / 60;
    // Real seconds, not ticks: a host running slow must not drop players early.
-   if (this.now() - remote.heard > this.config.timeout) this.remove(remote.id, 'timeout');
+   // A joiner still building the world (seconds on a phone) sends nothing yet.
+   if (this.now() - remote.heard > (remote.loaded ? this.config.timeout : this.config.loadGrace)) this.remove(remote.id, 'timeout');
   }
   // The host's own events, including damage the others did to it just now
   // (main.js drains the sim after this).

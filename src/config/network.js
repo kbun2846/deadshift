@@ -45,6 +45,9 @@ export const NETWORK = Object.freeze({
  // A remote player whose inputs stop arriving is held this long before they
  // are treated as gone.
  timeout: 6,
+ // A player who just joined is still loading the map and sends nothing until
+ // that is done: they get this long before the first word.
+ loadGrace: 45,
  // A client far behind the host catches up by running up to this many of its
  // queued inputs in one tick.
  maxCatchUp: 4,
