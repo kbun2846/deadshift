@@ -49,6 +49,8 @@ import { ROADSIDE_TYPES, makeRoadside } from '../world/roadside.js';
 import { OUTDOOR_CAMERA_HEIGHT, CAMERA_TILT, interiorCameraHeight, snapCameraFocus } from './camera-framing.js';
 import { TutorialMarkers } from '../tutorial-markers.js';
 import { RemotePlayers } from '../remote-players.js';
+import { RobotWrecks, isRobotSlot, glowMaterials } from '../bots/robot-model.js';
+const ROBOT_CHIP = new THREE.Color('#c9d3d6');
 import { freezeTransforms } from './frozen-transforms.js';
 import { BlobShadows } from './blob-shadows.js';
 import { DetailFX, ELECTRIC as FX_ELECTRIC, orbBlastScale } from '../effects/effects-detail.js';
@@ -204,6 +206,7 @@ export class WorldView {
     for (const target of map.targets) {
       const group = this.makeTarget(target.moving, target.kind); group.rotation.y = targetYaw(target.id); this.interiorVisibility.applyEntity(group); this.targets.set(target.id, group); this.scene.add(group);
     }
+    this.robotGlow = glowMaterials(this); // robots' visor and bulb (bots/), for the warm-up
     this.electric = new ElectricEffects(this.scene); this.shots = new Map(); this.particles = []; this.rings = []; this.beams = new Map(); this.blasts = [];
     this.smokeGeo = new THREE.IcosahedronGeometry(1, 0);
     this.beamGeo = new THREE.CylinderGeometry(1, 1, 1, 6);
@@ -1488,6 +1491,9 @@ export class WorldView {
   }
 
   warmPrograms() {
+    // Blood drops are made on a first bleed; made now, so that bleed (a robot
+    // or another player shooting you) builds no shader mid-fight.
+    (this.drops ||= new BloodDrops(this)).ensure();
     // Everything drawFrame gives the indoor-clipped shader, given it now.
     for (const group of this.particlePool || []) this.interiorVisibility.apply(group);
     for (const object of this.electric?.arcs.objects || []) this.interiorVisibility.apply(object);
@@ -1751,6 +1757,16 @@ export class WorldView {
   // A gunshot lights its surroundings for a few hundredths of a second, using
   // the effects light every tier with lights already has (so no new shader
   // variants and no cost when idle). Warm, like the powder flash.
+  // Sparks off a robot (bots/): an electric crackle at the hit, steel chips,
+  // and a flash of the effects light; bigger on a kill.
+  robotHit(e) {
+    const kill = e.type === 'kill';
+    this.fx.electric(e.x, .8, e.z, kill ? 1.4 : .7, { ring: kill });
+    this.burst(e.x, e.z, kill ? 18 : 5, 'hit', ROBOT_CHIP);
+    if (kill) this.fx.electric(e.x, .5, e.z, 1, { ring: false });
+    this.fxLight.color.set('#b8ecff'); this.fxLight.position.set(e.x, 1.1, e.z); this.fxLightLevel = Math.max(this.fxLightLevel, kill ? 20 : 6);
+  }
+
   muzzleLight(reach, level, shooter = this.lastSim?.player) {
     const p = shooter; if (!p) return;
     this.fxLight.color.set('#ffb766'); this.fxLight.position.set(p.x + p.aimX * reach, 1.05, p.z + p.aimZ * reach);
@@ -1766,6 +1782,14 @@ export class WorldView {
     if (!shooter) shooter = { x: e.x ?? 0, z: e.z ?? 0, aimX: 1, aimZ: 0 };
     const base = (slot + 1) * 1e6;
     // Their stain, one per player (the slot), like yours below.
+    if (e.type === 'playerDeath' && isRobotSlot(slot)) {
+      // A robot goes down in a shower of sparks and topples (robot-model.js).
+      this.robotHit({ ...e, type: 'kill' }); this.shake = Math.max(this.shake, .12);
+      this.remote ||= new RemotePlayers(this);
+      const wreck = this.remote.looseBody(slot, e.weapon, e.x, e.z, e.aimX ?? 1, e.aimZ ?? 0);
+      (this.robotWrecks ||= new RobotWrecks(this)).add(slot, wreck, e);
+      return;
+    }
     if (e.type === 'playerDeath') {
       this.blood.add(e.x, e.z, e.directionX, e.directionZ, 'slot' + slot); this.burst(e.x, e.z, 34, 'kill'); this.fx.impact?.(e.x, e.z, this.kickedDustColor(e.x, e.z));
       // Their body, like yours: one per player (remote-corpses.js).
@@ -1913,6 +1937,9 @@ export class WorldView {
       // A player shot bleeds (not Static's stream or single orbs: electric):
       // the blood takes the place of the pale hit burst.
       } else if (e.targetKind === 'player' && !e.electric) { this.bleed(e); if (e.type === 'kill') this.burst(e.x, e.z, 34, 'kill'); }
+      // A robot (bots/): never blood. Sparks, a crackle of electricity and a
+      // few bright chips of steel instead.
+      else if (e.targetKind === 'robot') this.robotHit(e);
       else this.burst(e.x, e.z, e.type === 'kill' ? 34 : 9, e.type);
       if (e.type === 'kill') {
         this.shake = Math.max(this.shake, .1);
@@ -2176,7 +2203,7 @@ export class WorldView {
     this.shotgunView.update(sim,dt);
     if(!this.grenadeView)this.grenadeView=new GrenadeView(this);
     this.grenadeView.update(sim);
-    this.deathView?.update(dt); this.remoteCorpses?.update(dt);
+    this.deathView?.update(dt); this.remoteCorpses?.update(dt); this.robotWrecks?.update(dt);
     if(sim.weapon==='static')this.updateStaticCrackle(elapsed);
     // Shared live endpoint keeps short-lived stream arcs attached during recoil and aiming.
     this.staticMuzzle.set(0,0,-.333);
@@ -2758,7 +2785,7 @@ export class WorldView {
   // Debris only (online map reset): the world's marks and leftovers, not the
   // camera, the players or anything in flight.
   clearDebris() {
-    this.deathView?.clear(); this.remoteCorpses?.clear(); this.drops?.clear(); this.bleeds?.clear();
+    this.deathView?.clear(); this.remoteCorpses?.clear(); this.robotWrecks?.clear(); this.drops?.clear(); this.bleeds?.clear();
     this.blood?.clear?.();
     this.surfaceMarks.clear(); this.cropView.reset();
     this.particles.length = 0; this.fx.clear();
@@ -2778,7 +2805,7 @@ export class WorldView {
   }
 
   reset(sim) {
-    this.deathView?.clear(); this.blood?.clear(); this.remoteCorpses?.clear(); this.drops?.clear(); this.bleeds?.clear(); this.cleanPlayer();
+    this.deathView?.clear(); this.blood?.clear(); this.remoteCorpses?.clear(); this.robotWrecks?.clear(); this.drops?.clear(); this.bleeds?.clear(); this.cleanPlayer();
     this.fx.clear();
     this.remote?.clear();
     this.rifleView?.clear();this.shotgunView?.clear();

@@ -1,4 +1,4 @@
-deadshift alpha v0.8 is a minimalist top down shooter with distinct weapons and explosive combat, playable in the browser on mobile or pc
+deadshift alpha v0.82 is a minimalist top down shooter with distinct weapons and explosive combat, playable in the browser on mobile or pc
 
 - three distinct weapons: static, nominal and ballast
 - online multiplayer for up to 4 players: host a game, share the room code, and play rounds from a lobby
@@ -8,6 +8,14 @@ deadshift alpha v0.8 is a minimalist top down shooter with distinct weapons and 
 - weapon tutorials and solo practice
 - built for multiple maps, with more to come; the alpha is tested on deadwater outpost, a desert town with enterable buildings, destructible props and a crop field that burns
 - touch controls with an editable layout, five graphics presets
+
+## what's new in v0.82
+
+- robots to test from the dev tools: they move, shoot and use every weapon like a player
+- enemies or allies; allies stay by you and help you
+- eight robot skins, never two alike in a game
+- each robot has its own skill and play style
+- robot previews in the multiplayer menus and a 1v1 page (not working yet)
 
 ## what's new in v0.8
 

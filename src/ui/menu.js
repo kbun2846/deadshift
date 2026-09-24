@@ -9,6 +9,7 @@ import { NETWORK } from '../config/network.js';
 import { savedName } from '../online-play.js';
 import { createSettingsRows } from './lobby-settings.js';
 import { cleanSettings } from '../config/match.js';
+import { robotOptionRows } from './robot-options.js';
 
 export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete, online }) {
  let page=document.querySelector('[data-page]:not([hidden])')?.dataset.page||'home';
@@ -17,10 +18,16 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  // In a multiplayer game the weapon page is the in-game picker; its back
  // arrow leaves multiplayer (see pickOnline below).
  let onlinePick=null,onlineBack=null;
- const back=()=>{if(onlinePick&&page==='weapons'){onlineBack?.();return;}if(page!=='home')show(page==='weapons'?weaponBack:page==='host-setup'?'online':page==='maps'||page==='online'?'modes':'home');};
+ const back=()=>{if(onlinePick&&page==='weapons'){onlineBack?.();return;}if(page!=='home')show(page==='weapons'?weaponBack:page==='host-setup'?'online':page==='maps'||page==='online'||page==='duel'?'modes':'home');};
  const show=name=>{if(name==='maps')loadThumbnail();page=name;document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);refreshTypography();document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
  $('tutorial-entry').hidden=tutorialComplete;$('tutorial-mode').hidden=false;
  $('gamemodes').onclick=()=>show('modes');$('practice-mode').onclick=()=>show('maps');
+ // 1V1: you against a robot. A preview for now (robot-options.js): the
+ // choices light up, START does nothing yet.
+ robotOptionRows($('duel-options'),['weapon','skill']);
+ $('duel-mode').onclick=()=>show('duel');$('duel-start').onclick=()=>{};
+ // Host setup: the mode and robots (previews) round the round settings.
+ robotOptionRows($('host-mode'),['mode']);robotOptionRows($('host-robots'),['fill','skill']);
  // Online: host a room (you get a code to share) or type a friend's code.
  // main.js does the connecting; this page only shows how it is going.
  const status=text=>{$('online-status').textContent=text||'';$('host-status').textContent=text||'';};

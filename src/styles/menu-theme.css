@@ -510,7 +510,7 @@ body.mp-between #weapon,body.mp-between #reticle,body.mp-between .health-hud,bod
 #game .round-choices button,#game .lobby-modes button,#game .lobby-maps button{width:auto;margin:0;min-height:32px;height:32px;padding:0 12px;border:0;border-radius:0;background:var(--button-idle);color:#c9c3b6;font:700 12px/32px var(--hud-font,Arial),sans-serif;letter-spacing:.1em;text-transform:uppercase;box-shadow:none;transform:none}
 #game .round-choices button[aria-pressed=true],#game .lobby-modes button[aria-pressed=true],#game .lobby-maps button[aria-pressed=true]{background:var(--ui-accent);color:#151718}
 #game .round-choices button:not(:disabled):hover,#game .lobby-modes button:not(:disabled):hover,#game .lobby-maps button:not(:disabled):hover,#game .round-choices button:focus-visible,#game .lobby-modes button:focus-visible{background:#353c3a;color:#fff}
-#game .round-choices button[aria-pressed=true]:hover{background:var(--ui-accent);color:#151718}
+#game .round-choices button[aria-pressed=true]:hover,#game .round-choices button[aria-pressed=true]:not(:disabled):hover{background:var(--ui-accent);color:#151718}
 #game .round-settings-readonly .round-choices button:disabled{opacity:1;cursor:default}
 #game .round-settings-readonly .round-choices button:disabled:not([aria-pressed=true]){color:#7f8783}
 #game #host-settings{margin:6px 0 16px;color:#eee9df}
@@ -632,3 +632,19 @@ body[data-controls=touch] #game .top-actions .icon-button svg{width:18px;height:
 #game #settings-panel .mobile-layout-actions>#touch-edit-layout:not(:disabled){background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}
 /* Short landscape phones: the settings card takes the whole height. */
 @media(max-height:500px) and (orientation:landscape){#game #settings-panel .settings-card{height:calc(100dvh - 16px);max-height:calc(100dvh - 16px)}}
+/* Robot options (robot-options.js, a preview): the round-settings rows, a
+   small SOON tag on each, and the lobby's empty slots. */
+#game .soon-tag{display:inline-block;margin-left:6px;padding:2px 5px;border-radius:3px;background:#9fb0aa33;color:#9fb0aa;font:700 9px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.12em;vertical-align:middle;text-transform:uppercase}
+#game #host-mode,#game #host-robots,#game #duel-options{margin:6px 0 10px;color:#eee9df}
+#game #host-settings{margin-bottom:10px}
+#game [data-page="duel"] .duel-note{margin:-4px 0 14px;color:#9fb0aa;font:700 12px/1.4 var(--hud-font,Arial),sans-serif;letter-spacing:.12em;text-transform:uppercase}
+#game #duel-start .soon-tag{background:#15171833;color:inherit}
+#game .lobby-screen .lobby-empty .lobby-name{color:#7f8783;font-style:italic}
+#game .lobby-screen .lobby-empty-dot{flex:none;width:12px;height:12px;border-radius:50%;border:1.5px dashed #7f8783}
+#game .lobby-screen button.lobby-add-robot{flex:none;width:auto;margin:0 0 0 auto;min-height:30px;height:30px;padding:0 12px;font:700 12px/30px var(--hud-font,Arial),sans-serif;letter-spacing:.08em}
+#game .robot-option .round-setting-label{white-space:nowrap}
+/* Long choice lists (mode, robot weapon): the label above, the choices in one
+   row under it, full width, so they never wrap into a ragged block. */
+#game .robot-option[data-robot-option="mode"],#game .robot-option[data-robot-option="weapon"]{flex-direction:column;align-items:stretch;gap:6px}
+#game .robot-option[data-robot-option="mode"] .round-choices,#game .robot-option[data-robot-option="weapon"] .round-choices{flex-wrap:nowrap;justify-content:stretch}
+#game .robot-option[data-robot-option="mode"] .round-choices button,#game .robot-option[data-robot-option="weapon"] .round-choices button{flex:1 1 auto;min-width:0;padding:0 8px;text-align:center;justify-content:center}

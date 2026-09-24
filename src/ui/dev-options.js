@@ -30,6 +30,7 @@ export const DEV_SECTIONS = Object.freeze([
   { id: 'player', title: 'Player' },
   { id: 'weapons', title: 'Weapons', weapons: true },
   { id: 'world', title: 'World' },
+  { id: 'robots', title: 'Robots (test)' },
   { id: 'display', title: 'Display' },
 ]);
 
@@ -66,6 +67,13 @@ export const DEV_OPTIONS = Object.freeze([
   { section: 'world', kind: 'action', key: 'restoreProps', label: 'Rebuild broken props', button: 'Rebuild' },
   { section: 'world', kind: 'select', key: 'blastOrbs', label: 'Blast preview size', options: orbCounts, fallback: 6 },
   { section: 'world', kind: 'action', key: 'previewBlast', label: 'Show blast at aim', button: 'Blast' },
+
+  { section: 'robots', kind: 'select', key: 'robotWeapon', label: 'Robot weapon', options: [['0', 'Random'], ['1', 'Static'], ['2', 'Nominal'], ['3', 'Ballast']], fallback: 0 },
+  { section: 'robots', kind: 'select', key: 'robotSide', label: 'Robot side', options: [['0', 'Enemy (free for all)'], ['1', 'Enemy team'], ['2', 'Ally (your team)']], fallback: 0 },
+  { section: 'robots', kind: 'select', key: 'robotSkill', label: 'Robot skill', options: [['0', 'Random'], ['1', 'Easy'], ['2', 'Normal'], ['3', 'Hard']], fallback: 0 },
+  { section: 'robots', kind: 'select', key: 'robotStyle', label: 'Robot style', options: [['0', 'Random'], ['1', 'Balanced'], ['2', 'Rusher'], ['3', 'Marksman'], ['4', 'Flanker'], ['5', 'Cautious']], fallback: 0 },
+  { section: 'robots', kind: 'action', key: 'spawnRobot', label: 'Spawn robot (solo)', button: 'Spawn' },
+  { section: 'robots', kind: 'action', key: 'removeRobots', label: 'Remove all robots', button: 'Remove' },
 
   { section: 'display', kind: 'select', key: 'quality', label: 'Graphics preset', where: 'window' },
   { section: 'display', kind: 'toggle', key: 'hideHud', label: 'Hide HUD' },

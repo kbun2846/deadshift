@@ -11,6 +11,7 @@ import { RULES } from './config/gameplay.js';
 import { makeRifle } from './weapons/rifle-model.js';
 import { makeShotgun } from './weapons/shotgun-model.js';
 import { Wading, makeBloodStains } from './effects/blood-wading.js';
+import { buildRobotBody, isRobotSlot, isAllySlot, skinOf, ALLY_COLOURS } from './bots/robot-model.js';
 
 // Where the gun sits in the hand, as on your own player (renderer makePlayer).
 const GUN_AT = [.27, .74, -.46];
@@ -58,6 +59,7 @@ export class RemotePlayers {
  build(id, slot, loose = false) {
   const v = this.view, c = { ...BASE, ...playerColour(slot) }, root = new THREE.Group(), g = new THREE.Group(), body = new THREE.Group();
   root.add(g); g.add(body); if (!loose) v.scene.add(root);
+  if (isRobotSlot(slot)) return this.buildRobot(id, slot, loose, root, g, body);
   // Head and legs are tagged like your own (renderer makePlayer), so a body
   // made from this one loses the right parts (death-corpse.js).
   for (const x of [-.15, .15]) v.box(x, .14, 0, .18, .27, .27, c.legs, body).userData.deathPart = 'leg';
@@ -76,6 +78,20 @@ export class RemotePlayers {
   const ring = new THREE.Mesh(new THREE.RingGeometry(.49, .53, 40), new THREE.MeshBasicMaterial({ color: c.ring, transparent: true, opacity: .55, side: THREE.DoubleSide, depthWrite: false }));
   ring.rotation.x = -Math.PI / 2; ring.position.y = .065; g.add(ring);
   const avatar = { root, group: g, body, hand, weapon: null, slot, seen: true, colours: c, stains, wading: stains ? new Wading() : null };
+  if (!loose) this.avatars.set(id, avatar);
+  return avatar;
+ }
+
+ // A robot (bots/): the tin gunslinger in its make (skinOf: steel, copper...),
+ // no blood stains, a base ring in its visor colour (an ally's is green,
+ // with a pennant).
+ buildRobot(id, slot, loose, root, g, body) {
+  const ally = isAllySlot(slot), skin = skinOf(slot), glow = buildRobotBody(this.view, body, ally, skin);
+  const hand = new THREE.Group(); hand.position.set(...GUN_AT); body.add(hand);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(ally ? .47 : .49, .53, 40), new THREE.MeshBasicMaterial({ color: ally ? ALLY_COLOURS.ring : skin.eye, transparent: true, opacity: ally ? .8 : .55, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = .065; g.add(ring);
+  const avatar = { root, group: g, body, hand, weapon: null, slot, seen: true, robot: true, glow,
+   colours: { coat: skin.body, arm: skin.body, legs: skin.legs }, stains: null, wading: null };
   if (!loose) this.avatars.set(id, avatar);
   return avatar;
  }

@@ -2,6 +2,20 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.82 (2026-09-24)
+
+### Robots (a test build, from the dev tools)
+- Robots you can add from the dev tools (solo games): they play like a player, using every weapon with the same moves, ammo and reloads.
+- They find real routes round the map, take cover to reload, hunt you down, walk round cover to get a shot, and keep their aim on the corner you went round.
+- Robots never bleed: hits throw sparks, and a dead robot falls over and smokes.
+- Sides: free for all, an enemy team, or allies. Allies stay next to you, keep out of your line of fire, go after whoever is hurting you and step in front of you when you're nearly dead. No friendly fire.
+- Eight robot skins (steel, copper, brass, gunmetal, rust, enamel, black iron, teal), never two the same in a game; allies have a green eye, flag and ring.
+- Each robot has a skill (easy, normal, hard) and a style (balanced, rusher, marksman, flanker, cautious), with small differences of its own.
+- Robots are the same size and shape as players.
+
+### Menus
+- Previews of robots in multiplayer: robot options when hosting, "empty slot" rows in the lobby, and a 1V1 page for you against a robot. Not working yet.
+
 ## alpha v0.8 (2026-09-24)
 
 ### Title screen

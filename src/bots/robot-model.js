@@ -1,0 +1,148 @@
+// What a robot looks like, and what is left of one.
+//
+// A tin-can gunslinger from the same toy box as the players, built to the
+// player's exact measurements (makePlayer / RemotePlayers.build): the same
+// legs, the same tapered body, the head at the same height under the same
+// hat, the same gun arm with the gun in the same hand, the same base ring.
+// Only the details are a robot's: riveted sheet metal with a band round the
+// middle, a lid ring at the collar, a pressure gauge on the chest, a box
+// head with a jaw grille and a glowing visor slit, and a short antenna with
+// a bulb through the crown. Flat-shaded and merged into one draw like every
+// body in the game; only the visor and the bulb are separate, because they
+// glow (unlit, so they read in shade and indoors).
+//
+// Skins: every robot is a different make (`ROBOT_SKINS`: steel, copper,
+// brass, gunmetal, rust bucket, enamel, black iron, teal tin), picked from
+// its slot: no two robots in a game share a make, and a robot keeps its
+// make (and its wreck shows it) for as long as it is in the game.
+//
+// Robots never bleed. A hit throws sparks and a crackle of electricity; a
+// dead robot topples over, its eye goes dark, and it sparks and smokes where
+// it lies for a few seconds (RobotWrecks) before being cleared away.
+import * as THREE from 'three';
+
+export const ROBOT_SLOT = 100;          // slots from here up are robots
+export const ALLY_SLOT = 1000;          // from here up, robots on your side
+export const isRobotSlot = slot => slot >= ROBOT_SLOT;
+export const isAllySlot = slot => slot >= ALLY_SLOT;
+
+// Parts every make shares.
+export const ROBOT_COLOURS = Object.freeze({
+ iron: '#474d53', gauge: '#e8e2d0', needle: '#b8342c', rust: '#8a4b2c', bulb: '#ff5a4a', dead: '#2b3033', ring: '#7fe8ff',
+});
+// The makes. body/dark: the sheet metal and its shaded plates; trim: the
+// band, cuff and hat band; face, hat, crown; legs; eye: the visor's glow
+// (never green: green is an ally's).
+export const ROBOT_SKINS = Object.freeze([
+ { id: 'steel', body: '#9aa4a8', dark: '#6d777c', trim: '#c79a52', face: '#b4bec2', hat: '#737b80', crown: '#838c91', legs: '#474d53', eye: '#7fe8ff' },
+ { id: 'copper', body: '#b8734a', dark: '#7d4a2f', trim: '#5fa89a', face: '#c98a5e', hat: '#8f5636', crown: '#a1623f', legs: '#5a3a28', eye: '#ffc46b', patina: '#5fa89a' },
+ { id: 'brass', body: '#c9a25a', dark: '#8c6d34', trim: '#6b5a3a', face: '#d8b872', hat: '#9a7a3c', crown: '#b08c48', legs: '#5e4a2a', eye: '#ff8a5c' },
+ { id: 'gunmetal', body: '#5d6f86', dark: '#3d4a5c', trim: '#c9c2b0', face: '#7d8ea3', hat: '#465569', crown: '#52627a', legs: '#2f3947', eye: '#ffe066' },
+ { id: 'rust', body: '#8a5a3e', dark: '#5e3b28', trim: '#a0a6a8', face: '#9c6a4a', hat: '#7a7468', crown: '#86806f', legs: '#4a3122', eye: '#ff5a4a', rust: '#6e3a1f' },
+ { id: 'enamel', body: '#d9d2bf', dark: '#a39b86', trim: '#b8433a', face: '#e6e0cf', hat: '#8a3a33', crown: '#9e4038', legs: '#5c564a', eye: '#7fe8ff' },
+ { id: 'iron', body: '#4a5056', dark: '#2e3237', trim: '#c79a52', face: '#61686f', hat: '#33373b', crown: '#3d4247', legs: '#26292d', eye: '#ff5a4a' },
+ { id: 'teal', body: '#4f8a8c', dark: '#34605f', trim: '#e0b35a', face: '#6aa3a3', hat: '#3b6b6c', crown: '#437a7b', legs: '#2c4a4a', eye: '#ffd27a' },
+]);
+// Which make a slot is: BotMatch gives each robot a make no other robot in
+// the game has, and a slot of ROBOT_SLOT / ALLY_SLOT + make + 1.
+export const skinOf = slot => ROBOT_SKINS[Math.max(0, (slot % ALLY_SLOT) % ROBOT_SLOT - 1) % ROBOT_SKINS.length];
+// Your allies: any make, with a friendly green visor, bulb and base ring,
+// and a green pennant on the antenna, so a friend reads at a glance.
+export const ALLY_COLOURS = Object.freeze({ eye: '#9dff8a', bulb: '#9dff8a', ring: '#9dff8a', pennant: '#6fd66a' });
+
+const glow = new WeakMap();
+// Also held by the view (WorldView.robotGlow), so the load-time shader
+// warm-up finds them: a first robot builds no shader mid-fight. One visor
+// material per make (and the ally's), made up front.
+export function glowMaterials(view) {
+ let m = glow.get(view);
+ if (!m) {
+  const basic = color => new THREE.MeshBasicMaterial({ color, toneMapped: false });
+  m = { bulb: basic(ROBOT_COLOURS.bulb), dead: basic(ROBOT_COLOURS.dead), allyEye: basic(ALLY_COLOURS.eye), allyBulb: basic(ALLY_COLOURS.bulb), eyes: new Map() };
+  for (const skin of ROBOT_SKINS) if (!m.eyes.has(skin.eye)) m.eyes.set(skin.eye, basic(skin.eye));
+  m.lit = new Set([m.bulb, m.allyEye, m.allyBulb, ...m.eyes.values()]);
+  glow.set(view, m);
+ }
+ return m;
+}
+
+// The body into `body` (a Group), merged; returns the glowing parts.
+export function buildRobotBody(view, body, ally = false, skin = ROBOT_SKINS[0]) {
+ const c = ROBOT_COLOURS, k = skin, v = view;
+ // Legs: the player's, in the make's darker metal, with a knee plate.
+ for (const x of [-.15, .15]) {
+  v.box(x, .14, 0, .18, .27, .27, k.legs, body).userData.deathPart = 'leg';
+  v.box(x, .19, -.14, .12, .07, .02, k.dark, body).userData.deathPart = 'leg';
+ }
+ // The can: the player's coat (same radius, taper and height), a band round
+ // the middle and a lid ring at the collar.
+ v.cylinder(0, .57, 0, .29, .63, k.body, body, 8, .24);
+ v.cylinder(0, .43, 0, .285, .07, k.trim, body, 8, .28);
+ v.cylinder(0, .86, 0, .255, .05, k.dark, body, 8);
+ // Rivets round the band.
+ for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; v.box(Math.cos(a) * .285, .5, Math.sin(a) * .285, .035, .035, .035, k.dark, body); }
+ // The chest gauge (front is -z), its needle, and a patch: rust, or a
+ // copper robot's green patina.
+ const gauge = v.cylinder(-.08, .68, -.255, .075, .04, c.gauge, body, 8); gauge.rotation.x = Math.PI / 2;
+ const needle = v.box(-.07, .7, -.28, .012, .055, .01, c.needle, body); needle.rotation.z = -.6;
+ v.box(.12, .56, -.265, .09, .07, .02, k.patina || k.rust || c.rust, body);
+ // Head: a box the size of the player's head, a jaw grille.
+ v.box(0, .96, 0, .32, .25, .3, k.face, body).userData.deathPart = 'head';
+ v.box(0, .88, -.155, .2, .045, .02, k.dark, body).userData.deathPart = 'head';
+ // The player's hat, in tin: brim, crown, band.
+ v.cylinder(0, 1.06, 0, .39, .085, k.hat, body, 10).userData.deathPart = 'head';
+ v.cylinder(0, 1.19, 0, .235, .23, k.crown, body, 8, .19).userData.deathPart = 'head';
+ v.cylinder(0, 1.09, 0, .239, .075, k.trim, body, 8).userData.deathPart = 'head';
+ // A short antenna through the crown.
+ v.cylinder(.06, 1.36, .02, .012, .12, c.iron, body, 4).userData.deathPart = 'head';
+ // Shoulder and the player's gun arm, with a cuff.
+ v.box(-.29, .78, 0, .1, .1, .16, k.dark, body);
+ v.box(.27, .69, -.2, .16, .16, .38, k.body, body);
+ v.box(.27, .69, -.03, .18, .18, .06, k.trim, body);
+ // An ally's pennant, flying off the antenna.
+ if (ally) v.box(.15, 1.39, .02, .16, .09, .02, ALLY_COLOURS.pennant, body).userData.deathPart = 'head';
+ v.batch(body);
+ const m = glowMaterials(view);
+ const eye = new THREE.Mesh(new THREE.BoxGeometry(.24, .055, .02), ally ? m.allyEye : m.eyes.get(k.eye)); eye.position.set(0, .99, -.155); eye.userData.deathPart = 'head';
+ const bulb = new THREE.Mesh(new THREE.BoxGeometry(.05, .05, .05), ally ? m.allyBulb : m.bulb); bulb.position.set(.06, 1.44, .02); bulb.userData.deathPart = 'head';
+ body.add(eye, bulb);
+ return { eye, bulb };
+}
+
+// Dead robots: topple, go dark, spark and smoke, then are cleared.
+export class RobotWrecks {
+ constructor(view) { this.view = view; this.list = new Map(); }
+
+ add(slot, avatar, event) {
+  this.remove(slot);
+  const m = glowMaterials(this.view);
+  avatar.root.traverse(o => { if (m.lit.has(o.material)) o.material = m.dead; });
+  this.view.scene.add(avatar.root);
+  // Falls away from the shot.
+  const dir = Math.atan2(event.directionZ || 0, event.directionX || 1);
+  this.list.set(slot, { avatar, age: 0, spark: 0, dir, x: event.x, z: event.z });
+ }
+
+ update(dt) {
+  const fx = this.view.fx;
+  for (const [slot, w] of this.list) {
+   w.age += dt;
+   const fall = Math.min(1, w.age / .45), ease = fall * fall * (3 - 2 * fall);
+   // Tipped over along the push, a little bounce on landing.
+   const tilt = ease * 1.45 - (fall >= 1 ? Math.sin(Math.min(1, (w.age - .45) / .25) * Math.PI) * .06 : 0);
+   w.avatar.root.rotation.set(Math.sin(w.dir) * tilt, 0, -Math.cos(w.dir) * tilt);
+   w.avatar.root.position.y = -ease * .08;
+   // Sparks and smoke for a few seconds.
+   w.spark -= dt;
+   if (w.age < 4.5 && w.spark <= 0 && fx?.on) {
+    w.spark = .12 + Math.random() * .3;
+    fx.electric(w.x + (Math.random() - .5) * .6, .35, w.z + (Math.random() - .5) * .6, .35 + Math.random() * .3, { ring: false });
+    if (Math.random() < .5) fx.puff({ x: w.x, y: .5, z: w.z, vx: (Math.random() - .5) * .3, vz: (Math.random() - .5) * .3, vy: .6, rise: .8, size: .22, grow: 2.2, life: 1.8, alpha: .35, color: new THREE.Color('#4b4d4e') });
+   }
+   if (w.age > 30) this.remove(slot);
+  }
+ }
+
+ remove(slot) { const w = this.list.get(slot); if (!w) return; w.avatar.root.removeFromParent(); w.avatar.dispose?.(); this.list.delete(slot); }
+ clear() { for (const slot of [...this.list.keys()]) this.remove(slot); }
+}

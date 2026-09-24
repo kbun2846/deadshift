@@ -16,6 +16,7 @@ import { createAbilityHUD } from './ui/ability-hud.js';
 import { writeDebugState } from './render/debug-state.js';
 import { setText } from './ui/dom-writes.js';
 import { keepAwake } from './ui/wake-lock.js';
+import { BotMatch } from './bots/bot-match.js';
 import { buzz, HAPTICS } from './ui/haptics.js';
 import { createWeaponHUD } from './ui/weapon-hud.js';
 import { createAimOverlay } from './ui/aim-overlay.js';
@@ -80,6 +81,8 @@ const deviceDefaults={mobile:detectedInput==='touch'};
 try { settings = validateSettings(JSON.parse(localStorage.getItem('deadshift-settings') || '{}'),deviceDefaults); }
 catch { settings = validateSettings({},deviceDefaults); }
 const sim = new Simulation(map), sound = new Soundscape(), budget = new RenderBudget(settings.fps);
+// Robots (bots/): spawned from the developer tools in a solo game.
+const bots = new BotMatch(map, { createSim: m => new Simulation(m) });
 // Menu clacks (ui-sounds.js): muted with the game, at the master and effects levels.
 installUiSounds({muted:()=>!sound.enabled,level:()=>sound.volume.master*sound.volume.effects});
 const adaptiveResolution = new AdaptiveResolution();
@@ -173,6 +176,8 @@ const sticks = new Map();
 // Development only: `?capture=thumbnail` hands the view and simulation to
 // tools/capture-thumbnail.mjs, which photographs the map card's picture.
 if(import.meta.env.DEV&&params.get('capture')==='thumbnail')window.__capture={view,sim,map};
+// Development only: the robots, for tools and the console.
+if(import.meta.env.DEV)window.__bots=bots;
 view.onClatter = type => sound.clatter(type);
 // Lost the GPU (usually out of memory on a phone). Twice within a minute on
 // Extreme means it is too heavy for this device: step down to Quality.
@@ -202,7 +207,7 @@ async function start(weapon=sim.weapon,course) {
 }
 
 function returnToMenu(){
-  online.close();perfReadout.reset();devWindow.hide();
+  online.close();perfReadout.reset();devWindow.hide();bots.clear();
   if(choosing)menuFlow.cancelOnlinePick();choosing=false;lastKiller=null;lastOneShot=false;onlineMenus(false);view.deathView?.clear();
   running=false;started=false;paused=false;mapOpen=false;mapWasPaused=false;settingsOpen=false;
   releaseInput();reset();sound.suspend(true);
@@ -238,6 +243,9 @@ function reset() {
   deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');
   if(tutorial){tutorial=new Tutorial(courseFor(sim.weapon));tutorialSaved=false;tutorialCard.invalidate();updateTutorial();}
   releaseInput(); sound.clearFlights(); sim.reset(); view.reset(sim); accumulator = 0; sound.lastStep = 0;
+  // Restart keeps the robots (enemies sent back out away from you, allies by
+  // you); the menu clears them.
+  for(const bot of bots.bots)bots.respawnAt(bot,sim);
   previousPlayer = { ...sim.player }; dirty = true; devTools.syncSpeed();updateHUD();
   if(tutorial&&started)$('tutorial-guide').classList.remove('hidden');
 }
@@ -275,7 +283,7 @@ function aimOnTarget(){
  const p=sim.player;if(!running||p.dead)return false;
  const dot=aimDotPoint();if(!dot||!Number.isFinite(dot.x))return false;
  // Online, the other players (the local sim holds no targets there).
- const pool=online.active?(online.others(1)||[]).map(o=>({...o,kind:'player'})):sim.targets;
+ const pool=online.active?(online.others(1)||[]).map(o=>({...o,kind:'player'})):[...sim.targets,...bots.lockPool()];
  return pool.some(t=>{
   if(t.hp!==undefined&&t.hp<=0)return false;
   const foot=view.screenPoint(t.x,t.z,.05);
@@ -345,7 +353,7 @@ function lockMode(){ return touchPrompts ? !!settings.aimAssist : inputMode!=='m
 // other players; offline, the practice targets and dummies.
 function lockCandidates(){
  const p=sim.player,w=viewWidth(),h=viewHeight(),m=TARGET_LOCK.margin,out=[];
- const pool=online.active?online.others(1)||[]:sim.targets;
+ const pool=online.active?online.others(1)||[]:[...sim.targets,...bots.lockPool()];
  for(const t of pool){
   if(t.hp!==undefined&&t.hp<=0)continue;
   if(Math.hypot(t.x-p.x,t.z-p.z)>TARGET_LOCK.range)continue;
@@ -380,7 +388,7 @@ function lockTarget(dt){
 // The locked target, if it still exists and is alive and near, seen or not
 // (target-lock.js keeps the lock through a brief loss of sight).
 function lockedStill(id){
- const pool=online.active?online.others(1)||[]:sim.targets,t=pool.find(t=>t.id===id);
+ const pool=online.active?online.others(1)||[]:[...sim.targets,...bots.lockPool()],t=pool.find(t=>t.id===id);
  if(!t||(t.hp!==undefined&&t.hp<=0))return null;
  return Math.hypot(t.x-sim.player.x,t.z-sim.player.z)<=TARGET_LOCK.range*1.2?{id:t.id,x:t.x,z:t.z}:null;
 }
@@ -420,6 +428,17 @@ const devHooks={
  kill:()=>sim.damagePlayer(sim.player.hp,'dev',false,false,null,'gunshot'),
  respawnTargets:()=>toast(sim.respawnTargets()+' TARGETS BACK'),
  restoreProps:()=>toast(sim.restoreAllProps()+' PROPS REBUILT'),
+ // Robots (bots/): a solo game only.
+ spawnRobot:()=>{
+  if(online.active){toast('ROBOTS ARE SOLO ONLY');return;}
+  if(!started){toast('START A GAME FIRST');return;}
+  const weapon=[null,'static','rifle','shotgun'][sim.dev.robotWeapon||0]||null;
+  // Skill and style (bots/robot-profile.js): picked here, or at random.
+  const skill=[null,'easy','normal','hard'][sim.dev.robotSkill||0]||null,style=[null,'balanced','rusher','marksman','flanker','cautious'][sim.dev.robotStyle||0]||null;
+  const bot=bots.spawn(sim,weapon,{team:['ffa','red','blue'][sim.dev.robotSide||0]||'ffa',skill,style});
+  toast(bot?[bot.name,bot.make,String(bot.sim.weapon==='rifle'?'nominal':bot.sim.weapon==='shotgun'?'ballast':'static'),bot.profile.label].join(' · ').toUpperCase():'ROBOT LIMIT REACHED');
+ },
+ removeRobots:()=>{const n=bots.count;bots.clear();view.robotWrecks?.clear();view.remote?.clear();toast(n+' ROBOTS REMOVED');},
  // Looks only: the same event a real volley sends, with no damage behind it.
  previewBlast:()=>{
   const p=sim.player,count=sim.dev.blastOrbs||6,blast=explosionFor(count);
@@ -937,14 +956,17 @@ function frame(time) {
       // The no-mouse lesson: Q fired while aiming with the arrow keys.
       if(tutorial){tutorial.touch=touchPrompts;tutorial.touchAiming=touchAimPointer!==null;tutorial.walking=Math.hypot(touchMove.x,touchMove.z)>.2;if(arrows.active)tutorial.arrowAim=true;if(tappedKeys.has(GAME_KEYS.shoot)&&tutorial.arrowAim&&inputMode==='keyboard')tutorial.event({type:'keyboardShot'},sim);}
       const ballast=ballastInput(rifleFiring,keys,tappedKeys);
+      if(!online.active)bots.before(sim);
       sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), extendedReload:tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(sim.weapon==='rifle'&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),storeCharge:sim.weapon==='shotgun'&&ballast.storeCharge,doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming:aimingNow(),reload:tappedKeys.has('KeyR'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
         launchPointX: arrows.active?undefined:pendingAimPoint?.aimPointX, launchPointZ: arrows.active?undefined:pendingAimPoint?.aimPointZ }));
       online.afterStep();
+      if(!online.active){bots.after(sim);bots.step(sim);}
       if(tutorial){tutorial.update(sim,RULES.step);updateTutorial();}
       tappedKeys.clear(); pendingQuickShot=false; pendingLaunch = pendingSeed = false; pendingAimPoint = null; accumulator -= RULES.step;
       for (const e of sim.drainEvents()) event(e);
     }
     if(online.active)netEvents();
+    else if(bots.active)for(const {e,shooter,slot} of bots.drain()){view.netEvent(e,shooter,slot);if(NET_SOUNDS.has(e.type))sound.event(e);}
     sound.update(sim.player, sim.time);
     sound.updateHex(sim);
   }
@@ -957,8 +979,8 @@ function frame(time) {
     const renderDelta = view.gpuBusy() ? budget.hold(dt) : budget.tick(dt);
     if (renderDelta > 0) {
       view.tutorialGuide=tutorial&&!tutorial.complete?{zone:tutorial.zone,target:tutorial.pointer(sim)}:null;
-      view.remotePlayers = online.others(running ? accumulator / RULES.step : 1);
-      view.update(online.active?drawSim(sim,online.foreign()):sim, renderDelta, running||online.active, elapsed, previousPlayer, running ? accumulator / RULES.step : 1);
+      view.remotePlayers = online.active ? online.others(running ? accumulator / RULES.step : 1) : bots.others(running ? accumulator / RULES.step : 1);
+      view.update(online.active?drawSim(sim,online.foreign()):bots.active?drawSim(sim,bots.foreign(elapsed)):sim, renderDelta, running||online.active, elapsed, previousPlayer, running ? accumulator / RULES.step : 1);
       dirty = false; renderedFrames++;
     }
     // The aim dot is page markup, not the 3D frame: it follows every display
