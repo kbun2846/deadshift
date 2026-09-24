@@ -101,6 +101,7 @@ finds anything.
 
 ```
 index.html          all menu, HUD, settings and panel markup (and the loading screen)
+CHANGELOG.md        player-facing notes per release, newest first: add a section with every version push
 src/                game code, one job per module
   main.js           entry glue: game state, keyboard/mouse/touch input routing, the fixed-step loop, menus flow
   bootstrap.js      loads the game behind the loading screen
