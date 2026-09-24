@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SurfaceMarks } from '../src/surface-marks.js';
+import { SurfaceMarks } from '../src/effects/surface-marks.js';
 
 test('scorch queue spreads radial work over frames and clearing cancels pending work',()=>{
   const marks=Object.create(SurfaceMarks.prototype);

@@ -19,14 +19,14 @@ export const RULES = Object.freeze({
   keyboardAimResponse: 9, keyboardAimMaxTurn: 10, keyboardAimSpinUp: 24,
   // A dodge pressed up to this long before it is possible still happens (input buffer, s).
   dodgeBuffer: .15,
-  dodgeDistance: 3.2, dodgeDuration: .24, maxStamina: 2, dodgeStaminaCost: 1, staminaDelay: .6, staminaRecharge: 1.6, dodgeHitRadius: .18, dodgeDamageMultiplier: .5,
+  dodgeDistance: 3.5, dodgeDuration: .24, maxStamina: 2, dodgeStaminaCost: 1, staminaDelay: .6, staminaRecharge: 1.6, dodgeHitRadius: .18, dodgeDamageMultiplier: .5,
   sprayWarmup: .2, sprayAmmoTime: .25, sprayRange: 8, sprayInnerAngle: Math.PI * 8 / 180, sprayOuterAngle: Math.PI * 22 / 180,
   sprayInnerDPS: 196, sprayOuterDPS: 77, sprayTurnRate: Math.PI * .65, sprayRecoil: 2.8,
   sprayRampTime: 1.5, sprayMaxMultiplier: 1.5,
   maxSeeds: 12, seedInterval: .145, seedLife: 9, driftSpeed: .72,
   orbRadius: .15,
   hexCost: 10, hexFormationTime: .55, hexSpeed: 2.4, hexRange: 12, hexPulseRadius: 1.65, hexReach: 2.3, hexPulseDamage: boostedHexDamage(HEX_BASE_PULSE), hexEdgeDamage: boostedHexDamage(HEX_BASE_ZAP), hexSpinDuration: 1, hexCooldown: 30,
-  launchSpeed: 31, launchLife: 1.8, launchOvershoot: .55, interceptCorridor: 1.1, playerHealth: 500, targetHealth: 100, dummyHealth: 75, targetRespawn: 4.5,
+  launchSpeed: 31, launchLife: 1.8, launchOvershoot: .55, interceptCorridor: 1.1, playerHealth: 500, targetHealth: 250, dummyHealth: 300, targetRespawn: 4.5,
   rechargeDelay: .8, rechargeInterval: .65, stationaryRecharge: 1.25 * 1.18, focusDistance: 7,
 });
 
@@ -43,7 +43,12 @@ export const SPLASH = Object.freeze({ edge: .28, heavyCore: .06, heavyFrom: 4, h
 // Baseline conventional weapon: metres, seconds, damage per bullet.
 export const RIFLE=Object.freeze({interval:.165,magazine:20,extendedMagazine:40,extendedCooldown:60,reload:1.8,damage:22,minDamage:16,effectiveRange:10,falloffEnd:22,maxRange:55,magazineLife:30,bulletSpeed:90,aimMoveMultiplier:.55,maxStamina:3,stationaryStamina:1.3,
  // Shot spread in radians: from the hip, aimed in, and how much running at full speed widens either.
- hipSpread:.105,aimSpread:.054,movingSpread:.7});
+ hipSpread:.105,aimSpread:.054,movingSpread:.7,
+ // Hip-fire recoil: each shot knocks the whole cone off line by up to
+ // recoilKick radians at random (more once a burst builds: recoilBuild per
+ // shot, up to 1), capped at recoilMax, settling back at recoilSettle per
+ // second. Aiming in adds none and settles at recoilSettleAim.
+ recoilKick:.011,recoilBuild:.25,recoilMax:.03,recoilSettle:5,recoilSettleAim:14});
 // Where the barrel actually is: a metre out in front of the player and a
 // hand's width to one side, which is why a shot fired parallel to the player's
 // centreline never passes through the crosshair.
@@ -85,3 +90,7 @@ export const AIM_ASSIST = Object.freeze({
  touch: Object.freeze({ pull: .85, hold: 40 * DEG, release: 14 * DEG, cooldown: .5, reacquire: 4 * DEG, maxRange: 16 }),
  keyboard: Object.freeze({ pull: .5, hold: 26 * DEG, release: 9 * DEG, cooldown: .5, reacquire: 3 * DEG, maxRange: 14 }),
 });
+
+// The tutorial's targets stay lighter than practice's (RULES.targetHealth /
+// dummyHealth), so a lesson's shots stay short.
+export const TUTORIAL_TARGET_HEALTH = Object.freeze({ target: 100, dummy: 75 });

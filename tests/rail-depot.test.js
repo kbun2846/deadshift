@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {deadwater,buildingPoint,buildingOpenings,mapColliders,mapProps} from '../src/maps.js';
 import {inside,Simulation} from '../src/simulation.js';
-import {WorldView} from '../src/renderer.js';
-import {makeRailways,makeRailProp,RAIL_TYPES,railUnion} from '../src/rail-depot.js';
-import {interiorCameraHeight} from '../src/camera-framing.js';
+import {WorldView} from '../src/render/renderer.js';
+import {makeRailways,makeRailProp,RAIL_TYPES,railUnion} from '../src/world/rail-depot.js';
+import {interiorCameraHeight} from '../src/render/camera-framing.js';
 
 test('depot targets are clear of scenery and the cargo cars only expose their one entrance',()=>{
   const colliders=mapColliders(deadwater);

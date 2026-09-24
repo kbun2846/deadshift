@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {approachPaths,pathRadius} from '../src/approach-paths.js';
+import {approachPaths,pathRadius} from '../src/world/approach-paths.js';
 import {deadwater,buildingContains,localOpenings} from '../src/maps.js';
 const bend=(z,b)=>{const t=Math.max(0,Math.min(1,(z-b.start)/(b.end-b.start)));return b.offset*t*t*(3-2*t);};
 const road=(x,z)=>Math.abs(x-bend(z,deadwater.roadBend)-bend(z,deadwater.farmBend))<3.4||(x<=2&&x>=-91&&z>-27&&z<-23.5);
@@ -22,7 +22,7 @@ test('boxcars do not generate dirt access paths',()=>{
 // onApproach is bucketed into a grid for speed; it must give exactly the
 // answers the straightforward scan did, for every padding terrain generation uses.
 test('the indexed approach lookup agrees with a full scan everywhere',async()=>{
- const {onApproach,pathRadius}=await import('../src/approach-paths.js');
+ const {onApproach,pathRadius}=await import('../src/world/approach-paths.js');
  const scan=(paths,x,z,padding=0)=>paths.some(({points})=>points.some((p,i)=>Math.hypot(x-p.x,z-p.z)<pathRadius(i,points.length)+padding));
  let seed=7;const rand=()=>(seed=(seed*16807)%2147483647)/2147483647;
  const paths=[];

@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {GRAPHICS,renderPixelRatio,AdaptiveResolution,RenderBudget,validateSettings} from '../src/settings.js';
-import {WorldView} from '../src/renderer.js';
-import {GrenadeView} from '../src/grenade-view.js';
+import {WorldView} from '../src/render/renderer.js';
+import {GrenadeView} from '../src/weapons/grenade-view.js';
 
 test('45 fps persists and adaptive resolution respects capped frame pacing',()=>{
  assert.equal(validateSettings({fps:45}).fps,45);

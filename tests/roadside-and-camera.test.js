@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { WorldView } from '../src/renderer.js';
-import { ROADSIDE_TYPES, makeRoadside } from '../src/roadside.js';
+import { WorldView } from '../src/render/renderer.js';
+import { ROADSIDE_TYPES, makeRoadside } from '../src/world/roadside.js';
 import { deadwater, buildingPoint, mapColliders } from '../src/maps.js';
-import { interiorCameraHeight, CAMERA_TILT } from '../src/camera-framing.js';
-import { InteriorVisibility } from '../src/interior-visibility.js';
+import { interiorCameraHeight, CAMERA_TILT } from '../src/render/camera-framing.js';
+import { InteriorVisibility } from '../src/render/interior-visibility.js';
 import { Simulation } from '../src/simulation.js';
 
 test('roadside landmarks and outdoor cover have finite geometry and solid cover pieces', () => {

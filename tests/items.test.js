@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ITEMS,WEAPONS,SKINS,ITEM_KIND,item,weapon,ownedItems,STARTER_ITEMS} from '../src/items.js';
 import * as gameplay from '../src/config/gameplay.js';
-import {WEAPON_UI} from '../src/weapon-hud.js';
+import {WEAPON_UI} from '../src/ui/weapon-hud.js';
 import {COURSE_NAMES} from '../src/tutorial.js';
 
 test('every item has a unique id, and weapons and skins stay separate',()=>{

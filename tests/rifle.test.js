@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Simulation} from '../src/simulation.js';
-import {RIFLE,rifleDamage,rifleSpread,rifleShotError,rifleAim,rifleMuzzle,RIFLE_CONVERGE} from '../src/rifle.js';
+import {RIFLE,rifleDamage,rifleSpread,rifleShotError,rifleAim,rifleMuzzle,RIFLE_CONVERGE} from '../src/weapons/rifle.js';
+import { RULES as FULL_RULES } from '../src/config/gameplay.js';
+const FULL = FULL_RULES.targetHealth; // a practice target's full health
 const M=RIFLE.magazine,X=RIFLE.extendedMagazine;
 const make=(extra={})=>{const s=new Simulation({id:'test',width:120,depth:120,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[],...extra});s.weapon='rifle';return s;};
 const tick=(s,input={},n=1)=>{for(let i=0;i<n;i++)s.step({aimX:1,aimZ:0,aimPointX:10,aimPointZ:0,...input});};
@@ -23,7 +25,7 @@ test('rifle damage and accuracy improve predictably with range, stance and aim',
  assert.equal(rifleDamage(5),RIFLE.damage);assert.equal(rifleDamage(22),RIFLE.minDamage);assert.equal(rifleDamage(50),RIFLE.minDamage);
  assert.equal(rifleSpread(20),rifleSpread(.2));assert.ok(rifleSpread(10,7.2)>rifleSpread(10));
  assert.equal(rifleSpread(10,0,true),.054);assert.equal(rifleSpread(10),.105);
- const s=make({targets:[{id:'a',x:5,z:0}]});tick(s,{fire:true,aiming:true});assert.equal(s.targets[0].hp,100);tick(s,{},5);assert.equal(s.targets[0].hp,100-RIFLE.damage);
+ const s=make({targets:[{id:'a',x:5,z:0}]});tick(s,{fire:true,aiming:true});assert.equal(s.targets[0].hp,FULL);tick(s,{},5);assert.equal(s.targets[0].hp,FULL-RIFLE.damage);
 });
 test('a clean shot passes through what the crosshair is over, from the muzzle',()=>{
  const old=Math.random;
@@ -94,7 +96,7 @@ test('side-weighted shots keep a straight heading and the same spread at any cur
 });
 test('cover intercepts bullets and Static abilities do not activate for rifle',()=>{
  const s=make({targets:[{id:'a',x:5,z:0}],props:[{type:'crate',x:3,z:0}]});
- tick(s,{fire:true,seed:true,hex:true,spray:true});tick(s,{},5);assert.equal(s.targets[0].hp,100);assert.equal(s.props[0].hp,0);
+ tick(s,{fire:true,seed:true,hex:true,spray:true});tick(s,{},5);assert.equal(s.targets[0].hp,FULL);assert.equal(s.props[0].hp,0);
  assert.equal(s.seeds.length,0);assert.equal(s.hexOrbs.length,0);assert.equal(s.spray.active,false);
 });
 test('shared ammo override supports rifle; Static orb override does not refill it',()=>{

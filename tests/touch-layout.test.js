@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {controlPosition,normalizedPosition,validateTouchLayout,validateTouchLayouts,touchOrientation} from '../src/touch-layout.js';
+import {controlPosition,normalizedPosition,validateTouchLayout,validateTouchLayouts,touchOrientation} from '../src/ui/touch-layout.js';
 
 test('portrait and landscape keep independent saved controls',()=>{
  const layouts=validateTouchLayouts({portrait:{'touch-launch':{x:0,y:1,scale:1.2}},landscape:{'touch-launch':{x:.5,y:.7,hidden:true}}});
@@ -29,7 +29,7 @@ test('saved layouts validate coordinates and retain shared action positions',()=
 });
 
 test('putting one control back forgets only that control, so it rejoins the corner cluster',async()=>{
- const {withoutControl}=await import('../src/touch-layout.js');
+ const {withoutControl}=await import('../src/ui/touch-layout.js');
  const saved={'touch-dodge':{x:.4,y:.5,scale:1.2,hidden:false},'touch-hex':{x:.1,y:.9,scale:1,hidden:false}};
  const next=withoutControl(saved,'touch-dodge');
  assert.equal(next['touch-dodge'],undefined);
@@ -39,9 +39,9 @@ test('putting one control back forgets only that control, so it rejoins the corn
 
 test('the layout editor also opens from the menus, over a still frame of the map with no HUD', async () => {
  const { readFileSync } = await import('node:fs');
- const settings = readFileSync(new URL('../src/mobile-settings.js', import.meta.url), 'utf8');
+ const settings = readFileSync(new URL('../src/ui/mobile-settings.js', import.meta.url), 'utf8');
  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
- const css = readFileSync(new URL('../src/mobile-controls.css', import.meta.url), 'utf8');
+ const css = readFileSync(new URL('../src/styles/mobile-controls.css', import.meta.url), 'utf8');
  assert.ok(settings.includes("if (!started) { preview?.(); return; }"), 'outside a match the button opens the preview');
  assert.ok(!settings.includes('Start a match to edit'), 'and no longer asks for a match');
  assert.ok(/function openLayoutPreview\(\)\{[\s\S]*view\.render\(\)[\s\S]*touchLayout\.start\(\)/.test(main), 'renders the map, then edits');
@@ -51,6 +51,6 @@ test('the layout editor also opens from the menus, over a still frame of the map
 
 test('the tutorial weapon list is titled "tutorial weapons"', async () => {
  const { readFileSync } = await import('node:fs');
- const menu = readFileSync(new URL('../src/menu.js', import.meta.url), 'utf8');
+ const menu = readFileSync(new URL('../src/ui/menu.js', import.meta.url), 'utf8');
  assert.ok(menu.includes("textContent=selectedMap==='tutorial'?'tutorial weapons':'weapons'"));
 });

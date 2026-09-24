@@ -30,7 +30,8 @@
 //                reaches the kill limit. Respawn after the respawn setting.
 //      practice: the map's targets are out; players can still hit each other
 //                but nothing is counted; no respawn wait (RESPAWN on the
-//                death screen), no clock.
+//                death screen), no clock; the weapon can be changed any time
+//                (pause menu), leaving the world while picking.
 //  - 'results' (ffa): the standings for RESULTS seconds, then back to 'lobby'.
 // Nobody spawns inside the ground the weapon-pick camera shows (pick-view.js).
 // Nothing here touches the DOM, three.js or the network.
@@ -40,7 +41,7 @@ import { segmentBox } from '../simulation.js';
 import { RULES } from '../config/gameplay.js';
 import { weaponOrDefault, WEAPONS } from '../items.js';
 import { mapColliders } from '../maps.js';
-import { pickArea, inPickArea } from '../pick-view.js';
+import { pickArea, inPickArea } from '../render/pick-view.js';
 
 import { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS } from '../config/match.js';
 export { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS };
@@ -149,8 +150,9 @@ export class Arena {
  choose(id, weapon, go = true) {
   const seat = this.seats.get(id); if (!seat || this.phase !== 'playing') return false;
   if (!seat.picking) {
-   // Only after dying: the death screen's CHANGE WEAPON opens the pick.
-   if (seat.present && !seat.dead) return false;
+   // FFA: only after dying (the death screen's CHANGE WEAPON). Practice: any
+   // time (the pause menu's CHANGE WEAPON), out of the world while picking.
+   if (seat.present && !seat.dead) { if (this.mode !== 'practice') return false; this.out(seat); }
    this.startPick(seat);
   }
   seat.picking.weapon = weaponOrDefault(weapon);
@@ -159,10 +161,14 @@ export class Arena {
   return true;
  }
 
- // Dead: open the weapon pick again (the respawn then waits for it).
+ // Open the weapon pick again. FFA: only when dead (the respawn then waits for
+ // it). Practice: any time; a living player leaves the world while picking.
  pickAgain(id) {
   const seat = this.seats.get(id);
-  if (!seat || this.phase !== 'playing' || !(seat.dead || !seat.present)) return false;
+  if (!seat || this.phase !== 'playing') return false;
+  const alive = seat.present && !seat.dead;
+  if (alive && this.mode !== 'practice') return false;
+  if (alive) this.out(seat);
   if (!seat.picking) this.startPick(seat, seat.weapon);
   return true;
  }
@@ -266,11 +272,13 @@ export class Arena {
     victim.stats.taken += dealt;
     if (attacker && attacker !== victim) attacker.stats.dealt += dealt;
    }
-   if (hpBefore > 0 && vp.hp <= 0) this.died(victim, attacker, attacker ? damageType : 'fire');
+   // One shot: from full health to dead in one hit (this tick's damage from
+   // this attacker, or one volley the sim already calls a one-shot).
+   if (hpBefore > 0 && vp.hp <= 0) this.died(victim, attacker, attacker ? damageType : 'fire', !!attacker && (hpBefore >= vp.maxHp - 1e-6 || !!report.oneShot));
   }
  }
 
- died(victim, killer) {
+ died(victim, killer, damageType = null, oneShot = false) {
   if (victim.dead) return;
   victim.dead = true;
   // Practice: no wait, nothing counted; RESPAWN on the death screen.
@@ -280,8 +288,9 @@ export class Arena {
   if (killer && killer !== victim) {
    killer.stats.kills++;
    // Everyone this attacker killed in this tick is one kill-feed line.
-   const list = this.pendingKills.get(killer.id) || [];
-   list.push(victim.id); this.pendingKills.set(killer.id, list);
+   // One-shots get a line of their own ("X one shot Y").
+   const key = killer.id + (oneShot ? '|one' : ''), list = this.pendingKills.get(key) || [];
+   list.push(victim.id); this.pendingKills.set(key, list);
   } else {
    this.pushFeed({ killer: null, victims: [victim.id], weapon: victim.weapon });
   }
@@ -353,7 +362,7 @@ export class Arena {
    else if (seat.dead && this.counting && seat.respawnIn <= 0) this.spawn(seat);
   }
   const lines = [];
-  for (const [killer, victims] of this.pendingKills) lines.push(this.pushFeed({ killer, victims, weapon: this.seats.get(killer)?.weapon }));
+  for (const [key, victims] of this.pendingKills) { const [killer, one] = key.split('|'); lines.push(this.pushFeed({ killer, victims, oneShot: one === 'one', weapon: this.seats.get(killer)?.weapon })); }
   this.pendingKills.clear();
   // The round clock (ffa). At zero, or at the kill limit: the standings for a
   // few seconds (everyone stands still), then the lobby.

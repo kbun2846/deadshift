@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {mergeTransformed} from '../src/merge-transformed.js';
+import {mergeTransformed} from '../src/render/merge-transformed.js';
 
 let seed=3;const rand=()=>(seed=(seed*16807)%2147483647)/2147483647;
 const shapes=[()=>new THREE.BoxGeometry(rand()+.1,rand()+.1,rand()+.1),()=>new THREE.ConeGeometry(.2,rand()+.2,3),

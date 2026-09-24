@@ -4,16 +4,18 @@
 // halving the depth target's bandwidth — which on a mobile tiler is the
 // cheapest saving available.
 //
-// Multisampling is a context-creation flag, so it is chosen once from the saved
-// tier. Below Balanced the same budget buys more real pixels than smoothed ones:
-// dropping MSAA and raising the render scale reads as sharper, not softer.
+// Performance and Balanced draw the world off-screen at the sizes below and
+// are written to the screen by one crisp upscale pass (crisp-output.js):
+// FXAA-lite on Performance, 4x multisampling on Balanced, contrast-limited
+// sharpening on both. Screen multisampling is a context-creation flag, chosen
+// once from the saved tier (and not needed by those two).
 export const GRAPHICS = Object.freeze({
   potato: { label: 'Potato', pixelRatio: 1, scale: .55, maxPixels: 750000, shadows: 0, texture: 32, effects: .1, particleCap: 48, motes: 0, glow: false, light: false, antialias: false, anisotropy: 1, relief: null,
     description: 'Barebones · half resolution · flat terrain · no decorative foliage, shadows or ambient dust' },
   performance: { label: 'Performance', pixelRatio: 1.15, scale: .82, maxPixels: 1150000, shadows: 768, shadowFPS: 24, texture: 256, effects: .3, particleCap: 140, motes: 20, glow: false, light: true, antialias: false, anisotropy: 2, relief: null,
-    description: 'Sharper adaptive resolution · simplified foliage · contact shadows on landmarks · lit effects' },
+    description: 'Smoothed, sharpened upscale · adaptive resolution · simplified foliage · contact shadows on landmarks · lit effects' },
   balanced: { label: 'Balanced', pixelRatio: 1.3, scale: 1, maxPixels: 1800000, shadows: 1024, shadowFPS: 30, texture: 512, effects: .75, particleCap: 400, motes: 72, glow: true, light: true, antialias: true, anisotropy: 4, relief: 'ground',
-    description: 'Adaptive resolution · soft shadows on buildings, props & entities · raised sand grain · detailed foliage & effects' },
+    description: 'Antialiased, sharpened upscale · adaptive resolution · soft shadows on buildings, props & entities · raised sand grain · detailed foliage & effects' },
   quality: { label: 'Quality', pixelRatio: 2, scale: 1, maxPixels: 3700000, shadows: 2048, shadowFPS: 45, texture: 1024, effects: 2, particleCap: 1300, motes: 190, glow: true, light: true, antialias: true, anisotropy: 8, relief: 'full',
     description: 'Raised sand & wood grain · dense vegetation · richer landmark detail & effects' },
   // Everything Quality has, and on top: ambient occlusion, bloom and a colour
@@ -31,7 +33,7 @@ export const GRAPHICS = Object.freeze({
 export const DEMANDING_TIERS = Object.freeze(['quality', 'extreme']);
 export const isDemanding = name => DEMANDING_TIERS.includes(name);
 
-export const DEFAULT_SETTINGS = { quality: 'balanced', fps: 60, motion: true, controlHints: true, mobileOpacity: .4, aimAssist: true,
+export const DEFAULT_SETTINGS = { quality: 'balanced', fps: 60, motion: true, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, vibration: true,
   volume: { master: .6, ambient: .8, weapons: 1, effects: 1 } };
 // Every channel is a plain 0..1 multiplier so the mixer stays predictable:
 // master scales the bus, the rest scale within it.
@@ -125,6 +127,10 @@ export function validateSettings(value = {}, {mobile=false} = {}) {
     controlHints: typeof value.controlHints === 'boolean' ? value.controlHints : true,
     // Touch aim assist (aim-assist.js); on unless turned off in Settings > Mobile.
     aimAssist: typeof value.aimAssist === 'boolean' ? value.aimAssist : true,
+    // Touch: short buzzes when hit and on a kill (haptics.js).
+    vibration: typeof value.vibration === 'boolean' ? value.vibration : true,
+    // Touch: ask for full screen when a game starts (mobile-browser.js).
+    fullscreen: typeof value.fullscreen === 'boolean' ? value.fullscreen : true,
     mobileOpacity: [1,.7,.4].includes(Number(value.mobileOpacity)) ? Number(value.mobileOpacity) : DEFAULT_SETTINGS.mobileOpacity,
     volume: validateVolume(value.volume) };
 }

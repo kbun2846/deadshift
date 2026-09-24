@@ -1,7 +1,7 @@
 // Deadwater Outpost: the town the alpha is played and tested in.
 // Plain data (src/map-kit.js has the helpers and prop types).
 import { building } from '../map-kit.js';
-import { addRailDepot } from '../rail-depot.js';
+import { addRailDepot } from '../world/rail-depot.js';
 import { roundPlayableOutline } from '../playable-area.js';
 
 export const deadwater = {
@@ -267,7 +267,7 @@ export const deadwater = {
     { x: -25, z: -43, length: 12, axis: 'x' },
   ],
   targets: [
-    { id: 'range-a', x: 8, z: 5 }, { id: 'range-b', x: 12, z: 5, maxHp: 500 },
+    { id: 'range-a', x: 8, z: 5 }, { id: 'range-b', x: 12, z: 5 },
     { id: 'range-c', x: 16, z: 5 },
     { id: 'runner', x: 12, z: 11, moving: true, travel: 4 },
     { id: 'saloon-target', x: -12, z: -6 },

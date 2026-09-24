@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {snapCameraFocus,CAMERA_TILT,OUTDOOR_CAMERA_HEIGHT} from '../src/camera-framing.js';
+import {snapCameraFocus,CAMERA_TILT,OUTDOOR_CAMERA_HEIGHT} from '../src/render/camera-framing.js';
 
 test('the camera moves the ground by whole screen pixels, so thin lines stop shimmering',()=>{
  const height=OUTDOOR_CAMERA_HEIGHT,fov=40,w=1280,h=720;

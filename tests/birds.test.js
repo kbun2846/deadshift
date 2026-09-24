@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Birds,FlightSchedule,SPECIES,FLOCK,CYCLE,BIRD_INTERVAL,BIRD_CLEARANCE,PLAYER_CLEARANCE,MIN_PLAYER_CLEARANCE,VULTURE_CHANCE,CROSS_SECONDS,APPROACH,BIRD_TILT,EXIT_MARGIN,LANE_ATTEMPTS,crossingReach,tailOutline,fingerOutline,closestApproach,pathIsClear,viewSpan,bodyOutline,wingOutline} from '../src/birds.js';
+import {Birds,FlightSchedule,SPECIES,FLOCK,CYCLE,BIRD_INTERVAL,BIRD_CLEARANCE,PLAYER_CLEARANCE,MIN_PLAYER_CLEARANCE,VULTURE_CHANCE,CROSS_SECONDS,APPROACH,BIRD_TILT,EXIT_MARGIN,LANE_ATTEMPTS,crossingReach,tailOutline,fingerOutline,closestApproach,pathIsClear,viewSpan,bodyOutline,wingOutline} from '../src/effects/birds.js';
 const VIEW={height:29,fov:40,aspect:1.78};
 
 const sequence=values=>{let i=0;return()=>values[i++%values.length];};

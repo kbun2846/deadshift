@@ -23,3 +23,12 @@ export const TOUCH_CLUSTER = Object.freeze({ fire: 138, gap: 6, ring: 76, segmen
  aimWeight: 1.4, adsFireDegrees: 26 });
 // Ring order from the thumb's easiest reach outward: dodge first.
 export const CLUSTER_ORDER = Object.freeze(['touch-dodge', 'touch-stream', 'touch-hex', 'touch-place', 'touch-extended', 'touch-grenade']);
+
+// The game keys on the keyboard: Space shoots (with the left mouse button), E
+// is the weapon's other action (Static places orbs, Nominal throws a grenade,
+// Ballast fires both shells), Left Ctrl dodges. Everything that reads or names
+// these keys (main.js, rifle-input.js, the weapon registry, the tutorials, the
+// HUD) goes through here. Menus keep E to confirm and Q to go back; Q does
+// nothing in a fight. While playing, browser shortcuts that Ctrl would start
+// (Ctrl+S, Ctrl+D, Ctrl+wheel zoom…) are blocked (main.js).
+export const GAME_KEYS = Object.freeze({ shoot: 'Space', secondary: 'KeyE', dodge: 'ControlLeft' });

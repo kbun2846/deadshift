@@ -1,0 +1,15 @@
+{
+  "name": "Deadshift",
+  "short_name": "Deadshift",
+  "description": "A minimalist top-down shooter with distinct weapons, explosive combat and online multiplayer.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "background_color": "#232827",
+  "theme_color": "#232827",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

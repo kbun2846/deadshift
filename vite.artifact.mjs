@@ -6,7 +6,7 @@ import { defineConfig } from 'vite';
 // is `blob:null`, which throws before the game ever starts.
 export default defineConfig({
   root: '/home/claude/deadshift',
-  base: './',
+  base: '.',
   build: {
     outDir: '/tmp/claude-0/art/dist',
     emptyOutDir: true,

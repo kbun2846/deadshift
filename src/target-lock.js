@@ -2,8 +2,10 @@
 // aiming side of a touchscreen (the side away from the move stick).
 //
 // Idle by default: aiming is the ordinary kind (arrows or walking turn the
-// aim, a finger drags the cursor). Pressing an arrow, or flicking a finger,
-// picks the target on screen that way from the cursor and the aim goes to it.
+// aim). Pressing an arrow, or swiping a finger (a swipe is an arrow press, and
+// the cursor never jumps under the finger), picks the target on screen that
+// way from the cursor and the aim goes to it. A swipe with no target that way
+// then drags the cursor by the finger's movement, like a trackpad.
 // Locked, an arrow or a swipe moves to the next target that way from the
 // current one (swap), or lets go if there is none that way. If the locked
 // target dies, breaks, hides or leaves the screen, the
@@ -19,8 +21,14 @@ export const TARGET_LOCK = Object.freeze({
  glide: .09,       // s: smooth time of the aim point's travel to a new target (eases in and out)
  swipe: 42,        // px of finger travel that counts as one swipe
  swipeAgain: 140,  // px more, in the same drag, for each further switch
- flickTime: .4,    // s: from idle, a finger movement this quick (and a swipe long) picks a target
  hold: .6,         // s: a locked target briefly out of sight (a post, a doorframe, the screen edge) keeps the lock
+ // Locked on another player (online), the aim point chases them rather than
+ // sitting on them: it moves at most chaseSpeed + chaseCatchUp × (how far
+ // behind it is) m/s. A player walking across is kept up with; one running
+ // flat out or dodging pulls ahead and the aim lags behind. Held arrows push
+ // the point that way at nudgeSpeed m/s, so a skilled player leads the target
+ // by hand; the push reaches at most nudgeReach metres past the target.
+ chaseSpeed: 5.5, chaseCatchUp: 3, nudgeSpeed: 7, nudgeReach: 2.5,
 });
 
 export function createTargetLock(config = TARGET_LOCK) {
@@ -33,7 +41,9 @@ export function createTargetLock(config = TARGET_LOCK) {
   // on screen and in range. Returns the locked candidate, or null when idle.
   // `find(id)`: the locked target if it still exists and is alive (seen or
   // not), so a moment behind a post or a doorframe does not drop the lock.
-  update(candidates, player, dt, find) {
+  // `chase`: { nudgeX, nudgeZ } (held arrows, -1..1 in world x/z) when the
+  // targets are players: the point then chases instead of sticking (above).
+  update(candidates, player, dt, find, chase = null) {
    if (id === null) { point = null; return null; }
    let target = candidates.find(c => c.id === id);
    if (target) lostFor = 0;
@@ -48,7 +58,14 @@ export function createTargetLock(config = TARGET_LOCK) {
    if (!target) { point = null; return null; }
    // Glide to a newly picked target, then stay exactly on it (a moving target
    // is followed without lag, so the aim never drifts off it).
-   if (arrived) { point.x = target.x; point.z = target.z; }
+   if (arrived && chase) {
+    const dx = target.x - point.x, dz = target.z - point.z, behind = Math.hypot(dx, dz);
+    const step = Math.min(behind, (config.chaseSpeed + config.chaseCatchUp * behind) * dt);
+    if (behind > 1e-6) { point.x += dx / behind * step; point.z += dz / behind * step; }
+    point.x += (chase.nudgeX || 0) * config.nudgeSpeed * dt; point.z += (chase.nudgeZ || 0) * config.nudgeSpeed * dt;
+    const ox = point.x - target.x, oz = point.z - target.z, off = Math.hypot(ox, oz);
+    if (off > config.nudgeReach) { point.x = target.x + ox / off * config.nudgeReach; point.z = target.z + oz / off * config.nudgeReach; }
+   } else if (arrived) { point.x = target.x; point.z = target.z; }
    else {
     // A critically damped spring (smooth-damp): the aim point speeds up and
     // settles rather than leaping off at full speed, so a switch reads as one
@@ -73,11 +90,12 @@ export function createTargetLock(config = TARGET_LOCK) {
    id = best.id; point = { x: aim.x, z: aim.z }; lostFor = 0; arrived = false; vx = vz = 0; return true;
   },
   // Locked: the next target that way from the current one on screen. None
-  // that way lets the lock go (idle).
-  swap(candidates, dx, dy) {
+  // that way lets the lock go (idle), unless `keep` (locked on a player: the
+  // arrow is leading them instead, see `chase`).
+  swap(candidates, dx, dy, keep = false) {
    const current = candidates.find(c => c.id === id);
    const best = current ? pick(candidates, { x: current.sx, y: current.sy }, dx, dy, id) : null;
-   if (!best) { lock.clear(); return false; }
+   if (!best) { if (!keep) lock.clear(); return false; }
    id = best.id; lostFor = 0; arrived = false; return true;
   },
  };

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {detectedControls,createInputPreference} from '../src/input-preference.js';
+import {detectedControls,createInputPreference} from '../src/ui/input-preference.js';
 
 test('a device is only called touch-first when it has no hover',()=>{
  assert.equal(detectedControls({coarsePointer:true,hoverAvailable:false}),'touch');

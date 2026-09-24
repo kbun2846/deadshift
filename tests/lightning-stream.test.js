@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation, RULES } from '../src/simulation.js';
+import { RULES as FULL_RULES } from '../src/config/gameplay.js';
+const FULL = FULL_RULES.targetHealth; // a practice target's full health
 const make = targets => new Simulation({ width: 80, depth: 80, spawn: { x: 0, z: 0 }, buildings: [], fences: [], props: [], targets: targets || [] });
 const step = (sim, extra = {}, dt) => sim.step({ moveX: 0, moveZ: 0, aimX: 1, aimZ: 0, spray: true, ...extra }, dt);
 
@@ -18,7 +20,7 @@ test('standing still never refills ammo during the C stream',()=>{
 test('stream windup warns without damage or spending ammo', () => {
   const sim = make([{ id: 'a', x: 2, z: 0 }]);
   for (let i = 0; i < 10; i++) step(sim);
-  assert.equal(sim.ammo, 12); assert.equal(sim.targets[0].hp, 100);
+  assert.equal(sim.ammo, 12); assert.equal(sim.targets[0].hp, FULL);
   assert.ok(sim.events.some(e => e.type === 'sprayArc' && !e.firing));
   step(sim, { spray: false }); assert.equal(sim.spray.active, false);
 });
@@ -57,8 +59,8 @@ test('inner cone is stronger, outer cone weaker, outside and covered targets saf
   const sim = make([{ id: 'inner', x: 4, z: 0 }, { id: 'outer', x: 4, z: 1.1 }, { id: 'outside', x: 4, z: 4 }, { id: 'covered', x: 7, z: 0 }]);
   sim.colliders.push({ x: 5.5, z: 0, w: .2, d: 2 });
   for (let i = 0; i < 25; i++) step(sim);
-  assert.ok(sim.targets[0].hp < sim.targets[1].hp && sim.targets[1].hp < 100);
-  assert.equal(sim.targets[2].hp, 100); assert.equal(sim.targets[3].hp, 100);
+  assert.ok(sim.targets[0].hp < sim.targets[1].hp && sim.targets[1].hp < FULL);
+  assert.equal(sim.targets[2].hp, FULL); assert.equal(sim.targets[3].hp, FULL);
 });
 
 test('recoil pushes an idle caster backward and slows forward movement', () => {

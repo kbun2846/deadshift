@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {WorldView} from '../src/renderer.js';
+import {WorldView} from '../src/render/renderer.js';
 import {deadwater,mapColliders,buildingPoint} from '../src/maps.js';
-import {interiorCover} from '../src/detailed-interiors.js';
+import {interiorCover} from '../src/world/detailed-interiors.js';
 import {segmentBox} from '../src/simulation.js';
 import {readFileSync} from 'node:fs';
 test('spatial batches preserve all triangles and world bounds while separating distant detail',()=>{
@@ -33,7 +33,7 @@ test('the roof fade only re-enables the meshes that were built as casters',()=>{
  // because castShadow is part of the merge key. The fade used to traverse the
  // whole roof group and switch every merged tile batch back on, undoing that
  // on the first frame and putting every shingle into the shadow map.
- const source=readFileSync(new URL('../src/renderer.js',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../src/render/renderer.js',import.meta.url),'utf8');
  const build=source.slice(source.indexOf('for (const layer of roof.children)'),source.indexOf('this.roofs.push('));
  assert.ok(build.includes('this.noShadows(tile)'),'tiles are still excluded before the batch');
  assert.ok(source.includes('this.roofs.push({ ...b, group: roof, casters,'),'the casters are captured at build time');

@@ -1,12 +1,12 @@
-import {recordBallastDamage} from './ballast-damage.js';
+import {recordBallastDamage} from './weapons/ballast-damage.js';
 import {isPlayable,confinePlayableMovement} from './playable-area.js';
-import {resetShotgun,stepShotgun} from './shotgun.js';
+import {resetShotgun,stepShotgun} from './weapons/shotgun.js';
 import { mapColliders, mapProps, buildingContains, buildingWalls } from './maps.js';
 import { cropSegments, cropPoint, affectCrop, cropCircle, stepCrops } from './crops.js';
-import { RIFLE, resetRifle, stepRifle } from './rifle.js';
+import { RIFLE, resetRifle, stepRifle } from './weapons/rifle.js';
 import { targetRadius } from './target-radius.js';
 export { targetRadius };
-import { resetGrenades, stepGrenades } from './grenade.js';
+import { resetGrenades, stepGrenades } from './weapons/grenade.js';
 import { autoRangeDistance, AUTO_RANGE } from './auto-range.js';
 import { assistAim, clearAssist } from './aim-assist.js';
 import { AIM_ASSIST } from './config/gameplay.js';
@@ -69,18 +69,31 @@ export function inside(point, box, padding = 0) {
 
 // First intersection along a segment; prevents fast volleys passing through thin walls.
 export function segmentBox(ax, az, bx, bz, box, radius = 0) {
-  if(box.angle && box.localW!==undefined){const c=Math.cos(box.angle),s=Math.sin(box.angle),x=ax-box.x,z=az-box.z,u=bx-box.x,v=bz-box.z;return segmentBox(x*c-z*s,x*s+z*c,u*c-v*s,u*s+v*c,{x:0,z:0,w:box.localW,d:box.localD},radius);}
+  if (box.angle && box.localW !== undefined) return segmentLocalBox(ax, az, bx, bz, box, radius);
+  return segmentSlab(ax, az, bx, bz, box.x, box.z, box.w, box.d, radius);
+}
+// Rotated boxes: the segment into the box's own frame (no object made).
+function segmentLocalBox(ax, az, bx, bz, box, radius) {
+  const c = Math.cos(box.angle), s = Math.sin(box.angle), x = ax - box.x, z = az - box.z, u = bx - box.x, v = bz - box.z;
+  return segmentSlab(x * c - z * s, x * s + z * c, u * c - v * s, u * s + v * c, 0, 0, box.localW, box.localD, radius);
+}
+// The two slabs written out: this runs for every bullet, orb and hex side
+// against every nearby box each step, so it allocates nothing.
+function segmentSlab(ax, az, bx, bz, x, z, w, d, radius) {
   let near = 0, far = 1;
-  for (const [a, delta, min, max] of [
-    [ax, bx - ax, box.x - box.w / 2 - radius, box.x + box.w / 2 + radius],
-    [az, bz - az, box.z - box.d / 2 - radius, box.z + box.d / 2 + radius],
-  ]) {
-    if (Math.abs(delta) < 1e-8) { if (a < min || a > max) return null; }
-    else {
-      const p = (min - a) / delta, q = (max - a) / delta;
-      near = Math.max(near, Math.min(p, q)); far = Math.min(far, Math.max(p, q));
-      if (near > far) return null;
-    }
+  const dx = bx - ax, dz = bz - az;
+  const minX = x - w / 2 - radius, maxX = x + w / 2 + radius, minZ = z - d / 2 - radius, maxZ = z + d / 2 + radius;
+  if (Math.abs(dx) < 1e-8) { if (ax < minX || ax > maxX) return null; }
+  else {
+    const p = (minX - ax) / dx, q = (maxX - ax) / dx;
+    near = Math.max(near, Math.min(p, q)); far = Math.min(far, Math.max(p, q));
+    if (near > far) return null;
+  }
+  if (Math.abs(dz) < 1e-8) { if (az < minZ || az > maxZ) return null; }
+  else {
+    const p = (minZ - az) / dz, q = (maxZ - az) / dz;
+    near = Math.max(near, Math.min(p, q)); far = Math.min(far, Math.max(p, q));
+    if (near > far) return null;
   }
   return near;
 }
@@ -198,8 +211,24 @@ export class Simulation {
     // Use body samples only for outdoor cover; interior cone rules remain strict.
     return [0,-radius,radius].some(offset=>{
       const px=x-dz/length*offset,pz=z+dx/length*offset;
-      return (!includeInterior||this.canAimAt(px,pz))&&!this.colliders.some(b=>b.blocksSight&&segmentBox(this.player.x,this.player.z,px,pz,b,0)!==null);
+      return (!includeInterior||this.canAimAt(px,pz))&&!this.sightBlocked(this.player.x,this.player.z,px,pz);
     });
+  }
+
+  // Does cover that blocks sight cross the segment? Only the sight blockers
+  // (a handful of the hundreds of colliders), each rejected by its world
+  // bounds (w, d are the axis-aligned extents, rotated or not) before the slab
+  // test. Target lock and aim assist ask this three rays per target per step.
+  sightBlocked(ax, az, bx, bz) {
+    let cache = this.sightBlockers;
+    if (!cache || cache.colliders !== this.colliders || cache.length !== this.colliders.length)
+      cache = this.sightBlockers = { colliders: this.colliders, length: this.colliders.length, list: this.colliders.filter(c => c.blocksSight) };
+    const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx), z0 = Math.min(az, bz), z1 = Math.max(az, bz);
+    for (const b of cache.list) {
+      if (b.x + b.w / 2 < x0 || b.x - b.w / 2 > x1 || b.z + b.d / 2 < z0 || b.z - b.d / 2 > z1) continue;
+      if (segmentBox(ax, az, bx, bz, b, 0) !== null) return true;
+    }
+    return false;
   }
 
   step(input, dt = RULES.step) {
@@ -314,7 +343,7 @@ export class Simulation {
       t.flash = Math.max(0, t.flash - dt);
       if (t.respawn > 0) {
         t.respawn -= dt;
-        if (t.respawn <= 0) { t.hp = t.maxHp; t.x = t.baseX = t.spawnX; t.z = t.spawnZ; this.events.push({ type: 'respawn', x: t.x, z: t.z }); }
+        if (t.respawn <= 0) { t.hp = t.maxHp; t.bulletHits = 0; t.x = t.baseX = t.spawnX; t.z = t.spawnZ; this.events.push({ type: 'respawn', x: t.x, z: t.z }); }
       }
       if (t.moving && t.hp > 0 && !this.dev.freezeTargets) t.x = t.baseX + Math.sin(this.time * .72) * t.travel;
     }
@@ -856,6 +885,28 @@ export class Simulation {
     this.hexOrbs = []; this.rechargeWait = RULES.rechargeDelay; this.rechargeProgress = 0;
   }
 
+  // Standing breakable props a segment passes through (the hex's spinning
+  // sides and its flying orbs break them). This used to test every prop
+  // against every collider (props x colliders, six times a step): the whole
+  // frame on a laptop when the second X was pressed. Now one pass over the
+  // colliders that belong to props, indexed once per collider list, with a
+  // cheap bounding-box reject first.
+  breakablePropsAlong(ax, az, bx, bz, pad) {
+    let index = this.propColliderIndex;
+    if (!index || index.colliders !== this.colliders || index.length !== this.colliders.length || index.props !== this.props) {
+      const byId = new Map(this.props.map(p => [p.id, p]));
+      index = this.propColliderIndex = { colliders: this.colliders, length: this.colliders.length, props: this.props,
+        list: this.colliders.filter(c => c.propId !== undefined && byId.has(c.propId)).map(c => ({ c, prop: byId.get(c.propId) })) };
+    }
+    const x0 = Math.min(ax, bx) - pad, x1 = Math.max(ax, bx) + pad, z0 = Math.min(az, bz) - pad, z1 = Math.max(az, bz) + pad, found = [];
+    for (const { c, prop } of index.list) {
+      if (prop.hp === null || !(prop.hp > 0) || found.includes(prop)) continue;
+      if (!c.angle && (c.x + c.w / 2 < x0 || c.x - c.w / 2 > x1 || c.z + c.d / 2 < z0 || c.z - c.d / 2 > z1)) continue;
+      if (segmentBox(ax, az, bx, bz, c, pad) !== null) found.push(prop);
+    }
+    return found;
+  }
+
   stepHexSpin(dt) {
     const spin = this.hexSpin; if (!spin) return;
     spin.age = Math.min(RULES.hexSpinDuration, spin.age + dt);
@@ -871,7 +922,7 @@ export class Simulation {
       const b = nodes.find(n => n.index === (a.index + 1) % 6);
       if (!b || blocked(a, b)) continue;
       spin.edges.push({ a, b, index: a.index });
-      for(const prop of this.props)if(prop.hp!==null&&prop.hp>0&&this.colliders.some(c=>c.propId===prop.id&&segmentBox(a.x,a.z,b.x,b.z,c,.12)!==null))
+      for(const prop of this.breakablePropsAlong(a.x,a.z,b.x,b.z,.12))
         this.hitProp(prop,{electric:true,damage:prop.hp,x:prop.x,z:prop.z,vx:prop.x-spin.originX,vz:prop.z-spin.originZ});
       for (const crop of this.crops) if (crop.state !== 'gone' && segmentBox(a.x, a.z, b.x, b.z, crop, .2) !== null) affectCrop(this, crop, true);
       if (!spin.hits.has(a.index)) spin.hits.set(a.index, new Set());
@@ -897,7 +948,7 @@ export class Simulation {
       const angle=orb.index*Math.PI/3-orb.age*Math.PI*2,radius=orb.age*RULES.hexSpeed;
       const x = orb.originX+Math.cos(angle)*radius, z = orb.originZ+Math.sin(angle)*radius;
       orb.vx=(x-orb.x)/dt;orb.vz=(z-orb.z)/dt;
-      for(const prop of this.props)if(prop.hp!==null&&prop.hp>0&&this.colliders.some(c=>c.propId===prop.id&&segmentBox(orb.x,orb.z,x,z,c,.3)!==null))
+      for(const prop of this.breakablePropsAlong(orb.x,orb.z,x,z,.3))
         this.hitProp(prop,{electric:true,damage:prop.hp,x:prop.x,z:prop.z,vx:orb.vx,vz:orb.vz});
       orb.x = x; orb.z = z;
       if (Math.hypot(x - orb.originX, z - orb.originZ) >= RULES.hexRange || Math.abs(x) > this.map.width / 2 || Math.abs(z) > this.map.depth / 2) {
@@ -952,7 +1003,9 @@ export class Simulation {
     if (target.hp <= 0 || shot.owner === target.id) return;
     // Dev one-hit kills: any hit that isn't the world's own (fire) finishes it.
     if (this.dev.oneHit && !shot.environmental) shot = { ...shot, damage: Math.max(shot.damage, target.hp) };
-    const ballastFatal=shot.damageType==='ballast'&&recordBallastDamage(target,shot.damage,this.time,shot.owner);
+    // Any kill by Ballast is the headless death (owner's rule; it used to
+    // need a massive fast burst, see ballast-damage.js, kept for the record).
+    const ballast=shot.damageType==='ballast';if(ballast)recordBallastDamage(target,shot.damage,this.time,shot.owner);
     const fullHealth=target.hp>=target.maxHp-1e-8;
     if(fullHealth||target.oneShotVolley!==shot.volley||this.time-(target.oneShotAt??-1)>.15){target.oneShotEligible=fullHealth;target.oneShotVolley=shot.volley;target.oneShotAt=this.time;}
     const oneShot=fullHealth&&shot.damage>=target.hp||shot.volley!=null&&target.oneShotEligible&&target.oneShotVolley===shot.volley&&this.time-target.oneShotAt<=.15;
@@ -960,6 +1013,8 @@ export class Simulation {
     // promises a figure no larger than the health actually lost. The player
     // side already clamped; the target side did not.
     const dealt = Math.min(target.hp, shot.damage);
+    // Real bullets leave holes (target-damage.js); everything else only breaks it.
+    if (shot.bullet && dealt > 0) target.bulletHits = (target.bulletHits || 0) + 1;
     target.hp = Math.max(0, target.hp - shot.damage);
     if(!shot.environmental)this.events.push({type:'outgoingDamage',damage:dealt,hp:target.hp,maxHp:target.maxHp,x:target.x,z:target.z,id:target.id,volley:shot.volley});
     if (!shot.environmental) { target.flash = .16; this.stats.hits++; }
@@ -972,7 +1027,7 @@ export class Simulation {
       }
     }
     if (killed || !shot.environmental) this.events.push({ type: killed ? 'kill' : 'hit', x: target.x, z: target.z, volley: shot.volley,
-      id:target.id, damageType:ballastFatal?'ballastFatal':shot.damageType, oneShot:killed&&oneShot&&!shot.environmental, electric:!!shot.electric, targetKind: target.kind, directionX: shot.vx || 0, directionZ: shot.vz || 0 });
+      id:target.id, damageType:ballast&&killed?'ballastFatal':shot.damageType, oneShot:killed&&oneShot&&!shot.environmental, electric:!!shot.electric, blast:!!shot.blast, damage:dealt, targetKind: target.kind, directionX: shot.vx || 0, directionZ: shot.vz || 0 });
   }
 
   damageEnvironment(entity, damage) {
@@ -983,7 +1038,7 @@ export class Simulation {
   damagePlayer(damage, owner, environmental = false, selfBlast = false, impact = null, damageType = environmental?'fire':selfBlast?'explosion':'gunshot') {
     if (this.dev.invulnerable || this.dev.ghost || !owner || owner === this.player.id && !selfBlast || this.player.hp <= 0 || !Number.isFinite(damage) || damage <= 0) return 0;
     const dealt = Math.min(this.player.hp, !environmental && this.player.dodgeRemaining > 0 ? Math.max(1, Math.round(damage * RULES.dodgeDamageMultiplier)) : damage);
-    if(damageType==='ballast'&&recordBallastDamage(this.player,dealt,this.time,owner)&&dealt>=this.player.hp)damageType='ballastFatal';
+    if(damageType==='ballast'){recordBallastDamage(this.player,dealt,this.time,owner);if(dealt>=this.player.hp)damageType='ballastFatal';}
     this.player.hp -= dealt;
     this.events.push({type:'playerDamage',damage:dealt});
     if(this.player.hp<=0)this.killPlayer(impact,damageType);
@@ -1037,6 +1092,25 @@ export class Simulation {
   // Dev: every downed target stands up again on the next tick.
   respawnTargets() { let count = 0; for (const t of this.targets) if (t.hp <= 0) { t.respawn = 1e-6; count++; } return count; }
   // Dev: every broken prop is rebuilt where it was placed.
+  // Solo practice's RESET MAP: the world as it was when the map loaded (every
+  // prop standing, crops grown and unburnt, targets back), the player and the
+  // weapon untouched. `propRestore` (quiet) for each broken prop and then
+  // `mapReset` tell the renderer, which clears blood, marks and bodies.
+  resetWorld() {
+    for (const prop of this.props) {
+      if (prop.hp === null) continue;
+      if (prop.hp <= 0) this.events.push({ type: 'propRestore', id: prop.id, x: prop.x, z: prop.z, propType: prop.type, quiet: true });
+      prop.hp = prop.health; prop.flash = 0;
+    }
+    this.colliders = mapColliders(this.map);
+    this.crops = cropSegments(this.map);
+    this.targets = this.map.targets.map(t => {
+      const maxHp = t.maxHp ?? (t.kind === 'dummy' ? RULES.dummyHealth : RULES.targetHealth);
+      return { ...t, baseX: t.x, spawnX: t.x, spawnZ: t.z, hp: maxHp, maxHp, respawn: 0, flash: 0 };
+    });
+    this.events.push({ type: 'mapReset' });
+  }
+
   restoreAllProps() { let count = 0; for (const prop of this.props) if (this.restoreProp(prop.id)) count++; return count; }
 
   // Puts a broken prop back as it was placed: full health, and solid again.
@@ -1068,7 +1142,7 @@ export class Simulation {
     cropCircle(this, { x, z }, blast.radius, false, (a, b) => !cover.some(c => !c.playerOnly && segmentBox(a.x, a.z, b.x, b.z, c) !== null));
     for (const target of this.targets) if (target.hp > 0) {
       const damage = damageAt(target, null);
-      if (damage) this.hit(target, { damage, volley: id });
+      if (damage) this.hit(target, { damage, volley: id, blast: true, vx: target.x - x, vz: target.z - z });
     }
     for (const prop of this.props) if (prop.hp !== null && prop.hp > 0) {
       const damage = damageAt(prop, prop.id);

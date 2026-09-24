@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {Simulation} from '../src/simulation.js';
-import {DeathView,bloodPoolPattern} from '../src/death-view.js';
-import {DEATH_MENU_DELAY} from '../src/death-screen.js';
+import {DeathView,bloodPoolPattern} from '../src/effects/death-view.js';
+import {DEATH_MENU_DELAY} from '../src/ui/death-screen.js';
 const make=()=>new Simulation({width:40,depth:40,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});
 test('distinct lethal damage types drop the gun and preserve a fallen corpse without explosion scatter',()=>{
  for(const damageType of ['electric','fire','gunshot','unknown']){
@@ -48,14 +48,14 @@ test('five distinct pool profiles remain compact and the death screen comes up q
  const patterns=Array.from({length:5},(_,i)=>bloodPoolPattern(i));
  assert.equal(new Set(patterns.map(p=>JSON.stringify(p))).size,5);
  for(const p of patterns){assert.ok(p.width*1.6>1);assert.ok(p.lobes.every(l=>Math.hypot(l.x,l.z)+l.size<1.5));}
- assert.equal(DEATH_MENU_DELAY,1.2);
+ assert.equal(DEATH_MENU_DELAY,2.6);
 });
 test('death drops a visible gun, spreads blood, lands particles and cleans resources on restart',()=>{
  const player=new THREE.Group(),gun=new THREE.Group(),material=new THREE.MeshBasicMaterial();
  const geometry=new THREE.BoxGeometry(.1,.1,.6);gun.add(new THREE.Mesh(geometry,material));gun.position.y=.8;player.add(gun);player.userData.gun=gun;
  const scene=new THREE.Scene();scene.add(player);const fx=new DeathView({player,scene,qualityName:'balanced'});
  fx.start({damageType:'explosion',x:0,z:0,aimX:1,aimZ:0});assert.equal(player.visible,false);assert.equal(fx.gun.children.length,1);
- fx.update(2);assert.ok(fx.pool.scale.x>1.5);assert.equal(fx.gun.position.y,.12);assert.equal(fx.drops.count,52);
+ fx.update(2);assert.ok(fx.pool.scale.x>1.5);assert.equal(fx.gun.position.y,.12);assert.equal(fx.drops.count,80);
  for(const [x,z]of [[1,0],[-1,0],[0,1],[0,-1]]){
   fx.start({damageType:'explosion',x:0,z:0,aimX:1,aimZ:0,directionX:x,directionZ:z});fx.update(2);
   assert.equal(fx.bones.children.filter(piece=>piece.userData.bone).length,8);
@@ -63,10 +63,11 @@ test('death drops a visible gun, spreads blood, lands particles and cleans resou
   assert.ok(fx.boneParticles.every(p=>p.vx*x+p.vz*z>0));
   assert.ok(fx.boneParticles.every(p=>Math.abs(p.model.position.y-p.floor)<1e-8));
   const mid=fx.cameraFrame();assert.ok(mid.height<29&&mid.height>29*.56);
-  fx.update(2);const end=fx.cameraFrame();assert.ok(end.height<mid.height);assert.ok(end.x*x+end.z*z>.6);
+  fx.update(2);const end=fx.cameraFrame(16/9,false);assert.ok(end.height<mid.height);assert.ok(end.x*x+end.z*z>.6);
+  const aside=fx.cameraFrame(16/9);assert.ok(aside.x>end.x&&aside.height===end.height,'once still, the frame slides so the body is beside the death screen');
   assert.ok(fx.particles.every(p=>p.vx*x+p.vz*z>0),'every drop travels away from the impact');
   fx.pool.updateMatrixWorld(true);
-  const center=fx.pool.children[0].getWorldPosition(new THREE.Vector3());
+  const center=new THREE.Box3().setFromObject(fx.pool).getCenter(new THREE.Vector3()); // the pool is one merged mesh now
   assert.ok(center.x*x+center.z*z>.5,'pool spreads away from the impact');
   const bounds=new THREE.Box3().setFromObject(fx.pool),axis=x?'x':'z',sign=x||z;
   assert.ok(sign>0?bounds.max[axis]>Math.abs(bounds.min[axis]):Math.abs(bounds.min[axis])>bounds.max[axis]);
@@ -78,17 +79,17 @@ test('death drops a visible gun, spreads blood, lands particles and cleans resou
 
 test('every player death leaves blood on the floor: your own and other players online', async () => {
  const { readFileSync } = await import('node:fs');
- const { SPLAT_CAP } = await import('../src/blood-splatter.js');
- const renderer = readFileSync(new URL('../src/renderer.js', import.meta.url), 'utf8');
+ const { SPLAT_CAP } = await import('../src/effects/blood-splatter.js');
+ const renderer = readFileSync(new URL('../src/render/renderer.js', import.meta.url), 'utf8');
  assert.ok(/e\.type==='playerDeath'\)\{this\.blood\.add\(/.test(renderer), 'your death splats');
- assert.ok(/e\.type === 'playerDeath'\) \{ this\.blood\.add\(/.test(renderer), 'other players\' deaths splat too');
+ assert.ok(/e\.type === 'playerDeath'\) \{\s*this\.blood\.add\(/.test(renderer), 'other players\' deaths splat too');
  for (const [preset, cap] of Object.entries(SPLAT_CAP)) assert.ok(cap >= 6 && cap <= 20, preset);
  assert.ok(SPLAT_CAP.potato <= SPLAT_CAP.extreme, 'cheaper presets keep fewer');
 });
 
 test('each player leaves at most one bloodstain: their last death stays, the one before fades away', async () => {
  const THREE = await import('three');
- const { BloodSplatters } = await import('../src/blood-splatter.js');
+ const { BloodSplatters } = await import('../src/effects/blood-splatter.js');
  const scene = new THREE.Scene();
  const blood = new BloodSplatters({ scene, qualityName: 'balanced' });
  blood.textures = [new THREE.Texture(), new THREE.Texture(), new THREE.Texture()];

@@ -45,7 +45,7 @@ function wire(transport, connection, id) {
  });
 }
 
-export async function hostRoom(code, { config = NETWORK, server } = {}) {
+export async function hostRoom(code, { config = NETWORK, server, openWait = 8000 } = {}) {
  const Peer = await loadPeer();
  const peer = new Peer(config.roomPrefix + code, peerOptions(config, server));
  const connections = new Map();
@@ -55,26 +55,38 @@ export async function hostRoom(code, { config = NETWORK, server } = {}) {
   send(to, message) { const c = connections.get(to); if (c?.open) c.send(message); },
   broadcast(message) { for (const c of connections.values()) if (c.open) c.send(message); },
   dropped(id) { if (connections.delete(id)) transport.onLeave(id); },
-  close() { for (const c of connections.values()) c.close(); connections.clear(); local?.close(); peer.destroy(); },
+  close() { for (const c of connections.values()) c.close(); connections.clear(); local?.close(); if (!peer.destroyed) peer.destroy(); },
   get peers() { return [...connections.keys()]; },
  };
- await new Promise((resolve, reject) => {
-  peer.once('open', resolve);
-  peer.once('error', error => reject(new Error(errorText(error))));
+ // No matchmaking server (offline, a blocked network, a page that may not
+ // reach it): the room still opens, for the host alone and for other windows
+ // of this browser (local-link.js). `transport.offline` says so; the host can
+ // play every mode by themselves. Any other error (a taken code) still fails.
+ const reached = await new Promise(resolve => {
+  const timer = setTimeout(() => resolve('timeout'), openWait);
+  peer.once('open', () => { clearTimeout(timer); resolve('open'); });
+  peer.once('error', error => { clearTimeout(timer); resolve(error); });
  });
- peer.on('error', error => transport.onError(new Error(errorText(error))));
- // Losing the signalling server does not end a running game; it only stops
- // new players joining until it comes back.
- peer.on('disconnected', () => { if (!peer.destroyed) peer.reconnect(); });
+ if (reached !== 'open') {
+  const unreachable = reached === 'timeout' || ['network', 'server-error', 'socket-error', 'socket-closed'].includes(reached?.type);
+  peer.destroy();
+  if (!unreachable) throw new Error(errorText(reached));
+  transport.offline = true;
+ } else {
+  peer.on('error', error => transport.onError(new Error(errorText(error))));
+  // Losing the signalling server does not end a running game; it only stops
+  // new players joining until it comes back.
+  peer.on('disconnected', () => { if (!peer.destroyed) peer.reconnect(); });
+  peer.on('connection', connection => {
+   const id = connection.peer;
+   connection.on('open', () => { connections.set(id, connection); wire(transport, connection, id); transport.onJoin(id); });
+  });
+ }
  // Other windows of this browser join over a BroadcastChannel (local-link.js).
  const local = listenLocal(code, {
   onOpen: (id, link) => { connections.set(id, link); transport.onJoin(id); },
   onData: (id, message) => transport.onMessage(id, message),
   onClose: id => transport.dropped(id),
- });
- peer.on('connection', connection => {
-  const id = connection.peer;
-  connection.on('open', () => { connections.set(id, connection); wire(transport, connection, id); transport.onJoin(id); });
  });
  return transport;
 }

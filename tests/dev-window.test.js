@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {DEV_TOGGLES,DEV_WINDOW_KEY,clampWindowPosition,readWindowPosition,refill,safeStorage} from '../src/dev-window.js';
+import {DEV_TOGGLES,DEV_WINDOW_KEY,clampWindowPosition,readWindowPosition,refill,safeStorage} from '../src/ui/dev-window.js';
 import {Simulation} from '../src/simulation.js';
 import {maps} from '../src/maps.js';
 import {GRAPHICS} from '../src/settings.js';
@@ -67,14 +67,14 @@ test('O opens the window, and only once the tools are unlocked',()=>{
 });
 
 test('developer controls opt out of the stretched display lettering',()=>{
- const typography=readFileSync(new URL('../src/button-typography.js',import.meta.url),'utf8');
+ const typography=readFileSync(new URL('../src/ui/button-typography.js',import.meta.url),'utf8');
  assert.ok(typography.includes(':not(.dev-tools button)'),'settings dev buttons stay plain');
  assert.ok(typography.includes(':not(.dev-window button)'),'and so do the floating ones');
  assert.ok(typography.includes(':not(.plain-text)'),'with an opt-out for anything else');
 });
 
 test('the aim cone carries a faint but unmistakably red interior',()=>{
- const css=readFileSync(new URL('../src/menu-theme.css',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../src/styles/menu-theme.css',import.meta.url),'utf8');
  const zone=css.slice(css.indexOf('.aim-cone .cone-zone{'));
  const fill=zone.match(/fill:(#[0-9a-f]{6})/i)[1];
  const opacity=Number(zone.match(/fill-opacity:([\d.]+)/)[1]);
@@ -90,7 +90,7 @@ test('the aim cone carries a faint but unmistakably red interior',()=>{
 
 test('both Ballast and Nominal draw the zone, and only while loaded and ready',()=>{
  const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
- const overlay=readFileSync(new URL('../src/aim-overlay.js',import.meta.url),'utf8');
+ const overlay=readFileSync(new URL('../src/ui/aim-overlay.js',import.meta.url),'utf8');
  const gate=overlay.slice(overlay.indexOf("cone.classList.toggle('unloaded'"),overlay.indexOf("cone.classList.toggle('unloaded'")+260);
  assert.ok(gate.includes('sim.shotgun.ammo>0'),'Ballast still needs a shell');
  assert.ok(gate.includes('sim.rifle.ammo>0'),'Nominal needs a round chambered');
@@ -104,7 +104,7 @@ test('both Ballast and Nominal draw the zone, and only while loaded and ready',(
 // missing from the draggable window while the settings tab offered it). Both
 // surfaces now have to enumerate the real table.
 test('every graphics tier is offered by the dev window and the settings tab',()=>{
- const dev=readFileSync(new URL('../src/dev-window.js',import.meta.url),'utf8');
+ const dev=readFileSync(new URL('../src/ui/dev-window.js',import.meta.url),'utf8');
  assert.ok(/Object\.entries\(GRAPHICS\)/.test(dev),'the dev window derives its presets from GRAPHICS');
  assert.ok(!/'potato',\s*'performance'/.test(dev),'no hand-written preset list left to drift');
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
@@ -130,7 +130,7 @@ test('a host that denies storage access still yields a usable dev window',()=>{
   if(original)Object.defineProperty(globalThis,'localStorage',original);
   else delete globalThis.localStorage;
  }
- const source=readFileSync(new URL('../src/dev-window.js',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../src/ui/dev-window.js',import.meta.url),'utf8');
  assert.ok(!/storage\s*=\s*globalThis\.localStorage/.test(source),
   'the default parameter must not read the property unguarded');
 });

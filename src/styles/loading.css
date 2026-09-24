@@ -1,0 +1,25 @@
+/* Visible directly from HTML, before the game bundle is ready. */
+body.loading{background:#191c1c}
+body.loading #game{visibility:hidden}
+#loading-screen{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:#191c1c;color:#eee9df;text-align:center}
+#loading-screen .loading-brand{display:flex;flex-direction:column;align-items:center}
+/* The title screen's word, same letters and stretch, with the blood already
+   poured over its top (a still: the living pour is the title screen's). */
+#loading-screen .loading-brand{width:min(560px,82vw)}
+#loading-screen h1{margin:0;width:100%;line-height:0}
+#loading-screen .loading-word{display:block;width:100%;height:calc(min(560px,82vw) * .2);overflow:visible;filter:drop-shadow(0 0 1.5px #000) drop-shadow(0 3px 6px #000b)}
+#loading-screen .loading-word text{font:900 24px 'Arial Black',Arial,Helvetica,sans-serif;fill:#e9dfc6}
+#loading-screen .loading-pour,#loading-screen .loading-drip{fill:#8c1c2a}
+#loading-screen .loading-version{align-self:flex-start;margin:0 0 10px;color:#e8afb9;font:700 12px/1.2 Arial,sans-serif;letter-spacing:.1em}
+/* Rotate a cached HTML layer: animating SVG children requires main-thread paint
+   and freezes during world construction. Keep the liquid artwork static inside. */
+#loading-screen .loading-wheel{position:relative;width:64px;height:64px;margin-top:34px}
+#loading-screen .loading-current{position:absolute;inset:0;will-change:transform;transform:translate3d(0,0,0);backface-visibility:hidden}
+#loading-screen .loading-current{animation:loading-turn 1.6s linear infinite}
+#loading-screen .loading-gravity{position:absolute;inset:0;transform-origin:50% 25%;will-change:transform;animation:loading-weight 1.8s ease-in-out infinite alternate}
+#loading-screen .loading-wheel svg{display:block;width:100%;height:100%;overflow:visible}
+#loading-screen .loading-liquid{fill:#e8afb9}
+#loading-screen .loading-sheen{fill:none;stroke:#ffe0e5;stroke-width:1.25;stroke-linecap:round;opacity:.45}
+@keyframes loading-turn{from{transform:translate3d(0,0,0) rotate(0deg)}to{transform:translate3d(0,0,0) rotate(360deg)}}
+@keyframes loading-weight{from{transform:translate3d(0,0,0) scale(1,.985)}to{transform:translate3d(0,0,0) scale(.99,1.025)}}
+@media(prefers-reduced-motion:reduce){#loading-screen .loading-current{animation-duration:3s}#loading-screen .loading-gravity{animation:none}}

@@ -20,7 +20,9 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
  const badge = document.createElement('button');
  badge.id = 'online-badge'; badge.className = 'online-badge plain-text'; badge.hidden = true;
  badge.title = 'Copy an invite link';
- $('game').append(badge);
+ // Under the map name and mode, in the same block, so the three can never
+ // overlap whatever the title's size (menu-theme.css).
+ (document.querySelector('.masthead .brand > div') || $('game')).append(badge);
  const copyInvite = async () => {
   const link = location.origin + location.pathname + '?join=' + code;
   try { await navigator.clipboard.writeText(link); toast('INVITE LINK COPIED'); }
@@ -33,7 +35,9 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   const count = session.playerCount;
   if (count === shownCount && !badge.hidden) return;
   shownCount = count; badge.hidden = false;
-  badge.textContent = (session.role === 'host' ? 'ROOM ' : 'MULTIPLAYER · ROOM ') + code + ' · ' + count + '/' + NETWORK.maxPlayers;
+  // The mode line above already says MULTIPLAYER. Offline: no matchmaking
+  // server was reachable, so only this browser's other windows can join.
+  badge.textContent = 'ROOM ' + code + ' · ' + count + '/' + NETWORK.maxPlayers + (session.transport?.offline ? ' · OFFLINE' : '');
  };
 
  async function request({ role, code: typed, name: typedName, settings }, status) {
@@ -63,7 +67,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   try { history.replaceState(null, '', '?map=' + map.id + '&online=' + (role === 'host' ? 'host' : 'join')); } catch {}
   await start(DEFAULT_WEAPON);
   document.querySelector('.mode').textContent = 'MULTIPLAYER';
-  toast(role === 'host' ? 'ROOM ' + code + ' IS OPEN' : 'JOINED ROOM ' + code);
+  toast(role === 'host' ? (joined.transport?.offline ? 'NO MATCHMAKING SERVER: PLAYING OFFLINE' : 'ROOM ' + code + ' IS OPEN') : 'JOINED ROOM ' + code);
   syncBadge();
   // Into the lobby screen (main.js shows it while the round's phase is 'lobby').
   pickWeapon?.();

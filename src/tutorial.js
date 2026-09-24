@@ -1,5 +1,5 @@
 import { WEAPONS, weapon as weaponById } from './items.js';
-import { RIFLE } from './config/gameplay.js';
+import { RIFLE, TUTORIAL_TARGET_HEALTH } from './config/gameplay.js';
 // The training range and its courses.
 //
 // Two kinds of course share the one range. "basics" is what the home screen's
@@ -25,7 +25,8 @@ export const tutorialMap = {
  id: 'tutorial', name: 'Training Range', width: 32, depth: 28, training: true, spawn: { x: 0, z: 6 },
  palette: { ground: '#756750', road: '#756750' }, look: { warmth: .15 }, scenerySeed: 12, buildings: [], props: TUTORIAL_CRATES, crops: [], zones: [],
  fences: [{ x: 0, z: -14, length: 32, axis: 'x' }, { x: 0, z: 14, length: 32, axis: 'x' }, { x: -16, z: 0, length: 28, axis: 'z' }, { x: 16, z: 0, length: 28, axis: 'z' }],
- targets: [-9, -4.5, 0, 4.5, 9].map((x, i) => ({ id: 'training-' + i, x, z: -5, kind: i % 2 ? 'dummy' : 'target' })),
+ // The course keeps its own, lighter targets (practice's are 250 / 300 hp).
+ targets: [-9, -4.5, 0, 4.5, 9].map((x, i) => ({ id: 'training-' + i, x, z: -5, kind: i % 2 ? 'dummy' : 'target', maxHp: i % 2 ? TUTORIAL_TARGET_HEALTH.dummy : TUTORIAL_TARGET_HEALTH.target })),
 };
 export function tutorialMapFor(weapon) {
  const targetHp = weaponById(weapon)?.tutorial?.targetHp;
@@ -40,29 +41,29 @@ export const COURSES = {
  basics: [
   lesson('walk', 'walk', TUTORIAL_ZONES.length, 'hold [W] [A] [S] [D] and walk into the pink zone', 'drag anywhere on the left side to walk into the pink zone',
    { note: 'follow the pink arrow' }),
-  lesson('dash', 'dash', 5, 'hold a direction and press [SPACE] to dash through a crate', 'drag on the left to move and tap [DODGE] to dash through a crate',
+  lesson('dash', 'dash', 5, 'hold a direction and press [CTRL] to dash through a crate', 'drag on the left to move and tap [DODGE] to dash through a crate',
    { note: 'each dash uses a stamina bar', highlight: 'dodge-stamina', touchHighlight: 'touch-dodge' }),
   // Touch only: the right thumb aims while the left walks. Skipped on keys.
-  lesson('aimhold', 'aim while walking', 3, '', 'walk with your left thumb and hold your right thumb on a target',
-   { touchNote: 'your aim stays under your right thumb until you lift it', touchOnly: true }),
-  lesson('shoot', 'shoot', 3, 'aim with the mouse and press [LMB] / [Q] to hit a target', 'tap a target to fire at it',
-   { note: '[Q] does the same as [LMB]', touchNote: 'a quick tap fires and a drag never does' }),
+  lesson('aimhold', 'aim while walking', 3, '', 'walk with your left thumb and swipe your right thumb toward a target',
+   { touchNote: 'a swipe locks on like an arrow key and the next swipe moves on', touchOnly: true }),
+  lesson('shoot', 'shoot', 3, 'aim with the mouse and press [LMB] / [SPACE] to hit a target', 'tap a target to fire at it',
+   { note: '[SPACE] does the same as [LMB]', touchNote: 'a quick tap fires and a drag never does' }),
   // Keyboard only: the whole game plays without a mouse. Skipped on touch.
-  lesson('nomouse', 'no mouse', 3, 'aim with [↑] [←] [↓] [→] and press [Q] to fire', '',
-   { note: 'you can play the whole game on the keyboard', keyboard: true }),
+  lesson('nomouse', 'no mouse', 3, 'aim with [↑] [←] [↓] [→] and press [SPACE] to fire', '',
+   { note: 'an arrow locks onto the target that way and holding it leads a running player', keyboard: true }),
   lesson('map', 'map', 1, 'press [M] to open the map', 'tap [MAP] up top', { note: 'press [M] again to close it', touchNote: 'tap close when you are done', highlight: 'map-toggle' }),
  ],
  static: [
   lesson('orbs', 'place orbs', 24, 'hold [E] and place two full loads of orbs', 'hold [PLACE] and place two full loads of orbs', { note: 'stand still and they refill faster', highlight: 'seed-pips' }),
-  lesson('volley', 'volley', 3, 'place a few orbs then press [LMB] / [Q] to fire them at a target', 'place a few orbs then tap [LAUNCH] at a target',
+  lesson('volley', 'volley', 3, 'place a few orbs then press [LMB] / [SPACE] to fire them at a target', 'place a few orbs then tap [LAUNCH] at a target',
    { note: 'more orbs hit harder', highlight: 'seed-pips' }),
   lesson('stream', 'stream', 3, 'get close and hold [C] on a target', 'get close and hold [STREAM] on a target', { note: 'stay on one target to ramp it up', highlight: 'seed-pips' }),
   lesson('pulse', 'hex pulse', 3, 'press [X] to deploy then [X] again to pulse', 'tap [PULSE] to deploy then tap it again to pulse',
    { note: 'pulse before the ring at your cursor turns red', highlight: 'hex-recharge' }),
  ],
  rifle: [
-  lesson('single', 'single shots', 5, 'tap [LMB] / [Q] once to fire a single shot', 'tap [FIRE] once for a single shot', { note: 'let go between shots', highlight: 'seed-pips' }),
-  lesson('auto', 'auto fire', RIFLE.magazine * 2, 'hold [LMB] / [Q] and empty two full mags', 'hold [FIRE] and empty two full mags', { note: 'press [R] to reload in between', touchNote: 'tap [RELOAD] in between', highlight: 'seed-pips' }),
+  lesson('single', 'single shots', 5, 'tap [LMB] / [SPACE] once to fire a single shot', 'tap [FIRE] once for a single shot', { note: 'let go between shots', highlight: 'seed-pips' }),
+  lesson('auto', 'auto fire', RIFLE.magazine * 2, 'hold [LMB] / [SPACE] and empty two full mags', 'hold [FIRE] and empty two full mags', { note: 'press [R] to reload in between', touchNote: 'tap [RELOAD] in between', highlight: 'seed-pips' }),
   lesson('aimin', 'aim in', 3, 'hold [RMB] / [SHIFT] and hit a target', 'hold [AIM] and hit a target',
    { note: 'standing still tightens it more', highlight: 'rifle-spread', touchHighlight: 'touch-stream' }),
   lesson('reload', 'reload', 2, 'fire a shot then press [R]', 'fire a shot then tap [RELOAD]', { note: `a mag holds ${RIFLE.magazine} rounds`, highlight: 'seed-pips', touchHighlight: 'touch-hex' }),
@@ -70,10 +71,10 @@ export const COURSES = {
   lesson('bigmag', 'big mag', 1, `press [X] to load a ${RIFLE.extendedMagazine} round mag`, `tap [EXTEND] to load a ${RIFLE.extendedMagazine} round mag`, { note: `[R] goes back to ${RIFLE.magazine}`, touchNote: `[RELOAD] goes back to ${RIFLE.magazine}`, highlight: 'extended-recharge' }),
  ],
  shotgun: [
-  lesson('sfire', 'fire', 4, 'press [LMB] / [Q] and fire two full loads', 'tap [FIRE] and fire two full loads', { note: 'press [R] to reload and watch the kick', touchNote: 'tap [RELOAD] in between and watch the kick', highlight: 'seed-pips' }),
-  lesson('charged', 'charged blast', 3, 'hold [LMB] / [Q] until it is full then let go', 'hold [FIRE] until it is full then let go',
+  lesson('sfire', 'fire', 4, 'press [LMB] / [SPACE] and fire two full loads', 'tap [FIRE] and fire two full loads', { note: 'press [R] to reload and watch the kick', touchNote: 'tap [RELOAD] in between and watch the kick', highlight: 'seed-pips' }),
+  lesson('charged', 'charged blast', 3, 'hold [LMB] / [SPACE] until it is full then let go', 'hold [FIRE] until it is full then let go',
    { note: 'the ring at your cursor shows the charge' }),
-  lesson('store', 'store charge', 2, 'hold [LMB] / [Q] then press [SHIFT] / [RMB] to store it', 'hold [FIRE] then tap [LOCK] to store it', { note: 'the ring turns white while it is stored' }),
+  lesson('store', 'store charge', 2, 'hold [LMB] / [SPACE] then press [SHIFT] / [RMB] to store it', 'hold [FIRE] then tap [LOCK] to store it', { note: 'the ring turns white while it is stored' }),
   lesson('double', 'double', 2, 'press [E] to fire both shells', 'tap [DOUBLE] to fire both shells', { note: 'needs two shells loaded', highlight: 'seed-pips' }),
   lesson('sreload', 'reload', 2, 'press [R] to reload', 'tap [RELOAD] to reload', { note: 'you get two shells', highlight: 'seed-pips' }),
  ],

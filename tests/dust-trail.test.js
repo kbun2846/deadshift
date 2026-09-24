@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {readFileSync} from 'node:fs';
-import {DustTrail,DUST_RICHNESS,FOOTFALL_PARTICLES,kickedDust,debrisDust,DEBRIS_DUST,CLUTTER_BURST,throwsDust} from '../src/dust-trail.js';
+import {DustTrail,DUST_RICHNESS,FOOTFALL_PARTICLES,kickedDust,debrisDust,DEBRIS_DUST,CLUTTER_BURST,throwsDust} from '../src/effects/dust-trail.js';
 
 const make=quality=>{
  const scene=new THREE.Scene(),trail=new DustTrail(scene);
@@ -134,7 +134,7 @@ test('small clutter throws its own colour and no dust at all',()=>{
  assert.ok(clay.r>clay.b*1.5,'pot shards should read warm and red');
  assert.ok(wood.r>wood.b&&wood.g>wood.b,'chair splinters should read as timber');
  // And the renderer actually branches on it rather than only owning the table.
- const source=readFileSync(new URL('../src/renderer.js',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../src/render/renderer.js',import.meta.url),'utf8');
  const branch=source.slice(source.indexOf("if (!throwsDust(e.propType))"),source.indexOf("if (!throwsDust(e.propType))")+420);
  assert.ok(branch.includes("'hit', shard"),'clutter gets a coloured spray');
  assert.ok(branch.includes('return;'),'and skips the dust and smoke systems entirely');

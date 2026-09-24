@@ -2,9 +2,9 @@
 // that turn a map's plain data into walls, props and colliders. Maps
 // themselves live one per file in src/maps/ and are listed in src/maps.js.
 // Coordinates are metres: x east, z south, y height.
-import { ROADSIDE_TYPES } from './roadside.js';
-import { RAIL_TYPES } from './rail-depot.js';
-import { interiorCover } from './detailed-interiors.js';
+import { ROADSIDE_TYPES } from './world/roadside.js';
+import { RAIL_TYPES } from './world/rail-depot.js';
+import { interiorCover } from './world/detailed-interiors.js';
 
 // A building's roof footprint is independent of its physical wall colliders.
 export const building = (id, x, z, w, d, height, label, color, roofColor) => ({

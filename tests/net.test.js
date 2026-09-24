@@ -136,7 +136,7 @@ test('inputs are cleaned: presses stay presses, points stay on the map, nothing 
 });
 
 // The core of the whole thing: weapons hit other players, and it all agrees.
-test('the host shoots a joiner dead: damage, a kill-feed line, the scoreboard, and a respawn 5 seconds later', () => {
+test('the host shoots a joiner dead: damage, a kill-feed line, the scoreboard, and a respawn after the wait', () => {
  const r = room({ weapons: ['rifle', 'static'] });
  const [c] = r.joined;
  place(r, 'host', street.x - 4, street.z); place(r, 0, street.x + 4, street.z);
@@ -160,11 +160,11 @@ test('the host shoots a joiner dead: damage, a kill-feed line, the scoreboard, a
  const victim = board.find(b => b.name === 'P0');
  assert.equal(victim.deaths, 1); assert.ok(victim.taken >= 499); assert.ok(board[0].dealt >= 499);
  assert.equal(board[0].weapon, 'rifle');
- // Respawn: out for 5 seconds, then back in a building at full health.
- for (let i = 0; i < 60 * 4; i++) r.tick();
- assert.ok(c.session.mine.dead, 'still down before 5 seconds');
+ // Respawn: out for the wait (MATCH.respawn), then back in a building at full health.
+ for (let i = 0; i < 60 * (MATCH.respawn - 1); i++) r.tick();
+ assert.ok(c.session.mine.dead, 'still down before the wait is up');
  for (let i = 0; i < 60 * 1.5; i++) r.tick();
- assert.ok(!c.session.mine.dead && c.session.mine.present, 'back after 5');
+ assert.ok(!c.session.mine.dead && c.session.mine.present, 'back after the wait');
  assert.equal(c.sim.player.hp, 500);
  assert.ok(!c.sim.player.dead);
  assert.ok(map.buildings.some(b => buildingContains(b, c.sim.player)));
@@ -207,7 +207,8 @@ test('time in game stops while picking a weapon again, and the most used weapon 
  assert.ok(row.time >= 2 && row.time <= 3, 'only the ~2 seconds in the world count: ' + row.time);
  assert.ok(seat.picking, 'still on the weapon pick: the respawn waits for it');
  c.session.choose('shotgun'); r.net.flush();
- for (let i = 0; i < 60; i++) r.tick();
+ // The wait began at the death, 5 seconds ago: in just after it is up.
+ for (let i = 0; i < 60 * (MATCH.respawn - 5) + 30; i++) r.tick();
  assert.equal(seat.weapon, 'shotgun'); assert.ok(seat.present && !seat.dead);
  assert.equal(r.host.scoreboard().find(b => b.name === 'P0').weapon, 'rifle');
 });
@@ -378,7 +379,7 @@ test('the host resets the map: every prop stands again, crops regrow, and every 
 test('an ffa round lasts ten minutes, then the results, then everyone back in the lobby; the next round starts fresh', () => {
  const r = room();
  const arena = r.host.arena;
- assert.equal(MATCH.length, 600); assert.equal(MATCH.respawn, 5);
+ assert.equal(MATCH.length, 600); assert.equal(MATCH.respawn, 12);
  assert.equal(r.host.match().phase, 'playing');
  arena.seats.get('host').stats.kills = 3;
  arena.clock = 1 / 60;
@@ -445,8 +446,24 @@ test('weapons change only after dying', () => {
  assert.equal(seat.weapon, 'static', 'alive: no change');
  r.host.arena.died(seat, null);
  c.session.pickAgain(); c.session.choose('shotgun'); r.net.flush();
- for (let i = 0; i < 5 * 60 + 10; i++) r.tick();
+ for (let i = 0; i < MATCH.respawn * 60 + 10; i++) r.tick();
  assert.equal(seat.weapon, 'shotgun'); assert.ok(seat.present && !seat.dead, 'back in after the respawn wait');
+});
+
+test('practice: the weapon can be changed any time; the player leaves the world while picking', () => {
+ const r = room({ mode: 'practice' });
+ const seat = [...r.host.remotes.values()][0].seat, [c] = r.joined;
+ for (let i = 0; i < 6; i++) r.tick();
+ assert.ok(seat.present && !seat.dead);
+ c.session.pickAgain(); r.net.flush();
+ for (let i = 0; i < 3; i++) r.tick();
+ assert.ok(!seat.present && seat.picking, 'alive, yet picking: out of the world');
+ c.session.choose('rifle'); r.net.flush();
+ for (let i = 0; i < 6; i++) r.tick();
+ assert.equal(seat.weapon, 'rifle'); assert.ok(seat.present && !seat.dead, 'GO: straight back in');
+ c.session.choose('shotgun'); r.net.flush();
+ for (let i = 0; i < 6; i++) r.tick();
+ assert.equal(seat.weapon, 'shotgun', 'a pick without opening the pick first works too');
 });
 
 test('practice: the map targets are out and shared; players can hit each other but nothing counts; respawn is instant', () => {
@@ -486,7 +503,7 @@ test('the kill limit ends an ffa round; the health setting is what everyone spaw
 });
 
 test('nobody spawns inside the ground the weapon-pick camera shows; a mid-round joiner goes to the pick', async () => {
- const { pickArea, inPickArea } = await import('../src/pick-view.js');
+ const { pickArea, inPickArea } = await import('../src/render/pick-view.js');
  const r = room();
  const area = pickArea(map);
  assert.ok(r.host.arena.rooms.length > 3, 'plenty of rooms left');
@@ -499,4 +516,18 @@ test('nobody spawns inside the ground the weapon-pick camera shows; a mid-round 
  assert.ok(seat.picking && !seat.present);
  for (let i = 0; i < 6; i++) r.tick();
  assert.ok(late.me.picking, 'the joiner knows it is picking');
+});
+
+test('from full health to dead in one hit reads "one shot" in the kill feed and on the death screen', async () => {
+ const { feedLine } = await import('../src/ui/multiplayer-hud.js');
+ for (const [first, expected] of [[0, true], [100, false]]) {
+  const r = room(), arena = r.host.arena, seat = [...r.host.remotes.values()][0].seat, host = r.host.hostSeat;
+  for (let i = 0; i < 3; i++) r.tick();
+  const hitProxy = amount => { arena.before(host); const proxy = r.hostSim.targets.find(t => t.id === seat.id); proxy.hp -= amount; r.hostSim.events.push({ type: amount >= proxy.hp + amount ? 'kill' : 'hit', id: seat.id, damageType: 'gunshot' }); arena.after(host); };
+  if (first) { hitProxy(first); arena.endTick(); }
+  hitProxy(9999);
+  const line = arena.endTick().find(l => l.victims.includes(seat.id));
+  assert.equal(!!line?.oneShot, expected);
+  assert.match(feedLine(line, 'x'), expected ? /one shot/ : /killed/);
+ }
 });

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { WorldView } from '../src/renderer.js';
-import { makeLandmark } from '../src/world-details.js';
+import { WorldView } from '../src/render/renderer.js';
+import { makeLandmark } from '../src/world/world-details.js';
 
 test('open-country landmarks build finite geometry with the real renderer helpers', () => {
   const view = Object.create(WorldView.prototype); view.materials = new Map(); view.static = new THREE.Group();

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation, explosionFor, splashFalloff, SPLASH, segmentBox, RULES } from '../src/simulation.js';
 import { deadwater, mapColliders, PROP_TYPES } from '../src/maps.js';
+import { RULES as FULL_RULES } from '../src/config/gameplay.js';
+const FULL = FULL_RULES.targetHealth; // a practice target's full health
 
 const map = extra => ({ width: 100, depth: 100, spawn: { x: 0, z: 0 }, buildings: [], props: [], fences: [], targets: [], ...extra });
 const step = (sim, n, input = {}) => { for (let i = 0; i < n; i++) sim.step({ moveX: 0, moveZ: 0, aimX: 1, aimZ: 0, ...input }); };
@@ -27,7 +29,7 @@ test('drifting orbs dissipate against props and targets without damaging them', 
     assert.ok(!sim.events.some(e => e.type === 'propBreak'));
   }
   const sim = new Simulation(map({ targets: [{ id: 'a', x: 3, z: 0 }] }));
-  sim.seed(); step(sim, 220); assert.equal(sim.shots.length, 0); assert.equal(sim.targets[0].hp, 100);
+  sim.seed(); step(sim, 220); assert.equal(sim.shots.length, 0); assert.equal(sim.targets[0].hp, FULL);
 });
 
 test('fences and permanent fixtures survive full volleys', () => {
@@ -80,13 +82,13 @@ test('splash damage falls off and cannot reach outside its radius', () => {
     { id: 'near', x: 6, z: .85 }, { id: 'far', x: 6, z: 2.3 }, { id: 'outside', x: 6, z: 3.2 },
   ] }));
   volley(sim, 12);
-  assert.ok(sim.targets[0].hp < sim.targets[1].hp && sim.targets[1].hp < 100);
-  assert.equal(sim.targets[2].hp, 100);
+  assert.ok(sim.targets[0].hp < sim.targets[1].hp && sim.targets[1].hp < FULL);
+  assert.equal(sim.targets[2].hp, FULL);
 });
 
 test('solid cover blocks splash damage and intercepted orbs cannot explode beyond it', () => {
   const sim = new Simulation(map({ fences: [{ x: 6.7, z: 0, length: 4, axis: 'z' }], targets: [{ id: 'covered', x: 7.4, z: 0 }] }));
-  volley(sim, 12); assert.equal(sim.targets[0].hp, 100);
+  volley(sim, 12); assert.equal(sim.targets[0].hp, FULL);
   const blocked = new Simulation(map({ fences: [{ x: 3, z: 0, length: 8, axis: 'z' }] }));
   volley(blocked, 12); assert.ok(!blocked.events.some(e => e.type === 'explosion'));
 });
@@ -131,7 +133,7 @@ test('volleys aimed at permanent structures converge and explode on the near fac
   volley(sim, 6);
   const blast=sim.events.find(e=>e.type==='explosion');
   assert.ok(blast);assert.equal(blast.count,6);assert.ok(blast.x<6);
-  assert.equal(sim.targets[0].hp,100);
+  assert.equal(sim.targets[0].hp,FULL);
 });
 
 test('stone arch opening is walkable while its pillars remain solid',()=>{

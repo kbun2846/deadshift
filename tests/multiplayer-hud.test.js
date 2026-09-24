@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { feedLine, scoreboardRows, formatTime } from '../src/multiplayer-hud.js';
+import { feedLine, scoreboardRows, formatTime } from '../src/ui/multiplayer-hud.js';
 
 test('kill feed: killers and victims by name, pink for others and blue for you, several victims on one line', () => {
  const html = feedLine({ killer: 'a', killerName: 'Ann', victims: ['me', 'b'], victimNames: ['Me', 'Bo<b>'] }, 'me');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {lightBasis,snapShadowFocus} from '../src/shadow-snap.js';
+import {lightBasis,snapShadowFocus} from '../src/render/shadow-snap.js';
 
 const SUN={x:24,y:-40,z:18};           // from the sun toward its target
 const dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z;

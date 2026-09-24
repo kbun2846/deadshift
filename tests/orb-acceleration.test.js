@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Simulation,launchDistance,launchDuration,rangedOrbDamage,damagePerOrb,explosionFor,splashFalloff,ORB_VOLLEY_TOTALS,ORB_DAMAGE_MULTIPLIER} from '../src/simulation.js';
+import { RULES as FULL_RULES } from '../src/config/gameplay.js';
+const FULL = FULL_RULES.targetHealth; // a practice target's full health
 const map={width:100,depth:100,spawn:{x:0,z:0},buildings:[],props:[],fences:[],targets:[]};
 test('small volleys scale down proportionally and quick shot stays unchanged',()=>{
  for(let count=1;count<=3;count++){
@@ -59,6 +61,6 @@ test('combined volley budgets ramp after three and full hits vary from 335 to 35
 });
 test('aiming far past a nearby victim cannot grant the distance bonus',()=>{
  const sim=new Simulation({...map,targets:[{id:'near',x:3,z:0}]});sim.player.aimX=1;sim.player.aimZ=0;sim.seed();sim.launch(30,0);
- for(let i=0;i<120&&sim.targets[0].hp===100;i++)sim.step({});
- assert.equal(sim.targets[0].hp,100-damagePerOrb(1));
+ for(let i=0;i<120&&sim.targets[0].hp===FULL;i++)sim.step({});
+ assert.equal(sim.targets[0].hp,FULL-damagePerOrb(1));
 });

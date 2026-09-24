@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {Simulation} from '../src/simulation.js';
-import {DeathView} from '../src/death-view.js';
-import {shotgunPelletContact} from '../src/shotgun.js';
+import {DeathView} from '../src/effects/death-view.js';
+import {shotgunPelletContact} from '../src/weapons/shotgun.js';
 const make=()=>new Simulation({width:40,depth:40,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});
-test('Ballast lethal reaction requires a massive fast burst from the same attacker',()=>{
- for(const [first,delay,owner,expected]of [[500,0,'a',true],[300,.05,'a',true],[300,.6,'a',false],[300,.05,'b',false],[100,.05,'a',false]]){
+test('every Ballast kill is the headless death, however the damage built up',()=>{
+ for(const [first,delay,owner,expected]of [[500,0,'a',true],[300,.05,'a',true],[300,.6,'a',true],[300,.05,'b',true],[100,.05,'a',true]]){
   const s=make();if(first===100)s.player.hp=200;
   s.damagePlayer(first,'a',false,false,{x:1,z:0},'ballast');s.time+=delay;
   if(!s.player.dead)s.damagePlayer(s.player.hp,owner,false,false,{x:1,z:0},'ballast');

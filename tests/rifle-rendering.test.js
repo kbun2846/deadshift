@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {RifleView} from '../src/rifle-view.js';
-import {makeRifle} from '../src/rifle-model.js';
-import {RIFLE_QUALITY,CASING_CAPACITY} from '../src/rifle-quality.js';
+import {RifleView} from '../src/weapons/rifle-view.js';
+import {makeRifle} from '../src/weapons/rifle-model.js';
+import {RIFLE_QUALITY,CASING_CAPACITY} from '../src/weapons/rifle-quality.js';
 const setup=()=>{
  const gun=new THREE.Group(),sim={time:0,weapon:'rifle',rifle:{aiming:false},player:{x:0,z:0,aimX:1,aimZ:0},rifleBullets:[],magazines:[],canSeeEntity:()=>true};
  const body=new THREE.Group();body.add(gun);

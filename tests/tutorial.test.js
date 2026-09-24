@@ -155,9 +155,11 @@ test('the no-mouse lesson is skipped on a touchscreen',()=>{
  assert.equal(t.lesson.id,'map');
 });
 
-test('left-click prompts name Q too wherever Q does the same',()=>{
- for(const course of ['basics','static','rifle','shotgun'])for(const l of COURSES[course])
-  if(/lmb/i.test(l.keys))assert.ok(l.keys.includes('[LMB] / [Q]'),`${course}/${l.id}`);
+test('left-click prompts name E too wherever E does the same (E shoots, Q is the weapon\'s other action)',()=>{
+ for(const course of ['basics','static','rifle','shotgun'])for(const l of COURSES[course]){
+  if(/lmb/i.test(l.keys))assert.ok(l.keys.includes('[LMB] / [SPACE]'),`${course}/${l.id}`);
+  assert.ok(!l.keys.includes('[LMB] / [E]'),`${course}/${l.id} still says E fires`);
+ }
  assert.ok(!JSON.stringify(COURSES).includes('left click'),'no spelled-out clicks left');
 });
 

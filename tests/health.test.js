@@ -6,30 +6,32 @@ const make = () => new Simulation({ width: 50, depth: 50, spawn: { x: 0, z: 0 },
   props: [{ type: 'crate', x: 8, z: 8 }, { type: 'barrel', x: 10, z: 8 }, { type: 'cactus', x: 12, z: 8 }],
   targets: [{ id: 'target', x: 5, z: 0 }, { id: 'dummy', kind: 'dummy', x: 5, z: 3 }] });
 
-test('middle Deadwater spawn target has 500 health on spawn, respawn and restart',()=>{
+test('every practice target has 250 health and every dummy 300, on spawn, respawn and restart',()=>{
  const sim=new Simulation(deadwater),target=sim.targets.find(t=>t.id==='range-b');
- assert.equal(target.hp,500);assert.equal(target.maxHp,500);
- assert.equal(sim.targets.find(t=>t.id==='range-a').hp,100);
- assert.equal(sim.targets.find(t=>t.id==='range-c').hp,100);
- sim.hit(target,{damage:250,volley:1});assert.equal(target.hp,250);
- sim.hit(target,{damage:250,volley:2});assert.equal(target.hp,0);
- for(let i=0;i<280;i++)sim.step({});assert.equal(target.hp,500);
- sim.reset();assert.equal(sim.targets.find(t=>t.id==='range-b').hp,500);
+ for(const t of sim.targets)assert.deepEqual([t.hp,t.maxHp],t.kind==='dummy'?[300,300]:[250,250],t.id);
+ sim.hit(target,{damage:125,volley:1});assert.equal(target.hp,125);
+ sim.hit(target,{damage:125,volley:2});assert.equal(target.hp,0);
+ for(let i=0;i<280;i++)sim.step({});assert.equal(target.hp,250);
+ sim.reset();assert.equal(sim.targets.find(t=>t.id==='range-b').hp,250);
+});
+test('the tutorial keeps its lighter targets',async()=>{
+ const {tutorialMapFor}=await import('../src/tutorial.js');const sim=new Simulation(tutorialMapFor('rifle'));
+ assert.deepEqual(sim.targets.map(t=>t.maxHp),[100,75,100,75,100]);
 });
 
 test('health values are explicit for players, targets, dummies and breakable cover', () => {
   const sim = make(); assert.equal(sim.player.hp, 500); assert.equal(sim.player.maxHp, 500);
-  assert.deepEqual(sim.targets.map(t => [t.hp, t.maxHp]), [[100, 100], [75, 75]]);
+  assert.deepEqual(sim.targets.map(t => [t.hp, t.maxHp]), [[250, 250], [300, 300]]);
   // Breakable cover shares one low value so a single orb clears it in passing.
   assert.deepEqual(sim.props.map(p => p.hp), [5, 5, 5]);
 });
-test('dummy takes damage, breaks once with its own effect event, and respawns at 75', () => {
+test('dummy takes damage, breaks once with its own effect event, and respawns at 300', () => {
   const sim = make(), dummy = sim.targets[1];
-  sim.hit(dummy, { damage: 74, owner: 'local', volley: 1 }); assert.equal(dummy.hp, 1);
+  sim.hit(dummy, { damage: 299, owner: 'local', volley: 1 }); assert.equal(dummy.hp, 1);
   sim.hit(dummy, { damage: 8, owner: 'local', volley: 1 }); sim.hit(dummy, { damage: 8, owner: 'local', volley: 1 });
   assert.equal(dummy.hp, 0); assert.equal(sim.events.filter(e => e.type === 'kill' && e.targetKind === 'dummy').length, 1);
   for (let i = 0; i < 280; i++) sim.step({});
-  assert.equal(dummy.hp, 75); assert.equal(dummy.maxHp, 75);
+  assert.equal(dummy.hp, 300); assert.equal(dummy.maxHp, 300);
 });
 test('player rejects direct self-owned shots and tracks external damage without negative health', () => {
   const sim = make(); assert.equal(sim.damagePlayer(999, 'local'), 0); assert.equal(sim.player.hp, 500);
@@ -63,5 +65,5 @@ test('health is separate from splash, which falls off for both targets and dummi
   const sim = make(); sim.targets = [
     { ...sim.targets[1], id: 'near', x: 0, z: .2 }, { ...sim.targets[1], id: 'far', x: 0, z: 2.5 },
   ]; sim.explode({ x: 0, z: 0, arrived: 12 }, 1);
-  assert.ok(sim.targets[0].hp < sim.targets[1].hp); assert.ok(sim.targets.every(t => t.maxHp === 75 && t.hp < 75));
+  assert.ok(sim.targets[0].hp < sim.targets[1].hp); assert.ok(sim.targets.every(t => t.maxHp === 300 && t.hp < 300));
 });

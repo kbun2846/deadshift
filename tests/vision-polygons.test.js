@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {deadwater,buildingPoint} from '../src/maps.js';
-import {interiorPolygons,projectVisionPolygon} from '../src/vision-polygons.js';
-import {interiorCameraHeight,CAMERA_TILT} from '../src/camera-framing.js';
+import {interiorPolygons,projectVisionPolygon} from '../src/render/vision-polygons.js';
+import {interiorCameraHeight,CAMERA_TILT} from '../src/render/camera-framing.js';
 const contains=(polygon,p)=>{
   let yes=false;
   for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){

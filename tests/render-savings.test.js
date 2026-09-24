@@ -4,10 +4,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ORIGINAL_CHUNKS, PATCHED_CHUNKS, patchShadowChunk, patchLightsChunk } from '../src/shader-savings.js';
-import { bakeColors } from '../src/bake-colors.js';
-import { makeRifle } from '../src/rifle-model.js';
-import { makeShotgun } from '../src/shotgun-model.js';
+import { ORIGINAL_CHUNKS, PATCHED_CHUNKS, patchShadowChunk, patchLightsChunk } from '../src/render/shader-savings.js';
+import { bakeColors } from '../src/render/bake-colors.js';
+import { makeRifle } from '../src/weapons/rifle-model.js';
+import { makeShotgun } from '../src/weapons/shotgun-model.js';
 
 test('the shader patches apply to this three.js and are installed', () => {
   for (const chunk of ['shadowmap_pars_fragment', 'lights_fragment_begin']) {
@@ -76,7 +76,7 @@ test('held weapons draw once per rigid part', () => {
 // (a white bolt from your muzzle to their stream), because its arcs kept a
 // reference to the muzzle point that was borrowed for their event and put back.
 test("another player's stream arcs start at their gun and stay there", async () => {
-  const { WorldView } = await import('../src/renderer.js');
+  const { WorldView } = await import('../src/render/renderer.js');
   const view = Object.create(WorldView.prototype);
   const arcs = [], light = { color: { set() {} }, position: new THREE.Vector3() };
   Object.assign(view, {

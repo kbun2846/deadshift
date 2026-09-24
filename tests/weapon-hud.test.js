@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {rifleAmmoPresentation,shotgunAmmoPresentation} from '../src/weapon-hud.js';
-import {RIFLE} from '../src/rifle.js';
-import {SHOTGUN} from '../src/shotgun.js';
+import {rifleAmmoPresentation,shotgunAmmoPresentation} from '../src/ui/weapon-hud.js';
+import {RIFLE} from '../src/weapons/rifle.js';
+import {SHOTGUN} from '../src/weapons/shotgun.js';
 
 test('Ballast reload fills both shell slots gradually after opening the breech',()=>{
  const s={ammo:0,reload:SHOTGUN.reload};

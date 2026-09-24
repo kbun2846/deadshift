@@ -1,55 +1,63 @@
-import {bindTouchAction} from './touch-action.js';
+import {bindTouchAction} from './ui/touch-action.js';
+import { installMobileBrowser, enterFullscreen } from './ui/mobile-browser.js';
 import {migrateGameStorage} from './storage-migration.js';
 import {isPlayable} from './playable-area.js';
-import {detectedControls,createInputPreference} from './input-preference.js';
-import './mobile-controls.css';
-import './tutorial.css';
-import {installTouchLayout} from './touch-layout.js';
-import { bindFloatingStick, arrangeTouchCluster, isTap, TOUCH_TAP, MOVE_STICK } from './touch-controls.js';
-import { installMobileSettings } from './mobile-settings.js';
-import {createOutgoingFeedback} from './outgoing-feedback.js';
-import { createMenuNavigation } from './menu-navigation.js';
-import { installSelectMenus } from './select-menu.js';
+import {detectedControls,createInputPreference} from './ui/input-preference.js';
+import './styles/mobile-controls.css';
+import './styles/tutorial.css';
+import {installTouchLayout} from './ui/touch-layout.js';
+import { bindFloatingStick, arrangeTouchCluster, isTap, TOUCH_TAP, MOVE_STICK } from './ui/touch-controls.js';
+import { installMobileSettings } from './ui/mobile-settings.js';
+import {createOutgoingFeedback} from './ui/outgoing-feedback.js';
+import { createMenuNavigation } from './ui/menu-navigation.js';
+import { installSelectMenus } from './ui/select-menu.js';
 import { readTutorialComplete, saveTutorialComplete } from './tutorial-progress.js';
-import { createAbilityHUD } from './ability-hud.js';
-import { writeDebugState } from './debug-state.js';
-import { createWeaponHUD } from './weapon-hud.js';
-import { createAimOverlay } from './aim-overlay.js';
-import { createHealthHUD } from './health-hud.js';
-import { createPerfReadout } from './perf-readout.js';
-import { createDamageFeedback } from './damage-feedback.js';
-import { createDeathScreen, DEATH_MENU_DELAY, RESPAWN_TIME } from './death-screen.js';
-import { createLobbyPanel } from './lobby-panel.js';
-import { createLobbyScreen } from './lobby-screen.js';
-import { createWeaponPick } from './weapon-pick.js';
-import { pickView } from './pick-view.js';
-import { PICK } from './config/match.js';
+import { createAbilityHUD } from './ui/ability-hud.js';
+import { writeDebugState } from './render/debug-state.js';
+import { setText } from './ui/dom-writes.js';
+import { keepAwake } from './ui/wake-lock.js';
+import { buzz, HAPTICS } from './ui/haptics.js';
+import { createWeaponHUD } from './ui/weapon-hud.js';
+import { createAimOverlay } from './ui/aim-overlay.js';
+import { createHealthHUD } from './ui/health-hud.js';
+import { createPerfReadout } from './ui/perf-readout.js';
+import { createDamageFeedback } from './ui/damage-feedback.js';
+import { createDeathScreen, DEATH_MENU_DELAY, RESPAWN_TIME } from './ui/death-screen.js';
+import { createLobbyPanel } from './ui/lobby-panel.js';
+import { createLobbyScreen } from './ui/lobby-screen.js';
+import { createWeaponPick } from './ui/weapon-pick.js';
+import { pickView } from './render/pick-view.js';
+import { PICK, MODES, SETTINGS as MATCH_SETTINGS } from './config/match.js';
+const modeLabel=document.querySelector('.brand .mode');
+import { GAME_KEYS } from './config/controls.js';
 import { NETWORK } from './config/network.js';
-import { bindRifleMouse, weaponAiming,ballastInput } from './rifle-input.js';
-import { advanceAimCursor } from './aim-cursor.js';
+import { bindRifleMouse, weaponAiming,ballastInput } from './weapons/rifle-input.js';
+import { advanceAimCursor } from './ui/aim-cursor.js';
 import { createAimDamping, aimsByPoint } from './aim-damping.js';
 import { tutorialMapFor, Tutorial } from './tutorial.js';
-import { createTutorialCard } from './tutorial-card.js';
-import { installMenu } from './menu.js';
+import { createTutorialCard } from './ui/tutorial-card.js';
+import { installMenu } from './ui/menu.js';
 import { createOnlinePlay } from './online-play.js';
 import { drawSim } from './net/projectiles.js';
-import { createMultiplayerHud } from './multiplayer-hud.js';
+import { createMultiplayerHud } from './ui/multiplayer-hud.js';
 import { TAB_TITLE } from './version.js';
-import { installUiSounds } from './ui-sounds.js';
+import { installUiSounds } from './ui/ui-sounds.js';
 import { mapById, menuMaps } from './maps.js';
 import { targetRadius } from './target-radius.js';
 import { createTargetLock, TARGET_LOCK } from './target-lock.js';
 import { weapon as weaponInfo, weaponOrDefault, usesTrigger, DEFAULT_WEAPON } from './items.js';
 import { Simulation, RULES, explosionFor } from './simulation.js';
-import { WorldView } from './renderer.js';
+import { WorldView } from './render/renderer.js';
 import { Soundscape } from './audio.js';
 import { validateSettings, RenderBudget, AdaptiveResolution } from './settings.js';
-import { installSettingsPanel } from './settings-panel.js';
+import { installSettingsPanel } from './ui/settings-panel.js';
 import {keyboardAim} from './keyboard-aim.js';
-import { overheadMapSVG } from './overhead-map.js';
-import { installDevTools } from './dev-tools.js';
-import { createDevWindow } from './dev-window.js';
-import { createDevUnlockDialog } from './dev-unlock-dialog.js';
+import { overheadMapSVG } from './ui/overhead-map.js';
+import { installDevTools } from './ui/dev-tools.js';
+import { createDevWindow } from './ui/dev-window.js';
+import { createDevUnlockDialog } from './ui/dev-unlock-dialog.js';
+import { viewWidth, viewHeight } from './viewport.js';
+import { installTitle } from './ui/title-screen.js';
 
 const $ = id => document.getElementById(id);
 try{migrateGameStorage(localStorage);}catch{}
@@ -64,7 +72,7 @@ const map = import.meta.env.DEV && params.get('start') === 'farm' && selectedMap
   : landmarkStart ? { ...selectedMap, spawn: { x: landmarkStart.x, z: landmarkStart.z + 6 } }
   : roomStart ? { ...selectedMap, spawn: { x: roomStart.x, z: roomStart.z } } : selectedMap;
 document.title = TAB_TITLE;
-document.querySelector('.brand p').textContent = map.name.toUpperCase();
+document.querySelector('.brand .map-name').textContent = map.name.toUpperCase();
 document.querySelector('.mode').textContent=map.training?'TUTORIAL':'PRACTICE';
 let settings;
 const detectedInput=detectedControls({coarsePointer:matchMedia('(pointer: coarse)').matches,hoverAvailable:matchMedia('(hover: hover)').matches});
@@ -152,7 +160,7 @@ const touchActionResets=[];
 const aimingNow=()=>weaponAiming(sim.weapon,rifleAiming,keys);
 const aimDamping=createAimDamping();
 let previousPlayer = { ...sim.player };
-const mouse = { x: innerWidth * .7, y: innerHeight * .5 };
+const mouse = { x: viewWidth() * .7, y: viewHeight() * .5 };
 const cursorTarget={...mouse};
 // Smoothed weapons steer the rendered cursor; the rest snap straight to it.
 const smoothedCursor=()=>!!weaponInfo(sim.weapon)?.smoothCursor;
@@ -162,6 +170,9 @@ let touchAimPointer=null;
 const touchMove={x:0,z:0};
 const sticks = new Map();
 
+// Development only: `?capture=thumbnail` hands the view and simulation to
+// tools/capture-thumbnail.mjs, which photographs the map card's picture.
+if(import.meta.env.DEV&&params.get('capture')==='thumbnail')window.__capture={view,sim,map};
 view.onClatter = type => sound.clatter(type);
 // Lost the GPU (usually out of memory on a phone). Twice within a minute on
 // Extreme means it is too heavy for this device: step down to Quality.
@@ -179,6 +190,9 @@ async function start(weapon=sim.weapon,course) {
   sim.player.stamina=sim.maxStamina;
   if(map.training){tutorial=new Tutorial(courseFor(sim.weapon));tutorialSaved=false;tutorialCard.invalidate();sim.reset();}
   applyInputPreference();
+  // On a touchscreen a game goes full screen (hides the address bar and
+  // toolbars) when the browser allows it and the setting is on.
+  if(settings.fullscreen&&(touchPrompts||matchMedia('(pointer: coarse)').matches))enterFullscreen();
   started = true; running = true; document.body.classList.add('playing');
   $('intro').classList.add('hidden'); ['weapon', 'reticle'].forEach(id => $(id).classList.remove('hidden'));
   $('world').focus();
@@ -189,7 +203,7 @@ async function start(weapon=sim.weapon,course) {
 
 function returnToMenu(){
   online.close();perfReadout.reset();devWindow.hide();
-  if(choosing)menuFlow.cancelOnlinePick();choosing=false;lastKiller=null;onlineMenus(false);view.deathView?.clear();
+  if(choosing)menuFlow.cancelOnlinePick();choosing=false;lastKiller=null;lastOneShot=false;onlineMenus(false);view.deathView?.clear();
   running=false;started=false;paused=false;mapOpen=false;mapWasPaused=false;settingsOpen=false;
   releaseInput();reset();sound.suspend(true);
   document.body.classList.remove('playing','paused');
@@ -212,6 +226,7 @@ function releaseInput() {
 
 function setPaused(value) {
   if (!started || deathActive || value === paused) return;
+  if (value) layoutPauseMenu();
   paused = value; running = !value && !choosing; releaseInput();
   $('pause-panel').classList.toggle('hidden', !value); $('reticle').classList.toggle('hidden', value);
   document.body.classList.toggle('paused', value); sound.suspend(value); dirty = true;
@@ -286,7 +301,7 @@ function updateHUD() {
   abilityHUD.update(sim);
   const count = sim.seeds.length;
   $('reticle').classList.toggle('loaded', count > 0);
-  $('fps-counter').textContent = paused ? 'PAUSED' : (measuredFPS || '—') + ' FPS';
+  setText($('fps-counter'), paused ? 'PAUSED' : (measuredFPS || '—') + ' FPS');
   if (import.meta.env.DEV) writeDebugState($('world'), { sim, view, sound, settings, running, paused, measuredFPS, inputMode });
 
 }
@@ -299,7 +314,8 @@ function event(e) {
   // fires six times a second and a long blink would just look like flicker.
   if(e.type==='shotgunShot')coneFlicker=.12;
   if(e.type==='rifleShot')coneFlicker=.055;
-  if(e.type==='playerDamage')damageFeedback.add(e.damage,sim.time);
+  if(e.type==='playerDamage'){damageFeedback.add(e.damage,sim.time);buzz(e.damage>=40?HAPTICS.heavy:HAPTICS.hurt,{enabled:settings.vibration,touch:touchPrompts});}
+  if(e.type==='kill'&&e.targetKind!=='player')buzz(HAPTICS.kill,{enabled:settings.vibration,touch:touchPrompts});
   if(e.type==='outgoingDamage')outgoingFeedback.add(e,sim.time);
   if(tutorial){tutorial.event(e,sim);updateTutorial();}
   view.event(e); sound.event(e);
@@ -328,16 +344,17 @@ function lockMode(){ return touchPrompts ? !!settings.aimAssist : inputMode!=='m
 // What can be locked: alive, in sight, on screen and in range. Online, only
 // other players; offline, the practice targets and dummies.
 function lockCandidates(){
- const p=sim.player,w=innerWidth,h=innerHeight,m=TARGET_LOCK.margin,out=[];
+ const p=sim.player,w=viewWidth(),h=viewHeight(),m=TARGET_LOCK.margin,out=[];
  const pool=online.active?online.others(1)||[]:sim.targets;
  for(const t of pool){
   if(t.hp!==undefined&&t.hp<=0)continue;
   if(Math.hypot(t.x-p.x,t.z-p.z)>TARGET_LOCK.range)continue;
-  // Only what the player can see: not under another building's roof, and
-  // from indoors only out through doors and windows (sim.canSeeTarget).
-  if(!sim.canSeeTarget(t.x,t.z))continue;
   const at=view.screenPoint(t.x,t.z,.6);
   if(at.x<m||at.y<m||at.x>w-m||at.y>h-m)continue;
+  // Only what the player can see: not under another building's roof, and
+  // from indoors only out through doors and windows (sim.canSeeTarget).
+  // Last, as the costliest test (rays through the walls), run every step.
+  if(!sim.canSeeTarget(t.x,t.z))continue;
   out.push({id:t.id,x:t.x,z:t.z,sx:at.x,sy:at.y});
  }
  return out;
@@ -353,10 +370,12 @@ function lockTarget(dt){
   if(targetLock.id===null){
    const p=sim.player,dot=aimDotPoint();
    targetLock.select(candidates,{x:dot.x,y:dot.y},pendingSwap.x,pendingSwap.y,{x:p.aimPointX??p.x+p.aimX*4,z:p.aimPointZ??p.z+p.aimZ*4});
-  }else targetLock.swap(candidates,pendingSwap.x,pendingSwap.y);
+  }else targetLock.swap(candidates,pendingSwap.x,pendingSwap.y,online.active&&!touchPrompts);
   pendingSwap=null;
  }
- return targetLock.update(candidates,sim.player,dt,lockedStill);
+ // Online the targets are players: the aim chases them, and held arrows lead.
+ const chase=online.active?{nudgeX:(keys.has('ArrowRight')?1:0)-(keys.has('ArrowLeft')?1:0),nudgeZ:(keys.has('ArrowDown')?1:0)-(keys.has('ArrowUp')?1:0)}:null;
+ return targetLock.update(candidates,sim.player,dt,lockedStill,chase);
 }
 // The locked target, if it still exists and is alive and near, seen or not
 // (target-lock.js keeps the lock through a brief loss of sight).
@@ -424,12 +443,17 @@ const devWindow=createDevWindow($('game'),{sim,hooks:devHooks,
  setQuality:name=>{$('graphics-preset').value=name;settingsPanel.applySettings();},
  changed:()=>devChanged()});
 // Opened from the pause menu, and returns to it.
+let devFromTitle=false;
 const devDialog=createDevUnlockDialog($('game'),{
  unlock:code=>devTools.unlock(code),
  open:()=>{$('pause-panel').classList.add('hidden');},
- close:()=>{if(paused){$('pause-panel').classList.remove('hidden');$('resume').focus();}},
- enabled:()=>toast('DEV TOOLS UNLOCKED · O OPENS THE WINDOW',2600)
+ close:()=>{if(paused){$('pause-panel').classList.remove('hidden');$('resume').focus();}else if(devFromTitle){$('title-dev').focus();queueMicrotask(()=>{devFromTitle=false;});}},
+ enabled:()=>{if(devFromTitle){devFromTitle=false;devWindow.show();}toast('DEV TOOLS UNLOCKED · O OPENS THE WINDOW',2600);}
 });
+// The title's quick link: the code first (the same dialog as Shift+P), then
+// it just opens and closes the developer window.
+$('title-dev').onclick=()=>{if(devTools.isUnlocked())devWindow.toggle();else{devFromTitle=true;devDialog.show();}};
+installTitle({page:document.querySelector('[data-page="home"]'),shell:$('intro'),overlay:document.querySelector('#intro .title-blood')});
 function showDevNotice(enabled){toast(enabled?'DEV TOOLS ON':'DEV TOOLS OFF');}
 function toast(text,time=1800){
  devNotice.textContent=text;
@@ -455,7 +479,7 @@ const online=createOnlinePlay({$,map,sim,createSim:m=>new Simulation(m),start,to
 const menuFlow=installMenu({$,map,thumbnail,start,openSettings,closeSettings,returnToMenu,tutorialComplete:readTutorialComplete(),online:(request,status)=>online.request(request,status)});
 // Multiplayer flow (see AGENTS.md > Multiplayer): pick a weapon over the
 // running game, fight, die, respawn after 5 s or change weapon, leave.
-let choosing=false,lastKiller=null;
+let choosing=false,lastKiller=null,lastOneShot=false;
 const mpHud=createMultiplayerHud($('game'));
 // The lobby (lobby-panel.js): a page of the pause menu, and of the online
 // death screen. Everyone sees it; its controls work for the host only.
@@ -479,9 +503,51 @@ const lobbyScreen=createLobbyScreen($('game'),{
  copyInvite:()=>online.copyInvite(),
 });
 const weaponPick=createWeaponPick($('game'),{
- pick:weapon=>online.choose(weapon,false),
- go:weapon=>{online.choose(weapon,true);weaponPick.hide();},
+ pick:weapon=>{if(online.active)online.choose(weapon,false);},
+ go:weapon=>{if(online.active){online.choose(weapon,true);weaponPick.hide();}else changeWeaponSolo(weapon);},
+ back:()=>closeSoloPick(),
 });
+// CHANGE WEAPON in the pause menu: solo practice (the same weapon grid, no
+// timer, BACK to the pause menu) and multiplayer practice (the round's pick;
+// you leave the world while picking). Not in the tutorial or in an FFA round.
+const pauseWeaponBtn=document.createElement('button');pauseWeaponBtn.id='pause-weapon';pauseWeaponBtn.className='secondary';pauseWeaponBtn.textContent='CHANGE WEAPON';pauseWeaponBtn.hidden=true;
+$('resume').after(pauseWeaponBtn);
+pauseWeaponBtn.onclick=()=>{
+ if(online.active){online.pickAgain();setPaused(false);return;}
+ $('pause-panel').classList.add('hidden');weaponPick.show(sim.weapon,{timed:false});
+};
+function closeSoloPick(){
+ if(!weaponPick.open||online.active)return;
+ weaponPick.hide();$('pause-panel').classList.remove('hidden');pauseWeaponBtn.focus();
+}
+// Solo: the new weapon where you stand, with a full load, and back to the game.
+function changeWeaponSolo(weapon){
+ weaponPick.hide();
+ const p=sim.player,aim={aimX:p.aimX,aimZ:p.aimZ};
+ sim.weapon=weaponOrDefault(weapon);sim.respawn({x:p.x,z:p.z});Object.assign(sim.player,aim);
+ previousPlayer={...sim.player};applyInputPreference();updateHUD();
+ $('pause-panel').classList.remove('hidden');setPaused(false);
+}
+// The pause menu's buttons alternate sides (left, right, left...) over the
+// ones showing; set before it opens so the lettering is fitted to it.
+// Solo practice (not the tutorial): RESET MAP puts the world back (props,
+// crops, targets; blood, marks and bodies cleared) and carries on where you
+// stand. Two presses, like the host's reset online.
+const pauseResetMapBtn=document.createElement('button');pauseResetMapBtn.id='pause-reset-map';pauseResetMapBtn.className='secondary';pauseResetMapBtn.textContent='RESET MAP';pauseResetMapBtn.hidden=true;
+$('reset').after(pauseResetMapBtn);
+let resetArmedUntil=0;
+pauseResetMapBtn.onclick=()=>{
+ if(performance.now()<resetArmedUntil){resetArmedUntil=0;pauseResetMapBtn.textContent='RESET MAP';sim.resetWorld();setPaused(false);toast('MAP RESET');return;}
+ resetArmedUntil=performance.now()+3000;pauseResetMapBtn.textContent='PRESS AGAIN TO RESET';
+ setTimeout(()=>{if(performance.now()>=resetArmedUntil)pauseResetMapBtn.textContent='RESET MAP';},3050);
+};
+function layoutPauseMenu(){
+ const practice=online.active?online.match()?.mode==='practice'&&online.match()?.phase==='playing':!map.training;
+ pauseWeaponBtn.hidden=!started||!practice;
+ pauseResetMapBtn.hidden=!started||online.active||!!map.training;
+ const visible=[...$('pause-panel').querySelectorAll('.modal-card > button')].filter(b=>!b.hidden);
+ visible.forEach((b,i)=>{b.style.textAlign=i%2?'right':'left';});
+}
 const lobbyBtn=document.createElement('button');lobbyBtn.id='pause-lobby';lobbyBtn.className='secondary';lobbyBtn.textContent='LOBBY';lobbyBtn.hidden=true;
 $('main-menu').before(lobbyBtn);lobbyBtn.onclick=()=>openLobby();
 let lobbyFrom=null;
@@ -571,16 +637,19 @@ function netEvents(){
 }
 function multiplayerFrame(){
  const myId=online.myId,lines=online.feed();
- for(const line of lines)if(line.victims.includes(myId)){lastKiller=line.killer&&line.killer!==myId?line.killerName:null;if(deathActive)deathScreen.setKiller(lastKiller);}
+ for(const line of lines)if(line.victims.includes(myId)){lastKiller=line.killer&&line.killer!==myId?line.killerName:null;lastOneShot=!!line.oneShot&&!!lastKiller;if(deathActive)deathScreen.setKiller(lastKiller,lastOneShot);}
  if(lines.length)mpHud.addFeed(lines,myId,elapsed);else mpHud.renderFeed(elapsed);
  if(mpHud.boardOpen)mpHud.setBoard(online.scoreboard(),myId);
  const me=online.me;
- if(deathActive&&me)deathScreen.setTimer(me.respawnIn);
+ if(deathActive&&me)deathScreen.setTimer(me.respawnIn,online.lobby().settings?.respawn||MATCH_SETTINGS.respawn.default);
  mpHud.setMatch(online.match(),myId);
  renderLobby();syncOnlineScreens();
+ // Top left: where you are, map · mode (the round's mode, or the lobby).
+ const phase=online.match()?.phase,modeText='MULTIPLAYER · '+(phase==='playing'||phase==='results'?(MODES.find(m=>m.id===online.match().mode)?.name||''):'LOBBY');
+ if(modeLabel.textContent!==modeText)modeLabel.textContent=modeText;
 }
 function reviveOnline(){
- clearDeath();lastKiller=null;view.cutCamera();previousPlayer={...sim.player};
+ clearDeath();lastKiller=null;lastOneShot=false;view.cutCamera();previousPlayer={...sim.player};
  applyInputPreference();syncOnlineScreens();
  if(!paused&&!choosing){running=true;$('world').focus();}
  updateHUD();
@@ -617,21 +686,34 @@ sticks.set('move',bindFloatingStick($('move-zone'),$('move-stick'),{isRunning:()
  onWalkStart:()=>{if(touchAimPointer===null)inputMode='keyboard';}}));
 // Resizing the canvas clears it, so draw straight away rather than show a
 // blank frame until the next scheduled one.
-window.addEventListener('resize', () => { view.resize(); dirty = true; if(layoutPreview){view.update(sim,RULES.step,false,elapsed,sim.player,1);view.render();} else if(started) view.render(); });
+function onResize(){ view.resize(); dirty = true; if(layoutPreview){view.update(sim,RULES.step,false,elapsed,sim.player,1);view.render();} else if(started) view.render(); arrangeTouchCluster(); }
+window.addEventListener('resize', onResize);
+// The phone browser's gestures, toolbars and sizes (mobile-browser.js).
+installMobileBrowser({ onResize });
 // The cached canvas rect is in page coordinates, so a scroll moves it even
 // though nothing resized.
 window.addEventListener('scroll', () => { view.cachedRect = null; }, { passive: true });
 $('world').addEventListener('pointermove', e => {
   if(e.pointerType!=='mouse'&&e.pointerId===touchAimPointer&&running){
    e.preventDefault();
-   // Locked on: the finger swipes between targets instead of dragging the cursor.
-   if(targetLock.id!==null&&lockMode()){
+   // Aim assist on: a swipe is an arrow key. Idle, it picks the target that
+   // way from the aim dot; locked, the next target that way. The cursor never
+   // jumps to the finger. With no target that way the drag moves the cursor
+   // by how far the finger moves (like a trackpad), from where it already is.
+   if(lockMode()&&targetLock.id===null&&swipeFrom?.tried){
+    const last=swipeFrom.last||{x:e.clientX,y:e.clientY};
+    setCursorTarget(cursorTarget.x+e.clientX-last.x,cursorTarget.y+e.clientY-last.y);inputMode='mouse';
+    swipeFrom.last={x:e.clientX,y:e.clientY};
+    if(touchAimStart)touchAimStart.dragged=true;
+    return;
+   }
+   if(lockMode()){
     swipeFrom||={x:touchAimStart?.x??e.clientX,y:touchAimStart?.y??e.clientY};
     const dx=e.clientX-swipeFrom.x,dy=e.clientY-swipeFrom.y;
     // One switch per swipe; a long continued drag can step one more each
     // TARGET_LOCK.swipeAgain pixels.
     const need=swipeFrom.count?TARGET_LOCK.swipeAgain:TARGET_LOCK.swipe;
-    if(Math.hypot(dx,dy)>=need){pendingSwap={x:dx,y:dy};swipeFrom={x:e.clientX,y:e.clientY,count:(swipeFrom.count||0)+1};}
+    if(Math.hypot(dx,dy)>=need){pendingSwap={x:dx,y:dy};swipeFrom={x:e.clientX,y:e.clientY,count:(swipeFrom.count||0)+1,tried:targetLock.id===null,last:{x:e.clientX,y:e.clientY}};}
     if(touchAimStart&&Math.hypot(e.clientX-touchAimStart.x,e.clientY-touchAimStart.y)>=TOUCH_TAP.slop)touchAimStart.dragged=true;
     return;
    }
@@ -649,7 +731,7 @@ $('world').addEventListener('pointerdown', e => {
   if(e.pointerType==='mouse')worldPress=true;
   if(e.pointerType!=='mouse'&&touchPrompts){
    if(!running||touchAimPointer!==null)return;
-   e.preventDefault();touchAimPointer=e.pointerId;inputMode='mouse';setCursorTarget(e.clientX,e.clientY);$('world').setPointerCapture(e.pointerId);
+   e.preventDefault();touchAimPointer=e.pointerId;inputMode='mouse';if(!lockMode())setCursorTarget(e.clientX,e.clientY);$('world').setPointerCapture(e.pointerId);
    touchAimStart={x:e.clientX,y:e.clientY,time:performance.now(),dragged:false};swipeFrom=null;return;
   }
   if(running&&usesTrigger(sim.weapon)&&(e.button===0||e.button===2)){
@@ -686,7 +768,7 @@ window.addEventListener('pointermove',e=>{
 },true);
 // Clicking the interface is only ever a click on the interface. The press
 // never reaches the world (buttons sit above it), focus stays on the world so
-// Space and Enter keep meaning dodge and fire rather than pressing the button
+// Space and Enter keep meaning fire rather than pressing the button
 // again, and a right click brings up no browser menu.
 window.addEventListener('mousedown',e=>{
  if(running&&e.target!==$('world')&&e.target.closest?.('#game button'))e.preventDefault();
@@ -702,9 +784,6 @@ bindRifleMouse($('world'),window,{
 });
 window.addEventListener('pointerup',e=>{if(e.pointerType==='mouse'){worldPress=false;if(e.button===0)rifleFiring=false;if(e.button===2)rifleAiming=false;}if(e.pointerId===touchAimPointer){
   const tap=isTap(touchAimStart,e.clientX,e.clientY);
-  // Idle, a quick flick picks the target that way (a slow drag just aimed).
-  const start=touchAimStart,flick=start&&!tap&&targetLock.id===null&&lockMode()&&performance.now()-start.time<TARGET_LOCK.flickTime*1000&&Math.hypot(e.clientX-start.x,e.clientY-start.y)>=TARGET_LOCK.swipe;
-  if(flick)pendingSwap={x:e.clientX-start.x,y:e.clientY-start.y};
   touchAimPointer=null;touchAimStart=null;
   if(tap&&running)touchTapFire(e.clientX,e.clientY);
  }});
@@ -771,15 +850,30 @@ window.addEventListener('keydown', e => {
    return;
   }
   if (!running) return;
+  // Left Ctrl dodges, so while playing no Ctrl shortcut may fire by accident
+  // (Ctrl+S save, Ctrl+D bookmark, Ctrl+E the address bar, Ctrl+R reload…).
+  // The browser keeps a few it will not give up (Ctrl+W, Ctrl+T, Ctrl+N);
+  // leaving the page mid-game then asks first (beforeunload below).
+  if (e.ctrlKey) e.preventDefault();
   if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
   keys.add(e.code); tappedKeys.add(e.code);
   if (e.code.startsWith('Arrow')) inputMode = 'keyboard';
-  if (e.code === 'KeyQ') { pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = inputMode === 'mouse'&&!keyboardAim(keys,tappedKeys).active ? view.aim(mouse.x, mouse.y, sim.player) : null; }
+  if (e.code === GAME_KEYS.shoot) { pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = inputMode === 'mouse'&&!keyboardAim(keys,tappedKeys).active ? view.aim(mouse.x, mouse.y, sim.player) : null; }
   if (e.code === 'KeyR') e.preventDefault();
 });
 window.addEventListener('keyup', e => {keys.delete(e.code);if(e.code==='Tab'&&mpHud.boardOpen)mpHud.hideBoard();});
 window.addEventListener('blur', releaseInput);
+// Left Ctrl dodges, and the movement keys are W A S D: Ctrl+D (bookmark this
+// page), Ctrl+S, Ctrl+A... would fire mid-fight. From the moment a game starts,
+// in every state (menus over it included, where a dodge key may still be
+// held), no Ctrl combination reaches the browser, except in text fields. This
+// runs first (capture), before any handler can return early.
+window.addEventListener('keydown',e=>{if(started&&e.ctrlKey&&!e.target.matches?.('input,select,textarea,[contenteditable=true]'))e.preventDefault();},true);
+// Ctrl + mouse wheel would zoom the page mid-dodge.
+window.addEventListener('wheel',e=>{if(e.ctrlKey&&started)e.preventDefault();},{passive:false});
+// A Ctrl+W meant as dodge + forward, or any other way out mid-game, asks first.
+window.addEventListener('beforeunload',e=>{if(started&&(online.active||running)){e.preventDefault();e.returnValue='';}});
 // Switching away mid-game (another tab, the home screen) pauses a solo game,
 // so coming back opens on the pause menu instead of straight into a fight.
 // Online the world keeps going, so it is only input that is let go.
@@ -841,9 +935,9 @@ function frame(time) {
       }
       else if (moveX || moveZ) { aimX = moveX; aimZ = moveZ; digitalAim = true; }
       // The no-mouse lesson: Q fired while aiming with the arrow keys.
-      if(tutorial){tutorial.touch=touchPrompts;tutorial.touchAiming=touchAimPointer!==null;tutorial.walking=Math.hypot(touchMove.x,touchMove.z)>.2;if(arrows.active)tutorial.arrowAim=true;if(tappedKeys.has('KeyQ')&&tutorial.arrowAim&&inputMode==='keyboard')tutorial.event({type:'keyboardShot'},sim);}
+      if(tutorial){tutorial.touch=touchPrompts;tutorial.touchAiming=touchAimPointer!==null;tutorial.walking=Math.hypot(touchMove.x,touchMove.z)>.2;if(arrows.active)tutorial.arrowAim=true;if(tappedKeys.has(GAME_KEYS.shoot)&&tutorial.arrowAim&&inputMode==='keyboard')tutorial.event({type:'keyboardShot'},sim);}
       const ballast=ballastInput(rifleFiring,keys,tappedKeys);
-      sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has('KeyE'), extendedReload:tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(sim.weapon==='rifle'&&held('KeyQ')),tapFire:pendingLaunch&&!tappedKeys.has('KeyQ'),storeCharge:sim.weapon==='shotgun'&&ballast.storeCharge,doubleShot:tappedKeys.has('KeyE'),aiming:aimingNow(),reload:tappedKeys.has('KeyR'), spray: held('KeyC'), dodge: tappedKeys.has('Space'), hex: tappedKeys.has('KeyX'), seed: held('KeyE') || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
+      sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), extendedReload:tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(sim.weapon==='rifle'&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),storeCharge:sim.weapon==='shotgun'&&ballast.storeCharge,doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming:aimingNow(),reload:tappedKeys.has('KeyR'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
         launchPointX: arrows.active?undefined:pendingAimPoint?.aimPointX, launchPointZ: arrows.active?undefined:pendingAimPoint?.aimPointZ }));
       online.afterStep();
       if(tutorial){tutorial.update(sim,RULES.step);updateTutorial();}
@@ -881,14 +975,14 @@ function frame(time) {
   perfReadout.update(started && !paused ? dt : 0, measuredFPS);
   syncGameCursor();
   updateHealthHUD(sim);
-  hudTime += dt; if (hudTime >= .08) { updateHUD(); hudTime = 0; }
+  hudTime += dt; if (hudTime >= .08) { updateHUD(); hudTime = 0; keepAwake(running && !deathActive); }
   damageFeedback.update(sim,view);outgoingFeedback.update(sim,view);
   if(deathActive){
    deathElapsed+=dt;
    if(!deathMenuOpen&&deathElapsed>=DEATH_MENU_DELAY){
     deathMenuOpen=true;document.body.classList.add('dead-menu');
     deathScreen.show(online.active?(online.match()?.mode==='practice'?'online-practice':'online'):'practice');
-    deathScreen.setKiller(online.active?lastKiller:undefined);
+    deathScreen.setKiller(online.active?lastKiller:undefined,lastOneShot);
     if(!online.active)sound.suspend(true);
    }
    // Practice counts its own respawn; online the host's countdown is shown
@@ -927,15 +1021,15 @@ function applyInputPreference(){
    extendedButton.setAttribute('aria-label',extras.extended.aria);grenadeButton.setAttribute('aria-label',extras.grenade.aria);
   }
   updateWeaponHUD(sim,touchPrompts);
-  touchLabel('touch-launch',extras?'FIRE':'LAUNCH','LMB / Q');
+  touchLabel('touch-launch',extras?'FIRE':'LAUNCH','LMB / SPACE');
   touchLabel('touch-hex',extras?'RELOAD':'PULSE',extras?'R':'X');
   touchLabel('touch-stream',extras?'AIM':'STREAM',extras?extras.aim.binding:'C');
-  touchLabel('touch-dodge','DODGE','SPACE');
+  touchLabel('touch-dodge','DODGE','CTRL');
   touchLabel('touch-place','PLACE','E');
   touchLabel('touch-aimfire','AIM','+ FIRE');
  arrangeTouchCluster();
- $('pause').textContent=touchPrompts?'PAUSE':'ESC';$('pause').title='Pause / resume · Esc';
- $('map-toggle').textContent=touchPrompts?'MAP':'M';$('audio').textContent=touchPrompts?'SOUND':'N';
+ // Icons, the same on every input (menu bars, speaker, map); the key is in the title.
+ $('pause').title=touchPrompts?'Pause':'Pause / resume · Esc';$('map-toggle').title=touchPrompts?'Map':'Map · M';
  updateTutorial();
 }
 for(const [id,value] of [['input-keyboard','keyboard'],['input-mobile','touch']])$(id).onclick=()=>{
@@ -964,13 +1058,13 @@ window.addEventListener('pointerdown',e=>{
  else if(e.pointerType==='mouse')detectActiveInput('keyboard');
 },true);
 window.addEventListener('keydown',e=>{
- if(e.target.matches('input,select,textarea,[contenteditable=true]')||e.ctrlKey||e.metaKey||e.altKey)return;
- if(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','KeyR','KeyX','KeyC','Space','Escape','Tab','ShiftLeft','ShiftRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))detectActiveInput('keyboard');
+ if(e.target.matches('input,select,textarea,[contenteditable=true]')||(e.ctrlKey&&e.code!==GAME_KEYS.dodge)||e.metaKey||e.altKey)return;
+ if([GAME_KEYS.dodge,'KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','KeyR','KeyX','KeyC','Space','Escape','Tab','ShiftLeft','ShiftRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))detectActiveInput('keyboard');
 },true);
 applyInputPreference();
 const bindAction=(element,press,release)=>touchActionResets.push(bindTouchAction(element,{enabled:()=>running,press,release}));
 bindAction($('touch-hex'),()=>tappedKeys.add(usesTrigger(sim.weapon)?'KeyR':'KeyX'));
-bindAction($('touch-dodge'),()=>tappedKeys.add('Space'));
+bindAction($('touch-dodge'),()=>tappedKeys.add(GAME_KEYS.dodge));
 bindAction(placeButton,()=>{touch.seeding=true;pendingSeed=true;},()=>{touch.seeding=false;});
 bindAction(grenadeButton,()=>{const key=weaponInfo(sim.weapon)?.touchButtons?.grenade.key;if(key)tappedKeys.add(key);});
 bindAction(extendedButton,()=>{const key=weaponInfo(sim.weapon)?.touchButtons?.extended.key;if(key)tappedKeys.add(key);});

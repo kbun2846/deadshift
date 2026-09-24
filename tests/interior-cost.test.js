@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {WorldView} from '../src/renderer.js';
-import {interiorCameraHeight} from '../src/camera-framing.js';
+import {WorldView} from '../src/render/renderer.js';
+import {interiorCameraHeight} from '../src/render/camera-framing.js';
 import {readFileSync} from 'node:fs';
-import {MARK_BATCHES} from '../src/surface-marks.js';
+import {MARK_BATCHES} from '../src/effects/surface-marks.js';
 
 // Both behaviours under test are pure functions of view state, so they are
 // driven directly rather than through a live WebGL context.
@@ -48,7 +48,7 @@ test('the interior mask rebuild is capped rather than running every frame',()=>{
 });
 
 test('the interior shroud costs less the lower the preset goes',()=>{
- const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../src/styles/style.css',import.meta.url),'utf8');
  const rule=tier=>{
   const start=css.indexOf(`.interior-vision[data-quality=${tier}]{`);
   return start<0?null:css.slice(start,css.indexOf('}',start));
@@ -67,7 +67,7 @@ test('the interior shroud costs less the lower the preset goes',()=>{
  for(const tier of ['potato','performance'])
   assert.ok(rule(tier).includes('backdrop-filter:none'),`${tier} must drop the backdrop pass entirely`);
  // And the painted buffer itself has to get coarser, not just the filter.
- const renderer=readFileSync(new URL('../src/renderer.js',import.meta.url),'utf8');
+ const renderer=readFileSync(new URL('../src/render/renderer.js',import.meta.url),'utf8');
  const table=renderer.slice(renderer.indexOf('const VISION_STEP'),renderer.indexOf('const VISION_REPAINT'));
  const step=tier=>Number(table.match(new RegExp(tier+':\\s*(\\d+)'))[1]);
  assert.ok(step('potato')>step('performance'),'Potato paints coarser than Performance');
@@ -79,7 +79,7 @@ test('the interior shroud costs less the lower the preset goes',()=>{
 test('the shroud never goes back to an asynchronously decoded mask',()=>{
  // A `mask-image` data URI decodes off the main thread, so the shroud painted
  // itself unmasked for a frame every time one swapped. That was the flicker.
- const renderer=readFileSync(new URL('../src/renderer.js',import.meta.url),'utf8');
+ const renderer=readFileSync(new URL('../src/render/renderer.js',import.meta.url),'utf8');
  assert.ok(!/visionOverlay\.style\.maskImage/.test(renderer),'no mask-image on the shroud');
  assert.ok(!/image\/svg\+xml.*interiorPolygons/s.test(renderer)||!/feMorphology/.test(renderer.slice(renderer.indexOf('paintVision'))),
   'no SVG filter chain rebuilt for the interior shroud');
@@ -96,7 +96,7 @@ test('soot is a rolling window, not a permanent record',()=>{
  }
  assert.ok(MARK_BATCHES.performance<=MARK_BATCHES.balanced,'phones must not allow more layers than desktops');
  assert.ok(MARK_BATCHES.balanced<=MARK_BATCHES.quality);
- const source=readFileSync(new URL('../src/surface-marks.js',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../src/effects/surface-marks.js',import.meta.url),'utf8');
  assert.ok(source.includes('while (batches.length > cap)'),'the oldest batch must actually be retired');
  assert.ok(source.includes('stale.geometry.dispose()'),'and its geometry released');
 });

@@ -39,7 +39,7 @@ for(const horizontal of ['ArrowLeft','ArrowRight'])for(const vertical of ['Arrow
   const command={moveX:0,moveZ:0,aimX:aim.x,aimZ:aim.z,smoothAim:true};
   const fresh=weapon=>{const s=make(weapon);for(let i=0;i<60;i++)s.step(command);return s;};
   assert.equal(aim.active,true);
-  for(const key of ['KeyQ','KeyE','KeyX','KeyC','KeyR','Space','ShiftLeft']){
+  for(const key of ['KeyQ','KeyE','KeyX','KeyC','KeyR','Space','ControlLeft','ShiftLeft']){
    keys.add(key);assert.deepEqual(keyboardAim(keys),aim);keys.delete(key);
   }
   let s=fresh('static');s.step({...command,launch:true,quickShot:true});assert.ok(s.shots.some(o=>o.launched));
@@ -57,11 +57,12 @@ for(const horizontal of ['ArrowLeft','ArrowRight'])for(const vertical of ['Arrow
  });
 }
 
-test('Ballast on the keyboard: Q charges and fires, Shift stores',async()=>{
- const {ballastInput}=await import('../src/rifle-input.js');
+test('Ballast on the keyboard: E charges and fires, Shift stores, Q does not fire',async()=>{
+ const {ballastInput}=await import('../src/weapons/rifle-input.js');
  const none=new Set();
- assert.deepEqual(ballastInput(false,new Set(['KeyQ']),none),{fire:true,storeCharge:false},'holding Q charges');
- assert.deepEqual(ballastInput(false,none,new Set(['KeyQ'])),{fire:true,storeCharge:false},'a tap of Q still pulls the trigger');
+ assert.deepEqual(ballastInput(false,new Set(['Space']),none),{fire:true,storeCharge:false},'holding Space charges');
+ assert.deepEqual(ballastInput(false,none,new Set(['Space'])),{fire:true,storeCharge:false},'a tap of Space still pulls the trigger');
+ assert.equal(ballastInput(false,new Set(['KeyE']),none).fire,false,'E is the double shot, not the trigger');
  assert.equal(ballastInput(false,none,new Set(['ShiftLeft'])).storeCharge,true);
  assert.equal(ballastInput(false,none,new Set(['ShiftRight'])).storeCharge,true);
  assert.equal(ballastInput(false,none,new Set(['MouseRight'])).storeCharge,true,'right click still stores');

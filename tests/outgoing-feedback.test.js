@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createOutgoingFeedback} from '../src/outgoing-feedback.js';
+import {createOutgoingFeedback} from '../src/ui/outgoing-feedback.js';
 import {Simulation} from '../src/simulation.js';
 import {Soundscape} from '../src/audio.js';
 const make=()=>new Simulation({width:40,depth:40,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});
@@ -14,15 +14,15 @@ test('one-shot kill distinguishes a fresh lethal attack from follow-up or sustai
 test('outgoing totals accumulate per entity, roll prior damage into a subtotal before the latest addition, refresh and stay anchored',()=>{
  const previous=globalThis.document;const element=()=>({children:[],style:{},append(n){this.children.push(n);},remove(){this.removed=true;}});globalThis.document={createElement:element};
  try{const parent=element(),f=createOutgoingFeedback(parent),sim={time:1,canSeeEntity:()=>true},view={screenPoint:(x,z)=>({x:x*10,y:z*10})};
- f.add({id:'a',maxHp:500,volley:1,x:10,z:20,damage:100,hp:400},1);f.update(sim,view);const n=parent.children[0].children[0],total=n.children[0],addition=n.children[1];assert.equal(total.textContent,100);assert.equal(addition.style.display,'none');assert.equal(n.style.color,'#80caff');const left=n.style.left;
- sim.time=1.05;f.add({id:'a',maxHp:500,volley:1,x:99,z:99,damage:270,hp:130},1.05);f.update(sim,view);assert.equal(total.textContent,370);assert.equal(addition.style.display,'none');assert.equal(n.style.color,'#80caff');assert.equal(n.style.left,left);
- sim.time=1.2;f.add({id:'a',maxHp:500,volley:2,x:12,z:20,damage:20,hp:110},1.2);f.update(sim,view);assert.equal(parent.children[0].children.length,1);assert.equal(total.textContent,390);assert.equal(n.style.color,'#84edb0');assert.equal(addition.children[0].textContent,370);assert.equal(addition.children[1].textContent,'+20');assert.equal(n.style.left,left);
+ f.add({id:'a',maxHp:500,volley:1,x:10,z:20,damage:100,hp:400},1);f.update(sim,view);const n=parent.children[0].children[0],total=n.children[0],addition=n.children[1];assert.equal(total.textContent,100);assert.equal(addition.style.display,'none');assert.equal(n.style.color,'#80caff');const left=n.style.transform.split(',')[0];
+ sim.time=1.05;f.add({id:'a',maxHp:500,volley:1,x:99,z:99,damage:270,hp:130},1.05);f.update(sim,view);assert.equal(total.textContent,370);assert.equal(addition.style.display,'none');assert.equal(n.style.color,'#80caff');assert.equal(n.style.transform.split(',')[0],left);
+ sim.time=1.2;f.add({id:'a',maxHp:500,volley:2,x:12,z:20,damage:20,hp:110},1.2);f.update(sim,view);assert.equal(parent.children[0].children.length,1);assert.equal(total.textContent,390);assert.equal(n.style.color,'#84edb0');assert.equal(addition.children[0].textContent,370);assert.equal(addition.children[1].textContent,'+20');assert.equal(n.style.transform.split(',')[0],left);
  sim.time=1.25;f.add({id:'a',maxHp:500,volley:2,x:12,z:20,damage:10,hp:100},1.25);f.update(sim,view);assert.equal(total.textContent,400);assert.equal(addition.children[1].textContent,'+30');
  sim.time=1.8;f.add({id:'a',maxHp:500,volley:3,x:15,z:20,damage:40,hp:60},1.8);f.update(sim,view);
  assert.equal(total.textContent,440);assert.equal(addition.children[0].textContent,400);assert.equal(addition.children[1].textContent,'+40');assert.equal(addition.children.length,2);
  sim.time=2.8;f.update(sim,view);assert.ok(addition.style.opacity>0&&addition.style.opacity<1);assert.equal(n.style.opacity,1);
  sim.time=3.1;f.update(sim,view);assert.equal(addition.style.display,'none');assert.equal(total.textContent,440);assert.equal(n.style.opacity,1);
- sim.time=3.6;f.add({id:'a',maxHp:500,volley:3,x:15,z:20,damage:50,hp:50},3.6);f.update(sim,view);assert.equal(total.textContent,490);assert.equal(addition.children[0].textContent,440);assert.equal(addition.children[1].textContent,'+50');assert.equal(n.style.opacity,1);assert.equal(n.style.left,left);
+ sim.time=3.6;f.add({id:'a',maxHp:500,volley:3,x:15,z:20,damage:50,hp:50},3.6);f.update(sim,view);assert.equal(total.textContent,490);assert.equal(addition.children[0].textContent,440);assert.equal(addition.children[1].textContent,'+50');assert.equal(n.style.opacity,1);assert.equal(n.style.transform.split(',')[0],left);
  f.add({id:'b',volley:3,x:15,z:20,damage:70,hp:300},3.6);f.update(sim,view);assert.equal(parent.children[0].children.length,2);assert.equal(parent.children[0].children[1].children[0].textContent,70);
  sim.time=6.11;f.add({id:'a',maxHp:500,volley:4,x:20,z:20,damage:80,hp:420},6.11);f.update(sim,view);assert.equal(n.removed,true);assert.equal(parent.children[0].children[2].children[0].textContent,80);
  sim.time=0;f.update(sim,view);assert.equal(parent.children[0].children[2].removed,true);

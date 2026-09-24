@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {ElectricEffects,ARC_DETAIL} from '../src/electric-effects.js';
+import {ElectricEffects,ARC_DETAIL} from '../src/effects/electric-effects.js';
 
 const drawn=fx=>({lines:fx.arcs.lines.geometry.drawRange.count/48,forks:fx.arcs.forks.geometry.drawRange.count/24,
  ribbons:fx.arcs.ribbons.geometry.drawRange.count/144,glows:fx.arcs.glows.count});

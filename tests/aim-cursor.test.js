@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {advanceAimCursor,AIM_CURSOR} from '../src/aim-cursor.js';
+import {advanceAimCursor,AIM_CURSOR} from '../src/ui/aim-cursor.js';
 test('aim cursor slows while focused, stays bounded, and accelerates smoothly on release',()=>{
  const focused={x:0,y:0},hip={x:0,y:0},target={x:1000,y:200};
  advanceAimCursor(focused,target,1/60,true);advanceAimCursor(hip,target,1/60,false);

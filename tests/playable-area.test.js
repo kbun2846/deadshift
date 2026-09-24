@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {deadwater,buildingPoint} from '../src/maps.js';
 import {isPlayable,playableOutline} from '../src/playable-area.js';
 import {Simulation,RULES} from '../src/simulation.js';
-import {overheadMapSVG} from '../src/overhead-map.js';
+import {overheadMapSVG} from '../src/ui/overhead-map.js';
 
 test('Deadwater excludes empty districts while preserving buildings, routes and targets',()=>{
  for(const [x,z] of [[85,15],[-90,95],[-98,-108],[0,110]])assert.equal(isPlayable(deadwater,x,z),false);

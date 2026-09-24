@@ -8,6 +8,7 @@ export const MODES = Object.freeze([
  { id: 'practice', name: 'PRACTICE', ready: true },
  { id: '1v1', name: '1V1', ready: false },
  { id: '2v2', name: '2V2', ready: false },
+ { id: '2v2v2', name: '2V2V2', ready: false },
  { id: '3v3', name: '3V3', ready: false },
 ]);
 
@@ -18,7 +19,7 @@ export const SETTINGS = Object.freeze({
  roundLength: { label: 'round length', values: [300, 600, 900], names: ['5 min', '10 min', '15 min'], default: 600, modes: ['ffa'] },
  killLimit: { label: 'kill limit', values: [0, 10, 20, 30], names: ['none', '10', '20', '30'], default: 0, modes: ['ffa'] },
  health: { label: 'health', values: [250, 500, 750], names: ['250', '500', '750'], default: 500, modes: ['ffa', 'practice'] },
- respawn: { label: 'respawn wait', values: [3, 5, 8], names: ['3 s', '5 s', '8 s'], default: 5, modes: ['ffa'] },
+ respawn: { label: 'respawn wait', values: [8, 12, 16], names: ['8 s', '12 s', '16 s'], default: 12, modes: ['ffa'] },
 });
 export const defaultSettings = () => Object.fromEntries(Object.entries(SETTINGS).map(([key, s]) => [key, s.default]));
 // Untrusted input (a saved choice, a message): only listed values survive.

@@ -29,7 +29,7 @@ export const NETWORK = Object.freeze({
  roomPrefix: 'deadshift-',
  codeLength: 5,
  codeAlphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
- maxPlayers: 4,
+ maxPlayers: 6,
  // The host sends the world state 20 times a second (every 3rd tick).
  snapshotEvery: 3,
  // Clients draw other players this far in the past, so there are always two

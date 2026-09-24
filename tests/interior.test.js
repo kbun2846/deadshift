@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation, RULES } from '../src/simulation.js';
 import { deadwater, dryCreek, buildingOpenings, buildingContains, buildingPoint } from '../src/maps.js';
+import { RULES as FULL_RULES } from '../src/config/gameplay.js';
+const FULL = FULL_RULES.targetHealth; // a practice target's full health
 
 const step = (sim, n, extra = {}) => { for (let i = 0; i < n; i++) sim.step({ moveX: 0, moveZ: 0, aimX: 1, aimZ: 0, ...extra }); };
 
@@ -37,12 +39,12 @@ test('splash is blocked by walls but crosses an open doorway, including angled b
     const sim=new Simulation({...deadwater,buildings:[room],props:[],fences:[],targets:[target('inside',0,3),target('outside',0,5),target('behind-jamb',2,3)]});
     const doorway=buildingPoint(room,0,4);
     sim.explode({...doorway,arrived:12},1);
-    assert.ok(sim.targets[0].hp<100&&sim.targets[1].hp<100,'doorway blast reaches both sides');
+    assert.ok(sim.targets[0].hp<FULL&&sim.targets[1].hp<FULL,'doorway blast reaches both sides');
     // Same distance and radius, but now the ray must cross intact wall.
     const shielded=new Simulation({...deadwater,buildings:[room],props:[],fences:[],targets:[target('blocked',2.5,3.2)]});
     const outside=buildingPoint(room,2.5,4.7);
     shielded.explode({...outside,arrived:12},1);
-    assert.equal(shielded.targets[0].hp,100,'solid wall stops splash');
+    assert.equal(shielded.targets[0].hp,FULL,'solid wall stops splash');
   }
 });
 
@@ -84,7 +86,7 @@ test('spread orbs converge together on an angled wall and splash cannot reach th
  step(sim,90);
  const ends=sim.events.filter(e=>e.type==='trailEnd');assert.equal(ends.length,3);
  assert.ok(ends.every(e=>Math.hypot(e.x-goal.x,e.z-goal.z)<1e-6));
- assert.equal(sim.targets[0].hp,100);
+ assert.equal(sim.targets[0].hp,FULL);
  assert.ok(sim.events.some(e=>e.type==='explosion'&&e.count===3));
 });
 

@@ -82,13 +82,13 @@ test('the markup is a continuous range with a prong for every stop',()=>{
  assert.ok(input.includes(`max="${FPS_UNCAPPED_SLIDER}"`),'the track must reach uncapped');
  assert.ok(input.includes('step="1"'));
  assert.ok(html.includes('id="fps-limit-ticks"'),'the prongs need a host');
- const main=readFileSync(new URL('../src/settings-panel.js',import.meta.url),'utf8');
+ const main=readFileSync(new URL('../src/ui/settings-panel.js',import.meta.url),'utf8');
  assert.ok(main.includes('FPS_STOPS.map'),'one prong per stop, built from the same list');
  assert.ok(main.includes('snapFps('),'and the handle is weighted on input');
 });
 
 test('the prongs are drawn in the interface accent',()=>{
- const css=readFileSync(new URL('../src/menu-theme.css',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../src/styles/menu-theme.css',import.meta.url),'utf8');
  const rule=css.slice(css.indexOf('.slider-ticks i{'));
  assert.ok(rule.slice(0,rule.indexOf('}')).includes('background:var(--ui-accent)'),'prongs should be pink');
 });

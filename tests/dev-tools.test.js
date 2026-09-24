@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Simulation,RULES} from '../src/simulation.js';
-import {toggleDevOverrides} from '../src/dev-tools.js';
+import {toggleDevOverrides} from '../src/ui/dev-tools.js';
 const make=()=>new Simulation({width:1000,depth:1000,spawn:{x:0,z:0},buildings:[],props:[],targets:[],fences:[]});
 test('P disables a mixed set of overrides, then enables every current weapon override',()=>{
  const keys=['speed','ammo','orbs','cooldowns','stamina','invulnerable','teleport','rifleInstantReload','grenadeCooldown'];
@@ -28,7 +28,7 @@ test('practice invulnerability, cooldown and movement overrides can be disabled'
 });
 
 import {readFileSync} from 'node:fs';
-import {DEV_CODE,DEV_OPTIONS,DEV_SECTIONS,BULK_KEYS,optionsFor} from '../src/dev-options.js';
+import {DEV_CODE,DEV_OPTIONS,DEV_SECTIONS,BULK_KEYS,optionsFor} from '../src/ui/dev-options.js';
 import {maps} from '../src/maps.js';
 import {WEAPONS} from '../src/items.js';
 import {HostSession} from '../src/net/host-session.js';
@@ -86,6 +86,6 @@ test('weapons live in one Weapons dropdown, one dropdown each, taken from the it
  assert.ok(DEV_SECTIONS.some(s=>s.weapons),'dev tools have a Weapons group');
  for(const legacy of ['static','nominal','ballast'])assert.ok(!DEV_SECTIONS.some(s=>s.id===legacy),legacy+' is no longer a top-level section');
  for(const w of WEAPONS)assert.ok(Array.isArray(w.controls)&&w.controls.length,w.id+' brings its own control rows');
- const menu=readFileSync(new URL('../src/menu.js',import.meta.url),'utf8');
+ const menu=readFileSync(new URL('../src/ui/menu.js',import.meta.url),'utf8');
  assert.ok(/weapons-group[^\n]*WEAPONS\.map/.test(menu),'Settings > Controls builds its Weapons dropdown from the registry');
 });

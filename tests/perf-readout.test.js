@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PingMonitor,PING_INTERVAL,createPerfReadout,formatFPS,formatPing,pingGrade} from '../src/perf-readout.js';
+import {PingMonitor,PING_INTERVAL,createPerfReadout,formatFPS,formatPing,pingGrade} from '../src/ui/perf-readout.js';
 
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
 

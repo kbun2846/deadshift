@@ -1,19 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DamageFeedbackState,damageFeedbackSize,damageFeedbackScale,createDamageFeedback,STACK_WINDOW,BURN_BEAT,DAMAGE_FEEDBACK_COLORS} from '../src/damage-feedback.js';
+import {DamageFeedbackState,damageFeedbackSize,damageFeedbackScale,createDamageFeedback,STACK_WINDOW,BURN_BEAT,DAMAGE_FEEDBACK_COLORS} from '../src/ui/damage-feedback.js';
 import {Simulation} from '../src/simulation.js';
 test('damage popup follows rendered position and does not switch sides when turning',()=>{
  const previous=globalThis.document;
  const element=()=>({children:[],style:{},setAttribute(){},append(child){this.children.push(child);},remove(){}});
  globalThis.document={createElement:element};
  try{
-  const parent=element();parent.clientWidth=1000;parent.clientHeight=700;
+  const parent=element();parent.clientWidth=1000;parent.clientHeight=700;globalThis.innerWidth=1000;globalThis.innerHeight=700;
+  // Placed by transform: translate(x px, y px) first.
+  const at=node=>parseFloat(/translate\(([-\d.]+)px/.exec(node.style.transform)[1]);
   const feedback=createDamageFeedback(parent),sim={time:1,player:{x:900,z:500,aimX:1,aimZ:0}};
   const view={player:{position:{x:400,z:300}},screenPoint:(x,z)=>({x,y:z})};
   feedback.add(20,1);feedback.update(sim,view);
-  const popup=parent.children[0].children[0],left=parseFloat(popup.style.left);assert.ok(left<400);
-  sim.player.x=950;sim.player.aimX=-1;feedback.update(sim,view);assert.equal(parseFloat(popup.style.left),left);
-  view.player.position.x+=.5;feedback.update(sim,view);assert.equal(parseFloat(popup.style.left),left+.5);
+  const popup=parent.children[0].children[0],left=at(popup);assert.ok(left<400);
+  sim.player.x=950;sim.player.aimX=-1;feedback.update(sim,view);assert.equal(at(popup),left);
+  view.player.position.x+=.5;feedback.update(sim,view);assert.equal(at(popup),left+.5);
  }finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
 });
 test('hits in a row add up into one number that pops back in with a new tilt',()=>{

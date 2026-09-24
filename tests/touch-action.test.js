@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bindTouchAction} from '../src/touch-action.js';
+import {bindTouchAction} from '../src/ui/touch-action.js';
 const control=()=>{const e=new EventTarget();e.setPointerCapture=()=>{};return e;};
 const send=(element,type,pointerId,extra={})=>{
  const event=new Event(type,{cancelable:true});Object.assign(event,{pointerId,pointerType:'touch',isPrimary:false,button:0,...extra});element.dispatchEvent(event);return event;

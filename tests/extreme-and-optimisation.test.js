@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { freezeTransforms } from '../src/frozen-transforms.js';
-import { setExtremeSurfaces } from '../src/extreme-surfaces.js';
+import { freezeTransforms } from '../src/render/frozen-transforms.js';
+import { setExtremeSurfaces } from '../src/render/extreme-surfaces.js';
 import { GRAPHICS } from '../src/settings.js';
-import { RIFLE_QUALITY } from '../src/rifle-quality.js';
-import { ARC_DETAIL } from '../src/electric-effects.js';
+import { RIFLE_QUALITY } from '../src/weapons/rifle-quality.js';
+import { ARC_DETAIL } from '../src/effects/electric-effects.js';
 
 test('a frozen root is computed once and then skipped, until it moves or grows', () => {
  const scene = new THREE.Scene(); scene.matrixAutoUpdate = false;

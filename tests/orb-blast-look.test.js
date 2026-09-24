@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { orbBlastScale } from '../src/effects-detail.js';
+import { orbBlastScale } from '../src/effects/effects-detail.js';
 
 test('orb blasts look bigger with every orb: small at 2-3, medium 4-7, full size around 10', () => {
   for (let n = 3; n <= 16; n++) assert.ok(orbBlastScale(n) > orbBlastScale(n - 1), `${n} orbs should look bigger than ${n - 1}`);

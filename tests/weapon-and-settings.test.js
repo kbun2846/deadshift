@@ -38,7 +38,7 @@ test('orbs hit the same selected point inside a target', () => {
   const meetX = 4.1 + 4.1 / reach * overshoot, meetZ = 2.1 + 2.1 / reach * overshoot;
   for (const end of ends) { close(end.x, meetX); close(end.z, meetZ); }
   const splash = Math.round(explosionFor(4).damage * (1 - .75 * Math.hypot(.1, .1) / explosionFor(4).radius));
-  close(sim.targets[0].hp, 100 - 4 * damagePerOrb(4) - splash);
+  close(sim.targets[0].hp, RULES.targetHealth - 4 * damagePerOrb(4) - splash);
 });
 
 test('one orb launches immediately and deals less damage per orb than a full volley', () => {
@@ -102,7 +102,7 @@ test('render caps produce the requested frame count independently of simulation 
 
 test('graphics tiers change resolution, shadow work, texture detail and effect budgets', () => {
   assert.equal(validateSettings({controlHints:false}).controlHints,false);
-  assert.deepEqual(validateSettings({quality:'potato',fps:1}),{quality:'potato',fps:1,motion:true,controlHints:true,mobileOpacity:.4,aimAssist:true,volume:{...DEFAULT_SETTINGS.volume}});
+  assert.deepEqual(validateSettings({quality:'potato',fps:1}),{quality:'potato',fps:1,motion:true,controlHints:true,mobileOpacity:.4,aimAssist:true,fullscreen:true,vibration:true,volume:{...DEFAULT_SETTINGS.volume}});
   assert.equal(validateSettings({aimAssist:false}).aimAssist,false,'aim assist can be turned off');
   assert.ok(GRAPHICS.potato.scale < GRAPHICS.performance.scale);
   assert.equal(GRAPHICS.potato.motes, 0);
@@ -118,7 +118,7 @@ test('graphics tiers change resolution, shadow work, texture detail and effect b
   assert.ok(GRAPHICS.balanced.antialias && GRAPHICS.quality.antialias);
   assert.ok(GRAPHICS.performance.texture < GRAPHICS.balanced.texture && GRAPHICS.balanced.texture < GRAPHICS.quality.texture);
   assert.ok(GRAPHICS.performance.particleCap < GRAPHICS.quality.particleCap);
-  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', fps: 60, motion: false, controlHints: true, mobileOpacity: .4, aimAssist: true, volume: {...DEFAULT_SETTINGS.volume} });
+  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', fps: 60, motion: false, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, vibration: true, volume: {...DEFAULT_SETTINGS.volume} });
 });
 
 test('mobile opacity accepts saved presets and rejects invalid values',()=>{
@@ -134,4 +134,21 @@ test('first launch defaults to Performance on mobile and Balanced on PC, preserv
  for(const quality of Object.keys(GRAPHICS))for(const mobile of [true,false]){
   assert.equal(validateSettings({quality}, {mobile}).quality,quality);
  }
+});
+
+test('full screen while playing is a saved choice, on unless turned off', () => {
+ assert.equal(validateSettings({}).fullscreen, true);
+ assert.equal(validateSettings({ fullscreen: false }).fullscreen, false);
+ assert.equal(validateSettings({ fullscreen: 'yes' }).fullscreen, true);
+});
+
+test('the phone page is set up as a game, not a document', async () => {
+ const { readFileSync } = await import('node:fs');
+ const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8'), css = readFileSync(new URL('../src/styles/menu-theme.css', import.meta.url), 'utf8');
+ assert.match(html, /user-scalable=no/); assert.match(html, /rel="manifest"/); assert.match(html, /apple-mobile-web-app-capable/);
+ const manifest = JSON.parse(readFileSync(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8'));
+ assert.equal(manifest.display, 'fullscreen');
+ assert.match(css, /#game\{position:fixed!important;inset:0/); assert.match(css, /overscroll-behavior:none/);
+ const { viewWidth, viewHeight } = await import('../src/viewport.js');
+ assert.ok(viewWidth() >= 1 && viewHeight() >= 1, 'falls back outside a page');
 });

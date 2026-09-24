@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {HealthBarMotion,trembleOffset,TREMBLE_DECAY,TREMBLE_FLOOR} from '../src/health-hud.js';
+import {HealthBarMotion,trembleOffset,TREMBLE_DECAY,TREMBLE_FLOOR} from '../src/ui/health-hud.js';
 test('damage segment swells, holds, then smoothly contracts to current health',()=>{
  const bar=new HealthBarMotion();bar.update(500,500,0);
  const hit=bar.update(300,500,.1);assert.equal(hit.fraction,.6);assert.equal(hit.loss,.4);assert.ok(hit.scale>1);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {ShotgunPressure} from '../src/shotgun-pressure.js';
+import {ShotgunPressure} from '../src/weapons/shotgun-pressure.js';
 import {Simulation} from '../src/simulation.js';
 const make=()=>{const s=new Simulation({width:40,depth:40,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});s.weapon='shotgun';s.reset();return s;};
 test('E at full live charge fires both charged barrels without Q or an extra release shot',()=>{

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BASE_LOOK, mapLook, warmColor } from '../src/map-look.js';
+import { BASE_LOOK, mapLook, warmColor } from '../src/render/map-look.js';
 import { maps } from '../src/maps.js';
 import { tutorialMap } from '../src/tutorial.js';
 

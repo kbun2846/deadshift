@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Simulation} from '../src/simulation.js';
-import {SHOTGUN,shotgunRange,shotgunSpread,shotgunRecoil} from '../src/shotgun.js';
+import {SHOTGUN,shotgunRange,shotgunSpread,shotgunRecoil} from '../src/weapons/shotgun.js';
 const make=()=>{const s=new Simulation({width:80,depth:80,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});s.weapon='shotgun';s.reset();return s;};
 const ticks=(s,n,input={})=>{for(let i=0;i<n;i++)s.step({aimX:1,aimZ:0,...input});};
 

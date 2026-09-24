@@ -1,4 +1,4 @@
-import { installButtonTypography } from './button-typography.js';
+import { installButtonTypography } from './ui/button-typography.js';
 
 const game=document.getElementById('game');
 const loading=document.getElementById('loading-screen');

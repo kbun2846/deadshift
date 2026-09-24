@@ -1,0 +1,634 @@
+/* Shared button theme. Typography/ink fitting lives in button-typography.js. */
+/* A game in a phone's browser (mobile-browser.js does the rest): immediate taps,
+   no double-tap zoom; the page itself never scrolls, bounces or pulls to
+   refresh; the game fills the visible area whatever the toolbars do (fixed to
+   the layout viewport, which follows them); no long-press callout or text
+   selection outside fields. Menus that scroll still scroll (pan-y). */
+html,body,#game,.modal,button,input,select{touch-action:manipulation}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{position:fixed;inset:0;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+input,textarea,[contenteditable=true]{-webkit-user-select:text;user-select:text}
+#game{position:fixed!important;inset:0;width:auto!important;height:auto!important}
+.modal-card,.settings-body,.weapon-pick-grid,.lobby-screen-card,.menu-select-list{touch-action:pan-y;-webkit-overflow-scrolling:touch}
+#game #map-close{display:grid;place-items:center;justify-content:center;flex:0 0 40px;width:40px;height:40px;min-height:40px;padding:9px;border:0;border-radius:5px;background:var(--ui-accent);color:#151718;box-shadow:none;text-shadow:none}
+#game #map-close:is(:hover,:focus-visible){color:#fff}
+#game #map-close svg{display:block;width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;pointer-events:none}
+:root{--ui-accent:#e8afb9;--button-idle:#242928;--button-ink:#fff;--button-active:var(--ui-accent);--button-active-ink:#151718;--button-edge:#424846}
+/* Shared scrollbars for weapon cards, settings, tutorials and dropdown lists. */
+:root{scrollbar-color:#67706d var(--button-idle)}
+::-webkit-scrollbar{width:12px;height:12px;background:var(--button-idle)}
+::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:var(--button-idle)}
+::-webkit-scrollbar-thumb{background:#67706d;border:3px solid var(--button-idle);border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:#87918d}
+::-webkit-scrollbar-button{background:var(--button-idle)}
+#dev-code-dialog{z-index:60;background:#191c1cc9}
+#dev-code-dialog .modal-card{position:relative;width:min(390px,92vw);background:var(--button-idle);color:#eee9df;border:0;box-shadow:none;padding:32px}
+#dev-code-dialog h2{font:900 28px/1.2 Arial,sans-serif;letter-spacing:0;margin:10px 0 26px}
+#dev-code-dialog label,#dev-code-dialog p{font:700 12px/1.5 Arial,sans-serif;color:#eee9df;letter-spacing:.03em}
+#dev-code-dialog input{display:block;width:100%;margin-top:10px;padding:12px;background:#191c1c;border:1px solid #67746e;border-radius:3px;color:#fff;font:700 22px Arial,sans-serif;letter-spacing:.3em}
+#dev-code-dialog input:focus{outline:2px solid var(--ui-accent);outline-offset:2px}
+#dev-code-dialog #dev-code-error{min-height:18px;color:var(--ui-accent);margin:10px 0}
+#game #dev-code-dialog .dev-code-close{position:absolute;top:12px;right:12px;display:grid;place-items:center;width:36px;height:36px;min-height:36px;padding:9px;border:0;border-radius:3px;background:var(--ui-accent);color:#151718}
+#game #dev-code-dialog .dev-code-close:is(:hover,:focus-visible){color:#fff}
+#dev-code-dialog .dev-code-close svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:3}
+#dev-code-dialog .dev-code-hint{margin-bottom:0;opacity:.65}
+#game #weapon{transform:translateX(-50%) scale(1.1);transform-origin:50% 100%}
+/* The pause menu's buttons alternate left and right among the ones showing;
+   main.js (layoutPauseMenu) sets that each time it opens. */
+#game .menu-shell button{text-align:left}
+.game-version{display:block;margin-top:8px;font-size:.34em;line-height:1.2;letter-spacing:.08em;font-weight:700;color:var(--ui-accent)}
+/* Match the borderless input selector so cropped lettering meets the highlight. */
+#weapon .weapon-readout{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 7px;color:#fff;text-shadow:0 1px 3px #14221c;font-family:Arial,sans-serif}
+#weapon .weapon-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--weapon-accent)}
+#weapon .weapon-count{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+#weapon .seed-pips{gap:4px;margin:0 0 7px}
+#weapon .seed-pips.tutorial-highlight{outline-offset:3px;border-radius:3px}
+#weapon .seed-pips i{height:10px;min-width:0;border-radius:1px;box-shadow:none}
+#weapon .seed-pips i.available{background:var(--weapon-accent);border-color:#253b32}
+#weapon .seed-pips i.filled{background:#fff;border-color:var(--weapon-accent);box-shadow:none}
+#weapon .seed-pips i.spent{background:linear-gradient(to top,var(--weapon-accent) var(--refill),#1d2926cc var(--refill));border-color:#77827a80}
+#weapon .seed-pips[data-reloading="true"] i{background:linear-gradient(to top,#e1cca2 var(--refill),#1d2926cc var(--refill))}
+#weapon .weapon-status{height:13px;margin-bottom:7px;text-align:left;font:600 9px/13px Arial,sans-serif;letter-spacing:.07em;color:#e1e6df;text-shadow:0 1px 3px #14221c}
+#weapon .weapon-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;text-align:left;color:#e1e6df}
+#weapon .weapon-controls>span{display:flex;flex-direction:column;gap:3px;align-items:flex-start;font:600 8px/1.3 Arial,sans-serif;letter-spacing:.03em;min-width:0}
+#weapon .weapon-controls kbd{padding:0;background:none;border:0;color:var(--weapon-accent);font:700 9px/1.3 Arial,sans-serif;max-width:100%;min-width:0;white-space:normal}
+#weapon .hex-fill{stroke:var(--weapon-accent)}
+.rifle-spread{position:absolute;height:12px;pointer-events:none;z-index:4;transform-origin:center}
+.rifle-spread i{position:absolute;top:0;width:2px;height:12px;background:#fff;box-shadow:0 1px 2px #0008}
+.rifle-spread i:first-child{left:0}.rifle-spread i:last-child{right:0}
+.rifle-spread i::after{content:'';position:absolute;bottom:0;width:5px;height:2px;background:inherit}
+.rifle-spread i:last-child::after{right:0}
+.secondary-spread{opacity:.55}
+.dev-section{margin:14px 0}.dev-section>.setting{padding:12px}
+#game button,#game summary{
+ background:var(--button-idle);color:var(--button-ink);border-color:var(--button-edge);
+ transition:color .18s ease,background-color .18s ease,transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+#game button .button-label,#game .map-choice strong,#game .map-choice small{color:inherit}
+#game button:not(:disabled):focus-visible,#game summary:focus-visible{
+ background:var(--button-active);color:var(--button-active-ink);border-color:var(--button-active);
+ outline:none;box-shadow:none;
+}
+@media(hover:hover){
+ #game button:not(:disabled):hover,#game summary:hover{
+  background:var(--button-active);color:var(--button-active-ink);border-color:var(--button-active);
+ }
+}
+/* Selected controls retain pink; hover/focus changes only their text. */
+#game button:is([aria-pressed=true],[aria-selected=true]){background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}
+#game button:is([aria-pressed=true],[aria-selected=true]):focus-visible{color:#fff;text-shadow:-1px 0 var(--button-active-ink),1px 0 var(--button-active-ink),0 -1px var(--button-active-ink),0 1px var(--button-active-ink)}
+@media(hover:hover){
+ #game button:is([aria-pressed=true],[aria-selected=true]):hover{color:#fff;text-shadow:-1px 0 var(--button-active-ink),1px 0 var(--button-active-ink),0 -1px var(--button-active-ink),0 1px var(--button-active-ink)}
+}
+@media(prefers-reduced-motion:reduce){#game button,#game summary{transition:none}}
+/* Keyboard focus uses the shared pink highlight; control mode keeps its side tab. */
+#game button:focus,#game button:focus-visible,#game summary:focus,#game summary:focus-visible{outline:none;box-shadow:none}
+/* Pause navigation needs a visible current action, without a focus ring. */
+#game #pause-panel button:focus-visible{background:var(--button-active);color:var(--button-active-ink);border-color:var(--button-active)}
+#game #input-keyboard,#game #input-mobile{height:40px;min-height:40px;padding-bottom:0;text-shadow:none;-webkit-text-stroke:0}
+/* Extend outside the group so the labels keep their original cropped fit. */
+#game .input-choice{position:relative;border:0}
+#game #input-keyboard[aria-pressed=true]{border-top-left-radius:0;border-bottom-left-radius:0}
+#game #input-mobile[aria-pressed=true]{border-top-right-radius:0;border-bottom-right-radius:0}
+#game .input-choice::before,#game .input-choice::after{position:absolute;top:0;height:40px;width:16px;pointer-events:none;transition:transform .18s ease,background-color .18s ease}
+#game .input-choice:has(#input-keyboard[aria-pressed=true])::before{content:'';right:calc(100% - 1px);background:var(--ui-accent);border-radius:4px 0 0 4px}
+#game .input-choice:has(#input-mobile[aria-pressed=true])::after{content:'';left:calc(100% - 1px);background:var(--ui-accent);border-radius:0 4px 4px 0}
+@media(hover:hover){
+ #game .input-choice:has(#input-keyboard[aria-pressed=true]:hover)::before,
+ #game .input-choice:has(#input-mobile[aria-pressed=true]:hover)::after{transform:translateY(-2px)}
+}
+@media(prefers-reduced-motion:reduce){#game .input-choice::before,#game .input-choice::after{transition:none}}
+
+/* Shared, readable action/keybind grid for general and weapon controls. */
+#game select{background:var(--button-idle);color:var(--button-ink);border:1px solid var(--button-edge);transition:background-color .18s ease,color .18s ease}
+#game select:focus,#game select[data-editing=true]{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent);outline:none;box-shadow:none}
+#game select option{background:#242928;color:#fff}
+#game select option:checked{background:var(--ui-accent);color:var(--button-active-ink)}
+/* The option popup is drawn in-game so no OS blue highlight leaks through. */
+#game select[hidden],#game .menu-select-list[hidden]{display:none!important}
+#game .menu-select{display:flex;align-items:center;justify-content:space-between;gap:18px;min-width:135px;padding:8px 10px;border:1px solid var(--button-edge);border-radius:2px;background:var(--button-idle);color:var(--button-ink);font:inherit;font-size:11px;letter-spacing:0;cursor:pointer;transition:background-color .18s,color .18s}
+.menu-select::after{content:'';width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-2px) rotate(45deg)}
+#game .menu-select:is(:focus,[aria-expanded=true]){background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent);outline:none;box-shadow:none}
+#game .menu-select-list{position:fixed;z-index:70;overflow-y:auto;overscroll-behavior:contain;padding:4px;border:1px solid var(--ui-accent);border-radius:3px;background:var(--button-idle);color:var(--button-ink);box-shadow:0 8px 24px #0004;font:700 11px/1.4 Arial,Helvetica,sans-serif;letter-spacing:0}
+#game .menu-select-option{padding:9px 11px;min-height:34px;border-radius:2px;cursor:pointer}
+#game .menu-select-option:is([aria-selected=true],[data-highlight=true]){background:var(--ui-accent);color:var(--button-active-ink)}
+#game .menu-select-option[aria-selected=true][data-highlight=true]{color:#fff;text-shadow:-1px 0 var(--button-active-ink),1px 0 var(--button-active-ink),0 -1px var(--button-active-ink),0 1px var(--button-active-ink)}
+#game .menu-select-option[aria-disabled=true]{opacity:.4;cursor:default}
+@media(hover:hover){#game .menu-select:hover{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}}
+@media(prefers-reduced-motion:reduce){#game .menu-select{transition:none}}
+#game summary::marker{color:inherit}
+#game input{accent-color:var(--ui-accent);caret-color:currentColor}
+#game input:focus-visible{outline:1px solid var(--ui-accent);outline-offset:2px;box-shadow:none}
+#game input:not([type=checkbox]):not([type=radio]):not([type=range]):focus{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}
+#game label:has(input:is([type=checkbox],[type=radio]):focus-visible){background:var(--ui-accent);color:var(--button-active-ink)}
+#game label:has(input:is([type=checkbox],[type=radio]):focus-visible) input{accent-color:var(--button-active-ink);outline-color:var(--button-active-ink)}
+@media(hover:hover){
+ #game select:hover{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}
+ #game label:has(input:is([type=checkbox],[type=radio])):hover{background:var(--ui-accent);color:var(--button-active-ink)}
+ #game label:has(input:is([type=checkbox],[type=radio])):hover input{accent-color:var(--button-active-ink)}
+ #game input:not([type=checkbox]):not([type=radio]):not([type=range]):hover{border-color:var(--ui-accent)}
+}
+#game button .back-arrow{position:absolute;left:10px;top:-4%;height:108%;width:64px;max-width:calc(100% - 20px);display:block;pointer-events:none}
+#game button:has(>.back-arrow){width:86px;min-width:86px;justify-self:start}
+.controls-grid{width:100%;border-collapse:collapse;table-layout:fixed;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;text-align:left;color:#e6ebe8}
+.controls-grid th,.controls-grid td{padding:12px 14px;border:1px solid #3a4540;vertical-align:top;overflow-wrap:anywhere}
+.controls-grid th:first-child{width:36%}
+.controls-grid thead th{background:#35413b;color:#fff;font-size:11px;letter-spacing:.08em;font-weight:700}
+.controls-grid tbody th{font-weight:600;color:#c0d9d2}
+.controls-grid tbody tr:nth-child(odd){background:#ffffff04}
+.controls-grid td small{display:block;margin-top:5px;color:#99aaa2;font-size:11px;line-height:1.5}
+.weapon-control-entry .controls-grid{border-style:hidden}
+@media(max-width:600px){.controls-grid th,.controls-grid td{padding:10px 9px}.controls-grid{font-size:12px}}
+
+
+
+
+
+
+
+#game .menu-shell [data-page=weapons]{width:min(640px,100%)}
+.weapon-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;max-height:calc(100dvh - 200px);overflow-y:auto;padding:3px 3px 12px}
+.weapon-scroll-frame{position:relative}
+.weapon-scroll-frame .weapon-options{scrollbar-width:none}
+.weapon-scroll-frame .weapon-options::-webkit-scrollbar{display:none}
+.weapon-scroll-cue{position:absolute;bottom:28px;left:50%;width:44px;height:30px;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .15s;filter:drop-shadow(0 2px 4px #000c)}
+.weapon-scroll-frame.has-more .weapon-scroll-cue{opacity:1}
+.weapon-scroll-cue svg{display:block;width:100%;height:100%;fill:var(--ui-accent);stroke:#191c1c;stroke-width:2;stroke-linejoin:round}
+.weapon-card{min-width:0;border:1px solid #424846;border-radius:7px;overflow:hidden;background:#242928;align-self:start}
+#game .weapon-card .weapon-choice{display:block;width:100%;height:auto;min-height:390px;margin:0;padding:0 0 18px;border:0;border-radius:0;white-space:normal;text-align:left}
+.weapon-preview{display:block;width:100%;aspect-ratio:5/6;object-fit:cover;background:transparent}
+.weapon-card:has(.weapon-choice:focus-visible){border-color:var(--ui-accent)}
+@media(hover:hover){.weapon-card:has(.weapon-choice:hover){border-color:var(--ui-accent)}}
+.weapon-name{display:block;position:relative;height:40px;overflow:hidden;margin:14px 0 12px}
+.weapon-name>.button-label{position:absolute;left:10px;top:0;font:inherit;line-height:32px;white-space:nowrap;transform-origin:0 0;pointer-events:none}
+#game button .weapon-description{display:block;padding:0 12px;font-family:Arial,Helvetica,sans-serif!important;font-size:13px;font-weight:400;line-height:1.6;letter-spacing:0;text-transform:none!important;color:inherit}
+@media(max-width:480px){.weapon-options{gap:10px}.weapon-preview{aspect-ratio:4/5}#game .weapon-card .weapon-choice{min-height:330px}#game button .weapon-description{font-size:12px;padding:0 10px}.weapon-options{max-height:calc(100dvh - 170px)}}
+
+
+/* Shared player health: restrained pink, with a brief trailing damage segment. */
+.health-hud{display:none;position:absolute;z-index:5;top:46px;left:50%;transform:translateX(-50%);width:clamp(220px,27vw,340px);pointer-events:none;color:var(--ui-accent);font-family:Arial,sans-serif;filter:drop-shadow(0 1px 2px #15201bc0)}
+.playing .health-hud{display:block}
+.health-readout{display:flex;align-items:baseline;justify-content:center;margin-top:9px}
+.health-number{font-size:20px;line-height:1;font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:.04em}
+.health-track{height:11px;background:#202827dc;border:1px solid #17231fcc;position:relative;border-radius:1px}
+.health-track i{position:absolute;inset:0;transform-origin:left;will-change:transform}
+.health-fill{background:var(--ui-accent)}
+.health-track .health-loss{right:auto;background:#ff1f33;transform-origin:center;will-change:width,transform}
+/* While health is actually draining the segment goes hot: a saturated red with
+   its own glow, so it separates from the pink bar instead of sitting a shade
+   off it. Dropped the moment the bar settles, so the HUD is calm at rest. */
+.health-track .health-loss.bleeding{background:#ff2233;box-shadow:0 0 14px #ff1f33,0 0 34px #ff1f3380,inset 0 0 0 1px #ffd2d6;filter:brightness(1.2) saturate(1.2)}
+/* The whole readout reacts, not just the sliver: the track lights its own rim
+   and the number goes hot, so losing health is caught out of the corner of the
+   eye rather than needing to be looked for. */
+.health-hud.bleeding .health-track{border-color:#ff5563;box-shadow:0 0 0 1px #ff1f3366,0 0 16px #ff1f3359}
+.health-hud.bleeding .health-number{color:#ff5a66;text-shadow:0 0 10px #ff1f3399}
+.health-hud.bleeding{filter:drop-shadow(0 1px 2px #15201bc0) drop-shadow(0 0 8px #ff1f3355)}
+@media(max-width:760px){.health-hud{top:104px;width:240px;max-width:70vw}}
+/* One readable font across live HUD labels, counters and cooldowns. */
+:root{--hud-font:Arial,Helvetica,sans-serif}
+#weapon,#weapon *,.health-hud,.health-hud *,.playing .mode,.playing .fps-counter,.playing .toast{font-family:var(--hud-font)!important}
+.health-number,#weapon .weapon-count,#weapon .hex-recharge-center span{font-weight:700;font-variant-numeric:tabular-nums}
+.health-hud .health-number,.damage-feedback span{font-family:Bahnschrift,'Trebuchet MS',sans-serif!important;font-weight:600}
+.damage-feedback{display:none;position:absolute;inset:0;z-index:6;pointer-events:none;overflow:hidden}
+.playing .damage-feedback{display:block}
+.damage-feedback span{position:absolute;transform:translate(-50%,-50%);color:#ed7c86;font-size:21px;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.04em;white-space:nowrap;text-shadow:0 1px 3px #24161dcc;will-change:opacity,top}
+
+/* Death uses the same dusty red as the health-loss segment. */
+body.dying #world{cursor:default}
+body.dying .health-hud,body.dying #weapon,body.dying #reticle,body.dying .rifle-spread,body.dying .touch-controls,body.dying .damage-feedback,body.dying #hit-marker,body.dying .masthead{visibility:hidden!important;pointer-events:none!important}
+/* The death screen comes in after the camera has zoomed onto the body, and
+   sits to one side (below on narrow screens) so the gore stays in view: the
+   camera frames the body in the other half (death-view.js cameraFrame). */
+#death-screen{position:absolute;inset:0;z-index:40;display:grid;place-items:center end;padding:0 max(3vw,20px);overflow:hidden;isolation:isolate;color:#111615;background:linear-gradient(90deg,#661f3000 30%,#661f3038 100%)}
+#death-screen.hidden{display:none}
+.death-wash{position:absolute;z-index:-1;left:50%;top:50%;width:190%;height:150%;animation:death-spread .48s cubic-bezier(.12,.64,.22,1) both}
+.death-wash svg{width:100%;height:100%;overflow:visible;fill:#ce3041}
+.death-satellite{transform-origin:500px 380px;animation:death-droplet .35s .05s ease-out both}
+.death-card{position:relative;isolation:isolate;display:grid;grid-template-columns:1fr;grid-template-rows:auto auto;align-items:center;gap:10px;width:min(440px,40vw);height:auto;animation:death-reveal .22s both}
+#game #death-title{height:clamp(80px,17vh,160px);width:100%;margin:0;color:#090d0c;line-height:1;text-transform:uppercase!important}
+#game #death-title svg{display:block;width:100%;height:100%;overflow:visible;fill:currentColor}
+#game #death-title text{font-family:'Arial Black',Arial,sans-serif!important;font-weight:900;text-transform:uppercase!important}
+.death-actions{min-width:0}
+#game #death-screen button{display:block;width:100%;height:46px;min-height:46px;margin:12px 0 0;background:transparent;color:#090d0c;border:0;border-radius:0;box-shadow:none;outline:none;text-align:left;font-size:34px}
+#game #death-screen button:hover,#game #death-screen button:focus-visible{background:transparent;color:var(--ui-accent);border:0;box-shadow:none;outline:none;text-shadow:-1px 0 #090d0c,1px 0 #090d0c,0 -1px #090d0c,0 1px #090d0c}
+@keyframes death-spread{0%{transform:translate(-50%,-50%) scale(.015) rotate(-5deg)}65%{transform:translate(-50%,-50%) scale(1.035) rotate(1deg)}100%{transform:translate(-50%,-50%) scale(1) rotate(0)}}
+@keyframes death-droplet{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes death-reveal{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.death-wash{animation:none;transform:translate(-50%,-50%)}.death-satellite{animation:none}.death-card{animation:death-reveal .15s both}}
+.damage-feedback span{color:#ff5266;font-weight:700;-webkit-text-stroke:.8px #251218;paint-order:stroke fill;text-shadow:0 2px 3px #080b0bf2,0 0 5px #080b0bd9;will-change:opacity,top,transform}
+.outgoing-number{text-align:center}
+.outgoing-number b{display:block;font:inherit}
+.outgoing-number small{position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);font:inherit;font-size:.65em;justify-content:center;flex-wrap:wrap;gap:3px 5px;width:max-content;max-width:180px}
+.outgoing-number em{font:inherit}
+
+.aim-cone{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:none;z-index:3;overflow:hidden}
+.aim-cone .cone-edges{fill:none;stroke:#f8e1bc;stroke-width:1.25;stroke-opacity:.72;filter:drop-shadow(0 1px 1px #171d19)}
+/* The ground the shell actually covers. Near transparent, but unmistakably red. */
+.aim-cone .cone-zone{fill:#d8393c;fill-opacity:.12;stroke:none;transition:fill-opacity .11s ease-out}
+.aim-cone.firing .cone-zone{fill-opacity:0;transition:none}
+.aim-cone.unloaded .cone-zone{fill-opacity:0}
+@media(prefers-reduced-motion:reduce){.aim-cone .cone-zone{transition:none}}
+#game .map-choice{position:relative;border:0}
+#game .map-choice .map-caption{display:block;height:108px;padding:0 8px;background:#484344;overflow:hidden}
+#game .map-choice .map-caption strong{display:grid;grid-template-rows:1fr 1fr;gap:0;height:108px;min-width:0;padding:0;margin:0;font-family:'Arial Black',Arial,sans-serif}
+#game .map-caption strong svg,#game .map-mode svg{display:block;width:100%;height:100%;fill:currentColor;font-family:'Arial Black',Arial,sans-serif;font-size:25px;font-weight:900}
+#game .map-choice .map-mode{position:absolute;bottom:108px;left:50%;transform:translateX(-50%);display:block;width:104px;height:30px;max-width:calc(100% - 24px);margin:0;padding:0 6px;overflow:hidden;border:0;border-radius:3px;background:#484344;color:inherit;letter-spacing:0;text-align:center;white-space:nowrap}
+
+#game .map-choice:is(:hover,:focus-visible) :is(.map-caption,.map-mode){background:var(--ui-accent);color:#171d19}
+
+
+
+
+
+
+
+
+
+
+/* Opaque empty slots and a bright reload fill keep each round distinct over sand. */
+#game #weapon .seed-pips i{height:12px;border:1px solid #111b19;box-shadow:0 0 0 1px #ffffff45;border-radius:1px}
+#game #weapon .seed-pips i.spent{background:linear-gradient(to top,var(--weapon-accent) var(--refill),#14211fee var(--refill));border-color:#83918c}
+#game #weapon .seed-pips[data-reloading=true] i{background:linear-gradient(to top,#efd293 var(--refill),#14211fee var(--refill));border-color:#d6bc82}
+#game #weapon .seed-pips i.available,#game #weapon .seed-pips i.filled{border-color:#0e1715;box-shadow:0 0 0 1px #ffffff70,0 1px 3px #0009}
+/* FPS and latency, tucked under the masthead buttons. Subtle by default, but
+   tabular and shadowed so it stays readable against bright sand. */
+#game .perf-readout{display:none;position:absolute;top:78px;right:0;flex-direction:column;align-items:flex-end;gap:1px;font-family:var(--hud-font);font-size:11px;font-weight:700;letter-spacing:.1em;font-variant-numeric:tabular-nums;color:#a8b6b2;opacity:.55;pointer-events:none;text-shadow:0 1px 2px #0d1412a8}
+.playing #game .perf-readout{display:flex}
+#game .perf-ping[data-grade=fair]{color:#e0c18c}
+#game .perf-ping[data-grade=poor]{color:#e09090}
+#game .perf-ping[data-grade=unknown]{opacity:.55}
+@media(max-width:760px){#game .perf-readout{top:70px;font-size:10px}}
+/* Frame limit slider. Walks the discrete FPS ladder; the pink thumb is the grab
+   target and the travelled track is painted from a --fill custom property,
+   since the WebKit thumb pseudo-element cannot style the run behind it. */
+#game .slider-setting{justify-content:space-between}
+#game .slider-field{display:flex;align-items:center;gap:12px;margin-left:auto;min-width:0}
+#game .slider-value{min-width:78px;text-align:right;font:700 11px/1 var(--hud-font);letter-spacing:.06em;font-variant-numeric:tabular-nums;color:#eee9df}
+#game .slider-field input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;margin:0;padding:0;background:transparent;cursor:pointer}
+#game .slider-field input[type=range]:focus{outline:none}
+#game .slider-field input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:2px;background:linear-gradient(90deg,var(--ui-accent) var(--fill,50%),#4a534f var(--fill,50%))}
+#game .slider-field input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:17px;height:17px;margin-top:-6px;border:0;border-radius:50%;background:var(--ui-accent);box-shadow:0 1px 3px #0d1412a8;transition:transform .12s ease,box-shadow .12s ease;position:relative;z-index:2}
+#game .slider-field input[type=range]:is(:hover,:focus-visible)::-webkit-slider-thumb{transform:scale(1.16);box-shadow:0 0 0 5px #e8afb926,0 1px 3px #0d1412a8}
+#game .slider-field input[type=range]:active::-webkit-slider-thumb{transform:scale(1.26)}
+#game .slider-field input[type=range]::-moz-range-track{height:5px;border-radius:2px;background:#4a534f}
+#game .slider-field input[type=range]::-moz-range-progress{height:5px;border-radius:2px;background:var(--ui-accent)}
+#game .slider-field input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:var(--ui-accent);box-shadow:0 1px 3px #0d1412a8;transition:transform .12s ease}
+#game .slider-field input[type=range]:is(:hover,:focus-visible)::-moz-range-thumb{transform:scale(1.16)}
+@media(prefers-reduced-motion:reduce){#game .slider-field input[type=range]::-webkit-slider-thumb,#game .slider-field input[type=range]::-moz-range-thumb{transition:none}}
+@media(max-width:520px){#game .slider-field input[type=range]{width:118px}#game .slider-value{min-width:68px}}
+
+/* Developer controls use ordinary interface text, not the display treatment. */
+#game :is(.dev-tools,.dev-window) button{font:700 11px/1 var(--hud-font);letter-spacing:.06em;height:auto;min-height:34px;padding:10px 12px;overflow:visible;text-align:left}
+#game :is(.dev-tools,.dev-window) button .button-label{position:static;transform:none;font:inherit}
+/* Floating developer window. Sits above play, moves with its header, and uses
+   ordinary interface text rather than the display treatment. */
+#game .dev-window{position:absolute;z-index:40;width:232px;background:#1b201fF2;border:1px solid #3c4543;border-radius:7px;box-shadow:0 12px 34px #0a0f0e8c;color:#dfe4df;font-family:var(--hud-font);pointer-events:auto;overflow:hidden}
+#game .dev-window.hidden{display:none}
+#game .dev-window.dragging{box-shadow:0 18px 42px #0a0f0eb3}
+#game .dev-window-bar{display:flex;align-items:center;justify-content:space-between;padding:7px 8px 7px 11px;background:#232928;border-bottom:1px solid #3c4543;cursor:grab;font:700 10px/1 var(--hud-font);letter-spacing:.14em;color:#9fb0aa;touch-action:none;user-select:none}
+#game .dev-window.dragging .dev-window-bar{cursor:grabbing}
+#game .dev-window-bar button.dev-window-close{min-height:22px;height:22px;width:22px;padding:0;display:grid;place-items:center;background:none;border:0;color:#9fb0aa;font:700 15px/1 var(--hud-font);text-align:center}
+#game .dev-window-bar button.dev-window-close:is(:hover,:focus-visible){color:var(--ui-accent);background:none}
+#game .dev-window-body{padding:8px 10px 10px;display:flex;flex-direction:column;gap:2px;max-height:min(62dvh,420px);overflow-y:auto}
+/* One dropdown per section in both dev surfaces (dev-options.js builds them). */
+#game :is(.dev-tools,.dev-window) .dev-section{flex:none;margin:4px 0;border:1px solid #3c4543;border-radius:5px;background:#202624;overflow:hidden}
+#game :is(.dev-tools,.dev-window) .dev-section>summary{padding:8px 10px;cursor:pointer;font:700 11px/1.2 var(--hud-font);letter-spacing:.1em;text-transform:uppercase!important;border:0;border-radius:0}
+#game :is(.dev-tools,.dev-window) .dev-section[open]>summary{border-bottom:1px solid #3c4543}
+#game :is(.dev-tools,.dev-window) .dev-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0;padding:6px 10px;font:600 11px/1.4 var(--hud-font);letter-spacing:.02em;color:#c8d0cb;text-transform:none!important;cursor:pointer}
+#game :is(.dev-tools,.dev-window) .dev-row input{margin:0;accent-color:var(--ui-accent)}
+#game :is(.dev-tools,.dev-window) .dev-row select{font:600 11px var(--hud-font);background:#272e2c;color:#dfe4df;border:1px solid #444d4a;border-radius:3px;padding:3px 5px;min-width:0;max-width:52%}
+/* Actions are ordinary rows: a name, and a small button like the other controls. */
+#game :is(.dev-tools,.dev-window) button.dev-row-button{flex:none;width:auto;min-height:0;height:auto;margin:0;padding:3px 8px;font:600 11px/1.3 var(--hud-font);letter-spacing:.02em;background:#272e2c;color:#dfe4df;border:1px solid #444d4a;border-radius:3px;text-transform:none!important}
+#game :is(.dev-tools,.dev-window) button.dev-row-button:is(:hover,:focus-visible){background:var(--ui-accent);color:#151718;border-color:var(--ui-accent)}
+#game .dev-tools .dev-option-list{margin:10px 0}
+/* Weapon dropdowns sit inside the Weapons dropdown, indented a step. */
+#game :is(.dev-tools,.dev-window) .dev-section .dev-section{margin:6px 8px;background:#1b201f}
+#game :is(.dev-tools,.dev-window) .dev-section .dev-section>summary{letter-spacing:.06em}
+#game :is(.dev-tools,.dev-window) .dev-empty{margin:0;padding:6px 10px;font:600 11px/1.4 var(--hud-font);color:#7f8b86;text-transform:none!important}
+#game #settings-controls .weapons-group>.weapon-control-list{padding:0 10px 4px}
+body.dev-hide-hud #game :is(.health-hud,#weapon,.masthead .brand,.masthead .mode,.footer,#online-badge,.damage-feedback,.touch-controls){visibility:hidden!important}
+@media(max-width:520px){#game .dev-window{width:210px}}
+
+/* Frame-limit prongs: one per weighted stop, sitting under the handle on the
+   same scale, so the detents are visible rather than only felt. */
+#game .slider-track{position:relative;display:block;width:248px;flex:none}
+#game .slider-ticks{position:absolute;left:0;right:0;top:50%;height:13px;transform:translateY(-50%);pointer-events:none}
+#game .slider-ticks i{position:absolute;top:0;width:2px;height:13px;margin-left:-1px;border-radius:1px;background:var(--ui-accent);opacity:.5}
+#game .slider-field input[type=range]{position:relative;z-index:1}
+@media(max-width:520px){#game .slider-track{width:186px}}
+/* Settings: a fixed-shape card that opens larger, with the sections as tabs
+   across the top and the exit arrow occupying the first tab slot. Developer
+   tools open as a second card of the same size beside it, not inside it. */
+#game #settings-panel .settings-stage{display:flex;align-items:stretch;justify-content:center;gap:16px;width:100%;padding:0 16px}
+#game #settings-panel .settings-card{width:min(560px,94vw);height:min(86dvh,760px);max-height:min(86dvh,760px);display:flex;flex-direction:column;padding:0;overflow:hidden}
+#game #settings-panel .settings-tabs{display:flex;gap:6px;margin:0;padding:12px 14px;border-bottom:1px solid #333c39;background:#20262500}
+/* Tabs wear the same fitted display lettering as every other menu button, so
+   the label fills the button height instead of sitting as small UI text. */
+#game #settings-panel .settings-tabs button{flex:1;min-width:0;height:40px;min-height:40px;padding:0 10px;text-align:center;border:1px solid #4b5651;border-radius:5px;background:transparent;overflow:hidden}
+/* One highlight for every way a tab can be current: pointer hover, keyboard
+   focus and the selected tab itself all read as the same pink block. */
+#game #settings-panel .settings-tabs button[aria-selected=true],
+#game #settings-panel .settings-tabs button:not(:disabled):focus-visible,
+#game #settings-panel .settings-tabs button[aria-selected=true]:focus-visible{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent);text-shadow:none}
+@media(hover:hover){
+ #game #settings-panel .settings-tabs button:not(:disabled):hover,
+ #game #settings-panel .settings-tabs button[aria-selected=true]:hover{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent);text-shadow:none}
+}
+/* The generic back button pins its arrow absolutely at the label origin and
+   forces an 86px box, which leaves the tab oversized with the arrow stuck in
+   its top-left corner. In the tab strip the arrow is the whole content, so the
+   button centres it and the arrow goes back to being in flow. */
+#game #settings-panel .settings-tabs .settings-exit{flex:0 0 52px;width:52px;min-width:52px;padding:0;display:grid;place-items:center;place-content:center}
+#game #settings-panel .settings-tabs .settings-exit .back-arrow{position:static;left:auto;top:auto;width:22px;height:14px;max-width:none;margin:0;display:block}
+#game .settings-body{flex:1;min-height:0;overflow-y:auto;padding:18px 22px 22px}
+#game .settings-body>[role=tabpanel][hidden]{display:none}
+#game .settings-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-top:0;margin:0 0 10px;padding-top:0;font:700 10px/1 var(--hud-font);letter-spacing:.2em;color:#93a09a}
+#game .settings-heading .fps-counter{float:none;opacity:.8;letter-spacing:.1em}
+#game .settings-body .settings-heading:not(:first-child){margin-top:26px;padding-top:18px;border-top:1px solid #313a37}
+#game .settings-note{font:400 11px/1.6 var(--hud-font);color:#8e9a94;margin:8px 0 0;text-transform:none;letter-spacing:.01em}
+#game .settings-warning{color:#e0c18c}
+#game #settings-panel .setting{margin-top:14px;justify-content:space-between;gap:14px}
+#game .settings-dev-toggle{flex:none;margin:0;border:0;border-top:1px solid #333c39;border-radius:0;background:transparent;color:#8e9a94;font:700 10px/1 var(--hud-font);letter-spacing:.16em;text-transform:uppercase;text-align:left;padding:13px 22px;min-height:42px}
+#game .settings-dev-toggle:is(:hover,:focus-visible){background:#272e2c;color:var(--ui-accent)}
+#game .dev-panel{padding:0}
+#game .dev-panel .dev-tools{display:flex;flex-direction:column;min-height:0;overflow-y:auto;padding:18px 22px 22px}
+#game .dev-panel .dev-tools h3{display:none}
+@media(max-width:1100px){
+ #game #settings-panel .settings-stage{flex-direction:column;align-items:center;overflow-y:auto;padding:12px 16px;gap:12px}
+ #game #settings-panel .settings-card{height:min(78dvh,680px);max-height:min(78dvh,680px);width:min(560px,94vw)}
+ #game #settings-panel.with-dev .settings-card{height:56dvh;max-height:56dvh}
+}
+/* The switch list scrolls on its own so the window can carry more of them
+   without growing past the screen. */
+#game .dev-window-switches{max-height:190px;overflow-y:auto;margin-top:4px;padding-right:2px;border-top:1px solid #333c39;border-bottom:1px solid #333c39}
+
+/* Playing with a mouse: the white aim dot is the only pointer, over the world
+   and over every panel and button, paused or not. It sits above the interface
+   and never takes a click itself. */
+body.game-cursor,body.game-cursor *{cursor:none!important}
+body.game-cursor #game #reticle{display:block!important;visibility:visible!important;z-index:1000;pointer-events:none}
+body.game-cursor.paused #game #reticle>span{display:none}
+
+/* Charge ring round the aim dot: Ballast's charge, Static's hex expansion.
+   A dark track keeps it readable on sand and in shade; the fill runs from the
+   interface pink to red, and pulses once it is full. */
+#game .reticle .charge-ring{position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%) rotate(-90deg);overflow:visible;pointer-events:none;filter:drop-shadow(0 0 2px #0a0f0dcc)}
+#game .reticle .charge-ring[hidden]{display:none}
+#game .reticle .charge-ring circle{fill:none;stroke-linecap:round}
+#game .reticle .charge-ring-track{stroke:#141b19b8;stroke-width:6.5}
+#game .reticle .charge-ring-fill{stroke:var(--charge-color,#ffadc6);stroke-width:4;stroke-dasharray:0 100;transition:stroke .08s linear}
+#game .reticle .charge-ring.full .charge-ring-fill{animation:charge-full .5s ease-in-out infinite alternate}
+#game .reticle .charge-ring.stored .charge-ring-track{stroke:#f4f6f5;stroke-opacity:.95;stroke-width:8.5}
+@keyframes charge-full{from{stroke-width:4}to{stroke-width:5.5}}
+@media(prefers-reduced-motion:reduce){#game .reticle .charge-ring.full .charge-ring-fill{animation:none}}
+/* The charge used to sit in a thin bar beside the ability dial; it lives at the cursor now. */
+#game #weapon .hex-range{display:none!important}
+/* Positioned by transform from main.js (placeReticle), not by left/top. */
+#game #reticle{left:0;top:0;will-change:transform}
+/* Online page: host button, a code box with JOIN beside it, and a status line. */
+#game .online-join{display:flex;gap:8px;margin:0 0 12px;align-items:stretch}
+#game .online-join input{flex:1 1 0;width:0;min-width:0;height:auto;padding:8px 14px;background:#191c1c;border:1px solid #67746e;border-radius:3px;color:#fff;font:700 20px Arial,sans-serif;letter-spacing:.3em;text-transform:uppercase!important}
+#game .online-join input::placeholder{color:#8b948f;letter-spacing:.12em;font-size:14px;text-transform:uppercase!important}
+#game .online-join input:focus{outline:2px solid var(--ui-accent);outline-offset:2px}
+#game .online-join button{width:auto;height:auto;min-height:0;margin:0;flex:0 0 96px}
+#game .online-status{min-height:18px;margin:12px 0 0;font:700 12px/1.5 Arial,sans-serif;color:var(--ui-accent);letter-spacing:.03em}
+/* In game: the room badge under the title. Tap it to copy an invite link. */
+#game .online-badge{min-height:0;height:auto;width:auto;top:calc(max(14px,env(safe-area-inset-top)) + 72px);left:max(24px,env(safe-area-inset-left));z-index:5;padding:6px 10px;position:absolute;border:0;border-radius:3px;background:#242928cc;color:#fff;font:700 10px/1 Arial,sans-serif;letter-spacing:.12em;pointer-events:auto}
+#game .online-badge:hover{background:var(--ui-accent);color:#151718}
+body:not(.playing) #game .online-badge{display:none}
+
+/* Host's player list in the pause menu (online-play.js). */
+
+/* Multiplayer (multiplayer-hud.js). Pink for everyone else, blue for you. */
+:root{--mp-enemy:#e8afb9;--mp-you:#8fd3ff}
+#game .online-identity{display:grid;grid-template-columns:1fr;gap:8px;margin:0 0 12px}
+#game .online-field{display:flex;flex-direction:column;gap:5px;font:700 11px/1.2 Arial,sans-serif;letter-spacing:.12em;color:#a8b6b2;text-transform:uppercase!important}
+#game .online-field input{height:auto;padding:9px 12px;background:#191c1c;border:1px solid #67746e;border-radius:3px;color:#fff;font:700 16px Arial,sans-serif;letter-spacing:.02em;text-transform:none!important}
+#game .online-field input::placeholder{color:#8b948f;font-size:13px}
+#game .online-field input:focus{outline:2px solid var(--ui-accent);outline-offset:2px}
+#game .kill-feed{position:absolute;z-index:6;bottom:max(96px,calc(env(safe-area-inset-bottom) + 96px));left:max(24px,env(safe-area-inset-left));display:flex;flex-direction:column;align-items:flex-start;gap:5px;pointer-events:none;font:700 13px/1.3 var(--hud-font);color:#eee9df;text-shadow:0 1px 3px #14100c}
+#game .kill-feed-line{background:#191c1ccc;border-radius:3px;padding:5px 10px;animation:feed-in .18s ease-out}
+#game .kill-feed .feed-enemy,#game .kill-feed .feed-you{color:var(--mp-you)}
+#game .kill-feed .feed-verb{color:#c9c3b6;font-weight:600;text-transform:lowercase!important}
+@keyframes feed-in{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+/* Tab's scoreboard: the game stays in full view around it; the card is a little
+   see-through, with a text shadow keeping every row as easy to read. */
+#game .scoreboard{position:absolute;inset:0;z-index:45;display:grid;place-items:center;background:none;pointer-events:none}
+#game .scoreboard.hidden{display:none}
+#game .scoreboard-card{background:#232827d1;text-shadow:0 1px 2px #0009;color:#eee9df;border:1px solid #3c4543;border-radius:6px;padding:20px 22px;width:min(760px,94vw);max-height:86dvh;overflow:auto;box-shadow:0 18px 60px #0008}
+#game .scoreboard-card h2{margin:0 0 12px;font:900 26px/1 Arial Black,Arial,sans-serif}
+#game .scoreboard table{width:100%;border-collapse:collapse;font:600 13px/1.4 var(--hud-font);font-variant-numeric:tabular-nums}
+#game .scoreboard th,#game .scoreboard td{padding:8px 8px;text-align:right;border-bottom:1px solid #333c39;white-space:nowrap}
+#game .scoreboard thead th{font-size:10px;letter-spacing:.12em;color:#a8b6b2;text-transform:uppercase!important}
+#game .scoreboard th:nth-child(2),#game .scoreboard td:first-child,#game .scoreboard tbody th{text-align:left}
+#game .scoreboard tbody th{color:var(--mp-enemy);font-weight:700;text-transform:none!important}
+#game .scoreboard tr.board-you th{color:var(--mp-you)}
+#game .scoreboard tr.board-away{opacity:.55}
+#game .scoreboard td:last-child{text-transform:none!important}
+#game .lobby-settings[hidden],#game .lobby-heading[hidden]{display:none}
+#game .scoreboard-hint{margin:10px 0 0;font:600 11px Arial,sans-serif;color:#8b948f}
+#game #scores-toggle{width:auto;padding:0 10px;font:700 10px/1 var(--hud-font);letter-spacing:.08em}
+@media(max-width:600px){#game .scoreboard th:nth-child(5),#game .scoreboard td:nth-child(5),#game .scoreboard th:nth-child(6),#game .scoreboard td:nth-child(6){display:none}#game .kill-feed{font-size:12px}}
+
+/* Player names keep the case they were typed in. */
+#game :is(.kill-feed,.kill-feed *,.scoreboard tbody th,.lobby-name,.match-winner,.match-winner *){text-transform:none!important}
+body[data-controls=keyboard] #game #scores-toggle{display:none}
+
+/* Health bar: bigger and wider everywhere (it read too small on phones). */
+.health-hud{width:clamp(260px,30vw,400px)}
+.health-track{height:15px}
+.health-number{font-size:22px}
+
+/* Aim dot on something hittable (aim assist lock, or the cursor over a target). */
+#game .reticle.on-target{background:#ff3440!important;box-shadow:0 0 0 2px #ff34404d,0 0 8px #ff3440aa!important}
+
+/* Button lettering and map captions are shown only once fitted (button-typography.js), never as plain text first. */
+#game .button-label:not([data-fit]),#game .map-caption strong svg:not([viewBox]),#game .map-mode svg:not([viewBox]){visibility:hidden}
+
+/* Death screen (death-screen.js): who killed you and the respawn countdown sit
+   over the buttons, in the card's black ink. The bar drains as the respawn nears. */
+#game #death-screen .death-by{margin:0 0 6px;font:800 clamp(16px,2.1vw,22px)/1.2 var(--hud-font,Arial),sans-serif;color:#090d0c;text-transform:none!important}
+#game #death-screen .death-by .death-killer{color:#fff;text-shadow:-1px 0 #090d0c,1px 0 #090d0c,0 -1px #090d0c,0 1px #090d0c}
+#game #death-screen .death-respawn{display:grid;grid-template-columns:auto 1fr;align-items:end;column-gap:14px;margin:0 0 14px;color:#090d0c}
+#game #death-screen .death-respawn-label{font:900 13px/1 Arial Black,Arial,sans-serif;letter-spacing:.18em;text-transform:uppercase}
+#game #death-screen .death-respawn-count{justify-self:end;font:900 clamp(40px,5.6vw,64px)/.8 Arial Black,Arial,sans-serif;font-variant-numeric:tabular-nums}
+#game #death-screen .death-respawn-bar{grid-column:1/-1;display:block;height:6px;margin-top:10px;background:#090d0c33;overflow:hidden}
+#game #death-screen .death-respawn-bar b{display:block;height:100%;background:#090d0c;transform-origin:left;transition:transform .12s linear}
+@media(max-width:700px),(max-aspect-ratio:1/1){#death-screen{place-items:end center;padding:0 0 max(3vh,14px);background:linear-gradient(180deg,#661f3000 40%,#661f3038 100%)}.death-card{grid-template-columns:1fr;grid-template-rows:auto auto;height:auto;gap:8px;width:min(440px,90vw)}.death-wash{width:150%;height:140%}#game #death-title{height:12vh}#game #death-screen button{font-size:26px;height:38px;min-height:38px;margin-top:8px}}
+
+/* Lobby (lobby-panel.js): the pause card's look, with a player list. */
+#game #lobby-panel{z-index:46}
+#game .lobby-card{width:min(440px,94vw);max-height:92dvh;overflow:auto;text-align:left}
+#game .lobby-room{margin:2px 0 14px;font:700 12px/1.4 var(--hud-font,Arial),sans-serif;letter-spacing:.1em;color:#6d6c58;text-transform:uppercase}
+#game .lobby-heading{margin:14px 0 6px;padding-top:10px;border-top:1px solid #30372f40;font:700 11px/1.4 var(--hud-font,Arial),sans-serif;letter-spacing:.14em;color:#6d6c58;text-transform:uppercase}
+#game .lobby-players{list-style:none;margin:0;padding:0}
+#game .lobby-player{display:flex;align-items:center;gap:10px;min-height:36px;padding:3px 0;font:700 15px/1.2 var(--hud-font,Arial),sans-serif;color:#242928;border-bottom:1px solid #30372f26}
+#game .lobby-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:none!important}
+#game .lobby-tag{font:800 10px/1 Arial,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#eee9df;background:#242928;padding:4px 6px;border-radius:2px}
+#game .lobby-tag.lobby-you{background:var(--ui-accent);color:#151718}
+#game .lobby-ping{min-width:56px;text-align:right;font:600 13px/1 var(--hud-font,Arial),sans-serif;font-variant-numeric:tabular-nums;color:#6d6c58;text-transform:none!important}
+#game #lobby-panel button.lobby-remove{flex:none;width:auto;margin:0;min-height:30px;height:30px;padding:0 12px;font:700 12px/30px var(--hud-font,Arial),sans-serif;letter-spacing:.08em}
+#game .lobby-setting{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 8px;font:700 13px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.1em;color:#242928;text-transform:uppercase}
+#game .lobby-toggle{display:flex;gap:0;border:1px solid var(--button-edge)}
+#game #lobby-panel .lobby-toggle button{width:auto;margin:0;min-height:32px;height:32px;padding:0 14px;border:0;border-radius:0;background:var(--button-idle);color:#c9c3b6;font:700 12px/32px var(--hud-font,Arial),sans-serif;letter-spacing:.1em;text-transform:uppercase}
+#game #lobby-panel .lobby-toggle button[aria-pressed=true]{background:var(--ui-accent);color:#151718}
+#game #lobby-panel #lobby-reset-map,#game #lobby-panel #lobby-restart-match{text-align:right}
+
+/* Colour swatches: the player's colourway (remote-players.js), next to their name. */
+#game .player-swatch{display:inline-block;flex:none;width:10px;height:10px;margin-right:8px;border-radius:50%;background:var(--swatch);box-shadow:0 0 0 2px #151718;vertical-align:1px}
+#game .scoreboard td.board-ping{color:#c9c3b6;text-transform:none!important}
+
+/* Match clock (multiplayer-hud.js), above the health bar, and the results card. */
+#game .match-clock{position:absolute;z-index:5;top:14px;left:50%;transform:translateX(-50%);font:800 18px/1 var(--hud-font,Arial),sans-serif;font-variant-numeric:tabular-nums;letter-spacing:.06em;color:#eee9df;text-shadow:0 1px 3px #15201bc0;pointer-events:none}
+#game .match-clock.match-clock-low{color:#ff5a66}
+body:not(.playing) #game .match-clock{display:none}
+#game .match-results{position:absolute;inset:0;z-index:44;display:grid;place-items:center;background:#11151499}
+#game .match-results.hidden{display:none}
+#game .match-results .modal-card{background:#232827;color:#eee9df;border:1px solid #3c4543;border-radius:6px;width:min(460px,94vw);padding:24px 26px;text-align:left;box-shadow:0 18px 60px #0008}
+#game .match-results h2{margin:0 0 10px;font:900 30px/1 Arial Black,Arial,sans-serif}
+#game .match-results .match-winner{margin:0 0 12px;font:800 18px/1.3 var(--hud-font,Arial),sans-serif;text-transform:none!important}
+#game .match-results table{width:100%;border-collapse:collapse;font:600 14px/1.4 var(--hud-font,Arial),sans-serif;font-variant-numeric:tabular-nums}
+#game .match-results th,#game .match-results td{padding:7px 8px;text-align:right;border-bottom:1px solid #333c39}
+#game .match-results thead th{font-size:10px;letter-spacing:.12em;color:#a8b6b2;text-transform:uppercase!important}
+#game .match-results tbody th,#game .match-results th:nth-child(2),#game .match-results td:first-child{text-align:left}
+#game .match-results tbody th{color:var(--mp-enemy);text-transform:none!important}
+#game .match-results tr.board-you th{color:var(--mp-you)}
+#game .match-results .feed-you{color:var(--mp-you)}#game .match-results .feed-enemy{color:var(--mp-enemy)}
+#game .match-results .match-next{margin:12px 0 0;font:700 13px/1 var(--hud-font,Arial),sans-serif;color:var(--ui-accent);letter-spacing:.08em;text-transform:uppercase}
+
+/* Between rounds and while picking a weapon (online): no HUD, no touch buttons. */
+body.mp-between #weapon,body.mp-between #reticle,body.mp-between .health-hud,body.mp-between #touch-controls,body.mp-between .ability-hud,body.mp-between #kill-feed{display:none!important}
+
+/* Round settings rows (lobby-settings.js): a label and a segmented choice. They
+   sit on the dark menus, the dark lobby screen and the cream pause card, so the
+   label takes the card's ink and the choices carry their own colours. */
+#game .round-settings{display:grid;gap:8px;margin:4px 0 10px}
+#game .round-setting{display:flex;align-items:center;justify-content:space-between;gap:12px;font:700 12px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.1em;text-transform:uppercase;color:inherit}
+#game .round-setting-off{opacity:.38}
+#game .round-choices{display:flex;flex-wrap:wrap;justify-content:flex-end;border:1px solid var(--button-edge)}
+#game .round-choices button,#game .lobby-modes button,#game .lobby-maps button{width:auto;margin:0;min-height:32px;height:32px;padding:0 12px;border:0;border-radius:0;background:var(--button-idle);color:#c9c3b6;font:700 12px/32px var(--hud-font,Arial),sans-serif;letter-spacing:.1em;text-transform:uppercase;box-shadow:none;transform:none}
+#game .round-choices button[aria-pressed=true],#game .lobby-modes button[aria-pressed=true],#game .lobby-maps button[aria-pressed=true]{background:var(--ui-accent);color:#151718}
+#game .round-choices button:not(:disabled):hover,#game .lobby-modes button:not(:disabled):hover,#game .lobby-maps button:not(:disabled):hover,#game .round-choices button:focus-visible,#game .lobby-modes button:focus-visible{background:#353c3a;color:#fff}
+#game .round-choices button[aria-pressed=true]:hover{background:var(--ui-accent);color:#151718}
+#game .round-settings-readonly .round-choices button:disabled{opacity:1;cursor:default}
+#game .round-settings-readonly .round-choices button:disabled:not([aria-pressed=true]){color:#7f8783}
+#game #host-settings{margin:6px 0 16px;color:#eee9df}
+#game [data-page="host-setup"] #host-create{margin-top:6px}
+
+/* Lobby screen (lobby-screen.js): full screen over the world's pick view. */
+#game .lobby-screen{position:absolute;inset:0;z-index:43;display:grid;place-items:center;padding:16px;background:#141817c9;overflow:auto}
+#game .lobby-screen.hidden{display:none}
+#game .lobby-screen-card{width:min(900px,100%);background:#232827;color:#eee9df;border:1px solid #3c4543;border-radius:8px;padding:22px 24px;box-shadow:0 18px 60px #0008}
+#game .lobby-screen-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:6px}
+#game .lobby-screen h2{margin:0;font:900 32px/1 Arial Black,Arial,sans-serif}
+#game .lobby-screen .lobby-code{width:auto;margin:0;min-height:0;height:auto;padding:6px 10px;background:transparent;border:1px solid #3c4543;color:var(--ui-accent);font:800 13px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.14em;text-transform:uppercase}
+#game .lobby-columns{display:grid;grid-template-columns:1fr 1.2fr;gap:28px}
+#game .lobby-screen .lobby-heading{border-top-color:#3c4543;color:#9fb0aa}
+#game .lobby-screen .lobby-player{color:#eee9df;border-bottom-color:#2f3735}
+#game .lobby-screen .lobby-tag{background:#9fb0aa;color:#151718}
+#game .lobby-screen .lobby-tag.lobby-you{background:var(--ui-accent)}
+#game .lobby-screen .lobby-ping{color:#c9c3b6}
+#game .lobby-screen button.lobby-remove{flex:none;width:auto;margin:0;min-height:30px;height:30px;padding:0 12px;font:700 12px/30px var(--hud-font,Arial),sans-serif;letter-spacing:.08em}
+#game .lobby-count{color:#eee9df;margin-left:6px}
+#game .lobby-modes,#game .lobby-maps{display:flex;flex-wrap:wrap;border:1px solid var(--button-edge);width:max-content;max-width:100%}
+#game .lobby-modes button:disabled:not([aria-pressed=true]),#game .lobby-maps button:disabled:not([aria-pressed=true]){color:#7f8783;opacity:1;cursor:default}
+#game .lobby-screen-foot{display:flex;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap}
+#game .lobby-screen-foot button{width:auto;min-width:200px;margin:0}
+#game .lobby-screen-foot #lobby-start{flex:1}
+#game .lobby-wait{flex:1;margin:0;font:700 13px/1.3 var(--hud-font,Arial),sans-serif;color:#9fb0aa;letter-spacing:.08em;text-transform:uppercase}
+@media(max-width:720px){#game .lobby-columns{grid-template-columns:1fr;gap:6px}#game .lobby-screen-card{padding:18px}#game .lobby-screen-foot button{min-width:0;flex:1}}
+
+/* Weapon pick (weapon-pick.js): the menus' grey, a little see-through, over a
+   top-down view of the world. Rounded squares, five to a row, scrolling. */
+#game .weapon-pick{position:absolute;inset:0;z-index:42;display:grid;place-items:center;padding:16px;pointer-events:auto}
+#game .weapon-pick.hidden{display:none}
+#game .weapon-pick-card{width:min(760px,100%);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;background:#232827d6;color:#eee9df;border:1px solid #ffffff14;border-radius:14px;padding:18px 20px;box-shadow:0 18px 60px #0007;backdrop-filter:blur(3px)}
+#game .weapon-pick-head{display:grid;grid-template-columns:1fr auto;align-items:end;gap:8px 16px;margin-bottom:14px}
+#game .weapon-pick-title{font:900 22px/1 Arial Black,Arial,sans-serif;text-transform:lowercase}
+#game .weapon-pick-timer{display:contents}
+#game .weapon-pick-timer b{justify-self:end;font:900 40px/.8 Arial Black,Arial,sans-serif;font-variant-numeric:tabular-nums;color:#eee9df}
+#game .weapon-pick-hurry .weapon-pick-timer b{color:#ff5a66}
+#game .weapon-pick-timer i{grid-column:1/-1;display:block;height:5px;background:#ffffff1a;border-radius:3px;overflow:hidden}
+#game .weapon-pick-timer s{display:block;height:100%;background:var(--ui-accent);transform-origin:left;transition:transform .12s linear;text-decoration:none}
+#game .weapon-pick-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;overflow-y:auto;padding:6px 4px 10px;margin:0 -4px}
+#game button.weapon-pick-choice{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;aspect-ratio:1;width:100%;height:auto;min-height:0;margin:0;padding:8px 6px;border:1px solid #ffffff17;border-radius:16px;background:#3a41408c;color:#eee9df;box-shadow:none;transition:transform .16s ease,background .16s,border-color .16s,box-shadow .16s}
+#game .weapon-pick-art{position:absolute;inset:6px 6px 26px;display:grid;place-items:center;overflow:visible}
+#game .weapon-pick-art img{max-width:100%;max-height:100%;object-fit:contain;transition:transform .18s ease;filter:drop-shadow(0 4px 6px #0006)}
+#game .weapon-pick-name{position:relative;font:800 11px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.12em;text-transform:uppercase}
+#game button.weapon-pick-choice:hover,#game button.weapon-pick-choice:focus-visible,#game button.weapon-pick-choice[aria-pressed=true]{transform:translateY(-3px) scale(1.04);background:#4a5250b3;outline:none}
+#game button.weapon-pick-choice:hover .weapon-pick-art img,#game button.weapon-pick-choice:focus-visible .weapon-pick-art img,#game button.weapon-pick-choice[aria-pressed=true] .weapon-pick-art img{transform:scale(1.1) translateY(-3px)}
+#game button.weapon-pick-choice[aria-pressed=true]{border-color:var(--ui-accent);box-shadow:0 0 0 2px var(--ui-accent),0 8px 20px #0006}
+#game .weapon-pick-foot{display:flex;justify-content:flex-end;margin-top:12px}
+#game button.weapon-pick-go{width:auto;min-width:140px;height:46px;min-height:46px;margin:0;padding:0 28px;border:0;border-radius:12px;background:var(--ui-accent);color:#151718;font:900 22px/46px Arial Black,Arial,sans-serif;letter-spacing:.08em;box-shadow:0 6px 16px #0005;transition:transform .14s ease,filter .14s}
+#game button.weapon-pick-go:not(:disabled):hover,#game button.weapon-pick-go:focus-visible{transform:translateY(-2px) scale(1.03);filter:brightness(1.06);outline:none}
+#game button.weapon-pick-go:disabled{opacity:.45;cursor:default}
+@media(max-width:520px){#game .weapon-pick-grid{gap:8px}#game button.weapon-pick-choice{border-radius:12px;padding:5px 3px}#game .weapon-pick-name{font-size:8px;letter-spacing:.06em}#game .weapon-pick-art{inset:4px 4px 18px}}
+@media(prefers-reduced-motion:reduce){#game button.weapon-pick-choice,#game .weapon-pick-art img,#game button.weapon-pick-go{transition:none}}
+#game .weapon-pick-timer[hidden]{display:none}
+#game button.weapon-pick-back{width:auto;min-width:110px;height:46px;min-height:46px;margin:0 auto 0 0;padding:0 22px;border:1px solid #ffffff24;border-radius:12px;background:#3a4140b3;color:#eee9df;font:900 18px/46px Arial Black,Arial,sans-serif;letter-spacing:.08em;transition:transform .14s ease,background .14s}
+#game button.weapon-pick-back:hover,#game button.weapon-pick-back:focus-visible{transform:translateY(-2px);background:#4a5250;outline:none}
+
+/* Top left while playing: the title, then where you are (map · mode) on one
+   line, then the online room badge under both, all in one block so none of
+   them can overlap. On touch the title and that line are hidden (the health
+   bar lives there in landscape) and the badge keeps its own spot. */
+#game .brand p.where{display:flex;flex-wrap:wrap;align-items:center;gap:0}
+#game .brand p.where .mode{margin:0;font-size:inherit;letter-spacing:inherit;font-weight:inherit}
+#game .brand p.where .mode::before{content:'\00b7';margin:0 .7em;opacity:.7}
+body.playing #game .brand p.where{font-size:10px;letter-spacing:2px;margin-top:8px}
+#game .brand .online-badge{position:static;display:block;width:max-content;margin-top:10px}
+body[data-controls=touch] #game .brand .online-badge{position:fixed;margin:0}
+/* The title (the main menu's home page; blood in title-screen.js). The word's
+   width also follows the window height, so version, word, the room the drips
+   hang in, the buttons and the dev tools link always fit without scrolling. */
+#game #intro{--title-w:min(760px,90vw,calc((100vh - 400px) * 2.4))}
+@supports(height:100dvh){#game #intro{--title-w:min(760px,90vw,calc((100dvh - 400px) * 2.4))}}
+/* The title never drags or scrolls (a drag on a phone used to pull the page
+   and leave the blood behind); it is sized to fit instead. */
+#game #intro:has(>[data-page=home]:not([hidden])){overflow:hidden;overscroll-behavior:none;touch-action:none}
+#game #intro:has(>[data-page=home]:not([hidden])){background:radial-gradient(ellipse at 50% 38%,#212525 0%,#191c1c 55%,#101212 100%)}
+#game .menu-shell [data-page=home].title-home{width:max(210px,var(--title-w));display:flex;flex-direction:column;align-items:center}
+#game .title-heading{margin:0;width:100%;line-height:0}
+#game .title-word{display:block;width:100%;height:calc(max(210px,var(--title-w)) * .2);overflow:visible}
+#game .title-word text{font:900 40px 'Arial Black',Arial,Helvetica,sans-serif;fill:#e9dfc6}
+#game .title-version{align-self:flex-start;margin:0 0 12px;font:700 16px/1 Arial,Helvetica,sans-serif;letter-spacing:.08em;color:var(--ui-accent)}
+#game .title-buttons{width:min(360px,100%);margin-top:calc(max(210px,var(--title-w)) * .21)}
+#game .title-buttons>button:not(.title-dev){border:0;min-width:0}
+#game .title-home{position:relative}
+#game .title-blood{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:1}
+#game .menu-shell .title-buttons .title-dev{display:block;width:auto;height:auto;min-height:0;margin:14px auto 0;padding:6px 10px;border:0;background:none;color:#8a928e;font:600 13px Arial,sans-serif;letter-spacing:.06em;text-align:center}
+#game .menu-shell .title-buttons .title-dev:is(:hover,:focus-visible){color:var(--button-active-ink);background:var(--ui-accent)}
+/* Top-right HUD buttons are icons (map, sound, menu), drawn in the button's
+   ink; sound off turns the button pink (the game's accent) with a bar struck
+   across the speaker. */
+#game .top-actions .icon-button{display:grid!important;place-items:center;place-content:center;padding:0!important;width:38px;height:38px;min-height:38px;text-align:center}
+#game .top-actions .icon-button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+#game .top-actions .icon-button .icon-fill{fill:currentColor;stroke-width:1.4}
+#game .top-actions #audio .sound-bar{display:none;stroke-width:2.6}
+#game .top-actions #audio.muted{opacity:1;background:var(--ui-accent);border-color:var(--ui-accent);color:var(--button-active-ink)}
+#game .top-actions #audio.muted .sound-bar{display:inline}
+#game .top-actions #audio.muted .sound-waves{display:none}
+body[data-controls=touch] #game .top-actions .icon-button svg{width:18px;height:18px}
+/* The word's glyphs set with no inherited spacing (the menu h1 adds .02em):
+   the blood's copy of them (title-screen.js) must land on exactly these. */
+#game .title-word text{letter-spacing:0;word-spacing:0}
+/* A dark shadow border round the title's letters, outside them only (behind
+   the glyphs: round their sides and inside the d's, a's and e's bowls). */
+#game .title-word{filter:drop-shadow(0 0 1.5px #000) drop-shadow(0 0 4px #000e) drop-shadow(0 3px 6px #000b)}
+/* Short screens (a phone on its side): tighter buttons and spacing so the
+   whole title still fits without scrolling. */
+@media(max-height:520px){
+ #game #intro{--title-w:min(760px,90vw,calc((100vh - 250px) * 2.4))}
+ #game #intro:has(>[data-page=home]:not([hidden])){padding:10px}
+ #game .menu-shell .title-buttons>button:not(.title-dev),#game .menu-shell .title-buttons>.input-choice button{height:32px;min-height:32px;margin-top:5px;margin-bottom:5px}
+ #game .menu-shell .title-buttons>.input-choice{margin:5px 0}
+ #game .title-version{margin-bottom:6px;font-size:13px}
+ #game .menu-shell .title-buttons .title-dev{margin-top:4px;padding:4px 10px}
+}
+/* Settings > Mobile: the three layout tools side by side, EDIT the lead. */
+#game #settings-panel .mobile-layout-actions{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px;margin:10px 0 4px}
+#game #settings-panel .mobile-layout-actions>button{min-width:0;height:44px;min-height:44px;margin:0}
+#game #settings-panel .mobile-layout-actions>#touch-edit-layout:not(:disabled){background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}
+/* Short landscape phones: the settings card takes the whole height. */
+@media(max-height:500px) and (orientation:landscape){#game #settings-panel .settings-card{height:calc(100dvh - 16px);max-height:calc(100dvh - 16px)}}

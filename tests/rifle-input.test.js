@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bindRifleMouse,weaponAiming} from '../src/rifle-input.js';
+import {bindRifleMouse,weaponAiming} from '../src/weapons/rifle-input.js';
 
 test('Shift aims in on every weapon, and releases independently of the pointer',()=>{
  const keys=new Set(['ShiftLeft']);

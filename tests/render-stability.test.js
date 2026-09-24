@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {CAMERA_NEAR} from '../src/renderer.js';
-import {interiorCameraHeight} from '../src/camera-framing.js';
+import {CAMERA_NEAR} from '../src/render/renderer.js';
+import {interiorCameraHeight} from '../src/render/camera-framing.js';
 import {maps} from '../src/maps.js';
 
-const src=f=>readFileSync(new URL('../src/'+f,import.meta.url),'utf8');
+// Files by name, wherever they sit under src/.
+const where={'renderer.js':'render/','dust-trail.js':'effects/','crop-view.js':'world/'};
+const src=f=>readFileSync(new URL('../src/'+(where[f]||'')+f,import.meta.url),'utf8');
 
 test('shader warm-up runs after the tier is applied, and again on a tier change',()=>{
  // The shadow-map type and bump maps are part of three's program cache key and
@@ -64,7 +66,7 @@ test('a fading roof tells three its shader has to change',()=>{
  // three only re-picks a material's shader on needsUpdate; the opaque shader
  // forces alpha to 1, so flipping `transparent` alone left roofs solid indoors.
  const r=src('renderer.js');
- const fade=r.slice(r.indexOf('const blended = roof.opacity < .995;'),r.indexOf('const castsShadow=roof.opacity>.5;'));
+ const fade=r.slice(r.indexOf('const blended = roof.opacity < .995'),r.indexOf('const castsShadow=roof.opacity>.5;'));
  assert.ok(/if \(roof\.blended !== blended\)/.test(fade),'only on an actual change');
  assert.ok(/m\.transparent = blended; m\.needsUpdate = true;/.test(fade),'with needsUpdate alongside the flag');
 });
