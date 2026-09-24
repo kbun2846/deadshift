@@ -26,3 +26,9 @@ test('a dragged touch control settles on a screen edge when close to it', () => 
  assert.deepEqual(snapToEdges({ x: .5, y: 1 - EDGE_SNAP / 2 }), { x: .5, y: 1 });
  assert.deepEqual(snapToEdges({ x: .2, y: .3 }), { x: .2, y: .3 });
 });
+
+test('builds use relative asset paths, so the game loads from a GitHub Pages subfolder', async () => {
+ const { readFileSync } = await import('node:fs');
+ for (const file of ['../vite.config.js', '../vite.artifact.mjs'])
+  assert.match(readFileSync(new URL(file, import.meta.url), 'utf8'), /base: '\.\/'/, file);
+});
