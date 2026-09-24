@@ -277,11 +277,15 @@ class BloodAnimation {
   // only along the bottom of the word and (the mask) outside the letters,
   // gooed with the lips and drips. So the liquid hugs each bottom and the
   // round undersides (not the sides), and closes the crevices.
-  const hug = glyphText(make('g', { 'clip-path': 'url(#title-smear-area)' }, this.liquid));
+  // The underside band and the crevices come in with the spreading blood
+  // (the reach clip: a strip round each source, widening as the pour
+  // spreads), not already there before it arrives.
+  this.reachClip = make('clipPath', { id: 'title-reach' }, defs);
+  const hug = glyphText(make('g', { 'clip-path': 'url(#title-smear-area)' }, make('g', { 'clip-path': 'url(#title-reach)' }, this.liquid)));
   hug.setAttribute('fill', 'none'); hug.setAttribute('stroke', BLOOD); hug.setAttribute('stroke-width', (s * .034).toFixed(1)); hug.setAttribute('vector-effect', 'non-scaling-stroke'); hug.setAttribute('stroke-linejoin', 'round');
   // Crevices: flat red, not masked (they sit low, where the letter is red
   // anyway), and drawn a pixel or two fat so the V's tip is covered too.
-  this.crevices = make('g', { fill: BLOOD, stroke: BLOOD, 'stroke-width': 3, 'stroke-linejoin': 'round' }, svg); // over the hanging blood's rim
+  this.crevices = make('g', { fill: BLOOD, stroke: BLOOD, 'stroke-width': 3, 'stroke-linejoin': 'round', 'clip-path': 'url(#title-reach)' }, svg); // over the hanging blood's rim
 
   // The smear's wet top layer lives in the same goo as the lips and drips
   // (clipped to the letters first), so where the blood leaves a letter's
@@ -298,6 +302,7 @@ class BloodAnimation {
   this.span = x1 - x0;
   // It comes out of the bowls: the d, the a, the second d (not the e's eye).
   this.sources = L.filter(l => l.hole && l.char !== 'e').map(l => l.hole.x);
+  this.reachRects = this.sources.map(() => make('rect', { x: 0, y: geo.top, width: 0, height: geo.height }, this.reachClip));
   if (!this.sources.length) this.sources = [L[0].x0];
   // The top of the blood, as in the sample the owner liked: one pour across
   // the word, about a third up, rising and falling in slow and quicker waves,
@@ -557,7 +562,7 @@ class BloodAnimation {
     // One wet pour across the word (gooed, rimmed, cut to the letters).
     const bottom = L.l.bottom + s * .08;
     let d = `M${L.xs[0].toFixed(1)} ${bottom.toFixed(1)}`;
-    L.xs.forEach((x, k) => { const h = L.h[k] * this.grown(x); d += `L${x.toFixed(1)} ${(L.l.bottom - h).toFixed(1)}`; });
+    L.xs.forEach((x, k) => { const g = this.grown(x), h = L.h[k] * g; d += `L${x.toFixed(1)} ${(L.l.bottom - h + (1 - g) * s * .08).toFixed(1)}`; }); // not yet reached: flat along the band's foot, below the letter (no red hairline under it)
     const end = `L${L.xs[L.xs.length - 1].toFixed(1)} ${bottom.toFixed(1)}Z`;
     L.el.setAttribute('d', d + end);
    }
@@ -572,6 +577,10 @@ class BloodAnimation {
     const k = ease((t - this.reachAt((f.a + f.b) / 2) - .3) / .9);
     for (const o of f.blobs) { o.el.setAttribute('cx', o.x.toFixed(1)); o.el.setAttribute('cy', (f.l.bottom + (o.r * .2 - s * .008) * k).toFixed(1)); o.el.setAttribute('r', (o.r * k).toFixed(2)); }
    }
+   // How far the pour has spread from each source: x is inside once the
+   // smear has started to rise there (reachAt(x) + a little).
+   const reach = t > INTRO ? this.span * 4 : Math.max(0, (t - 1.1 - .25) / 5 * this.span);
+   this.sources.forEach((c, i) => { const r = this.reachRects[i]; r.setAttribute('x', (c - reach).toFixed(1)); r.setAttribute('width', (reach * 2).toFixed(1)); });
    if (t > INTRO) this.settled = true;
   }
   for (const bead of this.beads) {
@@ -586,7 +595,9 @@ class BloodAnimation {
    else if (d.state === 'grow') { const k = clamp((t - d.born) / d.grow, 0, 1); len = d.len * (.12 + .88 * (k < .7 ? ease(k / .7) * .65 : .65 + .35 * ((k - .7) / .3) ** 2)); }
    else if (d.state === 'retract') len = d.len * (1 - ease((t - d.let) / .7) * .88);
    else len = d.len * (1 + Math.sin(t * .7 + d.x) * .035);
-   const r = d.r * (d.state === 'wait' || d.state === 'retract' ? .8 : 1) * (d.hang ? 1.15 : 1), neck = r * .42, tip = top + len;
+   // A drip site shows up with the blood reaching it, not before.
+   const appear = this.settled ? 1 : ease((t - this.reachAt(d.x) - .2) / .6);
+   const r = d.r * (d.state === 'wait' || d.state === 'retract' ? .8 : 1) * (d.hang ? 1.15 : 1) * appear, neck = r * .42, tip = top + len;
    d.el.setAttribute('d', `M${(d.x - r * 1.4).toFixed(1)} ${top.toFixed(1)} Q${(d.x - neck).toFixed(1)} ${(top + len * .3).toFixed(1)} ${(d.x - neck).toFixed(1)} ${(tip - r * .6).toFixed(1)} L${(d.x + neck).toFixed(1)} ${(tip - r * .6).toFixed(1)} Q${(d.x + neck).toFixed(1)} ${(top + len * .3).toFixed(1)} ${(d.x + r * 1.4).toFixed(1)} ${top.toFixed(1)} Z`);
    d.tip.setAttribute('cx', d.x.toFixed(1)); d.tip.setAttribute('cy', tip.toFixed(2)); d.tip.setAttribute('rx', (r * .95).toFixed(2)); d.tip.setAttribute('ry', (r * 1.15).toFixed(2));
   }

@@ -44,6 +44,8 @@ The title (`title-screen.js`, the main menu's home page) is built to this; every
 - **Layout:** don't change the size of the word "deadshift"; the **game version sits above** the word. Buttons PLAY / GAMEMODES / SETTINGS / EXIT in the menu style; they animate and click but do nothing, EXIT goes back to the dev menu.
 - **Still to come:** the loading screen (not started; the owner said title first).
 
+- Intro: nothing shows ahead of the spreading pour. The underside band and the crevice fills are clipped to `#title-reach` (a strip round each source, widening at the pour's speed, `reachAt`), drip sites grow in as the blood reaches them, and the smear lies flat below a letter until it arrives there (no red hairline under it).
+
 ### Play
 - **Practice targets:** every board target 250 health, every hay dummy 300 (`RULES.targetHealth` / `dummyHealth`; Deadwater's range-b no longer has its own 500). The tutorial keeps lighter ones (`TUTORIAL_TARGET_HEALTH`: 100 / 75) so lessons stay short. They **show damage as they break**, Balanced and up, more stages and pieces on Quality and most on Extreme (see Rendering).
 - **Players:** 500 health, distinct weapons (Static electric orbs, Nominal rifle + grenade, Ballast charge shotgun), dodge stamina per weapon. Every damage source carries a `damageType` and every death has a reaction (see Deaths); **every Ballast kill is headless**.
