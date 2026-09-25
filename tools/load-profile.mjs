@@ -11,7 +11,7 @@ const cdp = await p.context().newCDPSession(p);
 await cdp.send('Emulation.setCPUThrottlingRate', { rate: slow });
 await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 1000 }); await cdp.send('Profiler.start');
 const t0 = Date.now();
-await p.goto('http://127.0.0.1:5173/?play=1&weapon=rifle&map=deadwater');
+await p.goto('http://127.0.0.1:5173/?play=1&weapon=rifle&map=deadwater&autostart=1');
 await p.waitForFunction(() => document.body.classList.contains('playing'), null, { timeout: 180000 });
 const total = Date.now() - t0;
 const { profile } = await cdp.send('Profiler.stop');

@@ -60,13 +60,15 @@ test('robots are hit like players, never bleed-kind targets, and pass damage bot
 
 test('a robot left to itself moves, aims and fights with its weapon', () => {
  for (const weapon of ['rifle', 'shotgun', 'static']) {
-  const you = new Simulation(map); you.player.id = 'you'; you.dev.invulnerable = true;
+  const you = new Simulation(map); you.weapon = 'rifle'; you.reset(); you.player.id = 'you'; you.dev.invulnerable = true;
   const bots = new BotMatch(map, { createSim: m => new Simulation(m), random });
   const bot = bots.spawn(you, weapon);
   const start = { x: bot.sim.player.x, z: bot.sim.player.z };
   let fired = 0;
-  for (let i = 0; i < 60 * 12; i++) {
-   bots.before(you); you.step({ moveX: 0, moveZ: 0, aimX: 1, aimZ: 0 }); bots.after(you); bots.step(you);
+  // (v146: robots close in to your screen before they may fire, so longer.)
+  // You fire now and then, so it can hear where you are.
+  for (let i = 0; i < 60 * 20; i++) {
+   bots.before(you); you.step({ moveX: 0, moveZ: 0, aimX: 1, aimZ: 0, fire: i % 90 < 3 }); bots.after(you); bots.step(you);
    for (const { e } of bots.drain()) if (['rifleShot', 'shotgunShot', 'launch', 'sprayStart', 'seed', 'hexDeploy'].includes(e.type)) fired++;
   }
   const moved = Math.hypot(bot.sim.player.x - start.x, bot.sim.player.z - start.z);

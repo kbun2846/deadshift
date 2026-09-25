@@ -87,12 +87,14 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
       $('.lobby-count').textContent = players.length + '/' + max;
 
       if (tuning && (!isHost || !players.some(p => p.id === tuning && p.robot))) tuning = null;
-      const key = isHost + '|' + max + '|' + tuning + '|' + players.map(p => p.id + ':' + p.slot + ':' + p.name + ':' + (p.team || '') + (p.robot ? ':' + JSON.stringify(p.setup || {}) : '')).join(',');
+      const robotsOn = lobby.settings?.robots !== 'off';
+      if (!robotsOn) tuning = null;
+      const key = isHost + '|' + robotsOn + '|' + max + '|' + tuning + '|' + players.map(p => p.id + ':' + p.slot + ':' + p.name + ':' + (p.team || '') + (p.robot ? ':' + JSON.stringify(p.setup || {}) : '')).join(',');
       if (key !== rowsKey) {
         rowsKey = key;
         const team = p => { const t = teamById(p.team); return t ? `<span class="lobby-tag lobby-team" style="--team:${t.colour}">${t.name.toLowerCase()}</span>` : ''; };
-        $('.lobby-players').innerHTML = players.map(p => `<li class="lobby-player${p.robot ? ' lobby-robot' : ''}" data-id="${esc(p.id)}">${swatch(p.slot)}<span class="lobby-name">${esc(p.name)}</span>${p.host ? '<span class="lobby-tag">host</span>' : ''}${p.robot ? '<span class="lobby-tag">robot</span>' : ''}${team(p)}${p.id === myId ? '<span class="lobby-tag lobby-you">you</span>' : ''}<span class="lobby-ping"></span>${isHost && p.robot ? `<button type="button" class="secondary plain-text lobby-tune" aria-expanded="${tuning === p.id}" aria-label="Tune ${esc(p.name)}">TUNE</button>` : ''}${isHost && !p.host ? `<button type="button" class="secondary plain-text lobby-remove" aria-label="Remove ${esc(p.name)} from the game">REMOVE</button>` : ''}</li>${tuning === p.id ? tunePanelHTML(p) : ''}`).join('')
-         + emptySlotRows((max || 0) - players.length, isHost);
+        $('.lobby-players').innerHTML = players.map(p => `<li class="lobby-player${p.robot ? ' lobby-robot' : ''}" data-id="${esc(p.id)}">${swatch(p.slot)}<span class="lobby-name">${esc(p.name)}</span>${p.host ? '<span class="lobby-tag">host</span>' : ''}${p.robot ? '<span class="lobby-tag">robot</span>' : ''}${team(p)}${p.id === myId ? '<span class="lobby-tag lobby-you">you</span>' : ''}<span class="lobby-ping"></span>${isHost && p.robot && robotsOn ? `<button type="button" class="secondary plain-text lobby-tune" aria-expanded="${tuning === p.id}" aria-label="Tune ${esc(p.name)}">TUNE</button>` : ''}${isHost && !p.host ? `<button type="button" class="secondary plain-text lobby-remove" aria-label="Remove ${esc(p.name)} from the game">REMOVE</button>` : ''}</li>${tuning === p.id ? tunePanelHTML(p) : ''}`).join('')
+         + emptySlotRows((max || 0) - players.length, isHost && robotsOn);
         for (const button of root.querySelectorAll('.lobby-remove')) button.onclick = () => kick(button.closest('li').dataset.id);
         for (const button of root.querySelectorAll('.lobby-add-robot')) button.onclick = () => addRobot?.();
         for (const button of root.querySelectorAll('.lobby-tune')) button.onclick = () => { const id = button.closest('li').dataset.id; tuning = tuning === id ? null : id; rowsKey = ''; api.render(lastArgs); };

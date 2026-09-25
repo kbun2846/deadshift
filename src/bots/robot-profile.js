@@ -20,17 +20,25 @@
 // kite, close, fall back), the timing of abilities, riding Ballast's recoil,
 // big Static volleys, dodging a shot it sees coming. Easy robots know a
 // little; hard ones use all of it.
+// bold (v146): how much bolder or meeker than its style (easier robots are
+// calmer by default; hard and up are not held back).
+// patience (v146): 0-1, how much an easier robot holds fire until it has
+// been noticed (your aim swings its way, you hurt it, you come close) or it
+// decides to start the fight itself after a moment (robot-brain openFire).
+// xRate (v146): how often it uses its X ability, against the old rate.
 // miss: the chance, about every half-second of shooting, that the hand pulls
 // wide for a moment (a shot or two that miss). Nobody is a dead shot.
 export const SKILLS = Object.freeze({
- rookie: { label: 'rookie', reaction: [.5, .75],  aim: 3,    settle: 1,   turn: 5,  lead: .4,  dodge: .05, trigger: 3,   burst: 2.2, shake: 1.8,  miss: .42, tech: .05 },
- easy:   { label: 'easy',   reaction: [.38, .56], aim: 2.2,  settle: .72, turn: 7,  lead: .6,  dodge: .15, trigger: 2.2, burst: 1.7, shake: 1.25, miss: .3, tech: .2 },
- normal: { label: 'normal', reaction: [.2, .34],  aim: 1.15, settle: .4,  turn: 11, lead: .88, dodge: .45, trigger: 1.05, burst: 1,  shake: .55, miss: .15, tech: .6 },
- hard:   { label: 'hard',   reaction: [.12, .2],  aim: .6,   settle: .26, turn: 15, lead: .97, dodge: .7,  trigger: .8,  burst: .75, shake: .17, miss: .05, tech: .95 },
- expert: { label: 'expert', reaction: [.1, .15],  aim: .45,  settle: .2,  turn: 18, lead: 1,   dodge: .85, trigger: .7,  burst: .65, shake: .1,  miss: .03, tech: 1 },
+ rookie: { label: 'rookie', reaction: [.55, .8],  aim: 3.2,  settle: 1.05, turn: 5,  lead: .4,  dodge: .04, trigger: 3.1, burst: 2.2, shake: 1.9,  miss: .44, tech: .05, bold: -.3,  patience: .9, xRate: .3 },
+ easy:   { label: 'easy',   reaction: [.42, .62], aim: 2.5,  settle: .8,   turn: 6.5, lead: .55, dodge: .1, trigger: 2.4, burst: 1.8, shake: 1.4,  miss: .34, tech: .15, bold: -.22, patience: .8, xRate: .35 },
+ // Normal (owner, v146: it was too hard): slower to react, looser aim, a
+ // shakier hand and less game sense than before.
+ normal: { label: 'normal', reaction: [.27, .42], aim: 1.45, settle: .5,   turn: 9.5, lead: .8,  dodge: .3, trigger: 1.15, burst: 1.1, shake: .72, miss: .2, tech: .5, bold: -.14, patience: .6, xRate: .45 },
+ hard:   { label: 'hard',   reaction: [.12, .2],  aim: .6,   settle: .26,  turn: 15, lead: .97, dodge: .7,  trigger: .8,  burst: .75, shake: .17, miss: .05, tech: .95, bold: 0,   patience: 0, xRate: .6 },
+ expert: { label: 'expert', reaction: [.1, .15],  aim: .45,  settle: .2,   turn: 18, lead: 1,   dodge: .85, trigger: .7,  burst: .65, shake: .1,  miss: .03, tech: 1, bold: .05,   patience: 0, xRate: .65 },
  // Perfect (owner, v0.9b): the hands maxed, nearly unbeatable. Same guns,
  // same health: only reaction, aim, tracking, dodging and knowing the game.
- perfect: { label: 'perfect', reaction: [.05, .07], aim: .1,   settle: .08, turn: 34, lead: 1,   dodge: 1,   trigger: .45, burst: .5,  shake: .02, miss: 0,   tech: 1 },
+ perfect: { label: 'perfect', reaction: [.05, .07], aim: .1,   settle: .08, turn: 34, lead: 1,   dodge: 1,   trigger: .45, burst: .5,  shake: .02, miss: 0,   tech: 1, bold: .08,  patience: 0, xRate: .7 },
 });
 // The menus' order, weakest first (1V1, dev tools). Random picks only from
 // easy / normal / hard.
@@ -88,13 +96,14 @@ export function makeProfile({ skill = null, style = null, temper = null, random 
  const k = SKILLS[pickSkill], s = pickStyle === 'blend' ? blendStyles(random) : STYLES[pickStyle];
  const own = (v, spread = .1) => v * (1 + (random() * 2 - 1) * spread);
  const clamp01 = v => Math.max(0, Math.min(1, v));
- const aggr = clamp01(s.aggr + (random() * 2 - 1) * .08);
+ const aggr = clamp01(s.aggr + (k.bold || 0) + (random() * 2 - 1) * .08);
  const pf = {
   skill: pickSkill, style: pickStyle, label: k.label + ' ' + (pickStyle === 'blend' ? s.label + ' blend' : s.label), blend: s.parts || null,
   // hands
   reaction: [own(k.reaction[0], .12), own(k.reaction[1], .12)], aim: own(k.aim, .15), settle: own(k.settle, .12),
   turn: own(k.turn, .1), lead: Math.min(1, own(k.lead, .06)), dodge: clamp01(own(k.dodge, .15)),
   trigger: own(k.trigger, .1), burst: own(k.burst, .1), shake: own(k.shake, .15), miss: own(k.miss, .15), tech: Math.max(0, Math.min(1, own(k.tech, .1))),
+  patience: k.patience || 0, xRate: k.xRate ?? 1,
   // head
   range: own(s.range, .08), aggr, strafe: own(s.strafe, .1), strafeTime: own(s.strafeTime, .15),
   flank: clamp01(own(s.flank, .15) + (s.flank ? 0 : .05)), steady: clamp01(own(s.steady, .1)), grenade: own(s.grenade, .15),

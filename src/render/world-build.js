@@ -438,7 +438,11 @@ export const WorldBuild = {
     // hall and depot) used to vanish under the roof for a moment before the
     // player crossed the wall line and it faded.
     roof.updateMatrixWorld(true); const reach = new THREE.Box3().setFromObject(roof);
-    const doors = buildingOpenings(b).filter(o => o.type !== 'window').map(o => ({ x: (o.a.x + o.b.x) / 2, z: (o.a.z + o.b.z) / 2, r: Math.max(1.6, Math.hypot(o.b.x - o.a.x, o.b.z - o.a.z) / 2 + 1.1) }));
+    // A doorway: its middle, the way along the wall (ux, uz), its half
+    // width. (v146, owner: this was a 1.6 m+ circle, so walking along the
+    // wall past a door under the eaves lifted the roof and showed the room
+    // from outside. Now only standing in the doorway itself does.)
+    const doors = buildingOpenings(b).filter(o => o.type !== 'window').map(o => { const len = Math.hypot(o.b.x - o.a.x, o.b.z - o.a.z) || 1; return { x: (o.a.x + o.b.x) / 2, z: (o.a.z + o.b.z) / 2, ux: (o.b.x - o.a.x) / len, uz: (o.b.z - o.a.z) / len, half: len / 2 + .15 }; });
     this.roofs.push({ ...b, group: roof, casters, materials: roofMaterials, colour, prepass, opacity: 1, reach, doors });
     const beforeInterior = new Set(this.static.children);
     if(b.interiorStyle) makeDetailedInterior(this,b);

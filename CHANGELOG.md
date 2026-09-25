@@ -2,6 +2,26 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.93 (2026-09-25)
+
+### Robots
+- Rebalanced after robot-vs-robot trials. Normal is easier: slower to react, looser aim, a shakier hand, fewer tricks; easy and rookie a little softer too. Rookie, easy and normal are calmer by default; hard and up are not held back.
+- Normal and easier robots mostly hold fire until you notice them (your aim swings their way, you hurt them, or you come close), and start fights themselves a few seconds after spotting you.
+- No robot shoots anyone from off their screen; they close in first.
+- X abilities are used less often (a wait after they are ready, longer on easier skills).
+- Smoother movement: eased turns, calmer side-to-side weaves. Ballast and Static robots sometimes dash in at a Nominal.
+
+### Controls
+- Dodge is Q (was Left Ctrl).
+- Settings > Controls > KEYBOARD: change any game key (move, dodge, fire, aim in, weapon action, X ability, stream, reload, arrow aiming, map, mute). Taking a used key swaps; Esc cancels; RESET TO DEFAULTS. Key names in the tutorial and HUD follow your keys.
+
+### Multiplayer
+- One ROBOTS box in host setup and the lobby; robot skill, + ROBOT and TUNE show only while it is ticked (unticking removes added robots).
+
+### Fixes
+- A page load always opens the main menu (on phones, coming back from full screen reloaded straight into the last game).
+- Walking along a building's wall past a door no longer lifts its roof; only standing in the doorway does.
+
 ## alpha v0.92 (2026-09-25)
 
 ### Solo

@@ -32,9 +32,10 @@ export const CLUSTER_ORDER = Object.freeze(['touch-dodge', 'touch-stream', 'touc
 
 // The game keys on the keyboard: Space shoots (with the left mouse button), E
 // is the weapon's other action (Static places orbs, Nominal throws a grenade,
-// Ballast fires both shells), Left Ctrl dodges. Everything that reads or names
+// Ballast fires both shells), Q dodges (v147; was Left Ctrl). These are the
+// tokens the game reads; the player can bind other keys to them
+// (keybinds.js gameCode). Everything that reads or names
 // these keys (main.js, rifle-input.js, the weapon registry, the tutorials, the
-// HUD) goes through here. Menus keep E to confirm and Q to go back; Q does
-// nothing in a fight. While playing, browser shortcuts that Ctrl would start
+// HUD) goes through here. Menus keep E to confirm and Q to go back. While playing, browser shortcuts that Ctrl would start
 // (Ctrl+S, Ctrl+D, Ctrl+wheel zoom…) are blocked (main.js).
-export const GAME_KEYS = Object.freeze({ shoot: 'Space', secondary: 'KeyE', dodge: 'ControlLeft' });
+export const GAME_KEYS = Object.freeze({ shoot: 'Space', secondary: 'KeyE', dodge: 'KeyQ' });

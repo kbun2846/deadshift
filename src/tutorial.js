@@ -1,5 +1,6 @@
 import { WEAPONS, weapon as weaponById } from './items.js';
 import { RIFLE, SURGE, TUTORIAL_TARGET_HEALTH } from './config/gameplay.js';
+import { displayKeys } from './config/keybinds.js';
 // The training range and its courses.
 //
 // Two kinds of course share the one range. "basics" is what the home screen's
@@ -41,7 +42,7 @@ export const COURSES = {
  basics: [
   lesson('walk', 'walk', TUTORIAL_ZONES.length, 'hold [W] [A] [S] [D] and walk into the pink zone', 'drag anywhere on the left side to walk into the pink zone',
    { note: 'follow the pink arrow' }),
-  lesson('dash', 'dodge', 5, 'hold a direction and press [CTRL] to dodge through a crate', 'drag on the left to move and tap [DODGE] to dodge through a crate',
+  lesson('dash', 'dodge', 5, 'hold a direction and press [Q] to dodge through a crate', 'drag on the left to move and tap [DODGE] to dodge through a crate',
    { note: 'each weapon carries its own number of dodges and they refill after a moment', highlight: 'dodge-stamina', touchHighlight: 'touch-dodge' }),
   // Touch only: the right thumb aims while the left walks. Skipped on keys.
   lesson('aimhold', 'aim while walking', 3, '', 'walk with your left thumb and swipe your right thumb toward a target',
@@ -193,5 +194,5 @@ export class Tutorial {
 // "[W] [A]" -> keycaps. Everything else is escaped text.
 export function lessonMarkup(text) {
  const escape = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
- return text.split(/(\[[^\]]+\])/).map(part => /^\[.+\]$/.test(part) ? `<kbd>${escape(part.slice(1, -1))}</kbd>` : escape(part)).join('');
+ return text.split(/(\[[^\]]+\])/).map(part => /^\[.+\]$/.test(part) ? `<kbd>${escape(displayKeys(part.slice(1, -1)))}</kbd>` : escape(part)).join('');
 }

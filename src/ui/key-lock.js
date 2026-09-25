@@ -1,4 +1,4 @@
-// Keyboard players: Left Ctrl dodges and W walks up, so a dodge while
+// Keyboard players (Left Ctrl dodged until v147): Ctrl with W walking up, so a dodge while
 // walking up is Ctrl+W, which browsers keep for "close tab" and never give
 // to a page (the leave-site prompt in main.js was the only guard). The
 // Keyboard Lock API (Chrome, Edge) lets a page that is full screen take

@@ -57,7 +57,8 @@ export const SETTINGS = Object.freeze({
  friendlyFire: { label: 'friendly fire', values: ['on', 'off'], names: ['on', 'off'], default: 'on', modes: ['2v2', '2v2v2', '3v3'] },
  // Robots (net/arena-robots.js): fill the empty seats a mode needs (FFA: up
  // to four), and how well they play. + ROBOT in the lobby adds one any time.
- robots: { label: 'robots', values: ['fill', 'off'], names: ['fill empty seats', 'none'], default: 'fill', modes: COUNTED },
+ // Shown as one ROBOTS box (v147); unticked, no robots and no robot settings.
+ robots: { label: 'robots', values: ['fill', 'off'], names: ['fill empty seats', 'none'], default: 'fill', modes: MODES.map(m => m.id) },
  robotSkill: { label: 'robot skill', values: ['rookie', 'easy', 'normal', 'hard', 'expert', 'perfect'], names: ['rookie', 'easy', 'normal', 'hard', 'expert', 'perfect'], default: 'normal', modes: MODES.map(m => m.id) },
 });
 export const defaultSettings = () => Object.fromEntries(Object.entries(SETTINGS).map(([key, s]) => [key, s.default]));

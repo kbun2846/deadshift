@@ -200,3 +200,12 @@ test('robot setups: TUNE changes one robot, APPLY TO ALL every robot and the one
  r.host.setSetting('robotSkill', 'hard');
  assert.ok([a, b, c].every(s => s.robot.setup.skill === 'hard'), 'robot skill sets every robot');
 });
+
+test('unticking ROBOTS in the lobby takes the added robots out', () => {
+ const r = room();
+ r.host.addRobot(); r.host.addRobot();
+ assert.equal(r.host.robotSeats().length, 2);
+ assert.ok(r.host.setSetting('robots', 'off'));
+ assert.equal(r.host.robotSeats().length, 0);
+ assert.equal(r.host.lobby().settings.robots, 'off');
+});

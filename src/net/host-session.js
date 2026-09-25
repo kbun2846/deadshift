@@ -164,7 +164,12 @@ export class HostSession {
 
  // Host lobby controls.
  setSpawnMode(mode) { return SPAWN_MODES.includes(mode) && this.arena.setSpawnMode(mode); }
- setSetting(key, value) { return !!SETTINGS[key] && this.arena.setSetting(key, value); }
+ // Robots unticked in the lobby (v147): the robots already added go too.
+ setSetting(key, value) {
+  const ok = !!SETTINGS[key] && this.arena.setSetting(key, value);
+  if (ok && key === 'robots' && value === 'off' && this.arena.phase === 'lobby') for (const seat of this.robotSeats()) this.removeRobot(seat.id);
+  return ok;
+ }
  resetMap() { this.arena.resetWorld(); }
  setMode(mode) { return this.arena.setMode(mode); }
  startRound(mode) { return this.arena.startRound(mode); }

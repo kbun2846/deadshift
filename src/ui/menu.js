@@ -11,7 +11,9 @@ import { createSettingsRows } from './lobby-settings.js';
 import { cleanSettings, MODES } from '../config/match.js';
 import { buildDuelMenu } from './duel-menu.js';
 import { duelParam } from '../duel.js';
+import { buildKeybindMenu } from './keybind-menu.js';
 
+const markLaunch=query=>{try{sessionStorage.setItem('deadshift.launch','?'+query);}catch{}};
 export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete, online }) {
  let page=document.querySelector('[data-page]:not([hidden])')?.dataset.page||'home';
  let selectedMap=DEFAULT_MAP;
@@ -28,7 +30,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const duelMenu=buildDuelMenu($('duel-options'),{maps:menuMaps(),start:picks=>{
   const query=new URLSearchParams({map:picks.map||DEFAULT_MAP,weapon:picks.weapon,play:'1',mode:'duel',duel:duelParam(picks)});
   if(map.id===query.get('map')){try{history.replaceState(null,'',"?"+query);}catch{}start(picks.weapon);}
-  else location.href='?'+query;
+  else{markLaunch(query);location.href='?'+query;}
  }});
  $('duel-mode').onclick=()=>show('duel');$('duel-start').onclick=()=>duelMenu.start();
  // Host setup: the mode and robots (previews) round the round settings.
@@ -84,7 +86,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   const query=new URLSearchParams({map:selectedMap,weapon,play:'1',mode:selectedMap==='tutorial'?'tutorial':'practice'});
   if(course)query.set('course',course);
   if(map.id===selectedMap){try{history.replaceState(null,'','?'+query);}catch{}start(weapon,selectedMap==='tutorial'?course||null:undefined);}
-  else location.href='?'+query;
+  else{markLaunch(query);location.href='?'+query;}
  };
  // Names and descriptions come from the item registry; only the 3D preview
  // renderers are wired up here (a new weapon adds its preview function).
@@ -173,7 +175,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   ['Move','WASD / drag anywhere on the left half','On touch the stick appears wherever your thumb lands.'],
   ['Aim','Mouse / arrow keys / swipe on the right half','Movement sets facing when not aiming independently. Arrows and swipes lock onto the target that way; a running player pulls ahead of the lock, and holding an arrow leads them. Tap a spot on the world to fire at it.'],
   ['Aim in','Hold Shift / right mouse button / AIM','Slows the walk and steadies the cursor on every weapon; Nominal and Ballast also tighten their spread.'],
-  ['Dodge','Left Ctrl / DODGE','Rolls the way you are moving, or the way you are facing when standing still, and breaks through breakable scenery. Each weapon carries its own number of dodges (see Weapons); they refill after a moment.'],
+  ['Dodge','Q / DODGE','Rolls the way you are moving, or the way you are facing when standing still, and breaks through breakable scenery. Each weapon carries its own number of dodges (see Weapons); they refill after a moment.'],
   ['Weapon ability','X / the weapon\'s ability button','Static: the hex. Nominal: the nova. Ballast: the blast. See Weapons.'],
   ['Scores','Tab / SCORES (online)','Hold to see the round\'s scoreboard.'],
   ['Map','M / map button; M or Escape closes'],
@@ -188,15 +190,17 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   ['Back','Q / Escape'],
  ];
  const list=rows=>'<table class="controls-grid"><thead><tr><th scope="col">Action</th><th scope="col">Keybind</th></tr></thead><tbody>'+rows.map(([action,binding,note])=>'<tr><th scope="row">'+action+'</th><td>'+binding+(note?'<small>'+note+'</small>':'')+'</td></tr>').join('')+'</tbody></table>';
-  $('settings-controls').innerHTML='<details class="weapon-control-entry general-group"><summary>General</summary>'+list(generalControls)+'</details>'+'<details class="weapon-control-entry weapons-group"><summary>Weapons</summary><div class="weapon-control-list">'+WEAPONS.map(weapon=>'<details class="weapon-control-entry"><summary>'+weapon.name+'</summary>'+list(weapon.controls||[])+'</details>').join('')+'</div></details>';
+  $('settings-controls').innerHTML='<details class="weapon-control-entry general-group"><summary>What each control does</summary>'+list(generalControls)+'</details>'+'<details class="weapon-control-entry weapons-group"><summary>Weapons</summary><div class="weapon-control-list">'+WEAPONS.map(weapon=>'<details class="weapon-control-entry"><summary>'+weapon.name+'</summary>'+list(weapon.controls||[])+'</details>').join('')+'</div></details>';
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">SHOW HUD CONTROL HINTS<input id="control-hints" type="checkbox" checked/></label>');
  // Keyboard: full screen with Ctrl+W and the other browser shortcuts held (key-lock.js).
- $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">LOCK BROWSER SHORTCUTS<input id="key-lock" type="checkbox" checked/></label><p class="settings-note" id="key-lock-note">Keyboard: plays full screen so Ctrl + W (dodge while walking up) and other browser shortcuts cannot close or leave the game. Hold Esc to leave full screen. Chrome and Edge.</p>');
+ $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">LOCK BROWSER SHORTCUTS<input id="key-lock" type="checkbox" checked/></label><p class="settings-note" id="key-lock-note">Keyboard: plays full screen so Ctrl + W and other browser shortcuts cannot close or leave the game. Hold Esc to leave full screen. Chrome and Edge.</p>');
  // Moved into Settings > Mobile by mobile-settings.js, with the opacity.
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">AIM ASSIST<input id="aim-assist" type="checkbox" checked/></label>');
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">VIBRATION<input id="vibration" type="checkbox" checked/></label>');
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">FULL SCREEN WHILE PLAYING<input id="fullscreen-play" type="checkbox" checked/></label>');
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting select-setting">MOBILE BUTTON OPACITY<select id="mobile-opacity"><option value="1">Solid · 100%</option><option value="0.7">Medium · 70%</option><option value="0.4">Faint · 40%</option></select></label>');
+ // Rebindable keyboard keys (keybind-menu.js), above the reference tables.
+ buildKeybindMenu($('settings-controls'),{before:$('settings-controls').querySelector('.general-group')});
  const channels=[
   ['master','MASTER','Everything, including the mute bound to N.'],
   ['ambient','AMBIENT','Wind, dust and the birds overhead.'],

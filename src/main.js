@@ -34,6 +34,7 @@ import { pickView } from './render/pick-view.js';
 import { PICK, MODES, SETTINGS as MATCH_SETTINGS, SIDE_COLOURS } from './config/match.js';
 const modeLabel=document.querySelector('.brand .mode');
 import { GAME_KEYS } from './config/controls.js';
+import { gameCode, displayKeys } from './config/keybinds.js';
 import { NETWORK } from './config/network.js';
 import { bindRifleMouse, weaponAiming,ballastInput } from './weapons/rifle-input.js';
 import { advanceAimCursor } from './ui/aim-cursor.js';
@@ -515,9 +516,10 @@ function lockedStill(id){
 // the next target that way, or let go if there is none. Held arrows turn the
 // aim only while idle.
 window.addEventListener('keydown',e=>{
- if(!running||e.repeat||touchPrompts||!e.code.startsWith('Arrow'))return;
+ const code=gameCode(e.code);
+ if(!running||e.repeat||touchPrompts||!code?.startsWith('Arrow'))return;
  inputMode='keyboard';
- pendingSwap={x:e.code==='ArrowRight'?1:e.code==='ArrowLeft'?-1:0,y:e.code==='ArrowDown'?1:e.code==='ArrowUp'?-1:0};
+ pendingSwap={x:code==='ArrowRight'?1:code==='ArrowLeft'?-1:0,y:code==='ArrowDown'?1:code==='ArrowUp'?-1:0};
 });
 let touchAimStart = null;
 
@@ -912,7 +914,9 @@ window.addEventListener('keydown', e => {
     return;
   }
   if(e.target.matches('input,select,textarea')&&e.code!=='Escape')return;
-  if(e.code==='KeyM'&&!e.repeat){e.preventDefault();toggleMap();return;}
+  // The player's key bindings (config/keybinds.js): the action's own code.
+  const code=gameCode(e.code);
+  if(code==='KeyM'&&!e.repeat){e.preventDefault();toggleMap();return;}
   if(mapOpen){
     if(e.code==='Escape'&&!e.repeat){e.preventDefault();toggleMap();}
     if(e.code==='Tab'){e.preventDefault();$('map-close').focus();}
@@ -929,7 +933,7 @@ window.addEventListener('keydown', e => {
     }
     return;
   }
-  if (e.code === 'KeyN' && !e.repeat) toggleAudio();
+  if (code === 'KeyN' && !e.repeat) toggleAudio();
   if((e.code==='KeyO'||e.code==='KeyP')&&!e.repeat&&devTools.isUnlocked()){
    e.preventDefault();
    if(online.active&&!online.isHost){toast('DEV TOOLS ARE THE HOST\'S ONLINE');return;}
@@ -938,21 +942,22 @@ window.addEventListener('keydown', e => {
    return;
   }
   if (!running) return;
-  // Left Ctrl dodges, so while playing no Ctrl shortcut may fire by accident
+  // (Ctrl dodged before v147.) While playing no Ctrl shortcut may fire by accident
   // (Ctrl+S save, Ctrl+D bookmark, Ctrl+E the address bar, Ctrl+R reload…).
   // The browser keeps a few it will not give up (Ctrl+W, Ctrl+T, Ctrl+N);
   // leaving the page mid-game then asks first (beforeunload below).
   if (e.ctrlKey) e.preventDefault();
   if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-  if (e.repeat) return;
-  keys.add(e.code); tappedKeys.add(e.code);
-  if (e.code.startsWith('Arrow')) inputMode = 'keyboard';
-  if (e.code === GAME_KEYS.shoot) { pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = inputMode === 'mouse'&&!keyboardAim(keys,tappedKeys).active ? view.aim(mouse.x, mouse.y, sim.player) : null; }
-  if (e.code === 'KeyR') e.preventDefault();
+  if (code && code !== e.code) e.preventDefault();
+  if (e.repeat || !code) return;
+  keys.add(code); tappedKeys.add(code);
+  if (code.startsWith('Arrow')) inputMode = 'keyboard';
+  if (code === GAME_KEYS.shoot) { pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = inputMode === 'mouse'&&!keyboardAim(keys,tappedKeys).active ? view.aim(mouse.x, mouse.y, sim.player) : null; }
+  if (code === 'KeyR') e.preventDefault();
 });
-window.addEventListener('keyup', e => {keys.delete(e.code);if(e.code==='Tab'&&mpHud.boardOpen)mpHud.hideBoard();});
+window.addEventListener('keyup', e => {const code=gameCode(e.code);if(code)keys.delete(code);keys.delete(e.code);if(e.code==='Tab'&&mpHud.boardOpen)mpHud.hideBoard();});
 window.addEventListener('blur', releaseInput);
-// Left Ctrl dodges, and the movement keys are W A S D: Ctrl+D (bookmark this
+// The movement keys are W A S D: Ctrl+D (bookmark this
 // page), Ctrl+S, Ctrl+A... would fire mid-fight. From the moment a game starts,
 // in every state (menus over it included, where a dodge key may still be
 // held), no Ctrl combination reaches the browser, except in text fields. This
@@ -1116,7 +1121,7 @@ function applyInputPreference(){
   document.body.classList.toggle('ads-fire',adsFire);aimFireButton.hidden=!adsFire;
   const touchLabel=(id,label,binding)=>{
    const word=document.createElement('span');word.className='button-label';word.textContent=label;
-   const key=document.createElement('small');key.className='touch-binding';key.textContent=binding;
+   const key=document.createElement('small');key.className='touch-binding';key.textContent=displayKeys(binding);
    $(id).replaceChildren(word,key);
   };
   if(extras){
@@ -1127,7 +1132,7 @@ function applyInputPreference(){
   touchLabel('touch-launch',extras?'FIRE':'LAUNCH','LMB / SPACE');
   touchLabel('touch-hex',extras?'RELOAD':'HEX',extras?'R':'X');
   touchLabel('touch-stream',extras?'AIM':'STREAM',extras?extras.aim.binding:'C');
-  touchLabel('touch-dodge','DODGE','CTRL');
+  touchLabel('touch-dodge','DODGE','Q');
   touchLabel('touch-place','PLACE','E');
   touchLabel('touch-aimfire','AIM','+ FIRE');
  arrangeTouchCluster();
@@ -1161,8 +1166,9 @@ window.addEventListener('pointerdown',e=>{
  else if(e.pointerType==='mouse')detectActiveInput('keyboard');
 },true);
 window.addEventListener('keydown',e=>{
- if(e.target.matches('input,select,textarea,[contenteditable=true]')||(e.ctrlKey&&e.code!==GAME_KEYS.dodge)||e.metaKey||e.altKey)return;
- if([GAME_KEYS.dodge,'KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','KeyR','KeyX','KeyC','Space','Escape','Tab','ShiftLeft','ShiftRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))detectActiveInput('keyboard');
+ if(e.target.matches('input,select,textarea,[contenteditable=true]')||e.ctrlKey||e.metaKey||e.altKey)return;
+ const code=gameCode(e.code)||e.code;
+ if([GAME_KEYS.dodge,'KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','KeyR','KeyX','KeyC','Space','Escape','Tab','ShiftLeft','ShiftRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(code))detectActiveInput('keyboard');
 },true);
 applyInputPreference();
 const bindAction=(element,press,release)=>touchActionResets.push(bindTouchAction(element,{enabled:()=>running,press,release}));
@@ -1206,9 +1212,19 @@ const mobileSettings=installMobileSettings({touchLayout,closeSettings,setPaused,
 function syncMobileSettings(){mobileSettings.sync();}
 syncMobileSettings();
 updateHUD(); requestAnimationFrame(frame);
+// A page load goes to the title (owner, v147: on phones a reload, e.g. the
+// browser bringing the tab back after full screen, dropped you straight into
+// the last game). Only a load the menu asked for (it leaves a one-time note
+// before switching map, menu.js markLaunch) starts the game; so does a dev
+// capture link (tools).
 export function finishLoading(){
- if(params.get('play')==='1')void start();
- else $('gamemodes').focus();
+ let launch=null;try{launch=sessionStorage.getItem('deadshift.launch');sessionStorage.removeItem('deadshift.launch');}catch{}
+ const asked=params.get('play')==='1'&&(launch===location.search||params.has('capture')||params.has('autostart'));
+ if(asked)void start();
+ else{
+  if(params.get('play')==='1'){const q=new URLSearchParams(location.search);for(const k of ['play','mode','duel','course','weapon'])q.delete(k);try{history.replaceState(null,'',location.pathname+(q.size?'?'+q:''));}catch{}}
+  $('gamemodes').focus();
+ }
 }
 
 

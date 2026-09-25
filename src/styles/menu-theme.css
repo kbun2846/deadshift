@@ -857,3 +857,23 @@ body[data-controls=touch].duel-on.playing #game .health-hud{top:calc(max(8px,env
 #game .lobby-screen .lobby-tune-foot button{flex:1;text-align:center;justify-content:center;width:auto;margin:0;min-height:34px;height:34px;padding:0 8px;font:800 12px/34px var(--hud-font,Arial),sans-serif;letter-spacing:.08em}
 #game .lobby-screen .lobby-tune-foot button.lobby-tune-all{background:var(--ui-accent);color:#151718}
 @media(max-width:600px){#game .lobby-screen button.lobby-tune{padding:0 6px;font-size:11px;letter-spacing:.04em}#game .lobby-screen button.lobby-remove{padding:0 6px;font-size:11px;letter-spacing:.04em}}
+/* Settings > Controls > KEYBOARD (v147): rebindable keys. */
+#game .keybinds{margin:18px 0 20px}
+#game .keybind-group{margin:0 0 12px}
+#game .keybind-group-title{font:700 10px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#93a09a;margin:0 0 6px}
+#game .keybind-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:38px;padding:3px 0;border-bottom:1px solid #313a3780}
+#game .keybind-label{font:700 13px/1.25 var(--hud-font,Arial),sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#eee9df;min-width:0}
+#game .keybinds .keybind-key{flex:none;min-width:86px;width:auto;height:32px;min-height:32px;margin:0;padding:0 12px;border:1px solid #ffffff2e;border-bottom-width:3px;border-radius:7px;background:#2c3331;color:#fff;font:800 13px/28px var(--hud-font,Arial),sans-serif;letter-spacing:.08em;text-align:center;box-shadow:none;transform:none;display:inline-flex;align-items:center;justify-content:center}
+#game .keybinds button.keybind-key:is(:hover,:focus-visible){border-color:var(--ui-accent);background:#3a4240}
+#game .keybinds button.keybind-key.listening{background:var(--ui-accent);color:#151718;border-color:var(--ui-accent);animation:keybind-wait .7s ease-in-out infinite alternate}
+#game .keybinds .keybind-locked{opacity:.5;border-style:dashed}
+#game .keybinds .keybind-status{min-height:1.3em;margin:4px 0 8px;color:var(--ui-accent)}
+#game .keybinds .keybind-reset{width:100%}
+@keyframes keybind-wait{from{opacity:1}to{opacity:.6}}
+@media(prefers-reduced-motion:reduce){#game .keybinds button.keybind-key.listening{animation:none}}
+/* The ROBOTS box (v147): one tick turns robots and their settings on. */
+#game .round-settings .round-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-direction:row!important;min-height:36px;padding:2px 8px 2px 0;cursor:pointer;border-radius:6px}
+#game .round-settings .round-toggle input{width:20px;height:20px;margin:0;accent-color:var(--ui-accent);cursor:pointer}
+#game .round-settings-readonly .round-toggle{cursor:default}
+#game .round-settings .round-setting[hidden]{display:none!important}
+#game .keybinds>.settings-note{margin:0 0 14px}

@@ -1,5 +1,6 @@
 // Shared presentation contract: name, accent, capacity, ammo, status, and controls.
 import { RIFLE } from '../weapons/rifle.js';
+import { displayKeys, bindsVersion } from '../config/keybinds.js';
 import { scatterPrimeLeft } from '../weapons/scatter.js';
 import { WEAPONS } from '../items.js';
 import { SHOTGUN, shotgunReloadRounds } from '../weapons/shotgun.js';
@@ -23,7 +24,7 @@ export function createWeaponHUD(root){
  heading.innerHTML='<span class="weapon-title"></span><span class="weapon-count"></span>';
  const status=document.createElement('div');status.className='weapon-status';
  root.insertBefore(heading,ammo);root.insertBefore(status,controls);
- let current='',inputMode=null,lastCapacity=0;
+ let current='',inputMode=null,lastCapacity=0,shownBinds=-1;
  const countEl=heading.querySelector('.weapon-count');
  return function update(sim,touch){
   const id=sim.weapon||'static',config=WEAPON_UI[id]||WEAPON_UI.static;
@@ -32,8 +33,8 @@ export function createWeaponHUD(root){
    heading.querySelector('.weapon-title').textContent=config.name;
    inputMode=null;
   }
-  if(inputMode!==touch){inputMode=touch;controls.style.gridTemplateColumns=`repeat(${config.keyboard.length},minmax(0,1fr))`;controls.replaceChildren(...config[touch?'touch':'keyboard'].map(([key,label])=>{
-   const item=document.createElement('span'),binding=document.createElement('kbd');binding.textContent=key;item.append(binding,document.createTextNode(label));return item;
+  if(inputMode!==touch||shownBinds!==bindsVersion()){inputMode=touch;shownBinds=bindsVersion();controls.style.gridTemplateColumns=`repeat(${config.keyboard.length},minmax(0,1fr))`;controls.replaceChildren(...config[touch?'touch':'keyboard'].map(([key,label])=>{
+   const item=document.createElement('span'),binding=document.createElement('kbd');binding.textContent=touch?key:displayKeys(key);item.append(binding,document.createTextNode(label));return item;
   }));}
   const shotgun=id==='shotgun',rifle=id==='rifle',presentation=shotgun?shotgunAmmoPresentation(sim.shotgun):rifle?rifleAmmoPresentation(sim.rifle):null;
   const reloading=shotgun?sim.shotgun.reload>0:rifle&&sim.rifle.reload>0;

@@ -1388,8 +1388,9 @@ export class WorldView {
       // depth prepass below relies on two different shaders producing the
       // same depth, which not every driver guarantees). Gone is gone anywhere.
       // Also gone while stepping through one of its doors under the eaves.
-      const p = sim.player, r = roof.reach, doorGap = roof.doors ? Math.min(...roof.doors.map(d => Math.hypot(p.x - d.x, p.z - d.z) - d.r)) : Infinity;
-      const atDoor = !!r && doorGap < 0 && p.x > r.min.x && p.x < r.max.x && p.z > r.min.z && p.z < r.max.z;
+      const p = sim.player, r = roof.reach, doorGap = roof.doors?.length ? Math.min(...roof.doors.map(d => Math.hypot(p.x - d.x, p.z - d.z) - d.half)) : Infinity;
+      // In a doorway: within its width, and no further than half a body from the wall line.
+      const atDoor = !!r && !!roof.doors?.some(d => { const dx = p.x - d.x, dz = p.z - d.z; return Math.abs(dx * d.ux + dz * d.uz) < d.half && Math.abs(dx * d.uz - dz * d.ux) < .42; });
       const desired = sim.roofId === roof.id || atDoor ? 0 : 1;
       // Rate 20: about a tenth of a second to 90%. At 8 the roof was still
       // visibly lifting a third of a second after the player was through the door.

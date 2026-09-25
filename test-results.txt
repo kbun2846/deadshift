@@ -2,3585 +2,3597 @@ TAP version 13
 # Subtest: aim cursor slows while focused, stays bounded, and accelerates smoothly on release
 ok 1 - aim cursor slows while focused, stays bounded, and accelerates smoothly on release
   ---
-  duration_ms: 2.027066
+  duration_ms: 1.651556
   type: 'test'
   ...
 # Subtest: hipfire reaches a mid-range target promptly while focused aim keeps its weight
 ok 2 - hipfire reaches a mid-range target promptly while focused aim keeps its weight
   ---
-  duration_ms: 1.630051
+  duration_ms: 1.623754
   type: 'test'
   ...
 # Subtest: Static carries more weight than the rifle but less than its sights
 ok 3 - Static carries more weight than the rifle but less than its sights
   ---
-  duration_ms: 0.4219
+  duration_ms: 0.52003
   type: 'test'
   ...
 # Subtest: an unknown weapon falls back to the loose profile
 ok 4 - an unknown weapon falls back to the loose profile
   ---
-  duration_ms: 0.310352
+  duration_ms: 0.210875
   type: 'test'
   ...
 # Subtest: only the point-aimed weapons are damped
 ok 5 - only the point-aimed weapons are damped
   ---
-  duration_ms: 1.37525
+  duration_ms: 0.989633
   type: 'test'
   ...
 # Subtest: a cursor beyond the cutoff is followed exactly once the turn settles
 ok 6 - a cursor beyond the cutoff is followed exactly once the turn settles
   ---
-  duration_ms: 1.4567
+  duration_ms: 1.024335
   type: 'test'
   ...
 # Subtest: outside the cutoff the focus point keeps the cursor depth
 ok 7 - outside the cutoff the focus point keeps the cursor depth
   ---
-  duration_ms: 0.228347
+  duration_ms: 0.169811
   type: 'test'
   ...
 # Subtest: rotation continues inside the cutoff rather than stopping
 ok 8 - rotation continues inside the cutoff rather than stopping
   ---
-  duration_ms: 0.200271
+  duration_ms: 0.143569
   type: 'test'
   ...
 # Subtest: the same cursor sweep turns less the closer it is
 ok 9 - the same cursor sweep turns less the closer it is
   ---
-  duration_ms: 0.371721
+  duration_ms: 0.244584
   type: 'test'
   ...
 # Subtest: a still cursor inside the cutoff never drifts or snaps
 ok 10 - a still cursor inside the cutoff never drifts or snaps
   ---
-  duration_ms: 0.412501
+  duration_ms: 0.42648
   type: 'test'
   ...
 # Subtest: entering the cutoff contributes no rotation on the first frame
 ok 11 - entering the cutoff contributes no rotation on the first frame
   ---
-  duration_ms: 0.356674
+  duration_ms: 0.201621
   type: 'test'
   ...
 # Subtest: inside the cutoff the focus point is floored at the cutoff depth
 ok 12 - inside the cutoff the focus point is floored at the cutoff depth
   ---
-  duration_ms: 0.249705
+  duration_ms: 0.135111
   type: 'test'
   ...
 # Subtest: a reversal is a brief turn, not an instant flip
 ok 13 - a reversal is a brief turn, not an instant flip
   ---
-  duration_ms: 1.697352
+  duration_ms: 1.312512
   type: 'test'
   ...
 # Subtest: an ordinary adjustment still lands within a couple of frames
 ok 14 - an ordinary adjustment still lands within a couple of frames
   ---
-  duration_ms: 0.494208
+  duration_ms: 0.39853
   type: 'test'
   ...
 # Subtest: the turn ceiling is never exceeded on any single frame
 ok 15 - the turn ceiling is never exceeded on any single frame
   ---
-  duration_ms: 1.395857
+  duration_ms: 0.991193
   type: 'test'
   ...
 # Subtest: the simulation turns the character smoothly through a close sweep
 ok 16 - the simulation turns the character smoothly through a close sweep
   ---
-  duration_ms: 79.300801
+  duration_ms: 65.568601
   type: 'test'
   ...
 # Subtest: every house approach reaches a road without crossing any house footprint
 ok 17 - every house approach reaches a road without crossing any house footprint
   ---
-  duration_ms: 130.497162
+  duration_ms: 106.844462
   type: 'test'
   ...
 # Subtest: boxcars do not generate dirt access paths
 ok 18 - boxcars do not generate dirt access paths
   ---
-  duration_ms: 96.528637
+  duration_ms: 66.324595
   type: 'test'
   ...
 # Subtest: the indexed approach lookup agrees with a full scan everywhere
 ok 19 - the indexed approach lookup agrees with a full scan everywhere
   ---
-  duration_ms: 1385.063304
+  duration_ms: 1252.663324
   type: 'test'
   ...
 # Subtest: a nova cut short by death still owes its cooldown, and ends (surgeEnd)
 ok 20 - a nova cut short by death still owes its cooldown, and ends (surgeEnd)
   ---
-  duration_ms: 11.909956
+  duration_ms: 9.580686
   type: 'test'
   ...
 # Subtest: a joiner's own copy mirrors the nova and blast but never runs them
 ok 21 - a joiner's own copy mirrors the nova and blast but never runs them
   ---
-  duration_ms: 0.813747
+  duration_ms: 0.756083
   type: 'test'
   ...
 # Subtest: shells already fired keep flying after the shooter dies
 ok 22 - shells already fired keep flying after the shooter dies
   ---
-  duration_ms: 2.80157
+  duration_ms: 2.38369
   type: 'test'
   ...
 # Subtest: the dev damage multiplier cannot push a blast past its cap
 ok 23 - the dev damage multiplier cannot push a blast past its cap
   ---
-  duration_ms: 5.233965
+  duration_ms: 3.725711
   type: 'test'
   ...
 # Subtest: the hex reads as not ready without ten orbs in hand
 ok 24 - the hex reads as not ready without ten orbs in hand
   ---
-  duration_ms: 0.35684
+  duration_ms: 0.236465
   type: 'test'
   ...
 # Subtest: auto-range picks what the aim points at, and nothing outside a narrow cone
 ok 25 - auto-range picks what the aim points at, and nothing outside a narrow cone
   ---
-  duration_ms: 1.299978
+  duration_ms: 1.123353
   type: 'test'
   ...
 # Subtest: a lock holds while two targets sit side by side, so the aim point does not flicker
 ok 26 - a lock holds while two targets sit side by side, so the aim point does not flicker
   ---
-  duration_ms: 0.365472
+  duration_ms: 0.407863
   type: 'test'
   ...
 # Subtest: assist slides the reach out and bends the aim toward the target, without snapping
 ok 27 - assist slides the reach out and bends the aim toward the target, without snapping
   ---
-  duration_ms: 12.235785
+  duration_ms: 9.997207
   type: 'test'
   ...
 # Subtest: touch assist sticks to the target while strafing, and lets go when the player turns away
 ok 28 - touch assist sticks to the target while strafing, and lets go when the player turns away
   ---
-  duration_ms: 4.418863
+  duration_ms: 3.451112
   type: 'test'
   ...
 # Subtest: players outrank props and dummies, and touch gets a slightly wider cone than keys
 ok 29 - players outrank props and dummies, and touch gets a slightly wider cone than keys
   ---
-  duration_ms: 0.437115
+  duration_ms: 0.188813
   type: 'test'
   ...
 # Subtest: every Ballast kill is the headless death, however the damage built up
 ok 30 - every Ballast kill is the headless death, however the damage built up
   ---
-  duration_ms: 3.048039
+  duration_ms: 2.013655
   type: 'test'
   ...
 # Subtest: headless knee death removes head, drops gun, splatters forward and cleans up
 ok 31 - headless knee death removes head, drops gun, splatters forward and cleans up
   ---
-  duration_ms: 23.497311
+  duration_ms: 17.128021
   type: 'test'
   ...
 # Subtest: point-blank hits need a tighter center, with an independent glancing chance
 ok 32 - point-blank hits need a tighter center, with an independent glancing chance
   ---
-  duration_ms: 0.325122
+  duration_ms: 0.216911
   type: 'test'
   ...
 # Subtest: three regular birds plus a vulture, all sharing one silhouette language
 ok 33 - three regular birds plus a vulture, all sharing one silhouette language
   ---
-  duration_ms: 3.423738
+  duration_ms: 2.77605
   type: 'test'
   ...
 # Subtest: the vulture soars where the small birds beat
 ok 34 - the vulture soars where the small birds beat
   ---
-  duration_ms: 0.308249
+  duration_ms: 0.197934
   type: 'test'
   ...
 # Subtest: about one crossing a minute, never bunched and never a long silence
 ok 35 - about one crossing a minute, never bunched and never a long silence
   ---
-  duration_ms: 0.72686
+  duration_ms: 0.606635
   type: 'test'
   ...
 # Subtest: closest approach is measured over the window both are still flying
 ok 36 - closest approach is measured over the window both are still flying
   ---
-  duration_ms: 0.333855
+  duration_ms: 0.220516
   type: 'test'
   ...
 # Subtest: a path that would bring two birds close is refused outright
 ok 37 - a path that would bring two birds close is refused outright
   ---
-  duration_ms: 0.236466
+  duration_ms: 0.169843
   type: 'test'
   ...
 # Subtest: birds never share the sky within the clearance, over a long run
 ok 38 - birds never share the sky within the clearance, over a long run
   ---
-  duration_ms: 136.8277
+  duration_ms: 103.907778
   type: 'test'
   ...
 # Subtest: a crossing actually passes the camera and then leaves
 ok 39 - a crossing actually passes the camera and then leaves
   ---
-  duration_ms: 3.60966
+  duration_ms: 2.049271
   type: 'test'
   ...
 # Subtest: wings beat and the bird faces its heading
 ok 40 - wings beat and the bird faces its heading
   ---
-  duration_ms: 18.41013
+  duration_ms: 2.161619
   type: 'test'
   ...
 # Subtest: birds are decoration: no shadows, and they fly on every preset
 ok 41 - birds are decoration: no shadows, and they fly on every preset
   ---
-  duration_ms: 74.348769
+  duration_ms: 56.934673
   type: 'test'
   ...
 # Subtest: a roof hides the sky without emptying it
 ok 42 - a roof hides the sky without emptying it
   ---
-  duration_ms: 2.765581
+  duration_ms: 2.322168
   type: 'test'
   ...
 # Subtest: vultures are the occasional one, not the usual one
 ok 43 - vultures are the occasional one, not the usual one
   ---
-  duration_ms: 1489.771736
+  duration_ms: 1307.317011
   type: 'test'
   ...
 # Subtest: a crossing is unhurried, and takes the same time at any height
 ok 44 - a crossing is unhurried, and takes the same time at any height
   ---
-  duration_ms: 4.773677
+  duration_ms: 3.368458
   type: 'test'
   ...
 # Subtest: crossings run level and rake shallowly, never climbing and never steep
 ok 45 - crossings run level and rake shallowly, never climbing and never steep
   ---
-  duration_ms: 19.312703
+  duration_ms: 16.792974
   type: 'test'
   ...
 # Subtest: no path is ever laid across the player
 ok 46 - no path is ever laid across the player
   ---
-  duration_ms: 35.802972
+  duration_ms: 31.890761
   type: 'test'
   ...
 # Subtest: the solid build is low poly and carries a beak and eyes
 ok 47 - the solid build is low poly and carries a beak and eyes
   ---
-  duration_ms: 4.839434
+  duration_ms: 3.000288
   type: 'test'
   ...
 # Subtest: the flat build is what Performance flies
 ok 48 - the flat build is what Performance flies
   ---
-  duration_ms: 0.816365
+  duration_ms: 0.41037
   type: 'test'
   ...
 # Subtest: the vulture was brought down in size
 ok 49 - the vulture was brought down in size
   ---
-  duration_ms: 0.177758
+  duration_ms: 0.109052
   type: 'test'
   ...
 # Subtest: birds fly at a spread of heights, not one ceiling
 ok 50 - birds fly at a spread of heights, not one ceiling
   ---
-  duration_ms: 20.559456
+  duration_ms: 10.477454
   type: 'test'
   ...
 # Subtest: the Performance build is flat: no part stands off the plane it is drawn on
 ok 51 - the Performance build is flat: no part stands off the plane it is drawn on
   ---
-  duration_ms: 2.418482
+  duration_ms: 1.320634
   type: 'test'
   ...
 # Subtest: each flat bird trails one soft slipstream behind it
 ok 52 - each flat bird trails one soft slipstream behind it
   ---
-  duration_ms: 0.638482
+  duration_ms: 0.430065
   type: 'test'
   ...
 # Subtest: the dev spawn cycles through every shape in turn
 ok 53 - the dev spawn cycles through every shape in turn
   ---
-  duration_ms: 3.755852
+  duration_ms: 1.947979
   type: 'test'
   ...
 # Subtest: a deliberate spawn is never refused, only moved clear
 ok 54 - a deliberate spawn is never refused, only moved clear
   ---
-  duration_ms: 3.275535
+  duration_ms: 1.701453
   type: 'test'
   ...
 # Subtest: a wing beat reports itself once per beat, and not while hidden
 ok 55 - a wing beat reports itself once per beat, and not while hidden
   ---
-  duration_ms: 2.102098
+  duration_ms: 1.095462
   type: 'test'
   ...
 # Subtest: a crossing starts just outside the view, and a distant bird is not heard
 ok 56 - a crossing starts just outside the view, and a distant bird is not heard
   ---
-  duration_ms: 1.535779
+  duration_ms: 1.532848
   type: 'test'
   ...
 # Subtest: every bird flies nose first, with its wake behind it
 ok 57 - every bird flies nose first, with its wake behind it
   ---
-  duration_ms: 3.138202
+  duration_ms: 1.729647
   type: 'test'
   ...
 # Subtest: birds read large and calm rather than small and busy
 ok 58 - birds read large and calm rather than small and busy
   ---
-  duration_ms: 0.263761
+  duration_ms: 0.144199
   type: 'test'
   ...
 # Subtest: plumage is light enough to read against dark ground
 ok 59 - plumage is light enough to read against dark ground
   ---
-  duration_ms: 0.394012
+  duration_ms: 0.173057
   type: 'test'
   ...
 # Subtest: only the vulture carries extra anatomy
 ok 60 - only the vulture carries extra anatomy
   ---
-  duration_ms: 1.900275
+  duration_ms: 0.968252
   type: 'test'
   ...
 # Subtest: a beating wing stays on its own side of the bird, in both builds
 ok 61 - a beating wing stays on its own side of the bird, in both builds
   ---
-  duration_ms: 7.730216
+  duration_ms: 3.336027
   type: 'test'
   ...
 # Subtest: the sky flows both ways: crossings alternate rather than repeat
 ok 62 - the sky flows both ways: crossings alternate rather than repeat
   ---
-  duration_ms: 5.049042
+  duration_ms: 2.511384
   type: 'test'
   ...
 # Subtest: a bird summoned from the dev tools is on screen within a second
 ok 63 - a bird summoned from the dev tools is on screen within a second
   ---
-  duration_ms: 3.460987
+  duration_ms: 1.771103
   type: 'test'
   ...
 # Subtest: switching graphics preset does not strand bird geometry on the GPU
 ok 64 - switching graphics preset does not strand bird geometry on the GPU
   ---
-  duration_ms: 8.213925
+  duration_ms: 4.041058
   type: 'test'
   ...
 # Subtest: the tail and finger outlines are closed, sized and forked per species
 ok 65 - the tail and finger outlines are closed, sized and forked per species
   ---
-  duration_ms: 0.614944
+  duration_ms: 0.422391
   type: 'test'
   ...
 # Subtest: a crossing reaches past the map when one is known, and far past the view otherwise
 ok 66 - a crossing reaches past the map when one is known, and far past the view otherwise
   ---
-  duration_ms: 0.189738
+  duration_ms: 0.11908
   type: 'test'
   ...
 # Subtest: a player on the move actually sees most crossings
 ok 67 - a player on the move actually sees most crossings
   ---
-  duration_ms: 69.351891
+  duration_ms: 58.796876
   type: 'test'
   ...
 # Subtest: small orb blasts do not push; six to twelve orbs progressively increase knockback
 ok 68 - small orb blasts do not push; six to twelve orbs progressively increase knockback
   ---
-  duration_ms: 21.736961
+  duration_ms: 17.790725
   type: 'test'
   ...
 # Subtest: close grenade pushes about 2.8 metres, less than a dash, without costing stamina
 ok 69 - close grenade pushes about 2.8 metres, less than a dash, without costing stamina
   ---
-  duration_ms: 3.961216
+  duration_ms: 3.342504
   type: 'test'
   ...
 # Subtest: blast knockback falls off, is blocked by cover, respects walls and resets with spawn speed
 ok 70 - blast knockback falls off, is blocked by cover, respects walls and resets with spawn speed
   ---
-  duration_ms: 5.997167
+  duration_ms: 5.903712
   type: 'test'
   ...
 # Subtest: thrown blood finds the first wall face along its line, skipping windows and the box it starts in
 ok 71 - thrown blood finds the first wall face along its line, skipping windows and the box it starts in
   ---
-  duration_ms: 2.703338
+  duration_ms: 2.388386
   type: 'test'
   ...
 # Subtest: drops are one instanced draw, capped per preset; a broken crate takes its drops, a reset takes all
 ok 72 - drops are one instanced draw, capped per preset; a broken crate takes its drops, a reset takes all
   ---
-  duration_ms: 4.561063
+  duration_ms: 3.865621
   type: 'test'
   ...
 # Subtest: solo RESET MAP puts props, crops and targets back and leaves the player be
 ok 73 - solo RESET MAP puts props, crops and targets back and leaves the player be
   ---
-  duration_ms: 16.769985
+  duration_ms: 13.721056
   type: 'test'
   ...
 # Subtest: walking through a pool soaks you in stages, leaves prints after, and dries off
 ok 74 - walking through a pool soaks you in stages, leaves prints after, and dries off
   ---
-  duration_ms: 4.68424
+  duration_ms: 3.960806
   type: 'test'
   ...
 # Subtest: the collider index answers exactly as a full scan does, on the real map
 ok 75 - the collider index answers exactly as a full scan does, on the real map
   ---
-  duration_ms: 1116.669071
+  duration_ms: 815.117775
   type: 'test'
   ...
 # Subtest: it also matches the axis-aligned margin test the path grid uses
 ok 76 - it also matches the axis-aligned margin test the path grid uses
   ---
-  duration_ms: 357.024637
+  duration_ms: 253.110154
   type: 'test'
   ...
 # Subtest: the camera moves the ground by whole screen pixels, so thin lines stop shimmering
 ok 77 - the camera moves the ground by whole screen pixels, so thin lines stop shimmering
   ---
-  duration_ms: 4.210484
+  duration_ms: 2.190405
   type: 'test'
   ...
 # Subtest: Performance and Balanced draw at their internal size and write a larger, smoothed and sharpened picture
 ok 78 - Performance and Balanced draw at their internal size and write a larger, smoothed and sharpened picture
   ---
-  duration_ms: 3.858979
+  duration_ms: 3.461834
   type: 'test'
   ...
 # Subtest: crop occupants and their health bars are hidden from outside, even at point blank range
 ok 79 - crop occupants and their health bars are hidden from outside, even at point blank range
   ---
-  duration_ms: 1.058624
+  duration_ms: 0.950134
   type: 'test'
   ...
 # Subtest: inside crops only nearby entities in the same field are revealed
 ok 80 - inside crops only nearby entities in the same field are revealed
   ---
-  duration_ms: 0.319795
+  duration_ms: 0.23122
   type: 'test'
   ...
 # Subtest: standing in a cleared patch does not reveal occupants of intact crops
 ok 81 - standing in a cleared patch does not reveal occupants of intact crops
   ---
-  duration_ms: 0.164035
+  duration_ms: 0.165936
   type: 'test'
   ...
 # Subtest: crop edge masks stay field-only until the entire body enters, including cleared holes
 ok 82 - crop edge masks stay field-only until the entire body enters, including cleared holes
   ---
-  duration_ms: 0.837232
+  duration_ms: 0.648275
   type: 'test'
   ...
 # Subtest: 56 varied crop sections tile the field exactly and have reciprocal neighbors
 ok 83 - 56 varied crop sections tile the field exactly and have reciprocal neighbors
   ---
-  duration_ms: 5.217312
+  duration_ms: 4.955797
   type: 'test'
   ...
 # Subtest: each section burns eight seconds from its own ignition; spread is staged and reset restores it
 ok 84 - each section burns eight seconds from its own ignition; spread is staged and reset restores it
   ---
-  duration_ms: 56.026328
+  duration_ms: 17.865005
   type: 'test'
   ...
 # Subtest: C ignites crops only after windup, and cover blocks ignition
 ok 85 - C ignites crops only after windup, and cover blocks ignition
   ---
-  duration_ms: 37.981396
+  duration_ms: 11.985004
   type: 'test'
   ...
 # Subtest: explosions ignite touched sections, single orbs do not, cover blocks both fire and spread
 ok 86 - explosions ignite touched sections, single orbs do not, cover blocks both fire and spread
   ---
-  duration_ms: 2.238427
+  duration_ms: 1.862717
   type: 'test'
   ...
 # Subtest: hex pulses and rotating edges destroy crops as dust without fire; burning crops extinguish
 ok 87 - hex pulses and rotating edges destroy crops as dust without fire; burning crops extinguish
   ---
-  duration_ms: 14.100353
+  duration_ms: 1.524375
   type: 'test'
   ...
 # Subtest: remote farm has only one nearby house and sparse solid cover across the expanded land
 ok 88 - remote farm has only one nearby house and sparse solid cover across the expanded land
   ---
-  duration_ms: 18.716722
+  duration_ms: 8.306487
   type: 'test'
   ...
 # Subtest: fire deals exactly 25 health per second to the player and targets, including self-lit fire and dodging
 ok 89 - fire deals exactly 25 health per second to the player and targets, including self-lit fire and dodging
   ---
-  duration_ms: 11.333775
+  duration_ms: 1.345238
   type: 'test'
   ...
 # Subtest: burning boundaries do not stack damage and only remaining fire time causes damage
 ok 90 - burning boundaries do not stack damage and only remaining fire time causes damage
   ---
-  duration_ms: 4.410221
+  duration_ms: 0.439088
   type: 'test'
   ...
 # Subtest: fire kills fragile dummies once, scorch grows gradually, and electricity preserves existing scorch
 ok 91 - fire kills fragile dummies once, scorch grows gradually, and electricity preserves existing scorch
   ---
-  duration_ms: 1.447787
+  duration_ms: 7.780681
   type: 'test'
   ...
 # Subtest: broken crates are a stable minority, and only crates are ever broken
 ok 92 - broken crates are a stable minority, and only crates are ever broken
   ---
-  duration_ms: 2.662922
+  duration_ms: 4.179203
   type: 'test'
   ...
 # Subtest: damage popup follows rendered position and does not switch sides when turning
 ok 93 - damage popup follows rendered position and does not switch sides when turning
   ---
-  duration_ms: 2.294316
+  duration_ms: 1.983339
   type: 'test'
   ...
 # Subtest: hits in a row add up into one number that pops back in with a new tilt
 ok 94 - hits in a row add up into one number that pops back in with a new tilt
   ---
-  duration_ms: 1.6777
+  duration_ms: 1.605117
   type: 'test'
   ...
 # Subtest: damage text scales to each individual hit and has a restrained entry slam
 ok 95 - damage text scales to each individual hit and has a restrained entry slam
   ---
-  duration_ms: 0.184938
+  duration_ms: 0.301518
   type: 'test'
   ...
 # Subtest: player damage feedback reports actual lost HP and ignores invulnerability
 ok 96 - player damage feedback reports actual lost HP and ignores invulnerability
   ---
-  duration_ms: 1.206833
+  duration_ms: 1.119042
   type: 'test'
   ...
 # Subtest: damage numbers are whole and rounded down, never fractions
 ok 97 - damage numbers are whole and rounded down, never fractions
   ---
-  duration_ms: 0.541054
+  duration_ms: 0.461714
   type: 'test'
   ...
 # Subtest: a burn number is born once and climbs, rather than restarting every merge
 ok 98 - a burn number is born once and climbs, rather than restarting every merge
   ---
-  duration_ms: 0.351755
+  duration_ms: 0.260637
   type: 'test'
   ...
 # Subtest: a running burn figure changes on a readable beat, not every frame
 ok 99 - a running burn figure changes on a readable beat, not every frame
   ---
-  duration_ms: 0.465126
+  duration_ms: 0.358062
   type: 'test'
   ...
 # Subtest: a gunshot landing mid burn adds onto the same running number
 ok 100 - a gunshot landing mid burn adds onto the same running number
   ---
-  duration_ms: 0.312427
+  duration_ms: 0.292308
   type: 'test'
   ...
 # Subtest: a burn feeds one number instead of stacking dozens
 ok 101 - a burn feeds one number instead of stacking dozens
   ---
-  duration_ms: 0.585464
+  duration_ms: 0.430524
   type: 'test'
   ...
 # Subtest: a fraction too small to show is carried, not discarded
 ok 102 - a fraction too small to show is carried, not discarded
   ---
-  duration_ms: 0.559824
+  duration_ms: 0.449877
   type: 'test'
   ...
 # Subtest: a single large hit is unaffected by the carry
 ok 103 - a single large hit is unaffected by the carry
   ---
-  duration_ms: 0.219832
+  duration_ms: 1.241598
   type: 'test'
   ...
 # Subtest: the burn timings hold their intended relationship
 ok 104 - the burn timings hold their intended relationship
   ---
-  duration_ms: 0.236257
+  duration_ms: 0.23344
   type: 'test'
   ...
 # Subtest: a new life starts with no damage or kill pops from the last one
 ok 105 - a new life starts with no damage or kill pops from the last one
   ---
-  duration_ms: 3.762444
+  duration_ms: 1.605111
   type: 'test'
   ...
 # Subtest: distinct lethal damage types drop the gun and preserve a fallen corpse without explosion scatter
 ok 106 - distinct lethal damage types drop the gun and preserve a fallen corpse without explosion scatter
   ---
-  duration_ms: 72.206087
+  duration_ms: 62.608553
   type: 'test'
   ...
 # Subtest: fatal projectiles and blasts preserve the direction away from their impact
 ok 107 - fatal projectiles and blasts preserve the direction away from their impact
   ---
-  duration_ms: 9.312178
+  duration_ms: 15.054706
   type: 'test'
   ...
 # Subtest: lethal overkill emits one death, stops movement and attacks, and reset restores the player
 ok 108 - lethal overkill emits one death, stops movement and attacks, and reset restores the player
   ---
-  duration_ms: 0.675356
+  duration_ms: 0.555041
   type: 'test'
   ...
 # Subtest: five distinct pool profiles remain compact and the death screen comes up quickly
 ok 109 - five distinct pool profiles remain compact and the death screen comes up quickly
   ---
-  duration_ms: 0.655937
+  duration_ms: 0.729136
   type: 'test'
   ...
 # Subtest: death drops a visible gun, spreads blood, lands particles and cleans resources on restart
 ok 110 - death drops a visible gun, spreads blood, lands particles and cleans resources on restart
   ---
-  duration_ms: 80.877009
+  duration_ms: 68.988858
   type: 'test'
   ...
 # Subtest: every player death leaves blood on the floor: your own and other players online
 ok 111 - every player death leaves blood on the floor: your own and other players online
   ---
-  duration_ms: 9.097992
+  duration_ms: 3.978857
   type: 'test'
   ...
 # Subtest: each player leaves at most one bloodstain: their last death stays, the one before fades away
 ok 112 - each player leaves at most one bloodstain: their last death stays, the one before fades away
   ---
-  duration_ms: 2.161427
+  duration_ms: 1.623751
   type: 'test'
   ...
 # Subtest: small props break at their configured health from launched hits, removing its collider and preserving impact direction
 ok 113 - small props break at their configured health from launched hits, removing its collider and preserving impact direction
   ---
-  duration_ms: 21.281371
+  duration_ms: 19.390394
   type: 'test'
   ...
 # Subtest: drifting orbs dissipate against props and targets without damaging them
 ok 114 - drifting orbs dissipate against props and targets without damaging them
   ---
-  duration_ms: 13.672836
+  duration_ms: 11.508073
   type: 'test'
   ...
 # Subtest: fences and permanent fixtures survive full volleys
 ok 115 - fences and permanent fixtures survive full volleys
   ---
-  duration_ms: 3.818057
+  duration_ms: 3.650693
   type: 'test'
   ...
 # Subtest: one orb has no explosion; two through twelve produce one increasingly sized blast at the captured point
 ok 116 - one orb has no explosion; two through twelve produce one increasingly sized blast at the captured point
   ---
-  duration_ms: 9.055846
+  duration_ms: 7.079078
   type: 'test'
   ...
 # Subtest: orb blasts increase strongly after three and reach 145 (x1.75, the volley boost) without changing radius
 ok 117 - orb blasts increase strongly after three and reach 145 (x1.75, the volley boost) without changing radius
   ---
-  duration_ms: 0.299547
+  duration_ms: 0.418798
   type: 'test'
   ...
 # Subtest: oversized developer volleys scale splash radius and damage with matching visual event
 ok 118 - oversized developer volleys scale splash radius and damage with matching visual event
   ---
-  duration_ms: 0.911623
+  duration_ms: 0.772248
   type: 'test'
   ...
 # Subtest: splash damage falls off and cannot reach outside its radius
 ok 119 - splash damage falls off and cannot reach outside its radius
   ---
-  duration_ms: 1.484504
+  duration_ms: 1.215517
   type: 'test'
   ...
 # Subtest: solid cover blocks splash damage and intercepted orbs cannot explode beyond it
 ok 120 - solid cover blocks splash damage and intercepted orbs cannot explode beyond it
   ---
-  duration_ms: 1.941541
+  duration_ms: 1.766451
   type: 'test'
   ...
 # Subtest: only arriving orbs contribute to explosion size
 ok 121 - only arriving orbs contribute to explosion size
   ---
-  duration_ms: 1.500287
+  duration_ms: 0.917461
   type: 'test'
   ...
 # Subtest: splash breaks nearby props with an outward impulse
 ok 122 - splash breaks nearby props with an outward impulse
   ---
-  duration_ms: 1.455941
+  duration_ms: 1.642937
   type: 'test'
   ...
 # Subtest: stationary refilling uses the increased rate after the same launch delay
 ok 123 - stationary refilling uses the increased rate after the same launch delay
   ---
-  duration_ms: 7.623999
+  duration_ms: 10.577289
   type: 'test'
   ...
 # Subtest: both saloon and supplies doors are open while the intervening walls still collide
 ok 124 - both saloon and supplies doors are open while the intervening walls still collide
   ---
-  duration_ms: 6.83451
+  duration_ms: 10.946905
   type: 'test'
   ...
 # Subtest: volleys aimed at permanent structures converge and explode on the near face
 ok 125 - volleys aimed at permanent structures converge and explode on the near face
   ---
-  duration_ms: 1.190601
+  duration_ms: 0.988581
   type: 'test'
   ...
 # Subtest: stone arch opening is walkable while its pillars remain solid
 ok 126 - stone arch opening is walkable while its pillars remain solid
   ---
-  duration_ms: 0.530802
+  duration_ms: 0.317953
   type: 'test'
   ...
 # Subtest: quick shot creates and immediately launches one orb, spending one ammo
 ok 127 - quick shot creates and immediately launches one orb, spending one ammo
   ---
-  duration_ms: 0.918736
+  duration_ms: 0.51237
   type: 'test'
   ...
 # Subtest: quick shot dry fires without ammo and regular launch commands still need placed orbs
 ok 128 - quick shot dry fires without ammo and regular launch commands still need placed orbs
   ---
-  duration_ms: 0.224759
+  duration_ms: 0.164649
   type: 'test'
   ...
 # Subtest: splash lands a little harder at the core and the rim than it used to
 ok 129 - splash lands a little harder at the core and the rim than it used to
   ---
-  duration_ms: 0.556371
+  duration_ms: 0.259687
   type: 'test'
   ...
 # Subtest: the core bonus belongs to heavy volleys, the rim bonus to all of them
 ok 130 - the core bonus belongs to heavy volleys, the rim bonus to all of them
   ---
-  duration_ms: 0.164898
+  duration_ms: 0.114104
   type: 'test'
   ...
 # Subtest: splash still stops dead at the blast boundary
 ok 131 - splash still stops dead at the blast boundary
   ---
-  duration_ms: 0.098655
+  duration_ms: 0.106725
   type: 'test'
   ...
 # Subtest: P disables a mixed set of overrides, then enables every current weapon override
 ok 132 - P disables a mixed set of overrides, then enables every current weapon override
   ---
-  duration_ms: 1.372474
+  duration_ms: 1.286556
   type: 'test'
   ...
 # Subtest: practice orb override bypasses supply and capacity without changing normal rules
 ok 133 - practice orb override bypasses supply and capacity without changing normal rules
   ---
-  duration_ms: 1.527279
+  duration_ms: 1.501074
   type: 'test'
   ...
 # Subtest: practice invulnerability, cooldown and movement overrides can be disabled
 ok 134 - practice invulnerability, cooldown and movement overrides can be disabled
   ---
-  duration_ms: 10.61741
+  duration_ms: 9.415578
   type: 'test'
   ...
 # Subtest: the tools open with Shift+P from the pause menu and the access code, and are silent before that
 ok 135 - the tools open with Shift+P from the pause menu and the access code, and are silent before that
   ---
-  duration_ms: 74.121746
+  duration_ms: 71.507694
   type: 'test'
   ...
 # Subtest: every option has a home section, a unique key and a short label; P only touches everyday overrides
 ok 136 - every option has a home section, a unique key and a short label; P only touches everyday overrides
   ---
-  duration_ms: 0.609917
+  duration_ms: 0.721785
   type: 'test'
   ...
 # Subtest: one-hit kills, frozen targets, respawn and rebuild work from sim.dev
 ok 137 - one-hit kills, frozen targets, respawn and rebuild work from sim.dev
   ---
-  duration_ms: 52.376303
+  duration_ms: 38.996373
   type: 'test'
   ...
 # Subtest: removing your own player: no body to bump, nothing hurts it
 ok 138 - removing your own player: no body to bump, nothing hurts it
   ---
-  duration_ms: 6.603466
+  duration_ms: 6.060737
   type: 'test'
   ...
 # Subtest: the host can remove a joiner, who is told why and cannot come back
 ok 139 - the host can remove a joiner, who is told why and cannot come back
   ---
-  duration_ms: 90.379077
+  duration_ms: 72.158231
   type: 'test'
   ...
 # Subtest: weapons live in one Weapons dropdown, one dropdown each, taken from the item registry
 ok 140 - weapons live in one Weapons dropdown, one dropdown each, taken from the item registry
   ---
-  duration_ms: 0.787782
+  duration_ms: 0.642305
   type: 'test'
   ...
 # Subtest: the window is kept wholly on screen, whatever was saved
 ok 141 - the window is kept wholly on screen, whatever was saved
   ---
-  duration_ms: 2.725439
+  duration_ms: 2.314371
   type: 'test'
   ...
 # Subtest: a first open lands somewhere sensible without a saved position
 ok 142 - a first open lands somewhere sensible without a saved position
   ---
-  duration_ms: 0.258132
+  duration_ms: 0.258837
   type: 'test'
   ...
 # Subtest: corrupt or missing storage never breaks the window
 ok 143 - corrupt or missing storage never breaks the window
   ---
-  duration_ms: 0.380675
+  duration_ms: 0.275467
   type: 'test'
   ...
 # Subtest: every toggle names a real override the simulation reads
 ok 144 - every toggle names a real override the simulation reads
   ---
-  duration_ms: 4.91965
+  duration_ms: 4.410087
   type: 'test'
   ...
 # Subtest: restore fills health, ammo and every cooldown
 ok 145 - restore fills health, ammo and every cooldown
   ---
-  duration_ms: 14.022156
+  duration_ms: 11.426846
   type: 'test'
   ...
 # Subtest: O opens the window, and only once the tools are unlocked
 ok 146 - O opens the window, and only once the tools are unlocked
   ---
-  duration_ms: 0.88592
+  duration_ms: 0.882284
   type: 'test'
   ...
 # Subtest: developer controls opt out of the stretched display lettering
 ok 147 - developer controls opt out of the stretched display lettering
   ---
-  duration_ms: 0.34804
+  duration_ms: 0.270255
   type: 'test'
   ...
 # Subtest: the aim cone carries a faint but unmistakably red interior
 ok 148 - the aim cone carries a faint but unmistakably red interior
   ---
-  duration_ms: 1.038271
+  duration_ms: 0.901449
   type: 'test'
   ...
 # Subtest: both Ballast and Nominal draw the zone, and only while loaded and ready
 ok 149 - both Ballast and Nominal draw the zone, and only while loaded and ready
   ---
-  duration_ms: 0.858174
+  duration_ms: 0.765552
   type: 'test'
   ...
 # Subtest: every graphics tier is offered by the dev window and the settings tab
 ok 150 - every graphics tier is offered by the dev window and the settings tab
   ---
-  duration_ms: 0.822876
+  duration_ms: 0.718343
   type: 'test'
   ...
 # Subtest: a host that denies storage access still yields a usable dev window
 ok 151 - a host that denies storage access still yields a usable dev window
   ---
-  duration_ms: 0.510031
+  duration_ms: 0.400191
   type: 'test'
   ...
 # Subtest: freeze game: the world holds still (shots in the air, timers) while you still walk
 ok 152 - freeze game: the world holds still (shots in the air, timers) while you still walk
   ---
-  duration_ms: 39.547019
+  duration_ms: 35.020564
   type: 'test'
   ...
 # Subtest: dodge moves a modest fixed distance, with equal cardinal and diagonal travel
 ok 153 - dodge moves a modest fixed distance, with equal cardinal and diagonal travel
   ---
-  duration_ms: 7.94352
+  duration_ms: 6.62606
   type: 'test'
   ...
 # Subtest: one dodge (Static) uses the stamina, a second is blocked, and it replenishes over time
 ok 154 - one dodge (Static) uses the stamina, a second is blocked, and it replenishes over time
   ---
-  duration_ms: 3.664812
+  duration_ms: 3.010749
   type: 'test'
   ...
 # Subtest: a standing dodge rolls the way the player faces, and the direction is captured
 ok 155 - a standing dodge rolls the way the player faces, and the direction is captured
   ---
-  duration_ms: 0.492468
+  duration_ms: 0.380082
   type: 'test'
   ...
 # Subtest: a moving dodge follows the movement, and is captured rather than steered
 ok 156 - a moving dodge follows the movement, and is captured rather than steered
   ---
-  duration_ms: 0.310301
+  duration_ms: 0.291901
   type: 'test'
   ...
 # Subtest: dodge respects walls and the expanding hex boundary
 ok 157 - dodge respects walls and the expanding hex boundary
   ---
-  duration_ms: 4.096561
+  duration_ms: 3.165328
   type: 'test'
   ...
 # Subtest: dodge shrinks the attack hitbox and reduces damage, without granting invulnerability
 ok 158 - dodge shrinks the attack hitbox and reduces damage, without granting invulnerability
   ---
-  duration_ms: 0.811379
+  duration_ms: 0.721077
   type: 'test'
   ...
 # Subtest: Nominal refills dodges faster while standing still
 ok 159 - Nominal refills dodges faster while standing still
   ---
-  duration_ms: 2.9608
+  duration_ms: 2.580684
   type: 'test'
   ...
 # Subtest: the stationary dodge bonus is Nominal only
 ok 160 - the stationary dodge bonus is Nominal only
   ---
-  duration_ms: 0.267491
+  duration_ms: 0.242027
   type: 'test'
   ...
 # Subtest: VS ROBOTS choices survive the URL and bad values fall back
 ok 161 - VS ROBOTS choices survive the URL and bad values fall back
   ---
-  duration_ms: 2.834362
+  duration_ms: 2.38758
   type: 'test'
   ...
 # Subtest: first to N ends it once, endless never does
 ok 162 - first to N ends it once, endless never does
   ---
-  duration_ms: 0.30439
+  duration_ms: 0.254359
   type: 'test'
   ...
 # Subtest: skill runs rookie to perfect, each better than the last
 ok 163 - skill runs rookie to perfect, each better than the last
   ---
-  duration_ms: 0.285003
+  duration_ms: 0.204059
   type: 'test'
   ...
 # Subtest: a blend mixes styles; a temper gives a mood that shifts and leans the style
 ok 164 - a blend mixes styles; a temper gives a mood that shifts and leans the style
   ---
-  duration_ms: 15.476044
+  duration_ms: 12.799419
   type: 'test'
   ...
 # Subtest: a 1V1 has one robot as asked, no targets, and scores both ways
 ok 165 - a 1V1 has one robot as asked, no targets, and scores both ways
   ---
-  duration_ms: 122.949887
+  duration_ms: 107.931467
   type: 'test'
   ...
 # Subtest: the 1V1 page remembers sane choices only
 ok 166 - the 1V1 page remembers sane choices only
   ---
-  duration_ms: 1.004816
+  duration_ms: 0.88927
   type: 'test'
   ...
 # Subtest: VS ROBOTS 2V2 / 3V3: your robots and theirs as asked, friendly fire at half, points for each side
 ok 167 - VS ROBOTS 2V2 / 3V3: your robots and theirs as asked, friendly fire at half, points for each side
   ---
-  duration_ms: 175.932688
+  duration_ms: 156.749773
   type: 'test'
   ...
 # Subtest: kicked dust is lighter than the ground it came from
 ok 168 - kicked dust is lighter than the ground it came from
   ---
-  duration_ms: 1.296853
+  duration_ms: 1.069234
   type: 'test'
   ...
 # Subtest: Quality lays down more dust than Balanced, and Potato none
 ok 169 - Quality lays down more dust than Balanced, and Potato none
   ---
-  duration_ms: 79.382905
+  duration_ms: 73.158516
   type: 'test'
   ...
 # Subtest: Quality and Balanced get extra footfall particles, lower tiers do not
 ok 170 - Quality and Balanced get extra footfall particles, lower tiers do not
   ---
-  duration_ms: 0.314157
+  duration_ms: 0.239869
   type: 'test'
   ...
 # Subtest: walking dust clears itself shortly after the player stops
 ok 171 - walking dust clears itself shortly after the player stops
   ---
-  duration_ms: 1.188757
+  duration_ms: 1.480432
   type: 'test'
   ...
 # Subtest: a dash lays a streak along the path travelled, not a single puff
 ok 172 - a dash lays a streak along the path travelled, not a single puff
   ---
-  duration_ms: 1.142327
+  duration_ms: 1.015968
   type: 'test'
   ...
 # Subtest: the dash streak outlives a single step but still expires
 ok 173 - the dash streak outlives a single step but still expires
   ---
-  duration_ms: 6.737277
+  duration_ms: 1.668303
   type: 'test'
   ...
 # Subtest: the pool is bounded however long the player runs
 ok 174 - the pool is bounded however long the player runs
   ---
-  duration_ms: 185.550309
+  duration_ms: 162.138939
   type: 'test'
   ...
 # Subtest: Potato emits nothing at all
 ok 175 - Potato emits nothing at all
   ---
-  duration_ms: 0.666653
+  duration_ms: 0.713654
   type: 'test'
   ...
 # Subtest: break dust is coloured by what broke, over the ground it stood on
 ok 176 - break dust is coloured by what broke, over the ground it stood on
   ---
-  duration_ms: 1.417427
+  duration_ms: 1.01767
   type: 'test'
   ...
 # Subtest: small clutter throws its own colour and no dust at all
 ok 177 - small clutter throws its own colour and no dust at all
   ---
-  duration_ms: 1.712737
+  duration_ms: 1.423967
   type: 'test'
   ...
 # Subtest: every live arc is drawn, through four shared objects
 ok 178 - every live arc is drawn, through four shared objects
   ---
-  duration_ms: 101.469624
+  duration_ms: 86.7506
   type: 'test'
   ...
 # Subtest: the low presets shed detail and the high ones add it
 ok 179 - the low presets shed detail and the high ones add it
   ---
-  duration_ms: 5.383456
+  duration_ms: 4.281243
   type: 'test'
   ...
 # Subtest: a recoloured arc keeps its colour to itself
 ok 180 - a recoloured arc keeps its colour to itself
   ---
-  duration_ms: 1.525066
+  duration_ms: 1.419255
   type: 'test'
   ...
 # Subtest: a pulse leaves the shared shapes intact when it finishes
 ok 181 - a pulse leaves the shared shapes intact when it finishes
   ---
-  duration_ms: 62.868967
+  duration_ms: 60.584057
   type: 'test'
   ...
 # Subtest: a short arc is seen at full strength even on a slow frame
 ok 182 - a short arc is seen at full strength even on a slow frame
   ---
-  duration_ms: 1.981722
+  duration_ms: 1.425216
   type: 'test'
   ...
 # Subtest: a frozen root is computed once and then skipped, until it moves or grows
 ok 183 - a frozen root is computed once and then skipped, until it moves or grows
   ---
-  duration_ms: 3.12247
+  duration_ms: 2.844081
   type: 'test'
   ...
 # Subtest: a movable frozen group carries its children only on the frames it moves
 ok 184 - a movable frozen group carries its children only on the frames it moves
   ---
-  duration_ms: 0.648671
+  duration_ms: 0.569742
   type: 'test'
   ...
 # Subtest: Extreme surface detail compiles in only while Extreme is on, and ground and surfaces never share a program
 ok 185 - Extreme surface detail compiles in only while Extreme is on, and ground and surfaces never share a program
   ---
-  duration_ms: 0.850126
+  duration_ms: 0.849891
   type: 'test'
   ...
 # Subtest: Extreme builds on Quality: never less of anything, more of the things that show
 ok 186 - Extreme builds on Quality: never less of anything, more of the things that show
   ---
-  duration_ms: 0.269568
+  duration_ms: 0.196238
   type: 'test'
   ...
 # Subtest: the view is fair on every screen shape: nobody sees further than a 16:9 screen, and most see as much ground
 ok 187 - the view is fair on every screen shape: nobody sees further than a 16:9 screen, and most see as much ground
   ---
-  duration_ms: 1.000212
+  duration_ms: 0.983659
   type: 'test'
   ...
 # Subtest: one flight voice persists until the final orb lands and reset stops outstanding flights
 ok 188 - one flight voice persists until the final orb lands and reset stops outstanding flights
   ---
-  duration_ms: 2.388264
+  duration_ms: 1.872285
   type: 'test'
   ...
 # Subtest: flight audio is not created before audio is ready or while muted
 ok 189 - flight audio is not created before audio is ready or while muted
   ---
-  duration_ms: 0.316214
+  duration_ms: 0.24338
   type: 'test'
   ...
 # Subtest: Nominal report is short, unpitched, and respects mute and pause
 ok 190 - Nominal report is short, unpitched, and respects mute and pause
   ---
-  duration_ms: 0.406549
+  duration_ms: 0.340445
   type: 'test'
   ...
 # Subtest: each health-loss event starts its short cue immediately with the damage popup
 ok 191 - each health-loss event starts its short cue immediately with the damage popup
   ---
-  duration_ms: 0.471557
+  duration_ms: 0.30519
   type: 'test'
   ...
 # Subtest: death cue starts on death itself and finishes before the delayed menu
 ok 192 - death cue starts on death itself and finishes before the delayed menu
   ---
-  duration_ms: 0.409627
+  duration_ms: 0.34713
   type: 'test'
   ...
 # Subtest: health and death cues respect mute, pause, and audio not being started
 ok 193 - health and death cues respect mute, pause, and audio not being started
   ---
-  duration_ms: 0.314826
+  duration_ms: 0.234853
   type: 'test'
   ...
 # Subtest: the ladder runs one to two forty, with uncapped one past the top
 ok 194 - the ladder runs one to two forty, with uncapped one past the top
   ---
-  duration_ms: 4.485017
+  duration_ms: 2.17745
   type: 'test'
   ...
 # Subtest: the weighted stops are the rates people actually target
 ok 195 - the weighted stops are the rates people actually target
   ---
-  duration_ms: 1.960692
+  duration_ms: 1.471254
   type: 'test'
   ...
 # Subtest: the handle is pulled onto a stop from either side
 ok 196 - the handle is pulled onto a stop from either side
   ---
-  duration_ms: 0.692006
+  duration_ms: 0.385571
   type: 'test'
   ...
 # Subtest: past the pull it keeps moving and settles anywhere
 ok 197 - past the pull it keeps moving and settles anywhere
   ---
-  duration_ms: 0.831223
+  duration_ms: 0.567025
   type: 'test'
   ...
 # Subtest: the pull is narrow enough to keep neighbouring stops separate
 ok 198 - the pull is narrow enough to keep neighbouring stops separate
   ---
-  duration_ms: 0.21672
+  duration_ms: 0.143987
   type: 'test'
   ...
 # Subtest: uncapped sits at the very top and cannot be pulled off it
 ok 199 - uncapped sits at the very top and cannot be pulled off it
   ---
-  duration_ms: 0.189655
+  duration_ms: 0.127569
   type: 'test'
   ...
 # Subtest: slider position and frame cap round-trip
 ok 200 - slider position and frame cap round-trip
   ---
-  duration_ms: 0.408129
+  duration_ms: 0.265981
   type: 'test'
   ...
 # Subtest: a nonsense stored setting falls back rather than breaking the slider
 ok 201 - a nonsense stored setting falls back rather than breaking the slider
   ---
-  duration_ms: 0.542015
+  duration_ms: 0.41921
   type: 'test'
   ...
 # Subtest: the markup is a continuous range with a prong for every stop
 ok 202 - the markup is a continuous range with a prong for every stop
   ---
-  duration_ms: 1.138008
+  duration_ms: 0.952893
   type: 'test'
   ...
 # Subtest: the prongs are drawn in the interface accent
 ok 203 - the prongs are drawn in the interface accent
   ---
-  duration_ms: 2.114465
+  duration_ms: 1.698859
   type: 'test'
   ...
 # Subtest: Space shoots, E is the secondary key everywhere the controls are described
 ok 204 - Space shoots, E is the secondary key everywhere the controls are described
   ---
-  duration_ms: 2.326858
+  duration_ms: 0.960493
   type: 'test'
   ...
 # Subtest: locked on a player: accurate and smooth, drifts off on a dodge or behind a wall, glides back, disengages indoors or off screen
 ok 205 - locked on a player: accurate and smooth, drifts off on a dodge or behind a wall, glides back, disengages indoors or off screen
   ---
-  duration_ms: 4.239164
+  duration_ms: 3.539148
+  type: 'test'
+  ...
+# Subtest: key bindings: a new key for an action reads as its token, the old key does nothing, a taken key swaps, defaults come back
+ok 206 - key bindings: a new key for an action reads as its token, the old key does nothing, a taken key swaps, defaults come back
+  ---
+  duration_ms: 2.110012
   type: 'test'
   ...
 # Subtest: grenade has a wide full-damage center and bounded splash falloff
-ok 206 - grenade has a wide full-damage center and bounded splash falloff
+ok 207 - grenade has a wide full-damage center and bounded splash falloff
   ---
-  duration_ms: 1.248856
+  duration_ms: 0.96643
   type: 'test'
   ...
 # Subtest: Nominal grenade releases from the free hand, caps range and uses a 1.4-second fuse
-ok 207 - Nominal grenade releases from the free hand, caps range and uses a 1.4-second fuse
+ok 208 - Nominal grenade releases from the free hand, caps range and uses a 1.4-second fuse
   ---
-  duration_ms: 10.336924
+  duration_ms: 8.340561
   type: 'test'
   ...
 # Subtest: grenade cooldown lasts 25 seconds, resets, and has a separate developer override
-ok 208 - grenade cooldown lasts 25 seconds, resets, and has a separate developer override
+ok 209 - grenade cooldown lasts 25 seconds, resets, and has a separate developer override
   ---
-  duration_ms: 21.506448
+  duration_ms: 17.445009
   type: 'test'
   ...
 # Subtest: grenade damages exposed targets and the player but solid cover blocks splash
-ok 209 - grenade damages exposed targets and the player but solid cover blocks splash
+ok 210 - grenade damages exposed targets and the player but solid cover blocks splash
   ---
-  duration_ms: 3.857894
+  duration_ms: 2.886789
   type: 'test'
   ...
 # Subtest: grenade flight stops at tall walls and clears low cover
-ok 210 - grenade flight stops at tall walls and clears low cover
+ok 211 - grenade flight stops at tall walls and clears low cover
   ---
-  duration_ms: 2.335648
+  duration_ms: 1.875856
   type: 'test'
   ...
 # Subtest: damage segment swells, holds, then smoothly contracts to current health
-ok 211 - damage segment swells, holds, then smoothly contracts to current health
+ok 212 - damage segment swells, holds, then smoothly contracts to current health
   ---
-  duration_ms: 1.165171
+  duration_ms: 1.004382
   type: 'test'
   ...
 # Subtest: repeated hits preserve the trail, pause freezes it, healing and reset clear it
-ok 212 - repeated hits preserve the trail, pause freezes it, healing and reset clear it
+ok 213 - repeated hits preserve the trail, pause freezes it, healing and reset clear it
   ---
-  duration_ms: 1.610033
+  duration_ms: 1.492172
   type: 'test'
   ...
 # Subtest: the losing segment trembles on the hit and settles once the bar catches up
-ok 213 - the losing segment trembles on the hit and settles once the bar catches up
+ok 214 - the losing segment trembles on the hit and settles once the bar catches up
   ---
-  duration_ms: 0.301825
+  duration_ms: 0.195913
   type: 'test'
   ...
 # Subtest: a burn keeps the shake alive without re-jolting it every frame
-ok 214 - a burn keeps the shake alive without re-jolting it every frame
+ok 215 - a burn keeps the shake alive without re-jolting it every frame
   ---
-  duration_ms: 1.497471
+  duration_ms: 1.76313
   type: 'test'
   ...
 # Subtest: the tremble is a real wobble, not a drift, and stops dead at zero
-ok 215 - the tremble is a real wobble, not a drift, and stops dead at zero
+ok 216 - the tremble is a real wobble, not a drift, and stops dead at zero
   ---
-  duration_ms: 0.570383
+  duration_ms: 0.457266
   type: 'test'
   ...
 # Subtest: the tremble timings are set where the effect is actually readable
-ok 216 - the tremble timings are set where the effect is actually readable
+ok 217 - the tremble timings are set where the effect is actually readable
   ---
-  duration_ms: 0.190941
+  duration_ms: 0.200327
   type: 'test'
   ...
 # Subtest: every practice target has 250 health and every dummy 300, on spawn, respawn and restart
-ok 217 - every practice target has 250 health and every dummy 300, on spawn, respawn and restart
+ok 218 - every practice target has 250 health and every dummy 300, on spawn, respawn and restart
   ---
-  duration_ms: 109.953672
+  duration_ms: 88.552441
   type: 'test'
   ...
 # Subtest: the tutorial keeps its lighter targets
-ok 218 - the tutorial keeps its lighter targets
+ok 219 - the tutorial keeps its lighter targets
   ---
-  duration_ms: 2.390012
+  duration_ms: 2.361036
   type: 'test'
   ...
 # Subtest: health values are explicit for players, targets, dummies and breakable cover
-ok 219 - health values are explicit for players, targets, dummies and breakable cover
+ok 220 - health values are explicit for players, targets, dummies and breakable cover
   ---
-  duration_ms: 0.510863
+  duration_ms: 0.44004
   type: 'test'
   ...
 # Subtest: dummy takes damage, breaks once with its own effect event, and respawns at 300
-ok 220 - dummy takes damage, breaks once with its own effect event, and respawns at 300
+ok 221 - dummy takes damage, breaks once with its own effect event, and respawns at 300
   ---
-  duration_ms: 4.6288
+  duration_ms: 6.942648
   type: 'test'
   ...
 # Subtest: player rejects direct self-owned shots and tracks external damage without negative health
-ok 221 - player rejects direct self-owned shots and tracks external damage without negative health
+ok 222 - player rejects direct self-owned shots and tracks external damage without negative health
   ---
-  duration_ms: 1.205197
+  duration_ms: 0.994519
   type: 'test'
   ...
 # Subtest: own orb explosions respect falloff, cover, blast boundaries and invulnerability
-ok 222 - own orb explosions respect falloff, cover, blast boundaries and invulnerability
+ok 223 - own orb explosions respect falloff, cover, blast boundaries and invulnerability
   ---
-  duration_ms: 2.363474
+  duration_ms: 1.342016
   type: 'test'
   ...
 # Subtest: Static hex and lightning remain safe for their owner
-ok 223 - Static hex and lightning remain safe for their owner
+ok 224 - Static hex and lightning remain safe for their owner
   ---
-  duration_ms: 9.817884
+  duration_ms: 9.655168
   type: 'test'
   ...
 # Subtest: health is separate from splash, which falls off for both targets and dummies
-ok 224 - health is separate from splash, which falls off for both targets and dummies
+ok 225 - health is separate from splash, which falls off for both targets and dummies
   ---
-  duration_ms: 0.51526
+  duration_ms: 0.390339
   type: 'test'
   ...
 # Subtest: an unpulsed hex holds at its edge, still turning, for hexLinger before it fades; X still pulses it there
-ok 225 - an unpulsed hex holds at its edge, still turning, for hexLinger before it fades; X still pulses it there
+ok 226 - an unpulsed hex holds at its edge, still turning, for hexLinger before it fades; X still pulses it there
   ---
-  duration_ms: 26.90428
+  duration_ms: 28.217318
   type: 'test'
   ...
 # Subtest: inside a hex, shots from outside do nothing; from inside they land
-ok 226 - inside a hex, shots from outside do nothing; from inside they land
+ok 227 - inside a hex, shots from outside do nothing; from inside they land
   ---
-  duration_ms: 4.422156
+  duration_ms: 3.827428
   type: 'test'
   ...
 # Subtest: a teammate is never pushed out of your hex; an enemy is
-ok 227 - a teammate is never pushed out of your hex; an enemy is
+ok 228 - a teammate is never pushed out of your hex; an enemy is
   ---
-  duration_ms: 4.592171
+  duration_ms: 0.8191
   type: 'test'
   ...
 # Subtest: hex pulse stages, falloff and zaps receive another 40 percent damage
-ok 228 - hex pulse stages, falloff and zaps receive another 40 percent damage
+ok 229 - hex pulse stages, falloff and zaps receive another 40 percent damage
   ---
-  duration_ms: 1.584456
+  duration_ms: 1.343053
   type: 'test'
   ...
 # Subtest: second X is ignored during formation and requires a fresh press after the delay
-ok 229 - second X is ignored during formation and requires a fresh press after the delay
+ok 230 - second X is ignored during formation and requires a fresh press after the delay
   ---
-  duration_ms: 9.146536
+  duration_ms: 7.789155
   type: 'test'
   ...
 # Subtest: hex costs ten ammo and reserves the spent supply, then releases capacity
-ok 230 - hex costs ten ammo and reserves the spent supply, then releases capacity
+ok 231 - hex costs ten ammo and reserves the spent supply, then releases capacity
   ---
-  duration_ms: 13.340979
+  duration_ms: 6.503068
   type: 'test'
   ...
 # Subtest: hex requires ten available ammo and preserves regular orbs
-ok 231 - hex requires ten available ammo and preserves regular orbs
+ok 232 - hex requires ten available ammo and preserves regular orbs
   ---
-  duration_ms: 0.495116
+  duration_ms: 0.437405
   type: 'test'
   ...
 # Subtest: hex pulses strike once before rotating edge zaps and do not damage deep center
-ok 232 - hex pulses strike once before rotating edge zaps and do not damage deep center
+ok 233 - hex pulses strike once before rotating edge zaps and do not damage deep center
   ---
-  duration_ms: 0.94578
+  duration_ms: 0.880846
   type: 'test'
   ...
 # Subtest: hex orbs expire electrically at range without damage and reset clears them
-ok 233 - hex orbs expire electrically at range without damage and reset clears them
+ok 234 - hex orbs expire electrically at range without damage and reset clears them
   ---
-  duration_ms: 8.994943
+  duration_ms: 7.974273
   type: 'test'
   ...
 # Subtest: missing vertices do not create replacement edges across the hexagon
-ok 234 - missing vertices do not create replacement edges across the hexagon
+ok 235 - missing vertices do not create replacement edges across the hexagon
   ---
-  duration_ms: 2.43458
+  duration_ms: 2.226053
   type: 'test'
   ...
 # Subtest: caster stays within all six expanding sides and is released by detonation
-ok 235 - caster stays within all six expanding sides and is released by detonation
+ok 236 - caster stays within all six expanding sides and is released by detonation
   ---
-  duration_ms: 73.120484
+  duration_ms: 62.215324
   type: 'test'
   ...
 # Subtest: remaining vertices keep the caster contained; final dissipation releases them
-ok 236 - remaining vertices keep the caster contained; final dissipation releases them
+ok 237 - remaining vertices keep the caster contained; final dissipation releases them
   ---
-  duration_ms: 3.944107
+  duration_ms: 3.748022
   type: 'test'
   ...
 # Subtest: short zaps reach beyond pulse splash from vertices and edge midpoints, but not far targets
-ok 237 - short zaps reach beyond pulse splash from vertices and edge midpoints, but not far targets
+ok 238 - short zaps reach beyond pulse splash from vertices and edge midpoints, but not far targets
   ---
-  duration_ms: 1.234992
+  duration_ms: 0.740081
   type: 'test'
   ...
 # Subtest: hex edge connections and nearby zaps pass through scenery walls
-ok 238 - hex edge connections and nearby zaps pass through scenery walls
+ok 239 - hex edge connections and nearby zaps pass through scenery walls
   ---
-  duration_ms: 6.090905
+  duration_ms: 9.516246
   type: 'test'
   ...
 # Subtest: expanding hex destroys breakable scenery without spending its orbs on walls
-ok 239 - expanding hex destroys breakable scenery without spending its orbs on walls
+ok 240 - expanding hex destroys breakable scenery without spending its orbs on walls
   ---
-  duration_ms: 1.432145
+  duration_ms: 1.527314
   type: 'test'
   ...
 # Subtest: expansion pushes nearby victims outward smoothly without contact damage
-ok 240 - expansion pushes nearby victims outward smoothly without contact damage
+ok 241 - expansion pushes nearby victims outward smoothly without contact damage
   ---
-  duration_ms: 4.052104
+  duration_ms: 7.720412
   type: 'test'
   ...
 # Subtest: push respects walls and distant victims remain untouched
-ok 241 - push respects walls and distant victims remain untouched
+ok 242 - push respects walls and distant victims remain untouched
   ---
-  duration_ms: 7.641712
+  duration_ms: 7.858448
   type: 'test'
   ...
 # Subtest: pulse radius, damage and zap reach grow to a bounded ranged maximum
-ok 242 - pulse radius, damage and zap reach grow to a bounded ranged maximum
+ok 243 - pulse radius, damage and zap reach grow to a bounded ranged maximum
   ---
-  duration_ms: 1.843766
+  duration_ms: 5.949382
   type: 'test'
   ...
 # Subtest: ten-ammo cast can coexist with two regular orbs without exceeding capacity
-ok 243 - ten-ammo cast can coexist with two regular orbs without exceeding capacity
+ok 244 - ten-ammo cast can coexist with two regular orbs without exceeding capacity
   ---
-  duration_ms: 9.615083
+  duration_ms: 2.904351
   type: 'test'
   ...
 # Subtest: six overlapping pulses apply once; normal orbs and per-side zaps remain independent
-ok 244 - six overlapping pulses apply once; normal orbs and per-side zaps remain independent
+ok 245 - six overlapping pulses apply once; normal orbs and per-side zaps remain independent
   ---
-  duration_ms: 1.754369
+  duration_ms: 6.571443
   type: 'test'
   ...
 # Subtest: accurate mature hex pulses deal hefty damage with steep falloff before the rotating zaps
-ok 245 - accurate mature hex pulses deal hefty damage with steep falloff before the rotating zaps
+ok 246 - accurate mature hex pulses deal hefty damage with steep falloff before the rotating zaps
   ---
-  duration_ms: 0.444601
+  duration_ms: 0.326166
   type: 'test'
   ...
 # Subtest: hex rotates clockwise once around its frozen center and ends after one second
-ok 246 - hex rotates clockwise once around its frozen center and ends after one second
+ok 247 - hex rotates clockwise once around its frozen center and ends after one second
   ---
-  duration_ms: 6.282918
+  duration_ms: 5.918012
   type: 'test'
   ...
 # Subtest: each rotating side deals exactly one 31.92-damage zap to each nearby victim
-ok 247 - each rotating side deals exactly one 31.92-damage zap to each nearby victim
+ok 248 - each rotating side deals exactly one 31.92-damage zap to each nearby victim
   ---
-  duration_ms: 4.931513
+  duration_ms: 2.663805
   type: 'test'
   ...
 # Subtest: 30-second cooldown starts on cast, permits detonation, and blocks recasting until ready
-ok 248 - 30-second cooldown starts on cast, permits detonation, and blocks recasting until ready
+ok 249 - 30-second cooldown starts on cast, permits detonation, and blocks recasting until ready
   ---
-  duration_ms: 29.758016
+  duration_ms: 19.616917
   type: 'test'
   ...
 # Subtest: a device is only called touch-first when it has no hover
-ok 249 - a device is only called touch-first when it has no hover
+ok 250 - a device is only called touch-first when it has no hover
   ---
-  duration_ms: 1.357551
+  duration_ms: 0.86177
   type: 'test'
   ...
 # Subtest: the on-screen controls stay put once a device has been touched
-ok 250 - the on-screen controls stay put once a device has been touched
+ok 251 - the on-screen controls stay put once a device has been touched
   ---
-  duration_ms: 0.351021
+  duration_ms: 0.252695
   type: 'test'
   ...
 # Subtest: prompts still follow whichever input was used last
-ok 251 - prompts still follow whichever input was used last
+ok 252 - prompts still follow whichever input was used last
   ---
-  duration_ms: 0.291681
+  duration_ms: 0.231567
   type: 'test'
   ...
 # Subtest: an explicit choice in the menu outranks anything detected
-ok 252 - an explicit choice in the menu outranks anything detected
+ok 253 - an explicit choice in the menu outranks anything detected
   ---
-  duration_ms: 1.349935
+  duration_ms: 1.321072
   type: 'test'
   ...
 # Subtest: noticing the input in use never discards what is being held
-ok 253 - noticing the input in use never discards what is being held
+ok 254 - noticing the input in use never discards what is being held
   ---
-  duration_ms: 1.121293
+  duration_ms: 0.979962
   type: 'test'
   ...
 # Subtest: the room camera fit is memoised per room and aspect
-ok 254 - the room camera fit is memoised per room and aspect
+ok 255 - the room camera fit is memoised per room and aspect
   ---
-  duration_ms: 1.331784
+  duration_ms: 1.254397
   type: 'test'
   ...
 # Subtest: the interior mask rebuild is capped rather than running every frame
-ok 255 - the interior mask rebuild is capped rather than running every frame
+ok 256 - the interior mask rebuild is capped rather than running every frame
   ---
-  duration_ms: 0.452614
+  duration_ms: 0.368036
   type: 'test'
   ...
 # Subtest: the interior shroud costs less the lower the preset goes
-ok 256 - the interior shroud costs less the lower the preset goes
+ok 257 - the interior shroud costs less the lower the preset goes
   ---
-  duration_ms: 2.073486
+  duration_ms: 1.778398
   type: 'test'
   ...
 # Subtest: the shroud never goes back to an asynchronously decoded mask
-ok 257 - the shroud never goes back to an asynchronously decoded mask
+ok 258 - the shroud never goes back to an asynchronously decoded mask
   ---
-  duration_ms: 1.722309
+  duration_ms: 1.492721
   type: 'test'
   ...
 # Subtest: soot is a rolling window, not a permanent record
-ok 258 - soot is a rolling window, not a permanent record
+ok 259 - soot is a rolling window, not a permanent record
   ---
-  duration_ms: 0.309077
+  duration_ms: 0.267939
   type: 'test'
   ...
 # Subtest: every room supports clear outward aim through each doorway
-ok 259 - every room supports clear outward aim through each doorway
+ok 260 - every room supports clear outward aim through each doorway
   ---
-  duration_ms: 148.070308
+  duration_ms: 133.227247
   type: 'test'
   ...
 # Subtest: gray-area launches converge on the near wall rather than exploding at the remote click
-ok 260 - gray-area launches converge on the near wall rather than exploding at the remote click
+ok 261 - gray-area launches converge on the near wall rather than exploding at the remote click
   ---
-  duration_ms: 37.313865
+  duration_ms: 31.379543
   type: 'test'
   ...
 # Subtest: splash is blocked by walls but crosses an open doorway, including angled buildings
-ok 261 - splash is blocked by walls but crosses an open doorway, including angled buildings
+ok 262 - splash is blocked by walls but crosses an open doorway, including angled buildings
   ---
-  duration_ms: 3.155069
+  duration_ms: 2.217308
   type: 'test'
   ...
 # Subtest: the road-facing saloon window passes bullets but blocks walking
-ok 262 - the road-facing saloon window passes bullets but blocks walking
+ok 263 - the road-facing saloon window passes bullets but blocks walking
   ---
-  duration_ms: 99.325679
+  duration_ms: 61.318745
   type: 'test'
   ...
 # Subtest: moving inside changes which exterior positions are reachable through openings
-ok 263 - moving inside changes which exterior positions are reachable through openings
+ok 264 - moving inside changes which exterior positions are reachable through openings
   ---
-  duration_ms: 11.725662
+  duration_ms: 8.220075
   type: 'test'
   ...
 # Subtest: rotated rectangular interior membership uses local building coordinates
-ok 264 - rotated rectangular interior membership uses local building coordinates
+ok 265 - rotated rectangular interior membership uses local building coordinates
   ---
-  duration_ms: 0.297882
+  duration_ms: 0.261126
   type: 'test'
   ...
 # Subtest: spread orbs converge together on an angled wall and splash cannot reach the other side
-ok 265 - spread orbs converge together on an angled wall and splash cannot reach the other side
+ok 266 - spread orbs converge together on an angled wall and splash cannot reach the other side
   ---
-  duration_ms: 3.532247
+  duration_ms: 3.734089
   type: 'test'
   ...
 # Subtest: every item has a unique id, and weapons and skins stay separate
-ok 266 - every item has a unique id, and weapons and skins stay separate
+ok 267 - every item has a unique id, and weapons and skins stay separate
   ---
-  duration_ms: 2.501839
+  duration_ms: 2.062864
   type: 'test'
   ...
 # Subtest: ownership comes from the authority and unknown ids are dropped
-ok 267 - ownership comes from the authority and unknown ids are dropped
+ok 268 - ownership comes from the authority and unknown ids are dropped
   ---
-  duration_ms: 0.351246
+  duration_ms: 0.338273
   type: 'test'
   ...
 # Subtest: menus, HUD and tutorial read their weapon names from the registry
-ok 268 - menus, HUD and tutorial read their weapon names from the registry
+ok 269 - menus, HUD and tutorial read their weapon names from the registry
   ---
-  duration_ms: 0.173791
+  duration_ms: 0.270955
   type: 'test'
   ...
 # Subtest: arrow aim eases identically for every weapon, including focused fire
-ok 269 - arrow aim eases identically for every weapon, including focused fire
+ok 270 - arrow aim eases identically for every weapon, including focused fire
   ---
-  duration_ms: 19.597285
+  duration_ms: 15.503245
   type: 'test'
   ...
 # Subtest: digital aim takes the short arc across angle wrap and remains valid on reversal
-ok 270 - digital aim takes the short arc across angle wrap and remains valid on reversal
+ok 271 - digital aim takes the short arc across angle wrap and remains valid on reversal
   ---
-  duration_ms: 0.507744
+  duration_ms: 0.411169
   type: 'test'
   ...
 # Subtest: mouse aim keeps its response and Static stream retains its turn limit
-ok 271 - mouse aim keeps its response and Static stream retains its turn limit
+ok 272 - mouse aim keeps its response and Static stream retains its turn limit
   ---
-  duration_ms: 0.669563
+  duration_ms: 0.58195
   type: 'test'
   ...
 # Subtest: ArrowLeft + ArrowUp permits all weapons and abilities
-ok 272 - ArrowLeft + ArrowUp permits all weapons and abilities
+ok 273 - ArrowLeft + ArrowUp permits all weapons and abilities
   ---
-  duration_ms: 20.069969
+  duration_ms: 12.040145
   type: 'test'
   ...
 # Subtest: ArrowLeft + ArrowDown permits all weapons and abilities
-ok 273 - ArrowLeft + ArrowDown permits all weapons and abilities
+ok 274 - ArrowLeft + ArrowDown permits all weapons and abilities
   ---
-  duration_ms: 15.743427
+  duration_ms: 8.726898
   type: 'test'
   ...
 # Subtest: ArrowRight + ArrowUp permits all weapons and abilities
-ok 274 - ArrowRight + ArrowUp permits all weapons and abilities
+ok 275 - ArrowRight + ArrowUp permits all weapons and abilities
   ---
-  duration_ms: 8.124726
+  duration_ms: 6.662658
   type: 'test'
   ...
 # Subtest: ArrowRight + ArrowDown permits all weapons and abilities
-ok 275 - ArrowRight + ArrowDown permits all weapons and abilities
+ok 276 - ArrowRight + ArrowDown permits all weapons and abilities
   ---
-  duration_ms: 12.609163
+  duration_ms: 5.91318
   type: 'test'
   ...
 # Subtest: Ballast on the keyboard: Space or the left button fires, E is the double, Shift only aims
-ok 276 - Ballast on the keyboard: Space or the left button fires, E is the double, Shift only aims
+ok 277 - Ballast on the keyboard: Space or the left button fires, E is the double, Shift only aims
   ---
-  duration_ms: 1.5324
+  duration_ms: 1.16557
   type: 'test'
   ...
 # Subtest: a tap part way through a turn leaves the aim in between: taps give the angles between the keys
-ok 277 - a tap part way through a turn leaves the aim in between: taps give the angles between the keys
+ok 278 - a tap part way through a turn leaves the aim in between: taps give the angles between the keys
   ---
-  duration_ms: 1.793246
+  duration_ms: 0.631615
   type: 'test'
   ...
 # Subtest: a dodge pressed just before the last one ends still happens (input buffer)
-ok 278 - a dodge pressed just before the last one ends still happens (input buffer)
+ok 279 - a dodge pressed just before the last one ends still happens (input buffer)
   ---
-  duration_ms: 1.471642
+  duration_ms: 1.193975
   type: 'test'
   ...
 # Subtest: open-country landmarks build finite geometry with the real renderer helpers
-ok 279 - open-country landmarks build finite geometry with the real renderer helpers
+ok 280 - open-country landmarks build finite geometry with the real renderer helpers
   ---
-  duration_ms: 16.102175
+  duration_ms: 13.239807
   type: 'test'
   ...
 # Subtest: Ballast launch smashes crates, barrels and rotated cacti without losing travel
-ok 280 - Ballast launch smashes crates, barrels and rotated cacti without losing travel
+ok 281 - Ballast launch smashes crates, barrels and rotated cacti without losing travel
   ---
-  duration_ms: 12.926799
+  duration_ms: 13.115883
   type: 'test'
   ...
 # Subtest: walking into a prop and being blasted into one do not smash it
-ok 281 - walking into a prop and being blasted into one do not smash it
+ok 282 - walking into a prop and being blasted into one do not smash it
   ---
-  duration_ms: 4.536867
+  duration_ms: 3.696123
   type: 'test'
   ...
 # Subtest: dodging through a breakable takes it with you, thrown along the dash
-ok 282 - dodging through a breakable takes it with you, thrown along the dash
+ok 283 - dodging through a breakable takes it with you, thrown along the dash
   ---
-  duration_ms: 1.172995
+  duration_ms: 1.035881
   type: 'test'
   ...
 # Subtest: a dodge break is flagged as a dash and thrown along the dash direction
-ok 283 - a dodge break is flagged as a dash and thrown along the dash direction
+ok 284 - a dodge break is flagged as a dash and thrown along the dash direction
   ---
-  duration_ms: 0.672218
+  duration_ms: 0.549574
   type: 'test'
   ...
 # Subtest: a solid wall still stops a dodge dead
-ok 284 - a solid wall still stops a dodge dead
+ok 285 - a solid wall still stops a dodge dead
   ---
-  duration_ms: 0.78923
+  duration_ms: 0.629634
   type: 'test'
   ...
 # Subtest: solid barriers stop launch and protect props behind them
-ok 285 - solid barriers stop launch and protect props behind them
+ok 286 - solid barriers stop launch and protect props behind them
   ---
-  duration_ms: 3.512562
+  duration_ms: 2.739672
   type: 'test'
   ...
 # Subtest: a shot break and a dash break are distinguishable, and only the dash is flagged
-ok 286 - a shot break and a dash break are distinguishable, and only the dash is flagged
+ok 287 - a shot break and a dash break are distinguishable, and only the dash is flagged
   ---
-  duration_ms: 1.94718
+  duration_ms: 1.829646
   type: 'test'
   ...
 # Subtest: a dodge only breaks what it actually reaches
-ok 287 - a dodge only breaks what it actually reaches
+ok 288 - a dodge only breaks what it actually reaches
   ---
-  duration_ms: 0.997536
+  duration_ms: 0.809403
   type: 'test'
   ...
 # Subtest: a dodge clears a line of breakables rather than only the first
-ok 288 - a dodge clears a line of breakables rather than only the first
+ok 289 - a dodge clears a line of breakables rather than only the first
   ---
-  duration_ms: 1.392676
+  duration_ms: 1.161359
   type: 'test'
   ...
 # Subtest: a grenade takes a volley id of its own, never a bullet's
-ok 289 - a grenade takes a volley id of its own, never a bullet's
+ok 290 - a grenade takes a volley id of its own, never a bullet's
   ---
-  duration_ms: 5.563606
+  duration_ms: 4.120313
   type: 'test'
   ...
 # Subtest: floor clutter breaks underfoot, and solid scenery still needs a dash
-ok 290 - floor clutter breaks underfoot, and solid scenery still needs a dash
+ok 291 - floor clutter breaks underfoot, and solid scenery still needs a dash
   ---
-  duration_ms: 3.458188
+  duration_ms: 1.40231
   type: 'test'
   ...
 # Subtest: a walked break is not reported as a dash, and is thrown the way you were going
-ok 291 - a walked break is not reported as a dash, and is thrown the way you were going
+ok 292 - a walked break is not reported as a dash, and is thrown the way you were going
   ---
-  duration_ms: 0.817598
+  duration_ms: 0.435977
   type: 'test'
   ...
 # Subtest: standing still on clutter does not break it, and a corpse breaks nothing
-ok 292 - standing still on clutter does not break it, and a corpse breaks nothing
+ok 293 - standing still on clutter does not break it, and a corpse breaks nothing
   ---
-  duration_ms: 1.659417
+  duration_ms: 1.164339
   type: 'test'
   ...
 # Subtest: standing still never refills ammo during the C stream
-ok 293 - standing still never refills ammo during the C stream
+ok 294 - standing still never refills ammo during the C stream
   ---
-  duration_ms: 2.148545
+  duration_ms: 2.400989
   type: 'test'
   ...
 # Subtest: stream windup warns without damage or spending ammo
-ok 294 - stream windup warns without damage or spending ammo
+ok 295 - stream windup warns without damage or spending ammo
   ---
-  duration_ms: 5.781401
+  duration_ms: 5.919966
   type: 'test'
   ...
 # Subtest: each ammo provides exactly RULES.sprayAmmoTime of stream (12 of them at full ammo), with no recharge during firing
-ok 295 - each ammo provides exactly RULES.sprayAmmoTime of stream (12 of them at full ammo), with no recharge during firing
+ok 296 - each ammo provides exactly RULES.sprayAmmoTime of stream (12 of them at full ammo), with no recharge during firing
   ---
-  duration_ms: 10.032434
+  duration_ms: 8.809336
   type: 'test'
   ...
 # Subtest: stream ramps per victim, caps, and resets after a miss, cover or release
-ok 296 - stream ramps per victim, caps, and resets after a miss, cover or release
+ok 297 - stream ramps per victim, caps, and resets after a miss, cover or release
   ---
-  duration_ms: 1.349531
+  duration_ms: 1.072649
   type: 'test'
   ...
 # Subtest: inner cone is stronger, outer cone weaker, outside and covered targets safe
-ok 297 - inner cone is stronger, outer cone weaker, outside and covered targets safe
+ok 298 - inner cone is stronger, outer cone weaker, outside and covered targets safe
   ---
-  duration_ms: 1.963118
+  duration_ms: 1.346386
   type: 'test'
   ...
 # Subtest: recoil pushes an idle caster backward and slows forward movement
-ok 298 - recoil pushes an idle caster backward and slows forward movement
+ok 299 - recoil pushes an idle caster backward and slows forward movement
   ---
-  duration_ms: 4.409899
+  duration_ms: 3.853034
   type: 'test'
   ...
 # Subtest: stream turning is limited and dodge cancels it; reset clears all channel state
-ok 299 - stream turning is limited and dodge cancels it; reset clears all channel state
+ok 300 - stream turning is limited and dodge cancels it; reset clears all channel state
   ---
-  duration_ms: 0.683923
+  duration_ms: 0.56679
   type: 'test'
   ...
 # Subtest: backward channeling adds only a small recoil boost, including diagonal retreat
-ok 300 - backward channeling adds only a small recoil boost, including diagonal retreat
+ok 301 - backward channeling adds only a small recoil boost, including diagonal retreat
   ---
-  duration_ms: 3.850393
+  duration_ms: 3.420375
   type: 'test'
   ...
 # Subtest: stream does not use deployed orb reserves or damage the caster
-ok 301 - stream does not use deployed orb reserves or damage the caster
+ok 302 - stream does not use deployed orb reserves or damage the caster
   ---
-  duration_ms: 5.422587
+  duration_ms: 4.434381
   type: 'test'
   ...
 # Subtest: two windows of one browser connect over the local channel and trade JSON messages
-ok 302 - two windows of one browser connect over the local channel and trade JSON messages
+ok 303 - two windows of one browser connect over the local channel and trade JSON messages
   ---
-  duration_ms: 152.347811
+  duration_ms: 139.357247
   type: 'test'
   ...
 # Subtest: a knock with no host in this browser gives up quickly
-ok 303 - a knock with no host in this browser gives up quickly
+ok 304 - a knock with no host in this browser gives up quickly
   ---
-  duration_ms: 52.048644
+  duration_ms: 50.918177
   type: 'test'
   ...
 # Subtest: expanded map has three times the area, varied interiors and single-entry small houses
-ok 304 - expanded map has three times the area, varied interiors and single-entry small houses
+ok 305 - expanded map has three times the area, varied interiors and single-entry small houses
   ---
-  duration_ms: 1.366612
+  duration_ms: 1.182781
   type: 'test'
   ...
 # Subtest: all interiors and farm entrances are reachable from spawn without crossing cover
-ok 305 - all interiors and farm entrances are reachable from spawn without crossing cover
+ok 306 - all interiors and farm entrances are reachable from spawn without crossing cover
   ---
-  duration_ms: 5765.678549
+  duration_ms: 4361.055285
   type: 'test'
   ...
 # Subtest: boarded windows have real walls and never provide firing cones
-ok 306 - boarded windows have real walls and never provide firing cones
+ok 307 - boarded windows have real walls and never provide firing cones
   ---
-  duration_ms: 1.367873
+  duration_ms: 0.670534
   type: 'test'
   ...
 # Subtest: a map with no look block is lit exactly as before
-ok 307 - a map with no look block is lit exactly as before
+ok 308 - a map with no look block is lit exactly as before
   ---
-  duration_ms: 1.131956
+  duration_ms: 0.959509
   type: 'test'
   ...
 # Subtest: warmth pushes light and haze toward amber without much change in brightness
-ok 308 - warmth pushes light and haze toward amber without much change in brightness
+ok 309 - warmth pushes light and haze toward amber without much change in brightness
   ---
-  duration_ms: 0.631688
+  duration_ms: 0.412333
   type: 'test'
   ...
 # Subtest: every shipped map is a bit warmer than the base light, and a map can override any of it
-ok 309 - every shipped map is a bit warmer than the base light, and a map can override any of it
+ok 310 - every shipped map is a bit warmer than the base light, and a map can override any of it
   ---
-  duration_ms: 0.348095
+  duration_ms: 0.364795
   type: 'test'
   ...
 # Subtest: the direct merge matches clone, transform and mergeGeometries
-ok 310 - the direct merge matches clone, transform and mergeGeometries
+ok 311 - the direct merge matches clone, transform and mergeGeometries
   ---
-  duration_ms: 189.262227
+  duration_ms: 129.764522
   type: 'test'
   ...
 # Subtest: it declines what it cannot merge, so the caller can fall back
-ok 311 - it declines what it cannot merge, so the caller can fall back
+ok 312 - it declines what it cannot merge, so the caller can fall back
   ---
-  duration_ms: 1.279571
+  duration_ms: 0.716779
   type: 'test'
   ...
 # Subtest: every mode can be started
-ok 312 - every mode can be started
+ok 313 - every mode can be started
   ---
-  duration_ms: 623.900314
+  duration_ms: 445.048166
   type: 'test'
   ...
 # Subtest: robots fill the seats a mode needs, on sides dealt round-robin
-ok 313 - robots fill the seats a mode needs, on sides dealt round-robin
+ok 314 - robots fill the seats a mode needs, on sides dealt round-robin
   ---
-  duration_ms: 558.669145
+  duration_ms: 430.833134
   type: 'test'
   ...
 # Subtest: FFA fills to four; with robots off a fixed-size mode refuses to start short
-ok 314 - FFA fills to four; with robots off a fixed-size mode refuses to start short
+ok 315 - FFA fills to four; with robots off a fixed-size mode refuses to start short
   ---
-  duration_ms: 166.662831
+  duration_ms: 181.254036
   type: 'test'
   ...
 # Subtest: no friendly fire: a teammate standing in the line of fire is not hurt
-ok 315 - no friendly fire: a teammate standing in the line of fire is not hurt
+ok 316 - no friendly fire: a teammate standing in the line of fire is not hurt
   ---
-  duration_ms: 113.982341
+  duration_ms: 97.031755
   type: 'test'
   ...
 # Subtest: robots fight: in a 3V3 of robots and a host, damage is dealt and kills count for sides
-ok 316 - robots fight: in a 3V3 of robots and a host, damage is dealt and kills count for sides
+ok 317 - robots fight: in a 3V3 of robots and a host, damage is dealt and kills count for sides
   ---
-  duration_ms: 7450.916658
+  duration_ms: 5491.999813
   type: 'test'
   ...
 # Subtest: a player joining a full team round takes a robot's seat and side
-ok 317 - a player joining a full team round takes a robot's seat and side
+ok 318 - a player joining a full team round takes a robot's seat and side
   ---
-  duration_ms: 113.938947
+  duration_ms: 170.381245
   type: 'test'
   ...
 # Subtest: results name the winning side
-ok 318 - results name the winning side
+ok 319 - results name the winning side
   ---
-  duration_ms: 87.401591
+  duration_ms: 48.783057
   type: 'test'
   ...
 # Subtest: friendly fire (on by default): a teammate stands in your targets and takes half; off: not at all
-ok 319 - friendly fire (on by default): a teammate stands in your targets and takes half; off: not at all
+ok 320 - friendly fire (on by default): a teammate stands in your targets and takes half; off: not at all
   ---
-  duration_ms: 228.115761
+  duration_ms: 158.366846
   type: 'test'
   ...
 # Subtest: players pick their side in the lobby (full sides refuse); with "with team" each side spawns together, apart from the others
-ok 320 - players pick their side in the lobby (full sides refuse); with "with team" each side spawns together, apart from the others
+ok 321 - players pick their side in the lobby (full sides refuse); with "with team" each side spawns together, apart from the others
   ---
-  duration_ms: 106.6732
+  duration_ms: 86.155159
   type: 'test'
   ...
 # Subtest: a side keeps its kills when a player leaves or a robot steps aside; a refused restart changes nothing
-ok 321 - a side keeps its kills when a player leaves or a robot steps aside; a refused restart changes nothing
+ok 322 - a side keeps its kills when a player leaves or a robot steps aside; a refused restart changes nothing
   ---
-  duration_ms: 70.240936
+  duration_ms: 58.085543
   type: 'test'
   ...
 # Subtest: robot setups: TUNE changes one robot, APPLY TO ALL every robot and the ones added after; its weapon is used
-ok 322 - robot setups: TUNE changes one robot, APPLY TO ALL every robot and the ones added after; its weapon is used
+ok 323 - robot setups: TUNE changes one robot, APPLY TO ALL every robot and the ones added after; its weapon is used
   ---
-  duration_ms: 102.767212
+  duration_ms: 63.897865
+  type: 'test'
+  ...
+# Subtest: unticking ROBOTS in the lobby takes the added robots out
+ok 324 - unticking ROBOTS in the lobby takes the added robots out
+  ---
+  duration_ms: 41.373789
   type: 'test'
   ...
 # Subtest: kill feed: killers and victims by name, pink for others and blue for you, several victims on one line
-ok 323 - kill feed: killers and victims by name, pink for others and blue for you, several victims on one line
+ok 325 - kill feed: killers and victims by name, pink for others and blue for you, several victims on one line
   ---
-  duration_ms: 1.288483
+  duration_ms: 1.126278
   type: 'test'
   ...
 # Subtest: scoreboard rows: rank, colour and name, kills, deaths, damage, time, most used weapon, ping; you in blue, away players dimmed
-ok 324 - scoreboard rows: rank, colour and name, kills, deaths, damage, time, most used weapon, ping; you in blue, away players dimmed
+ok 326 - scoreboard rows: rank, colour and name, kills, deaths, damage, time, most used weapon, ping; you in blue, away players dimmed
   ---
-  duration_ms: 0.883513
+  duration_ms: 0.605923
   type: 'test'
   ...
 # Subtest: room codes are short, readable and forgiving to type
-ok 325 - room codes are short, readable and forgiving to type
+ok 327 - room codes are short, readable and forgiving to type
   ---
-  duration_ms: 1.758235
+  duration_ms: 1.436599
   type: 'test'
   ...
 # Subtest: multiplayer is switched on and called Multiplayer in the game modes
-ok 326 - multiplayer is switched on and called Multiplayer in the game modes
+ok 328 - multiplayer is switched on and called Multiplayer in the game modes
   ---
-  duration_ms: 2.638225
+  duration_ms: 1.672457
   type: 'test'
   ...
 # Subtest: players join with a username and the room code alone, and names stay unique
-ok 327 - players join with a username and the room code alone, and names stay unique
+ok 329 - players join with a username and the room code alone, and names stay unique
   ---
-  duration_ms: 198.749971
+  duration_ms: 152.331157
   type: 'test'
   ...
 # Subtest: nobody is in the world until they pick a weapon, and then they appear inside a building
-ok 328 - nobody is in the world until they pick a weapon, and then they appear inside a building
+ok 330 - nobody is in the world until they pick a weapon, and then they appear inside a building
   ---
-  duration_ms: 112.029402
+  duration_ms: 94.35821
   type: 'test'
   ...
 # Subtest: every spawn point is inside a real room and clear of furniture
-ok 329 - every spawn point is inside a real room and clear of furniture
+ok 331 - every spawn point is inside a real room and clear of furniture
   ---
-  duration_ms: 15.419831
+  duration_ms: 12.676063
   type: 'test'
   ...
 # Subtest: a client moves instantly and the host agrees where it ended up
-ok 330 - a client moves instantly and the host agrees where it ended up
+ok 332 - a client moves instantly and the host agrees where it ended up
   ---
-  duration_ms: 157.294347
+  duration_ms: 146.506026
   type: 'test'
   ...
 # Subtest: inputs are cleaned: presses stay presses, points stay on the map, nothing else gets through
-ok 331 - inputs are cleaned: presses stay presses, points stay on the map, nothing else gets through
+ok 333 - inputs are cleaned: presses stay presses, points stay on the map, nothing else gets through
   ---
-  duration_ms: 1.982669
+  duration_ms: 1.856834
   type: 'test'
   ...
 # Subtest: the host shoots a joiner dead: damage, a kill-feed line, the scoreboard, and a respawn after the wait
-ok 332 - the host shoots a joiner dead: damage, a kill-feed line, the scoreboard, and a respawn after the wait
+ok 334 - the host shoots a joiner dead: damage, a kill-feed line, the scoreboard, and a respawn after the wait
   ---
-  duration_ms: 1023.841718
+  duration_ms: 767.683155
   type: 'test'
   ...
 # Subtest: one blast that kills two players is one kill-feed line naming both
-ok 333 - one blast that kills two players is one kill-feed line naming both
+ok 335 - one blast that kills two players is one kill-feed line naming both
   ---
-  duration_ms: 376.700397
+  duration_ms: 282.697909
   type: 'test'
   ...
 # Subtest: your own blast can kill you, and it counts as a death, not a kill
-ok 334 - your own blast can kill you, and it counts as a death, not a kill
+ok 336 - your own blast can kill you, and it counts as a death, not a kill
   ---
-  duration_ms: 140.772842
+  duration_ms: 95.249591
   type: 'test'
   ...
 # Subtest: time in game stops while picking a weapon again, and the most used weapon wins the column
-ok 335 - time in game stops while picking a weapon again, and the most used weapon wins the column
+ok 337 - time in game stops while picking a weapon again, and the most used weapon wins the column
   ---
-  duration_ms: 693.949048
+  duration_ms: 478.36251
   type: 'test'
   ...
 # Subtest: props broken by one player are broken for everyone, joiners included
-ok 336 - props broken by one player are broken for everyone, joiners included
+ok 338 - props broken by one player are broken for everyone, joiners included
   ---
-  duration_ms: 62.094915
+  duration_ms: 45.811651
   type: 'test'
   ...
 # Subtest: lost snapshots lose no events: they are resent until acknowledged
-ok 337 - lost snapshots lose no events: they are resent until acknowledged
+ok 339 - lost snapshots lose no events: they are resent until acknowledged
   ---
-  duration_ms: 131.988328
+  duration_ms: 83.233947
   type: 'test'
   ...
 # Subtest: the room fills up, turns away other versions and notices when players leave
-ok 338 - the room fills up, turns away other versions and notices when players leave
+ok 340 - the room fills up, turns away other versions and notices when players leave
   ---
-  duration_ms: 208.419176
+  duration_ms: 146.602017
   type: 'test'
   ...
 # Subtest: a silent player times out; a vanished host ends the client game
-ok 339 - a silent player times out; a vanished host ends the client game
+ok 341 - a silent player times out; a vanished host ends the client game
   ---
-  duration_ms: 516.406258
+  duration_ms: 320.15781
   type: 'test'
   ...
 # Subtest: a joiner still loading is not dropped, and a stall on our own side is forgiven
-ok 340 - a joiner still loading is not dropped, and a stall on our own side is forgiven
+ok 342 - a joiner still loading is not dropped, and a stall on our own side is forgiven
   ---
-  duration_ms: 168.876075
+  duration_ms: 123.956056
   type: 'test'
   ...
 # Subtest: developer overrides online are the host's only: joiners are forced off
-ok 341 - developer overrides online are the host's only: joiners are forced off
+ok 343 - developer overrides online are the host's only: joiners are forced off
   ---
-  duration_ms: 68.090713
+  duration_ms: 36.640491
   type: 'test'
   ...
 # Subtest: players are solid to each other: walking into someone stops you at their edge
-ok 342 - players are solid to each other: walking into someone stops you at their edge
+ok 344 - players are solid to each other: walking into someone stops you at their edge
   ---
-  duration_ms: 175.979682
+  duration_ms: 120.099885
   type: 'test'
   ...
 # Subtest: offline play has no other players to bump into and owns its own world
-ok 343 - offline play has no other players to bump into and owns its own world
+ok 345 - offline play has no other players to bump into and owns its own world
   ---
-  duration_ms: 5.226913
+  duration_ms: 4.04313
   type: 'test'
   ...
 # Subtest: everyone gets the lobby (players, colour slots, spawn setting) and a ping for each joiner
-ok 344 - everyone gets the lobby (players, colour slots, spawn setting) and a ping for each joiner
+ok 346 - everyone gets the lobby (players, colour slots, spawn setting) and a ping for each joiner
   ---
-  duration_ms: 237.679479
+  duration_ms: 180.82631
   type: 'test'
   ...
 # Subtest: spawns are scattered, nobody within a screen of anyone else; nobody can spawn everyone together any more
-ok 345 - spawns are scattered, nobody within a screen of anyone else; nobody can spawn everyone together any more
+ok 347 - spawns are scattered, nobody within a screen of anyone else; nobody can spawn everyone together any more
   ---
-  duration_ms: 109.562954
+  duration_ms: 104.86053
   type: 'test'
   ...
 # Subtest: the host resets the map: every prop stands again, crops regrow, and every screen is told
-ok 346 - the host resets the map: every prop stands again, crops regrow, and every screen is told
+ok 348 - the host resets the map: every prop stands again, crops regrow, and every screen is told
   ---
-  duration_ms: 86.788832
+  duration_ms: 50.001614
   type: 'test'
   ...
 # Subtest: an ffa round lasts ten minutes, then the results, then everyone back in the lobby; the next round starts fresh
-ok 347 - an ffa round lasts ten minutes, then the results, then everyone back in the lobby; the next round starts fresh
+ok 349 - an ffa round lasts ten minutes, then the results, then everyone back in the lobby; the next round starts fresh
   ---
-  duration_ms: 540.987105
+  duration_ms: 331.893574
   type: 'test'
   ...
 # Subtest: a room opens in the lobby: nobody in the world, the host picks the mode and settings
-ok 348 - a room opens in the lobby: nobody in the world, the host picks the mode and settings
+ok 350 - a room opens in the lobby: nobody in the world, the host picks the mode and settings
   ---
-  duration_ms: 104.026361
+  duration_ms: 44.418871
   type: 'test'
   ...
 # Subtest: the weapon pick: GO goes in at once; at zero you go in with your pick, or a random weapon
-ok 349 - the weapon pick: GO goes in at once; at zero you go in with your pick, or a random weapon
+ok 351 - the weapon pick: GO goes in at once; at zero you go in with your pick, or a random weapon
   ---
-  duration_ms: 622.146048
+  duration_ms: 440.487987
   type: 'test'
   ...
 # Subtest: weapons change only after dying
-ok 350 - weapons change only after dying
+ok 352 - weapons change only after dying
   ---
-  duration_ms: 531.325149
+  duration_ms: 388.381942
   type: 'test'
   ...
 # Subtest: practice: the weapon can be changed any time; the player leaves the world while picking
-ok 351 - practice: the weapon can be changed any time; the player leaves the world while picking
+ok 353 - practice: the weapon can be changed any time; the player leaves the world while picking
   ---
-  duration_ms: 93.581458
+  duration_ms: 135.366292
   type: 'test'
   ...
 # Subtest: practice: the map targets are out and shared; players can hit each other but nothing counts; respawn is instant
-ok 352 - practice: the map targets are out and shared; players can hit each other but nothing counts; respawn is instant
+ok 354 - practice: the map targets are out and shared; players can hit each other but nothing counts; respawn is instant
   ---
-  duration_ms: 139.230249
+  duration_ms: 100.079082
   type: 'test'
   ...
 # Subtest: the kill limit ends an ffa round; the health setting is what everyone spawns with
-ok 353 - the kill limit ends an ffa round; the health setting is what everyone spawns with
+ok 355 - the kill limit ends an ffa round; the health setting is what everyone spawns with
   ---
-  duration_ms: 60.240755
+  duration_ms: 40.323424
   type: 'test'
   ...
 # Subtest: nobody spawns inside the ground the weapon-pick camera shows; a mid-round joiner goes to the pick
-ok 354 - nobody spawns inside the ground the weapon-pick camera shows; a mid-round joiner goes to the pick
+ok 356 - nobody spawns inside the ground the weapon-pick camera shows; a mid-round joiner goes to the pick
   ---
-  duration_ms: 68.476546
+  duration_ms: 74.449556
   type: 'test'
   ...
 # Subtest: from full health to dead in one hit reads "one shot" in the kill feed and on the death screen
-ok 355 - from full health to dead in one hit reads "one shot" in the kill feed and on the death screen
+ok 357 - from full health to dead in one hit reads "one shot" in the kill feed and on the death screen
   ---
-  duration_ms: 112.047926
+  duration_ms: 92.500019
   type: 'test'
   ...
 # Subtest: a Static stream on a slow link never outgrows one message, and the joiner catches up after
-ok 356 - a Static stream on a slow link never outgrows one message, and the joiner catches up after
+ok 358 - a Static stream on a slow link never outgrows one message, and the joiner catches up after
   ---
-  duration_ms: 840.795961
+  duration_ms: 621.638357
   type: 'test'
   ...
 # Subtest: syphon (FFA, on by default): a kill gives the killer back half the health they had lost
-ok 357 - syphon (FFA, on by default): a kill gives the killer back half the health they had lost
+ok 359 - syphon (FFA, on by default): a kill gives the killer back half the health they had lost
   ---
-  duration_ms: 47.023418
+  duration_ms: 41.436768
   type: 'test'
   ...
 # Subtest: small volleys scale down proportionally and quick shot stays unchanged
-ok 358 - small volleys scale down proportionally and quick shot stays unchanged
+ok 360 - small volleys scale down proportionally and quick shot stays unchanged
   ---
-  duration_ms: 17.696914
+  duration_ms: 15.757807
   type: 'test'
   ...
 # Subtest: launch accelerates rapidly with a modest terminal speed and synchronized distance curve
-ok 359 - launch accelerates rapidly with a modest terminal speed and synchronized distance curve
+ok 361 - launch accelerates rapidly with a modest terminal speed and synchronized distance curve
   ---
-  duration_ms: 0.349256
+  duration_ms: 0.236055
   type: 'test'
   ...
 # Subtest: small volley sizes retain their capped range bonus
-ok 360 - small volley sizes retain their capped range bonus
+ok 362 - small volley sizes retain their capped range bonus
   ---
-  duration_ms: 0.161732
+  duration_ms: 0.139338
   type: 'test'
   ...
 # Subtest: combined volley budgets ramp after three and full hits vary from 335 to 355
-ok 361 - combined volley budgets ramp after three and full hits vary from 335 to 355
+ok 363 - combined volley budgets ramp after three and full hits vary from 335 to 355
   ---
-  duration_ms: 18.459257
+  duration_ms: 15.011551
   type: 'test'
   ...
 # Subtest: aiming far past a nearby victim cannot grant the distance bonus
-ok 362 - aiming far past a nearby victim cannot grant the distance bonus
+ok 364 - aiming far past a nearby victim cannot grant the distance bonus
   ---
-  duration_ms: 0.653628
+  duration_ms: 0.508855
   type: 'test'
   ...
 # Subtest: orbs converge an overshoot past the aim point, on the same ray
-ok 363 - orbs converge an overshoot past the aim point, on the same ray
+ok 365 - orbs converge an overshoot past the aim point, on the same ray
   ---
-  duration_ms: 3.016831
+  duration_ms: 2.553985
   type: 'test'
   ...
 # Subtest: the overshoot never carries an orb into solid cover behind the target
-ok 364 - the overshoot never carries an orb into solid cover behind the target
+ok 366 - the overshoot never carries an orb into solid cover behind the target
   ---
-  duration_ms: 1.029762
+  duration_ms: 0.807236
   type: 'test'
   ...
 # Subtest: a launched orb breaks scenery and carries on through it
-ok 365 - a launched orb breaks scenery and carries on through it
+ok 367 - a launched orb breaks scenery and carries on through it
   ---
-  duration_ms: 11.266658
+  duration_ms: 8.688015
   type: 'test'
   ...
 # Subtest: every breakable type falls to a single orb
-ok 366 - every breakable type falls to a single orb
+ok 368 - every breakable type falls to a single orb
   ---
-  duration_ms: 14.22551
+  duration_ms: 11.945955
   type: 'test'
   ...
 # Subtest: drifting orbs still respect scenery; only launched ones pass through
-ok 367 - drifting orbs still respect scenery; only launched ones pass through
+ok 369 - drifting orbs still respect scenery; only launched ones pass through
   ---
-  duration_ms: 1.590244
+  duration_ms: 1.587147
   type: 'test'
   ...
 # Subtest: a stray orb is worth one orb, whatever the volley behind it was
-ok 368 - a stray orb is worth one orb, whatever the volley behind it was
+ok 370 - a stray orb is worth one orb, whatever the volley behind it was
   ---
-  duration_ms: 10.388338
+  duration_ms: 7.643294
   type: 'test'
   ...
 # Subtest: a volley thrown just past a target converges on it instead of clipping it
-ok 369 - a volley thrown just past a target converges on it instead of clipping it
+ok 371 - a volley thrown just past a target converges on it instead of clipping it
   ---
-  duration_ms: 2.766298
+  duration_ms: 2.088941
   type: 'test'
   ...
 # Subtest: the nearest crossing wins when two targets lie along the path
-ok 370 - the nearest crossing wins when two targets lie along the path
+ok 372 - the nearest crossing wins when two targets lie along the path
   ---
-  duration_ms: 0.299035
+  duration_ms: 0.282523
   type: 'test'
   ...
 # Subtest: a target behind solid cover is never intercepted onto
-ok 371 - a target behind solid cover is never intercepted onto
+ok 373 - a target behind solid cover is never intercepted onto
   ---
-  duration_ms: 1.32188
+  duration_ms: 0.523055
   type: 'test'
   ...
 # Subtest: a volley aimed directly at a target is left alone
-ok 372 - a volley aimed directly at a target is left alone
+ok 374 - a volley aimed directly at a target is left alone
   ---
-  duration_ms: 0.59184
+  duration_ms: 0.435337
   type: 'test'
   ...
 # Subtest: the volley is worth what lands, not what was fired
-ok 373 - the volley is worth what lands, not what was fired
+ok 375 - the volley is worth what lands, not what was fired
   ---
-  duration_ms: 2.550426
+  duration_ms: 2.252123
   type: 'test'
   ...
 # Subtest: an unobstructed volley is still worth its full launched value
-ok 374 - an unobstructed volley is still worth its full launched value
+ok 376 - an unobstructed volley is still worth its full launched value
   ---
-  duration_ms: 3.996098
+  duration_ms: 2.534477
   type: 'test'
   ...
 # Subtest: a single orb never produces a blast
-ok 375 - a single orb never produces a blast
+ok 377 - a single orb never produces a blast
   ---
-  duration_ms: 1.697824
+  duration_ms: 1.558889
   type: 'test'
   ...
 # Subtest: an orb pays for what it breaks and carries on lighter
-ok 376 - an orb pays for what it breaks and carries on lighter
+ok 378 - an orb pays for what it breaks and carries on lighter
   ---
-  duration_ms: 1.74942
+  duration_ms: 1.533069
   type: 'test'
   ...
 # Subtest: a breakable it cannot pay for in full takes the remainder and stops it
-ok 377 - a breakable it cannot pay for in full takes the remainder and stops it
+ok 379 - a breakable it cannot pay for in full takes the remainder and stops it
   ---
-  duration_ms: 2.164315
+  duration_ms: 2.053289
   type: 'test'
   ...
 # Subtest: the budget is spent nearest first, in the order the orb meets them
-ok 378 - the budget is spent nearest first, in the order the orb meets them
+ok 380 - the budget is spent nearest first, in the order the orb meets them
   ---
-  duration_ms: 1.361502
+  duration_ms: 1.509637
   type: 'test'
   ...
 # Subtest: the budget does not come out of what the target receives
-ok 379 - the budget does not come out of what the target receives
+ok 381 - the budget does not come out of what the target receives
   ---
-  duration_ms: 2.821718
+  duration_ms: 2.597419
   type: 'test'
   ...
 # Subtest: one orb can only ever clear one full crate
-ok 380 - one orb can only ever clear one full crate
+ok 382 - one orb can only ever clear one full crate
   ---
-  duration_ms: 1.275289
+  duration_ms: 1.300298
   type: 'test'
   ...
 # Subtest: orbs parked around a target do not drag the volley onto it
-ok 381 - orbs parked around a target do not drag the volley onto it
+ok 383 - orbs parked around a target do not drag the volley onto it
   ---
-  duration_ms: 8.090123
+  duration_ms: 2.247698
   type: 'test'
   ...
 # Subtest: a target off the line of fire is never intercepted onto
-ok 382 - a target off the line of fire is never intercepted onto
+ok 384 - a target off the line of fire is never intercepted onto
   ---
-  duration_ms: 0.292478
+  duration_ms: 0.174447
   type: 'test'
   ...
 # Subtest: a target behind the aim point is not intercepted onto either
-ok 383 - a target behind the aim point is not intercepted onto either
+ok 385 - a target behind the aim point is not intercepted onto either
   ---
-  duration_ms: 0.173366
+  duration_ms: 0.177565
   type: 'test'
   ...
 # Subtest: aimed well past a target, the volley goes where the cursor is (owner, v0.9b)
-ok 384 - aimed well past a target, the volley goes where the cursor is (owner, v0.9b)
+ok 386 - aimed well past a target, the volley goes where the cursor is (owner, v0.9b)
   ---
-  duration_ms: 0.188677
+  duration_ms: 0.159649
   type: 'test'
   ...
 # Subtest: a target standing in the way is still intercepted onto
-ok 385 - a target standing in the way is still intercepted onto
+ok 387 - a target standing in the way is still intercepted onto
   ---
-  duration_ms: 0.207862
+  duration_ms: 0.186368
   type: 'test'
   ...
 # Subtest: orb blasts look bigger with every orb: small at 2-3, medium 4-7, full size around 10
-ok 386 - orb blasts look bigger with every orb: small at 2-3, medium 4-7, full size around 10
+ok 388 - orb blasts look bigger with every orb: small at 2-3, medium 4-7, full size around 10
   ---
-  duration_ms: 1.056318
+  duration_ms: 0.798517
   type: 'test'
   ...
 # Subtest: rapid placement produces separated drifting orbs
-ok 387 - rapid placement produces separated drifting orbs
+ok 389 - rapid placement produces separated drifting orbs
   ---
-  duration_ms: 23.895916
+  duration_ms: 13.397816
   type: 'test'
   ...
 # Subtest: overlapping orbs separate deterministically without damaging nearby cover
-ok 388 - overlapping orbs separate deterministically without damaging nearby cover
+ok 390 - overlapping orbs separate deterministically without damaging nearby cover
   ---
-  duration_ms: 1.81884
+  duration_ms: 0.890762
   type: 'test'
   ...
 # Subtest: separated orbs still arrive at one exact point after launch
-ok 389 - separated orbs still arrive at one exact point after launch
+ok 391 - separated orbs still arrive at one exact point after launch
   ---
-  duration_ms: 13.418857
+  duration_ms: 9.355052
   type: 'test'
   ...
 # Subtest: one-shot kill distinguishes a fresh lethal attack from follow-up or sustained damage
-ok 390 - one-shot kill distinguishes a fresh lethal attack from follow-up or sustained damage
+ok 392 - one-shot kill distinguishes a fresh lethal attack from follow-up or sustained damage
   ---
-  duration_ms: 2.259341
+  duration_ms: 1.808761
   type: 'test'
   ...
 # Subtest: outgoing totals accumulate per entity, roll prior damage into a subtotal before the latest addition, refresh and stay anchored
-ok 391 - outgoing totals accumulate per entity, roll prior damage into a subtotal before the latest addition, refresh and stay anchored
+ok 393 - outgoing totals accumulate per entity, roll prior damage into a subtotal before the latest addition, refresh and stay anchored
   ---
-  duration_ms: 2.175708
+  duration_ms: 1.516121
   type: 'test'
   ...
 # Subtest: green feedback uses strictly below 25 percent of each entity maximum health
-ok 392 - green feedback uses strictly below 25 percent of each entity maximum health
+ok 394 - green feedback uses strictly below 25 percent of each entity maximum health
   ---
-  duration_ms: 1.937899
+  duration_ms: 1.346049
   type: 'test'
   ...
 # Subtest: one-shot sound extends the normal kill chime and hit ding remains restrained
-ok 393 - one-shot sound extends the normal kill chime and hit ding remains restrained
+ok 395 - one-shot sound extends the normal kill chime and hit ding remains restrained
   ---
-  duration_ms: 0.93249
+  duration_ms: 0.643603
   type: 'test'
   ...
 # Subtest: outgoing numbers report the health actually lost, and never show for destructible props
-ok 394 - outgoing numbers report the health actually lost, and never show for destructible props
+ok 396 - outgoing numbers report the health actually lost, and never show for destructible props
   ---
-  duration_ms: 0.748435
+  duration_ms: 0.476019
   type: 'test'
   ...
 # Subtest: readouts format as fixed-width figures with a placeholder when unknown
-ok 395 - readouts format as fixed-width figures with a placeholder when unknown
+ok 397 - readouts format as fixed-width figures with a placeholder when unknown
   ---
-  duration_ms: 1.217203
+  duration_ms: 0.807665
   type: 'test'
   ...
 # Subtest: grades colour the number without changing it
-ok 396 - grades colour the number without changing it
+ok 398 - grades colour the number without changing it
   ---
-  duration_ms: 0.301698
+  duration_ms: 0.186191
   type: 'test'
   ...
 # Subtest: the monitor probes on its own interval, never concurrently
-ok 397 - the monitor probes on its own interval, never concurrently
+ok 399 - the monitor probes on its own interval, never concurrently
   ---
-  duration_ms: 6.830845
+  duration_ms: 5.544893
   type: 'test'
   ...
 # Subtest: a failed probe reads as unknown rather than a stale number
-ok 398 - a failed probe reads as unknown rather than a stale number
+ok 400 - a failed probe reads as unknown rather than a stale number
   ---
-  duration_ms: 3.42408
+  duration_ms: 2.893474
   type: 'test'
   ...
 # Subtest: a non-numeric probe result is treated as unknown
-ok 399 - a non-numeric probe result is treated as unknown
+ok 401 - a non-numeric probe result is treated as unknown
   ---
-  duration_ms: 1.79673
+  duration_ms: 1.634417
   type: 'test'
   ...
 # Subtest: the element only touches the DOM when its text changes
-ok 400 - the element only touches the DOM when its text changes
+ok 402 - the element only touches the DOM when its text changes
   ---
-  duration_ms: 1.042892
+  duration_ms: 1.953988
   type: 'test'
   ...
 # Subtest: the readout is decorative, not announced
-ok 401 - the readout is decorative, not announced
+ok 403 - the readout is decorative, not announced
   ---
-  duration_ms: 0.291322
+  duration_ms: 0.291467
   type: 'test'
   ...
 # Subtest: cached DOM writes skip repeats and still write changes
-ok 402 - cached DOM writes skip repeats and still write changes
+ok 404 - cached DOM writes skip repeats and still write changes
   ---
-  duration_ms: 1.245734
+  duration_ms: 0.987453
   type: 'test'
   ...
 # Subtest: haptics only buzz on touch, when enabled, and not faster than every 120 ms
-ok 403 - haptics only buzz on touch, when enabled, and not faster than every 120 ms
+ok 405 - haptics only buzz on touch, when enabled, and not faster than every 120 ms
   ---
-  duration_ms: 6.779357
+  duration_ms: 4.976053
   type: 'test'
   ...
 # Subtest: a dragged touch control settles on a screen edge when close to it
-ok 404 - a dragged touch control settles on a screen edge when close to it
+ok 406 - a dragged touch control settles on a screen edge when close to it
   ---
-  duration_ms: 0.251953
+  duration_ms: 0.273453
   type: 'test'
   ...
 # Subtest: builds use relative asset paths, so the game loads from a GitHub Pages subfolder
-ok 405 - builds use relative asset paths, so the game loads from a GitHub Pages subfolder
+ok 407 - builds use relative asset paths, so the game loads from a GitHub Pages subfolder
   ---
-  duration_ms: 147.684204
+  duration_ms: 94.1116
   type: 'test'
   ...
 # Subtest: Deadwater excludes empty districts while preserving buildings, routes and targets
-ok 406 - Deadwater excludes empty districts while preserving buildings, routes and targets
+ok 408 - Deadwater excludes empty districts while preserving buildings, routes and targets
   ---
-  duration_ms: 20.650895
+  duration_ms: 13.411411
   type: 'test'
   ...
 # Subtest: perimeter bends are gradual rather than sharp corners
-ok 407 - perimeter bends are gradual rather than sharp corners
+ok 409 - perimeter bends are gradual rather than sharp corners
   ---
-  duration_ms: 0.639171
+  duration_ms: 0.328119
   type: 'test'
   ...
 # Subtest: fast movement cannot cross any segment of the concave perimeter
-ok 408 - fast movement cannot cross any segment of the concave perimeter
+ok 410 - fast movement cannot cross any segment of the concave perimeter
   ---
-  duration_ms: 609.374846
+  duration_ms: 394.207765
   type: 'test'
   ...
 # Subtest: overhead outline clips map details to playable ground with a transparent exterior
-ok 409 - overhead outline clips map details to playable ground with a transparent exterior
+ok 411 - overhead outline clips map details to playable ground with a transparent exterior
   ---
-  duration_ms: 1.734256
+  duration_ms: 1.357449
   type: 'test'
   ...
 # Subtest: depot targets are clear of scenery and the cargo cars only expose their one entrance
-ok 410 - depot targets are clear of scenery and the cargo cars only expose their one entrance
+ok 412 - depot targets are clear of scenery and the cargo cars only expose their one entrance
   ---
-  duration_ms: 49.036947
+  duration_ms: 32.94374
   type: 'test'
   ...
 # Subtest: large depot interiors use close follow framing, small rooms retain fitted framing
-ok 411 - large depot interiors use close follow framing, small rooms retain fitted framing
+ok 413 - large depot interiors use close follow framing, small rooms retain fitted framing
   ---
-  duration_ms: 0.567239
+  duration_ms: 0.399396
   type: 'test'
   ...
 # Subtest: rail geometry is finite and permanent train cover has physical collision
-ok 412 - rail geometry is finite and permanent train cover has physical collision
+ok 414 - rail geometry is finite and permanent train cover has physical collision
   ---
-  duration_ms: 374.928936
+  duration_ms: 268.949722
   type: 'test'
   ...
 # Subtest: unioned rail junction faces do not overlap
-ok 413 - unioned rail junction faces do not overlap
+ok 415 - unioned rail junction faces do not overlap
   ---
-  duration_ms: 2.3101
+  duration_ms: 1.059303
   type: 'test'
   ...
 # Subtest: every weapon entry is complete
-ok 414 - every weapon entry is complete
+ok 416 - every weapon entry is complete
   ---
-  duration_ms: 1.678907
+  duration_ms: 0.888029
   type: 'test'
   ...
 # Subtest: unknown weapons fall back to the default everywhere
-ok 415 - unknown weapons fall back to the default everywhere
+ok 417 - unknown weapons fall back to the default everywhere
   ---
-  duration_ms: 0.722331
+  duration_ms: 0.399677
   type: 'test'
   ...
 # Subtest: every map says where it can be played, and the menus read that
-ok 416 - every map says where it can be played, and the menus read that
+ok 418 - every map says where it can be played, and the menus read that
   ---
-  duration_ms: 2.542022
+  duration_ms: 1.294938
   type: 'test'
   ...
 # Subtest: spatial batches preserve all triangles and world bounds while separating distant detail
-ok 417 - spatial batches preserve all triangles and world bounds while separating distant detail
+ok 419 - spatial batches preserve all triangles and world bounds while separating distant detail
   ---
-  duration_ms: 8.85145
+  duration_ms: 6.212789
   type: 'test'
   ...
 # Subtest: expanded interiors have real rotated cover and a clear passage to the storage room
-ok 418 - expanded interiors have real rotated cover and a clear passage to the storage room
+ok 420 - expanded interiors have real rotated cover and a clear passage to the storage room
   ---
-  duration_ms: 1.765006
+  duration_ms: 1.341457
   type: 'test'
   ...
 # Subtest: the roof fade only re-enables the meshes that were built as casters
-ok 419 - the roof fade only re-enables the meshes that were built as casters
+ok 421 - the roof fade only re-enables the meshes that were built as casters
   ---
-  duration_ms: 2.038881
+  duration_ms: 1.64802
   type: 'test'
   ...
 # Subtest: shadowBySize only ever removes casters, never restores them
-ok 420 - shadowBySize only ever removes casters, never restores them
+ok 422 - shadowBySize only ever removes casters, never restores them
   ---
-  duration_ms: 1.11357
+  duration_ms: 0.649038
   type: 'test'
   ...
 # Subtest: plain coloured parts bake into one draw with their colours kept per vertex
-ok 421 - plain coloured parts bake into one draw with their colours kept per vertex
+ok 423 - plain coloured parts bake into one draw with their colours kept per vertex
   ---
-  duration_ms: 4.395199
+  duration_ms: 3.081166
   type: 'test'
   ...
 # Subtest: 45 fps persists and adaptive resolution respects capped frame pacing
-ok 422 - 45 fps persists and adaptive resolution respects capped frame pacing
+ok 424 - 45 fps persists and adaptive resolution respects capped frame pacing
   ---
-  duration_ms: 4.187705
+  duration_ms: 3.176248
   type: 'test'
   ...
 # Subtest: adaptive resolution lowers sustained overload, recovers slowly, and strains only at its floor
-ok 423 - adaptive resolution lowers sustained overload, recovers slowly, and strains only at its floor
+ok 425 - adaptive resolution lowers sustained overload, recovers slowly, and strains only at its floor
   ---
-  duration_ms: 5.432034
+  duration_ms: 2.179472
   type: 'test'
   ...
 # Subtest: every graphics tier bounds pixel work on phones and large high-DPI monitors
-ok 424 - every graphics tier bounds pixel work on phones and large high-DPI monitors
+ok 426 - every graphics tier bounds pixel work on phones and large high-DPI monitors
   ---
-  duration_ms: 0.576823
+  duration_ms: 0.351563
   type: 'test'
   ...
 # Subtest: recycled particle instances lose previous dust tints and idle pools skip buffer uploads
-ok 425 - recycled particle instances lose previous dust tints and idle pools skip buffer uploads
+ok 427 - recycled particle instances lose previous dust tints and idle pools skip buffer uploads
   ---
-  duration_ms: 2.285363
+  duration_ms: 1.571408
   type: 'test'
   ...
 # Subtest: grenade renderer does not hide Ballast supporting hand or show a held grenade on it
-ok 426 - grenade renderer does not hide Ballast supporting hand or show a held grenade on it
+ok 428 - grenade renderer does not hide Ballast supporting hand or show a held grenade on it
   ---
-  duration_ms: 4.13887
+  duration_ms: 3.096254
   type: 'test'
   ...
 # Subtest: a frame held back while the GPU is busy still counts toward the next one
-ok 427 - a frame held back while the GPU is busy still counts toward the next one
+ok 429 - a frame held back while the GPU is busy still counts toward the next one
   ---
-  duration_ms: 0.19863
+  duration_ms: 0.189544
   type: 'test'
   ...
 # Subtest: the shader patches apply to this three.js and are installed
-ok 428 - the shader patches apply to this three.js and are installed
+ok 430 - the shader patches apply to this three.js and are installed
   ---
-  duration_ms: 1.013483
+  duration_ms: 1.054093
   type: 'test'
   ...
 # Subtest: shadow early-out keeps every tap of both filters for the edge case
-ok 429 - shadow early-out keeps every tap of both filters for the edge case
+ok 431 - shadow early-out keeps every tap of both filters for the edge case
   ---
-  duration_ms: 0.380117
+  duration_ms: 0.419199
   type: 'test'
   ...
 # Subtest: the effects light is skipped only while it is dark
-ok 430 - the effects light is skipped only while it is dark
+ok 432 - the effects light is skipped only while it is dark
   ---
-  duration_ms: 0.243933
+  duration_ms: 0.241061
   type: 'test'
   ...
 # Subtest: bakeColors merges plain parts into one draw with their colours per vertex
-ok 431 - bakeColors merges plain parts into one draw with their colours per vertex
+ok 433 - bakeColors merges plain parts into one draw with their colours per vertex
   ---
-  duration_ms: 4.886668
+  duration_ms: 3.817182
   type: 'test'
   ...
 # Subtest: held weapons draw once per rigid part
-ok 432 - held weapons draw once per rigid part
+ok 434 - held weapons draw once per rigid part
   ---
-  duration_ms: 23.655286
+  duration_ms: 17.967199
   type: 'test'
   ...
 # Subtest: another player's stream arcs start at their gun and stay there
-ok 433 - another player's stream arcs start at their gun and stay there
+ok 435 - another player's stream arcs start at their gun and stay there
   ---
-  duration_ms: 88.296213
+  duration_ms: 58.619909
   type: 'test'
   ...
 # Subtest: shader warm-up runs after the tier is applied, and again on a tier change
-ok 434 - shader warm-up runs after the tier is applied, and again on a tier change
+ok 436 - shader warm-up runs after the tier is applied, and again on a tier change
   ---
-  duration_ms: 3.318712
+  duration_ms: 2.027815
   type: 'test'
   ...
 # Subtest: the effects light is dimmed, never hidden, during play
-ok 435 - the effects light is dimmed, never hidden, during play
+ok 437 - the effects light is dimmed, never hidden, during play
   ---
-  duration_ms: 1.1596
+  duration_ms: 1.296141
   type: 'test'
   ...
 # Subtest: instanced effects allocate per-instance colour before the warm-up
-ok 436 - instanced effects allocate per-instance colour before the warm-up
+ok 438 - instanced effects allocate per-instance colour before the warm-up
   ---
-  duration_ms: 0.990351
+  duration_ms: 1.03982
   type: 'test'
   ...
 # Subtest: the near plane is as far out as the closest camera allows
-ok 437 - the near plane is as far out as the closest camera allows
+ok 439 - the near plane is as far out as the closest camera allows
   ---
-  duration_ms: 1.703481
+  duration_ms: 1.338895
   type: 'test'
   ...
 # Subtest: a fading roof tells three its shader has to change
-ok 438 - a fading roof tells three its shader has to change
+ok 440 - a fading roof tells three its shader has to change
   ---
-  duration_ms: 0.88068
+  duration_ms: 0.809655
   type: 'test'
   ...
 # Subtest: Shift aims in on every weapon, and releases independently of the pointer
-ok 439 - Shift aims in on every weapon, and releases independently of the pointer
+ok 441 - Shift aims in on every weapon, and releases independently of the pointer
   ---
-  duration_ms: 1.447391
+  duration_ms: 1.10326
   type: 'test'
   ...
 # Subtest: aim and fire work in either mouse-button order and release independently
-ok 440 - aim and fire work in either mouse-button order and release independently
+ok 442 - aim and fire work in either mouse-button order and release independently
   ---
-  duration_ms: 3.145432
+  duration_ms: 2.727581
   type: 'test'
   ...
 # Subtest: right click requests charge storage once on press while preserving aim state
-ok 441 - right click requests charge storage once on press while preserving aim state
+ok 443 - right click requests charge storage once on press while preserving aim state
   ---
-  duration_ms: 0.599868
+  duration_ms: 0.300008
   type: 'test'
   ...
 # Subtest: hip-fire recoil knocks the cone slightly, builds over a burst, stays capped
-ok 442 - hip-fire recoil knocks the cone slightly, builds over a burst, stays capped
+ok 444 - hip-fire recoil knocks the cone slightly, builds over a burst, stays capped
   ---
-  duration_ms: 1.51908
+  duration_ms: 0.865185
   type: 'test'
   ...
 # Subtest: casings remain batched and expire at 30 simulation seconds even with sparse renders
-ok 443 - casings remain batched and expire at 30 simulation seconds even with sparse renders
+ok 445 - casings remain batched and expire at 30 simulation seconds even with sparse renders
   ---
-  duration_ms: 33.651031
+  duration_ms: 24.412054
   type: 'test'
   ...
 # Subtest: both hands track rifle grips; off hand releases to throw and re-grips afterwards
-ok 444 - both hands track rifle grips; off hand releases to throw and re-grips afterwards
+ok 446 - both hands track rifle grips; off hand releases to throw and re-grips afterwards
   ---
-  duration_ms: 12.180209
+  duration_ms: 10.537445
   type: 'test'
   ...
 # Subtest: all presets keep projectiles and casings while scaling model and cosmetic budgets
-ok 445 - all presets keep projectiles and casings while scaling model and cosmetic budgets
+ok 447 - all presets keep projectiles and casings while scaling model and cosmetic budgets
   ---
-  duration_ms: 38.14282
+  duration_ms: 27.047213
   type: 'test'
   ...
 # Subtest: rifle fires once on tap, repeats at cadence, and stops at empty magazine
-ok 446 - rifle fires once on tap, repeats at cadence, and stops at empty magazine
+ok 448 - rifle fires once on tap, repeats at cadence, and stops at empty magazine
   ---
-  duration_ms: 17.731972
+  duration_ms: 14.614232
   type: 'test'
   ...
 # Subtest: manual reload blocks firing for the reload time and magazines expire at 30 seconds
-ok 447 - manual reload blocks firing for the reload time and magazines expire at 30 seconds
+ok 449 - manual reload blocks firing for the reload time and magazines expire at 30 seconds
   ---
-  duration_ms: 20.859086
+  duration_ms: 16.912096
   type: 'test'
   ...
 # Subtest: rifle damage and accuracy improve predictably with range, stance and aim
-ok 448 - rifle damage and accuracy improve predictably with range, stance and aim
+ok 450 - rifle damage and accuracy improve predictably with range, stance and aim
   ---
-  duration_ms: 1.322628
+  duration_ms: 1.030329
   type: 'test'
   ...
 # Subtest: a clean shot passes through what the crosshair is over, from the muzzle
-ok 449 - a clean shot passes through what the crosshair is over, from the muzzle
+ok 451 - a clean shot passes through what the crosshair is over, from the muzzle
   ---
-  duration_ms: 1.296861
+  duration_ms: 1.045443
   type: 'test'
   ...
 # Subtest: cursor depth changes where the barrel is laid, never how tight the group is
-ok 450 - cursor depth changes where the barrel is laid, never how tight the group is
+ok 452 - cursor depth changes where the barrel is laid, never how tight the group is
   ---
-  duration_ms: 0.457944
+  duration_ms: 0.389974
   type: 'test'
   ...
 # Subtest: the body turns so the barrel line, not the body centre, runs through the cursor
-ok 451 - the body turns so the barrel line, not the body centre, runs through the cursor
+ok 453 - the body turns so the barrel line, not the body centre, runs through the cursor
   ---
-  duration_ms: 1.568247
+  duration_ms: 1.091382
   type: 'test'
   ...
 # Subtest: shots favor both sides equally without widening bloom or excluding center shots
-ok 452 - shots favor both sides equally without widening bloom or excluding center shots
+ok 454 - shots favor both sides equally without widening bloom or excluding center shots
   ---
-  duration_ms: 7.663391
+  duration_ms: 5.218751
   type: 'test'
   ...
 # Subtest: side-weighted shots keep a straight heading and the same spread at any cursor depth
-ok 453 - side-weighted shots keep a straight heading and the same spread at any cursor depth
+ok 455 - side-weighted shots keep a straight heading and the same spread at any cursor depth
   ---
-  duration_ms: 1.214906
+  duration_ms: 0.673844
   type: 'test'
   ...
 # Subtest: cover intercepts bullets and Static abilities do not activate for rifle
-ok 454 - cover intercepts bullets and Static abilities do not activate for rifle
+ok 456 - cover intercepts bullets and Static abilities do not activate for rifle
   ---
-  duration_ms: 1.412315
+  duration_ms: 1.21465
   type: 'test'
   ...
 # Subtest: shared ammo override supports rifle; Static orb override does not refill it
-ok 455 - shared ammo override supports rifle; Static orb override does not refill it
+ok 457 - shared ammo override supports rifle; Static orb override does not refill it
   ---
-  duration_ms: 10.081558
+  duration_ms: 8.598615
   type: 'test'
   ...
 # Subtest: empty rifle trigger starts one normal reload and held fire resumes afterwards
-ok 456 - empty rifle trigger starts one normal reload and held fire resumes afterwards
+ok 458 - empty rifle trigger starts one normal reload and held fire resumes afterwards
   ---
-  duration_ms: 3.532005
+  duration_ms: 3.228298
   type: 'test'
   ...
 # Subtest: rifle aiming slows walking smoothly without reducing dodge travel
-ok 457 - rifle aiming slows walking smoothly without reducing dodge travel
+ok 459 - rifle aiming slows walking smoothly without reducing dodge travel
   ---
-  duration_ms: 4.965646
+  duration_ms: 7.114035
   type: 'test'
   ...
 # Subtest: Nominal and Static have one dodge, Ballast two
-ok 458 - Nominal and Static have one dodge, Ballast two
+ok 460 - Nominal and Static have one dodge, Ballast two
   ---
-  duration_ms: 4.807805
+  duration_ms: 8.128769
   type: 'test'
   ...
 # Subtest: Nominal: a 28-round magazine and a slightly longer reload
-ok 459 - Nominal: a 28-round magazine and a slightly longer reload
+ok 461 - Nominal: a 28-round magazine and a slightly longer reload
   ---
-  duration_ms: 0.172833
+  duration_ms: 0.206708
   type: 'test'
   ...
 # Subtest: Surge: two seconds of power-up, then five of 2x bullets that use no ammo and never reload, then a full magazine and the cooldown
-ok 460 - Surge: two seconds of power-up, then five of 2x bullets that use no ammo and never reload, then a full magazine and the cooldown
+ok 462 - Surge: two seconds of power-up, then five of 2x bullets that use no ammo and never reload, then a full magazine and the cooldown
   ---
-  duration_ms: 14.059518
+  duration_ms: 9.432774
   type: 'test'
   ...
 # Subtest: Surge moves you faster, breaks the breakables round you as the beams arrive, and powers up grenades
-ok 461 - Surge moves you faster, breaks the breakables round you as the beams arrive, and powers up grenades
+ok 463 - Surge moves you faster, breaks the breakables round you as the beams arrive, and powers up grenades
   ---
-  duration_ms: 10.588099
+  duration_ms: 4.252273
   type: 'test'
   ...
 # Subtest: roadside landmarks and outdoor cover have finite geometry and solid cover pieces
-ok 462 - roadside landmarks and outdoor cover have finite geometry and solid cover pieces
+ok 464 - roadside landmarks and outdoor cover have finite geometry and solid cover pieces
   ---
-  duration_ms: 81.571736
+  duration_ms: 66.613753
   type: 'test'
   ...
 # Subtest: interior camera fits every rotated room and its surroundings on landscape and portrait displays
-ok 463 - interior camera fits every rotated room and its surroundings on landscape and portrait displays
+ok 465 - interior camera fits every rotated room and its surroundings on landscape and portrait displays
   ---
-  duration_ms: 7.787526
+  duration_ms: 6.805747
   type: 'test'
   ...
 # Subtest: dynamic concealment uploads door/window regions and clears when leaving the room
-ok 464 - dynamic concealment uploads door/window regions and clears when leaving the room
+ok 466 - dynamic concealment uploads door/window regions and clears when leaving the room
   ---
-  duration_ms: 13.182125
+  duration_ms: 10.282756
   type: 'test'
   ...
 # Subtest: outdoor cover hides entities behind it and reveals them around its open flank
-ok 465 - outdoor cover hides entities behind it and reveals them around its open flank
+ok 467 - outdoor cover hides entities behind it and reveals them around its open flank
   ---
-  duration_ms: 2.557393
+  duration_ms: 0.927618
   type: 'test'
   ...
 # Subtest: a body edge remains visible when only the center sightline clips outdoor cover
-ok 466 - a body edge remains visible when only the center sightline clips outdoor cover
+ok 468 - a body edge remains visible when only the center sightline clips outdoor cover
   ---
-  duration_ms: 0.699956
+  duration_ms: 2.86822
   type: 'test'
   ...
 # Subtest: entity concealment clips fragments without altering shared scenery materials
-ok 467 - entity concealment clips fragments without altering shared scenery materials
+ok 469 - entity concealment clips fragments without altering shared scenery materials
   ---
-  duration_ms: 2.31792
+  duration_ms: 2.125954
   type: 'test'
   ...
 # Subtest: entity shadows use the same fragment concealment as their visible bodies
-ok 468 - entity shadows use the same fragment concealment as their visible bodies
+ok 470 - entity shadows use the same fragment concealment as their visible bodies
   ---
-  duration_ms: 0.632053
+  duration_ms: 0.464656
   type: 'test'
   ...
 # Subtest: outdoor rendering does not conceal visible entities with ground-level sight rays
-ok 469 - outdoor rendering does not conceal visible entities with ground-level sight rays
+ok 471 - outdoor rendering does not conceal visible entities with ground-level sight rays
   ---
-  duration_ms: 0.636127
+  duration_ms: 0.547242
   type: 'test'
   ...
 # Subtest: robots come in well away from you and apart from each other
-ok 470 - robots come in well away from you and apart from each other
+ok 472 - robots come in well away from you and apart from each other
   ---
-  duration_ms: 210.566358
+  duration_ms: 184.519736
   type: 'test'
   ...
 # Subtest: nobody is a dead shot: every skill misses now and then, the best rarely
-ok 471 - nobody is a dead shot: every skill misses now and then, the best rarely
+ok 473 - nobody is a dead shot: every skill misses now and then, the best rarely
   ---
-  duration_ms: 0.221568
+  duration_ms: 0.1708
   type: 'test'
   ...
 # Subtest: a robot does not see what is behind it past a few metres
-ok 472 - a robot does not see what is behind it past a few metres
+ok 474 - a robot does not see what is behind it past a few metres
   ---
-  duration_ms: 48.280812
+  duration_ms: 72.146436
   type: 'test'
   ...
 # Subtest: a target others are already on is less tempting
-ok 473 - a target others are already on is less tempting
+ok 475 - a target others are already on is less tempting
   ---
-  duration_ms: 41.37091
+  duration_ms: 26.802273
   type: 'test'
   ...
 # Subtest: practice spawns: a random open spot in the playable area
-ok 474 - practice spawns: a random open spot in the playable area
+ok 476 - practice spawns: a random open spot in the playable area
   ---
-  duration_ms: 33.853232
+  duration_ms: 36.636079
   type: 'test'
   ...
 # Subtest: robot armour comes off in order as health falls
-ok 475 - robot armour comes off in order as health falls
+ok 477 - robot armour comes off in order as health falls
   ---
-  duration_ms: 5.933028
+  duration_ms: 2.417564
   type: 'test'
   ...
 # Subtest: the walking grid matches the playable area, and a broken prop updates it exactly as a rebuild would
-ok 476 - the walking grid matches the playable area, and a broken prop updates it exactly as a rebuild would
+ok 478 - the walking grid matches the playable area, and a broken prop updates it exactly as a rebuild would
   ---
-  duration_ms: 239.833796
+  duration_ms: 203.174549
   type: 'test'
   ...
 # Subtest: paths are walkable end to end and pulled tight
-ok 477 - paths are walkable end to end and pulled tight
+ok 479 - paths are walkable end to end and pulled tight
   ---
-  duration_ms: 123.48429
+  duration_ms: 96.762171
   type: 'test'
   ...
 # Subtest: robots are hit like players, never bleed-kind targets, and pass damage both ways
-ok 478 - robots are hit like players, never bleed-kind targets, and pass damage both ways
+ok 480 - robots are hit like players, never bleed-kind targets, and pass damage both ways
   ---
-  duration_ms: 89.182534
+  duration_ms: 71.048385
   type: 'test'
   ...
 # Subtest: a robot left to itself moves, aims and fights with its weapon
-ok 479 - a robot left to itself moves, aims and fights with its weapon
+ok 481 - a robot left to itself moves, aims and fights with its weapon
   ---
-  duration_ms: 2699.94299
+  duration_ms: 2647.318977
   type: 'test'
   ...
 # Subtest: a clear shot is blocked by walls
-ok 480 - a clear shot is blocked by walls
+ok 482 - a clear shot is blocked by walls
   ---
-  duration_ms: 6.50565
+  duration_ms: 4.695164
   type: 'test'
   ...
 # Subtest: robots spend most of a fight fighting, not hiding, and never crash with nothing to aim at
-ok 481 - robots spend most of a fight fighting, not hiding, and never crash with nothing to aim at
+ok 483 - robots spend most of a fight fighting, not hiding, and never crash with nothing to aim at
   ---
-  duration_ms: 5500.324095
+  duration_ms: 3824.247052
   type: 'test'
   ...
 # Subtest: allies are on your side: never your targets, never hurt you, and an escort keeps near you as you walk
-ok 482 - allies are on your side: never your targets, never hurt you, and an escort keeps near you as you walk
+ok 484 - allies are on your side: never your targets, never hurt you, and an escort keeps near you as you walk
   ---
-  duration_ms: 690.645585
+  duration_ms: 553.307879
   type: 'test'
   ...
 # Subtest: an ally fights enemy robots, and a dead enemy is forgotten (no chasing ghosts)
-ok 483 - an ally fights enemy robots, and a dead enemy is forgotten (no chasing ghosts)
+ok 485 - an ally fights enemy robots, and a dead enemy is forgotten (no chasing ghosts)
   ---
-  duration_ms: 1773.224068
+  duration_ms: 1401.0253
   type: 'test'
   ...
 # Subtest: no two robots in a game share a make, each keeps its make for the session, and never an ally-green visor
-ok 484 - no two robots in a game share a make, each keeps its make for the session, and never an ally-green visor
+ok 486 - no two robots in a game share a make, each keeps its make for the session, and never an ally-green visor
   ---
-  duration_ms: 594.671909
+  duration_ms: 502.410362
   type: 'test'
   ...
 # Subtest: robots have their own skill and style: as asked, or at random, and never two quite alike
-ok 485 - robots have their own skill and style: as asked, or at random, and never two quite alike
+ok 487 - robots have their own skill and style: as asked, or at random, and never two quite alike
   ---
-  duration_ms: 48.829992
+  duration_ms: 35.449264
   type: 'test'
   ...
 # Subtest: angled cover uses its true thin outline for shots and occupancy
-ok 486 - angled cover uses its true thin outline for shots and occupancy
+ok 488 - angled cover uses its true thin outline for shots and occupancy
   ---
-  duration_ms: 1.310639
+  duration_ms: 1.665174
   type: 'test'
   ...
 # Subtest: movement slides along a rotated wall without crossing or teleporting
-ok 487 - movement slides along a rotated wall without crossing or teleporting
+ok 489 - movement slides along a rotated wall without crossing or teleporting
   ---
-  duration_ms: 23.724942
+  duration_ms: 23.265735
   type: 'test'
   ...
 # Subtest: prop rotations are stable and retain both aligned and diagonal placements
-ok 488 - prop rotations are stable and retain both aligned and diagonal placements
+ok 490 - prop rotations are stable and retain both aligned and diagonal placements
   ---
-  duration_ms: 5.208424
+  duration_ms: 8.307226
   type: 'test'
   ...
 # Subtest: Scatter: X readies it, X again fires five big red shells; 40 s cooldown; no shells used
-ok 489 - Scatter: X readies it, X again fires five big red shells; 40 s cooldown; no shells used
+ok 491 - Scatter: X readies it, X again fires five big red shells; 40 s cooldown; no shells used
   ---
-  duration_ms: 13.223147
+  duration_ms: 10.054093
   type: 'test'
   ...
 # Subtest: each big shell splits into four that each end in a little explosion
-ok 490 - each big shell splits into four that each end in a little explosion
+ok 492 - each big shell splits into four that each end in a little explosion
   ---
-  duration_ms: 5.743454
+  duration_ms: 3.472888
   type: 'test'
   ...
 # Subtest: damage: moderate from big shells, decent from the small ones, stacking splash, capped
-ok 491 - damage: moderate from big shells, decent from the small ones, stacking splash, capped
+ok 493 - damage: moderate from big shells, decent from the small ones, stacking splash, capped
   ---
-  duration_ms: 14.803136
+  duration_ms: 6.570983
   type: 'test'
   ...
 # Subtest: walls shelter from the little explosions, and a readied Scatter is dropped when you come back
-ok 492 - walls shelter from the little explosions, and a readied Scatter is dropped when you come back
+ok 494 - walls shelter from the little explosions, and a readied Scatter is dropped when you come back
   ---
-  duration_ms: 3.450111
+  duration_ms: 2.888616
   type: 'test'
   ...
 # Subtest: Scatter bursts set crops alight
-ok 493 - Scatter bursts set crops alight
+ok 495 - Scatter bursts set crops alight
   ---
-  duration_ms: 1.983354
+  duration_ms: 1.346619
   type: 'test'
   ...
 # Subtest: the light basis is orthonormal and square to the light
-ok 494 - the light basis is orthonormal and square to the light
+ok 496 - the light basis is orthonormal and square to the light
   ---
-  duration_ms: 1.263907
+  duration_ms: 0.955312
   type: 'test'
   ...
 # Subtest: a snapped focus lands exactly on the texel grid, never more than a texel away
-ok 495 - a snapped focus lands exactly on the texel grid, never more than a texel away
+ok 497 - a snapped focus lands exactly on the texel grid, never more than a texel away
   ---
-  duration_ms: 5.321795
+  duration_ms: 3.807548
   type: 'test'
   ...
 # Subtest: small camera drift no longer moves the shadow map at all
-ok 496 - small camera drift no longer moves the shadow map at all
+ok 498 - small camera drift no longer moves the shadow map at all
   ---
-  duration_ms: 2.156193
+  duration_ms: 0.635883
   type: 'test'
   ...
 # Subtest: a readied Scatter vents steam both ways with bounded quality budgets, and it clears once fired
-ok 497 - a readied Scatter vents steam both ways with bounded quality budgets, and it clears once fired
+ok 499 - a readied Scatter vents steam both ways with bounded quality budgets, and it clears once fired
   ---
-  duration_ms: 43.634155
+  duration_ms: 29.621208
   type: 'test'
   ...
 # Subtest: no charging: a press fires one shell, holding does not fire again, E fires both
-ok 498 - no charging: a press fires one shell, holding does not fire again, E fires both
+ok 500 - no charging: a press fires one shell, holding does not fire again, E fires both
   ---
-  duration_ms: 11.185243
+  duration_ms: 9.462321
   type: 'test'
   ...
 # Subtest: first inserted shell can fire and cancels the remaining reload for LMB, tap and E
-ok 499 - first inserted shell can fire and cancels the remaining reload for LMB, tap and E
+ok 501 - first inserted shell can fire and cancels the remaining reload for LMB, tap and E
   ---
-  duration_ms: 20.007631
+  duration_ms: 16.570018
   type: 'test'
   ...
 # Subtest: recoil: every shot launches you the same, beyond a dash; aiming in narrows the cone
-ok 500 - recoil: every shot launches you the same, beyond a dash; aiming in narrows the cone
+ok 502 - recoil: every shot launches you the same, beyond a dash; aiming in narrows the cone
   ---
-  duration_ms: 2.931595
+  duration_ms: 2.298705
   type: 'test'
   ...
 # Subtest: damage: shellDamage + bonus point blank on the first shell, shellDamage on the second; mid-range still counts
-ok 501 - damage: shellDamage + bonus point blank on the first shell, shellDamage on the second; mid-range still counts
+ok 503 - damage: shellDamage + bonus point blank on the first shell, shellDamage on the second; mid-range still counts
   ---
-  duration_ms: 8.373744
+  duration_ms: 7.373161
   type: 'test'
   ...
 # Subtest: E aimed in, point blank, can still one-shot a full-health player
-ok 502 - E aimed in, point blank, can still one-shot a full-health player
+ok 504 - E aimed in, point blank, can still one-shot a full-health player
   ---
-  duration_ms: 1.798572
+  duration_ms: 1.755977
   type: 'test'
   ...
 # Subtest: cover blocks pellets and stops recoil at walls
-ok 503 - cover blocks pellets and stops recoil at walls
+ok 505 - cover blocks pellets and stops recoil at walls
   ---
-  duration_ms: 1.82946
+  duration_ms: 1.567754
   type: 'test'
   ...
 # Subtest: empty Ballast firing inputs reload once; holding fire after E empties both does not
-ok 504 - empty Ballast firing inputs reload once; holding fire after E empties both does not
+ok 506 - empty Ballast firing inputs reload once; holding fire after E empties both does not
   ---
-  duration_ms: 11.499975
+  duration_ms: 7.932011
   type: 'test'
   ...
 # Subtest: double recoil begins lightly and kicks together after 50 ms
-ok 505 - double recoil begins lightly and kicks together after 50 ms
+ok 507 - double recoil begins lightly and kicks together after 50 ms
   ---
-  duration_ms: 1.945328
+  duration_ms: 1.784397
   type: 'test'
   ...
 # Subtest: first refill after spending ammo is 40 percent faster, then returns to normal
-ok 506 - first refill after spending ammo is 40 percent faster, then returns to normal
+ok 508 - first refill after spending ammo is 40 percent faster, then returns to normal
   ---
-  duration_ms: 3.377734
+  duration_ms: 2.692925
   type: 'test'
   ...
 # Subtest: all twelve stationary refills are 18 percent faster than the prior stationary rate
-ok 507 - all twelve stationary refills are 18 percent faster than the prior stationary rate
+ok 509 - all twelve stationary refills are 18 percent faster than the prior stationary rate
   ---
-  duration_ms: 0.73489
+  duration_ms: 0.531189
   type: 'test'
   ...
 # Subtest: movement accelerates and diagonal transitions preserve inertia
-ok 508 - movement accelerates and diagonal transitions preserve inertia
+ok 510 - movement accelerates and diagonal transitions preserve inertia
   ---
-  duration_ms: 8.069804
+  duration_ms: 6.504969
   type: 'test'
   ...
 # Subtest: diagonal movement is no faster than cardinal movement
-ok 509 - diagonal movement is no faster than cardinal movement
+ok 511 - diagonal movement is no faster than cardinal movement
   ---
-  duration_ms: 2.062169
+  duration_ms: 1.598477
   type: 'test'
   ...
 # Subtest: releasing input brings motion smoothly to rest
-ok 510 - releasing input brings motion smoothly to rest
+ok 512 - releasing input brings motion smoothly to rest
   ---
-  duration_ms: 3.476284
+  duration_ms: 2.715087
   type: 'test'
   ...
 # Subtest: walls block movement while allowing tangential sliding
-ok 511 - walls block movement while allowing tangential sliding
+ok 513 - walls block movement while allowing tangential sliding
   ---
-  duration_ms: 1.216927
+  duration_ms: 1.152193
   type: 'test'
   ...
 # Subtest: seed capacity is bounded and seeded shots drift slowly
-ok 512 - seed capacity is bounded and seeded shots drift slowly
+ok 514 - seed capacity is bounded and seeded shots drift slowly
   ---
-  duration_ms: 13.320927
+  duration_ms: 9.647805
   type: 'test'
   ...
 # Subtest: each orb travels straight from its position to the captured cursor point
-ok 513 - each orb travels straight from its position to the captured cursor point
+ok 515 - each orb travels straight from its position to the captured cursor point
   ---
-  duration_ms: 2.185422
+  duration_ms: 1.887865
   type: 'test'
   ...
 # Subtest: empty launch only cocks the gun without creating a volley or changing ammo and recharge
-ok 514 - empty launch only cocks the gun without creating a volley or changing ammo and recharge
+ok 516 - empty launch only cocks the gun without creating a volley or changing ammo and recharge
   ---
-  duration_ms: 2.376789
+  duration_ms: 1.807351
   type: 'test'
   ...
 # Subtest: unlaunched seeds expire and never damage targets
-ok 515 - unlaunched seeds expire and never damage targets
+ok 517 - unlaunched seeds expire and never damage targets
   ---
-  duration_ms: 7.933659
+  duration_ms: 6.046588
   type: 'test'
   ...
 # Subtest: continuous collision detects thin walls and small targets
-ok 516 - continuous collision detects thin walls and small targets
+ok 518 - continuous collision detects thin walls and small targets
   ---
-  duration_ms: 0.405056
+  duration_ms: 0.342416
   type: 'test'
   ...
 # Subtest: a launched orb clears breakable cover and carries on to the target
-ok 517 - a launched orb clears breakable cover and carries on to the target
+ok 519 - a launched orb clears breakable cover and carries on to the target
   ---
-  duration_ms: 1.887437
+  duration_ms: 1.48492
   type: 'test'
   ...
 # Subtest: solid cover still stops a launched orb dead
-ok 518 - solid cover still stops a launched orb dead
+ok 520 - solid cover still stops a launched orb dead
   ---
-  duration_ms: 1.023081
+  duration_ms: 0.809423
   type: 'test'
   ...
 # Subtest: a volley can destroy a target, score once, and target respawns
-ok 519 - a volley can destroy a target, score once, and target respawns
+ok 521 - a volley can destroy a target, score once, and target respawns
   ---
-  duration_ms: 11.145832
+  duration_ms: 8.142558
   type: 'test'
   ...
 # Subtest: seeding next to a wall does not spawn through it
-ok 520 - seeding next to a wall does not spawn through it
+ok 522 - seeding next to a wall does not spawn through it
   ---
-  duration_ms: 0.285894
+  duration_ms: 0.217631
   type: 'test'
   ...
 # Subtest: roof entry follows footprint through the real doorway
-ok 521 - roof entry follows footprint through the real doorway
+ok 523 - roof entry follows footprint through the real doorway
   ---
-  duration_ms: 85.882886
+  duration_ms: 47.309755
   type: 'test'
   ...
 # Subtest: different maps load independent dimensions, colliders and targets
-ok 522 - different maps load independent dimensions, colliders and targets
+ok 524 - different maps load independent dimensions, colliders and targets
   ---
-  duration_ms: 13.110196
+  duration_ms: 9.910561
   type: 'test'
   ...
 # Subtest: reset restores targets, player, projectiles and scores
-ok 523 - reset restores targets, player, projectiles and scores
+ok 525 - reset restores targets, player, projectiles and scores
   ---
-  duration_ms: 204.256538
+  duration_ms: 163.583923
   type: 'test'
   ...
 # Subtest: fixed input replay yields identical simulation state
-ok 524 - fixed input replay yields identical simulation state
+ok 526 - fixed input replay yields identical simulation state
   ---
-  duration_ms: 523.1804
+  duration_ms: 450.843101
   type: 'test'
   ...
 # Subtest: roles mix escort / support / roam and change; sides sometimes group, usually split
-ok 525 - roles mix escort / support / roam and change; sides sometimes group, usually split
+ok 527 - roles mix escort / support / roam and change; sides sometimes group, usually split
   ---
-  duration_ms: 16.473118
+  duration_ms: 13.399845
   type: 'test'
   ...
 # Subtest: a supporter goes to a teammate in a fight far off; a roamer only to one close by; an escort stays
-ok 526 - a supporter goes to a teammate in a fight far off; a roamer only to one close by; an escort stays
+ok 528 - a supporter goes to a teammate in a fight far off; a roamer only to one close by; an escort stays
   ---
-  duration_ms: 1.835114
+  duration_ms: 1.496274
   type: 'test'
   ...
 # Subtest: splash is measured to the edge of a body, and crates do not shelter from it
-ok 527 - splash is measured to the edge of a body, and crates do not shelter from it
+ok 529 - splash is measured to the edge of a body, and crates do not shelter from it
   ---
-  duration_ms: 2.827335
+  duration_ms: 3.912729
   type: 'test'
   ...
 # Subtest: a mouse volley is drawn onto a target near the cursor; others land where pointed
-ok 528 - a mouse volley is drawn onto a target near the cursor; others land where pointed
+ok 530 - a mouse volley is drawn onto a target near the cursor; others land where pointed
   ---
-  duration_ms: 1.703266
+  duration_ms: 2.021504
   type: 'test'
   ...
 # Subtest: the hex ring spreads faster, and Nominal holds 28
-ok 529 - the hex ring spreads faster, and Nominal holds 28
+ok 531 - the hex ring spreads faster, and Nominal holds 28
   ---
-  duration_ms: 0.156761
+  duration_ms: 0.183262
   type: 'test'
   ...
 # Subtest: a kill reads KILL, or ONE SHOT
-ok 530 - a kill reads KILL, or ONE SHOT
+ok 532 - a kill reads KILL, or ONE SHOT
   ---
-  duration_ms: 0.150977
+  duration_ms: 0.132115
   type: 'test'
   ...
 # Subtest: renaming preserves settings, controls, weapon tutorials and cached thumbnail without overwriting new saves
-ok 531 - renaming preserves settings, controls, weapon tutorials and cached thumbnail without overwriting new saves
+ok 533 - renaming preserves settings, controls, weapon tutorials and cached thumbnail without overwriting new saves
   ---
-  duration_ms: 1.084399
+  duration_ms: 0.846415
   type: 'test'
   ...
 # Subtest: unavailable browser storage does not block startup
-ok 532 - unavailable browser storage does not block startup
+ok 534 - unavailable browser storage does not block startup
   ---
-  duration_ms: 0.523253
+  duration_ms: 0.370557
   type: 'test'
   ...
 # Subtest: scorch queue spreads radial work over frames and clearing cancels pending work
-ok 533 - scorch queue spreads radial work over frames and clearing cancels pending work
+ok 535 - scorch queue spreads radial work over frames and clearing cancels pending work
   ---
-  duration_ms: 3.482372
+  duration_ms: 2.771805
   type: 'test'
   ...
 # Subtest: cosmetic impact queue has a bounded backlog
-ok 534 - cosmetic impact queue has a bounded backlog
+ok 536 - cosmetic impact queue has a bounded backlog
   ---
-  duration_ms: 0.338441
+  duration_ms: 0.266013
   type: 'test'
   ...
 # Subtest: target blocks walking and dashing, disappears on death, returns on respawn
-ok 535 - target blocks walking and dashing, disappears on death, returns on respawn
+ok 537 - target blocks walking and dashing, disappears on death, returns on respawn
   ---
-  duration_ms: 9.82839
+  duration_ms: 7.36333
   type: 'test'
   ...
 # Subtest: dummy blocks walking and dashing, disappears on death, returns on respawn
-ok 536 - dummy blocks walking and dashing, disappears on death, returns on respawn
+ok 538 - dummy blocks walking and dashing, disappears on death, returns on respawn
   ---
-  duration_ms: 2.808392
+  duration_ms: 1.913661
   type: 'test'
   ...
 # Subtest: glancing movement slides around a dummy without a long correction
-ok 537 - glancing movement slides around a dummy without a long correction
+ok 539 - glancing movement slides around a dummy without a long correction
   ---
-  duration_ms: 1.905033
+  duration_ms: 1.405441
   type: 'test'
   ...
 # Subtest: bullet holes only from bullets; any damage breaks it; new stages report debris
-ok 538 - bullet holes only from bullets; any damage breaks it; new stages report debris
+ok 540 - bullet holes only from bullets; any damage breaks it; new stages report debris
   ---
-  duration_ms: 64.269916
+  duration_ms: 45.821894
   type: 'test'
   ...
 # Subtest: the sim counts bullet hits only for real bullets, and forgets them on respawn
-ok 539 - the sim counts bullet hits only for real bullets, and forgets them on respawn
+ok 541 - the sim counts bullet hits only for real bullets, and forgets them on respawn
   ---
-  duration_ms: 1.605612
+  duration_ms: 1.0438
   type: 'test'
   ...
 # Subtest: targets face within about 60 degrees of the camera, never away
-ok 540 - targets face within about 60 degrees of the camera, never away
+ok 542 - targets face within about 60 degrees of the camera, never away
   ---
-  duration_ms: 0.714856
+  duration_ms: 1.573299
   type: 'test'
   ...
 # Subtest: idle by default: nothing is locked until an arrow or flick picks a target
-ok 541 - idle by default: nothing is locked until an arrow or flick picks a target
+ok 543 - idle by default: nothing is locked until an arrow or flick picks a target
   ---
-  duration_ms: 1.444604
+  duration_ms: 1.431261
   type: 'test'
   ...
 # Subtest: the aim glides onto the picked target
-ok 542 - the aim glides onto the picked target
+ok 544 - the aim glides onto the picked target
   ---
-  duration_ms: 0.418047
+  duration_ms: 0.575087
   type: 'test'
   ...
 # Subtest: locked, arrows move to the next target that way; none that way goes idle
-ok 543 - locked, arrows move to the next target that way; none that way goes idle
+ok 545 - locked, arrows move to the next target that way; none that way goes idle
   ---
-  duration_ms: 0.349577
+  duration_ms: 0.343031
   type: 'test'
   ...
 # Subtest: a target that dies or leaves hands over to the nearest other one, or goes idle
-ok 544 - a target that dies or leaves hands over to the nearest other one, or goes idle
+ok 546 - a target that dies or leaves hands over to the nearest other one, or goes idle
   ---
-  duration_ms: 0.387008
+  duration_ms: 0.328445
   type: 'test'
   ...
 # Subtest: only targets the player can see count: not under a roof, and from indoors only through openings
-ok 545 - only targets the player can see count: not under a roof, and from indoors only through openings
+ok 547 - only targets the player can see count: not under a roof, and from indoors only through openings
   ---
-  duration_ms: 18.125007
+  duration_ms: 13.96549
   type: 'test'
   ...
 # Subtest: aim assist ignores targets the player cannot see
-ok 546 - aim assist ignores targets the player cannot see
+ok 548 - aim assist ignores targets the player cannot see
   ---
-  duration_ms: 11.064649
+  duration_ms: 7.278362
   type: 'test'
   ...
 # Subtest: a moment out of sight keeps the lock; a longer one or a death lets it go
-ok 547 - a moment out of sight keeps the lock; a longer one or a death lets it go
+ok 549 - a moment out of sight keeps the lock; a longer one or a death lets it go
   ---
-  duration_ms: 0.575518
+  duration_ms: 0.515202
   type: 'test'
   ...
 # Subtest: the title is the main menu home page, with the blood installed on it
-ok 548 - the title is the main menu home page, with the blood installed on it
+ok 550 - the title is the main menu home page, with the blood installed on it
   ---
-  duration_ms: 2.451716
+  duration_ms: 1.924723
   type: 'test'
   ...
 # Subtest: the dev tools link asks for the code until the tools are unlocked
-ok 549 - the dev tools link asks for the code until the tools are unlocked
+ok 551 - the dev tools link asks for the code until the tools are unlocked
   ---
-  duration_ms: 0.76767
+  duration_ms: 0.761184
   type: 'test'
   ...
 # Subtest: title blood: the game's colours, flat, clipped to the letters, bowls filled, buttons followed
-ok 550 - title blood: the game's colours, flat, clipped to the letters, bowls filled, buttons followed
+ok 552 - title blood: the game's colours, flat, clipped to the letters, bowls filled, buttons followed
   ---
-  duration_ms: 1.196419
+  duration_ms: 0.911216
   type: 'test'
   ...
 # Subtest: secondary touches activate every action independently while move and aim stay held
-ok 551 - secondary touches activate every action independently while move and aim stay held
+ok 553 - secondary touches activate every action independently while move and aim stay held
   ---
-  duration_ms: 2.448148
+  duration_ms: 2.351738
   type: 'test'
   ...
 # Subtest: cancellation, pause reset and accessibility activation leave no held action
-ok 552 - cancellation, pause reset and accessibility activation leave no held action
+ok 554 - cancellation, pause reset and accessibility activation leave no held action
   ---
-  duration_ms: 1.434882
+  duration_ms: 1.151259
   type: 'test'
   ...
 # Subtest: portrait and landscape keep independent saved controls
-ok 553 - portrait and landscape keep independent saved controls
+ok 555 - portrait and landscape keep independent saved controls
   ---
-  duration_ms: 2.532552
+  duration_ms: 2.250577
   type: 'test'
   ...
 # Subtest: controls stay below the reserved quarter and inside portrait and landscape screens
-ok 554 - controls stay below the reserved quarter and inside portrait and landscape screens
+ok 556 - controls stay below the reserved quarter and inside portrait and landscape screens
   ---
-  duration_ms: 1.73632
+  duration_ms: 1.375161
   type: 'test'
   ...
 # Subtest: saved layouts validate coordinates and retain shared action positions
-ok 555 - saved layouts validate coordinates and retain shared action positions
+ok 557 - saved layouts validate coordinates and retain shared action positions
   ---
-  duration_ms: 0.385941
+  duration_ms: 0.265805
   type: 'test'
   ...
 # Subtest: putting one control back forgets only that control, so it rejoins the corner cluster
-ok 556 - putting one control back forgets only that control, so it rejoins the corner cluster
+ok 558 - putting one control back forgets only that control, so it rejoins the corner cluster
   ---
-  duration_ms: 0.337777
+  duration_ms: 0.286135
   type: 'test'
   ...
 # Subtest: the layout editor also opens from the menus, over a still frame of the map with no HUD
-ok 557 - the layout editor also opens from the menus, over a still frame of the map with no HUD
+ok 559 - the layout editor also opens from the menus, over a still frame of the map with no HUD
   ---
-  duration_ms: 2.533836
+  duration_ms: 2.139646
   type: 'test'
   ...
 # Subtest: the tutorial weapon list is titled "tutorial weapons"
-ok 558 - the tutorial weapon list is titled "tutorial weapons"
+ok 560 - the tutorial weapon list is titled "tutorial weapons"
   ---
-  duration_ms: 0.431668
+  duration_ms: 0.287793
   type: 'test'
   ...
 # Subtest: only a finished course is saved, and basics is tracked apart from the weapons
-ok 559 - only a finished course is saved, and basics is tracked apart from the weapons
+ok 561 - only a finished course is saved, and basics is tracked apart from the weapons
   ---
-  duration_ms: 1.31377
+  duration_ms: 1.070566
   type: 'test'
   ...
 # Subtest: Ballast tutorial targets and dummies have 400 health including respawns without changing other tutorials
-ok 560 - Ballast tutorial targets and dummies have 400 health including respawns without changing other tutorials
+ok 562 - Ballast tutorial targets and dummies have 400 health including respawns without changing other tutorials
   ---
-  duration_ms: 19.243354
+  duration_ms: 14.579348
   type: 'test'
   ...
 # Subtest: the range is enclosed and clear: five targets in a row and a few breakable crates
-ok 561 - the range is enclosed and clear: five targets in a row and a few breakable crates
+ok 563 - the range is enclosed and clear: five targets in a row and a few breakable crates
   ---
-  duration_ms: 0.523732
+  duration_ms: 0.38075
   type: 'test'
   ...
 # Subtest: lessons start on their own and move on on their own: no begin or continue
-ok 562 - lessons start on their own and move on on their own: no begin or continue
+ok 564 - lessons start on their own and move on on their own: no begin or continue
   ---
-  duration_ms: 3.167796
+  duration_ms: 2.540712
   type: 'test'
   ...
 # Subtest: the arrow points at the zone, then at the nearest standing crate
-ok 563 - the arrow points at the zone, then at the nearest standing crate
+ok 565 - the arrow points at the zone, then at the nearest standing crate
   ---
-  duration_ms: 0.550248
+  duration_ms: 0.445221
   type: 'test'
   ...
 # Subtest: dashing through crates counts, shooting them does not, and they come back
-ok 564 - dashing through crates counts, shooting them does not, and they come back
+ok 566 - dashing through crates counts, shooting them does not, and they come back
   ---
-  duration_ms: 7.983737
+  duration_ms: 6.853201
   type: 'test'
   ...
 # Subtest: a crate never respawns on top of the player
-ok 565 - a crate never respawns on top of the player
+ok 567 - a crate never respawns on top of the player
   ---
-  duration_ms: 1.513281
+  duration_ms: 0.843628
   type: 'test'
   ...
 # Subtest: basics then map finishes the course; weapon courses teach only their weapon
-ok 566 - basics then map finishes the course; weapon courses teach only their weapon
+ok 568 - basics then map finishes the course; weapon courses teach only their weapon
   ---
-  duration_ms: 6.583688
+  duration_ms: 7.041325
   type: 'test'
   ...
 # Subtest: Nominal course: taps, held fire, aimed hits, reloads, grenades and the surge
-ok 567 - Nominal course: taps, held fire, aimed hits, reloads, grenades and the surge
+ok 569 - Nominal course: taps, held fire, aimed hits, reloads, grenades and the surge
   ---
-  duration_ms: 0.456462
+  duration_ms: 0.368778
   type: 'test'
   ...
 # Subtest: Static and Ballast courses credit their own actions
-ok 568 - Static and Ballast courses credit their own actions
+ok 570 - Static and Ballast courses credit their own actions
   ---
-  duration_ms: 0.550969
+  duration_ms: 0.46528
   type: 'test'
   ...
 # Subtest: copy is lowercase and plain, with key names as capital keycaps
-ok 569 - copy is lowercase and plain, with key names as capital keycaps
+ok 571 - copy is lowercase and plain, with key names as capital keycaps
   ---
-  duration_ms: 1.137482
+  duration_ms: 1.319916
   type: 'test'
   ...
 # Subtest: two full loads: two Nominal magazines and 4 Ballast shells
-ok 570 - two full loads: two Nominal magazines and 4 Ballast shells
+ok 572 - two full loads: two Nominal magazines and 4 Ballast shells
   ---
-  duration_ms: 0.391533
+  duration_ms: 0.294678
   type: 'test'
   ...
 # Subtest: the no-mouse lesson is skipped on a touchscreen
-ok 571 - the no-mouse lesson is skipped on a touchscreen
+ok 573 - the no-mouse lesson is skipped on a touchscreen
   ---
-  duration_ms: 0.40383
+  duration_ms: 0.20601
   type: 'test'
   ...
 # Subtest: left-click prompts name E too wherever E does the same (E shoots, Q is the weapon's other action)
-ok 572 - left-click prompts name E too wherever E does the same (E shoots, Q is the weapon's other action)
+ok 574 - left-click prompts name E too wherever E does the same (E shoots, Q is the weapon's other action)
   ---
-  duration_ms: 0.382192
+  duration_ms: 0.324038
   type: 'test'
   ...
 # Subtest: touch players learn to aim with the right thumb while walking; keyboard players skip it
-ok 573 - touch players learn to aim with the right thumb while walking; keyboard players skip it
+ok 575 - touch players learn to aim with the right thumb while walking; keyboard players skip it
   ---
-  duration_ms: 0.754573
+  duration_ms: 0.502309
   type: 'test'
   ...
 # Subtest: the X abilities go by their names everywhere: hex, nova, blast
-ok 574 - the X abilities go by their names everywhere: hex, nova, blast
+ok 576 - the X abilities go by their names everywhere: hex, nova, blast
   ---
-  duration_ms: 0.485029
+  duration_ms: 0.265763
   type: 'test'
   ...
 # Subtest: the screen size is cached until something resizes
-ok 575 - the screen size is cached until something resizes
+ok 577 - the screen size is cached until something resizes
   ---
-  duration_ms: 2.116805
+  duration_ms: 1.599544
   type: 'test'
   ...
 # Subtest: moving near every room corner never mirrors vision across the camera
-ok 576 - moving near every room corner never mirrors vision across the camera
+ok 578 - moving near every room corner never mirrors vision across the camera
   ---
-  duration_ms: 136.152619
+  duration_ms: 110.885583
   type: 'test'
   ...
 # Subtest: edge-on doorways produce no degenerate visibility polygon
-ok 577 - edge-on doorways produce no degenerate visibility polygon
+ok 579 - edge-on doorways produce no degenerate visibility polygon
   ---
-  duration_ms: 0.24638
+  duration_ms: 0.217799
   type: 'test'
   ...
 # Subtest: orbs surrounding a point meet exactly there and never form a separate projectile
-ok 578 - orbs surrounding a point meet exactly there and never form a separate projectile
+ok 580 - orbs surrounding a point meet exactly there and never form a separate projectile
   ---
-  duration_ms: 12.544155
+  duration_ms: 9.835989
   type: 'test'
   ...
 # Subtest: orbs hit the same selected point inside a target
-ok 579 - orbs hit the same selected point inside a target
+ok 581 - orbs hit the same selected point inside a target
   ---
-  duration_ms: 3.080752
+  duration_ms: 2.658556
   type: 'test'
   ...
 # Subtest: one orb launches immediately and deals less damage per orb than a full volley
-ok 580 - one orb launches immediately and deals less damage per orb than a full volley
+ok 582 - one orb launches immediately and deals less damage per orb than a full volley
   ---
-  duration_ms: 0.325988
+  duration_ms: 0.247064
   type: 'test'
   ...
 # Subtest: active seeds reserve the supply, so waiting before launch cannot bank a second full volley
-ok 581 - active seeds reserve the supply, so waiting before launch cannot bank a second full volley
+ok 583 - active seeds reserve the supply, so waiting before launch cannot bank a second full volley
   ---
-  duration_ms: 29.504068
+  duration_ms: 22.307814
   type: 'test'
   ...
 # Subtest: small volleys leave reserve ammunition immediately available
-ok 582 - small volleys leave reserve ammunition immediately available
+ok 584 - small volleys leave reserve ammunition immediately available
   ---
-  duration_ms: 0.967373
+  duration_ms: 0.765502
   type: 'test'
   ...
 # Subtest: ammo never exceeds capacity while seeding, launching, expiring and refilling
-ok 583 - ammo never exceeds capacity while seeding, launching, expiring and refilling
+ok 585 - ammo never exceeds capacity while seeding, launching, expiring and refilling
   ---
-  duration_ms: 29.315739
+  duration_ms: 24.079858
   type: 'test'
   ...
 # Subtest: brushing the long range fence never teleports the player along it
-ok 584 - brushing the long range fence never teleports the player along it
+ok 586 - brushing the long range fence never teleports the player along it
   ---
-  duration_ms: 133.522476
+  duration_ms: 118.526508
   type: 'test'
   ...
 # Subtest: fence corners allow sliding without crossing or long-distance correction
-ok 585 - fence corners allow sliding without crossing or long-distance correction
+ok 587 - fence corners allow sliding without crossing or long-distance correction
   ---
-  duration_ms: 5.806879
+  duration_ms: 4.786248
   type: 'test'
   ...
 # Subtest: render caps produce the requested frame count independently of simulation ticks
-ok 586 - render caps produce the requested frame count independently of simulation ticks
+ok 588 - render caps produce the requested frame count independently of simulation ticks
   ---
-  duration_ms: 6.452749
+  duration_ms: 3.746311
   type: 'test'
   ...
 # Subtest: graphics tiers change resolution, shadow work, texture detail and effect budgets
-ok 587 - graphics tiers change resolution, shadow work, texture detail and effect budgets
+ok 589 - graphics tiers change resolution, shadow work, texture detail and effect budgets
   ---
-  duration_ms: 2.702746
+  duration_ms: 2.013907
   type: 'test'
   ...
 # Subtest: mobile opacity accepts saved presets and rejects invalid values
-ok 588 - mobile opacity accepts saved presets and rejects invalid values
+ok 590 - mobile opacity accepts saved presets and rejects invalid values
   ---
-  duration_ms: 0.426416
+  duration_ms: 0.257838
   type: 'test'
   ...
 # Subtest: first launch defaults to Performance on mobile and Balanced on PC, preserving saved choices
-ok 589 - first launch defaults to Performance on mobile and Balanced on PC, preserving saved choices
+ok 591 - first launch defaults to Performance on mobile and Balanced on PC, preserving saved choices
   ---
-  duration_ms: 0.259322
+  duration_ms: 0.179158
   type: 'test'
   ...
 # Subtest: full screen while playing is a saved choice, on unless turned off
-ok 590 - full screen while playing is a saved choice, on unless turned off
+ok 592 - full screen while playing is a saved choice, on unless turned off
   ---
-  duration_ms: 0.137423
+  duration_ms: 0.092228
   type: 'test'
   ...
 # Subtest: the phone page is set up as a game, not a document
-ok 591 - the phone page is set up as a game, not a document
+ok 593 - the phone page is set up as a game, not a document
   ---
-  duration_ms: 2.955036
+  duration_ms: 2.198244
   type: 'test'
   ...
 # Subtest: weapon grids list random then every weapon in the registry, with pictures
-ok 592 - weapon grids list random then every weapon in the registry, with pictures
+ok 594 - weapon grids list random then every weapon in the registry, with pictures
   ---
-  duration_ms: 2.962596
+  duration_ms: 2.862119
   type: 'test'
   ...
 # Subtest: every weapon-choosing menu uses the grid
-ok 593 - every weapon-choosing menu uses the grid
+ok 595 - every weapon-choosing menu uses the grid
   ---
-  duration_ms: 0.293331
+  duration_ms: 0.234689
   type: 'test'
   ...
 # Subtest: Ballast reload fills both shell slots gradually after opening the breech
-ok 594 - Ballast reload fills both shell slots gradually after opening the breech
+ok 596 - Ballast reload fills both shell slots gradually after opening the breech
   ---
-  duration_ms: 3.253915
+  duration_ms: 2.064562
   type: 'test'
   ...
 # Subtest: reload display drains old rounds, changes empty capacity, then fills the incoming magazine
-ok 595 - reload display drains old rounds, changes empty capacity, then fills the incoming magazine
+ok 597 - reload display drains old rounds, changes empty capacity, then fills the incoming magazine
   ---
-  duration_ms: 0.560755
+  duration_ms: 0.565716
   type: 'test'
   ...
 # Subtest: X ability colour states: red recharging, pink ready, yellow charging, blue in use
-ok 596 - X ability colour states: red recharging, pink ready, yellow charging, blue in use
+ok 598 - X ability colour states: red recharging, pink ready, yellow charging, blue in use
   ---
-  duration_ms: 2.59508
+  duration_ms: 1.764416
   type: 'test'
   ...
-1..596
-# tests 596
+1..598
+# tests 598
 # suites 0
-# pass 596
+# pass 598
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 62592.32479
+# duration_ms 48329.234186

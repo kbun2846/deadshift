@@ -8,7 +8,8 @@ import { GAME_KEYS } from '../config/controls.js';
 export const ballastInput=(pointerFiring,keys,tapped)=>({
  fire:pointerFiring||keys.has(GAME_KEYS.shoot)||tapped.has(GAME_KEYS.shoot),
 });
-export const weaponAiming=(weapon,pointerAiming,keys)=>pointerAiming||keys.has('ShiftLeft')||keys.has('ShiftRight');
+// (Right Shift arrives as ShiftLeft while aim-in keeps Shift: keybinds.js gameCode.)
+export const weaponAiming=(weapon,pointerAiming,keys)=>pointerAiming||keys.has('ShiftLeft');
 export function bindRifleMouse(surface,windowTarget,{enabled,state,fire,aim,store}){
  surface.addEventListener('mousedown',e=>{
   if(!enabled())return;e.preventDefault();state(!!(e.buttons&1),!!(e.buttons&2));

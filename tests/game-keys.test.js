@@ -4,7 +4,7 @@ import { GAME_KEYS } from '../src/config/controls.js';
 import { WEAPONS } from '../src/items.js';
 
 test('Space shoots, E is the secondary key everywhere the controls are described', () => {
- assert.equal(GAME_KEYS.shoot, 'Space'); assert.equal(GAME_KEYS.secondary, 'KeyE'); assert.equal(GAME_KEYS.dodge, 'ControlLeft');
+ assert.equal(GAME_KEYS.shoot, 'Space'); assert.equal(GAME_KEYS.secondary, 'KeyE'); assert.equal(GAME_KEYS.dodge, 'KeyQ');
  for (const w of WEAPONS) {
   const keys = w.hints.keyboard.map(([k]) => k);
   assert.ok(keys.includes('LMB / SPACE'), w.id + ': LMB / SPACE shoots');
@@ -32,4 +32,19 @@ test('locked on a player: accurate and smooth, drifts off on a dodge or behind a
  for (const flag of ['inside', 'offscreen']) { const { lock, t } = setup(); tick(lock, t, 5); t[flag] = true; tick(lock, t, 1); assert.equal(lock.id, null, flag); }
  // Held arrows still lead by hand.
  { const { lock, t } = setup(); tick(lock, t, 30); for (let i = 0; i < 30; i++) lock.update([t], { x: 0, z: 0 }, 1 / 60, () => t, { nudgeX: 1, nudgeZ: 0 }); assert.ok(lock.point.x > t.x + .5); }
+});
+
+test('key bindings: a new key for an action reads as its token, the old key does nothing, a taken key swaps, defaults come back', async () => {
+ const { setBind, resetBinds, gameCode, bindOf, displayKeys, reloadBinds } = await import('../src/config/keybinds.js');
+ const store = new Map(), storage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+ reloadBinds(storage);
+ assert.equal(gameCode('KeyQ'), 'KeyQ', 'Q dodges by default'); assert.equal(gameCode('Digit1'), 'Digit1', 'unbound keys pass');
+ assert.equal(setBind('dodge', 'KeyF', storage), null);
+ assert.equal(gameCode('KeyF'), 'KeyQ'); assert.equal(gameCode('KeyQ'), null, 'Q no longer dodges');
+ assert.equal(displayKeys('[Q]'.slice(1, -1)), 'F'); assert.equal(displayKeys('E / NADE'), 'E / NADE');
+ assert.equal(setBind('secondary', 'KeyF', storage), 'dodge', 'F was dodge: swapped');
+ assert.equal(bindOf('dodge'), 'KeyE'); assert.equal(gameCode('KeyE'), 'KeyQ'); assert.equal(gameCode('KeyF'), 'KeyE');
+ assert.equal(setBind('dodge', 'Escape', storage), false, 'Esc is kept for pause');
+ reloadBinds(storage); assert.equal(bindOf('secondary'), 'KeyF', 'saved on this device');
+ resetBinds(storage); assert.equal(gameCode('KeyQ'), 'KeyQ'); assert.equal(gameCode('ShiftRight'), 'ShiftLeft');
 });
