@@ -2,6 +2,7 @@
 // dial (Static's hex, Nominal's grenade, Ballast's blast), Nominal's
 // nova dial (the X abilities: hex, nova, blast; a ready one shows its name), and the (visually retired, still announced) charge meter.
 import { RULES, GRENADE, SURGE, SCATTER } from '../config/gameplay.js';
+import { scatterPrimeLeft } from '../weapons/scatter.js';
 import { bindAbilityCooldown, addAbilityCooldown } from './ability-cooldown.js';
 import { setStyle, setAttr } from './dom-writes.js';
 import { xAbilityState } from './x-ability-state.js';
@@ -19,7 +20,7 @@ export function createAbilityHUD() {
   for (let i = 0; i < pips.length; i++) setStyle(pips[i], '--stamina-fill', (Math.max(0, Math.min(1, stamina - i)) * 100) + '%');
   const remaining = Math.max(0, rifle?sim.grenadeCooldown:sim.hexCooldown), ready = remaining < 1e-8, cooldown=rifle?GRENADE.cooldown:RULES.hexCooldown;
   const hexHint = rifle?(ready?'Grenade ready':'Grenade recharging'):sim.hexOrbs.length ? (sim.hexOrbs[0].age<RULES.hexFormationTime?'Hex forming':'Press X to pulse') : sim.hexSpin ? 'Hex spinning' : ready ? 'Hex ability ready' : 'Hex recharging';
-  updatePrimaryCooldown(sim.weapon==='shotgun'?{remaining:sim.scatter?.cooldown||0,duration:SCATTER.cooldown,binding:'X',label:sim.scatter?.armed?'Blast ready to fire: press X':sim.scatterShells?.length?'Blast in the air':(sim.scatter?.cooldown||0)>1e-8?'Blast recharging':'Blast ready',text:sim.scatter?.armed?'FIRE':sim.scatterShells?.length?'LIVE':(sim.scatter?.cooldown||0)>1e-8?undefined:'BLAST'}:{remaining,duration:cooldown,binding:rifle?'E':'X',label:hexHint,text:!rifle&&sim.hexOrbs.length?(sim.hexOrbs[0].age<RULES.hexFormationTime?'FORM':'PULSE'):!rifle&&sim.hexSpin?'LIVE':!rifle&&ready?(sim.ammo>=RULES.hexCost?'HEX':Math.floor(sim.ammo)+'/'+RULES.hexCost):undefined});
+  updatePrimaryCooldown(sim.weapon==='shotgun'?{remaining:sim.scatter?.cooldown||0,duration:SCATTER.cooldown,binding:'X',label:sim.scatter?.armed?(scatterPrimeLeft(sim)>0?'Blast charging':'Blast ready to fire: press X'):sim.scatterShells?.length?'Blast in the air':(sim.scatter?.cooldown||0)>1e-8?'Blast recharging':'Blast ready',text:sim.scatter?.armed?(scatterPrimeLeft(sim)>0?String(Math.ceil(scatterPrimeLeft(sim))):'FIRE'):sim.scatterShells?.length?'LIVE':(sim.scatter?.cooldown||0)>1e-8?undefined:'BLAST'}:{remaining,duration:cooldown,binding:rifle?'E':'X',label:hexHint,text:!rifle&&sim.hexOrbs.length?(sim.hexOrbs[0].age<RULES.hexFormationTime?'FORM':'PULSE'):!rifle&&sim.hexSpin?'LIVE':!rifle&&ready?(sim.ammo>=RULES.hexCost?'HEX':Math.floor(sim.ammo)+'/'+RULES.hexCost):undefined});
   extendedCooldownUI.root.classList.toggle('hidden',!rifle);
   if(rifle){const s=sim.surge||{phase:'idle',cooldown:0,t:0};const live=s.phase!=='idle';
    extendedCooldownUI.update({remaining:live?(s.phase==='active'?SURGE.duration-s.t:SURGE.charge-s.t):s.cooldown,duration:live?(s.phase==='active'?SURGE.duration:SURGE.charge):SURGE.cooldown,binding:'X',text:s.phase==='charging'?'CHARGE':s.phase==='idle'&&s.cooldown<1e-8?'NOVA':undefined,label:s.phase==='active'?'Nova':s.phase==='charging'?'Nova charging':s.cooldown<1e-8?'Nova ready':'Nova recharging'});}

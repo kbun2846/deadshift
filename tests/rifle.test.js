@@ -56,12 +56,15 @@ test('cursor depth changes where the barrel is laid, never how tight the group i
   assert.ok(Math.abs(fire(.1)-fire(30))<1e-12,'a close cursor tightened the group');
  }finally{Math.random=old;}
 });
-test('the convergence floor keeps a cursor underfoot from raking the shot',()=>{
- const p={x:0,z:0,aimX:1,aimZ:0};
- const worst=Math.abs(rifleAim(p,0).angle);
- assert.ok(worst<.04,`a cursor on the player's own feet raked the barrel ${worst.toFixed(3)}rad`);
- assert.equal(rifleAim(p,2).angle,rifleAim(p,0).angle,'anything inside the floor is treated alike');
- assert.ok(Math.abs(rifleAim(p,40).angle)<worst,'and the rake shrinks as the aim point goes out');
+test('the body turns so the barrel line, not the body centre, runs through the cursor',async()=>{
+ const { muzzleBearing, muzzleLateral } = await import('../src/aim-damping.js');
+ for (const weapon of ['rifle','shotgun']) for (const [tx,tz] of [[3,0],[5,2],[-4,6],[12,-7]]) {
+  const lat=muzzleLateral(weapon), a=muzzleBearing(0,0,tx,tz,lat), aimX=Math.cos(a), aimZ=Math.sin(a);
+  // Distance from the cursor to the line through the muzzle along the facing.
+  const mx=-aimZ*lat, mz=aimX*lat, off=Math.abs((tx-mx)*aimZ-(tz-mz)*aimX);
+  assert.ok(off<1e-9, weapon+' misses the cursor by '+off);
+  if (weapon==='rifle') { const aim=rifleAim({x:0,z:0,aimX,aimZ},Math.hypot(tx,tz)); assert.ok(Math.abs(aim.angle-a)<1e-9,'barrel parallel to the facing'); }
+ }
 });
 test('shots favor both sides equally without widening bloom or excluding center shots',()=>{
  let centered=0,flanks=0,total=0,sum=0;

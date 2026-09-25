@@ -66,7 +66,8 @@ body[data-controls=touch] #game #weapon .hex-recharge-center kbd{font-size:8px}
 body[data-controls=touch] #game #weapon .seed-pips{gap:3px}
 body[data-controls=touch] #game #weapon .seed-pips[data-capacity="36"]{display:grid;grid-template-columns:repeat(18,minmax(0,1fr));gap:3px}
 @media(orientation:landscape){
- body[data-controls=touch].playing #game .health-hud{left:max(20px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));width:clamp(230px,30vw,320px);transform:none}
+ /* Centred (owner, v0.9b; it sat top left), under the match clock / score. */
+ body[data-controls=touch].playing #game .health-hud{left:50%;top:calc(max(12px,env(safe-area-inset-top)) + 30px);width:clamp(230px,30vw,320px);transform:translateX(-50%)}
  body[data-controls=touch].playing:not(.paused) #game #touch-controls{bottom:calc(16px + env(safe-area-inset-bottom))}
  body[data-controls=touch] #game .touch-right{grid-template-columns:repeat(2,72px);gap:7px}
  body[data-controls=touch] #game #touch-controls button{width:72px;height:58px;min-height:58px;font-size:12px!important}

@@ -52,6 +52,28 @@ export function mapGridHTML({ label, maps, pressed, soon = true }) {
  return frame(label, tiles + (soon ? soonTileHTML('map') : ''), 'map');
 }
 
+// A dropdown picker (owner, v0.9b: lists will outgrow one screen): a button
+// showing what is picked (its picture and name, a caret), and under it, when
+// opened, the grid in a scrolling panel. `grid`: weaponGridHTML / mapGridHTML
+// output. Wire it with wirePicker (opens and closes; a pick closes it).
+export const pickerHTML = (label, grid) => `<div class="picker"><button type="button" class="picker-toggle plain-text" aria-expanded="false" aria-label="${esc(label)}"><span class="picker-thumb"></span><span class="picker-name"></span><i class="picker-caret" aria-hidden="true"></i></button><div class="picker-panel" hidden>${grid}</div></div>`;
+// Shows the pressed tile on the toggle.
+export function syncPicker(picker) {
+ const on = picker.querySelector('.weapon-tile[aria-pressed="true"]'); if (!on) return;
+ const thumb = picker.querySelector('.picker-thumb'), name = on.querySelector('.weapon-tile-name')?.textContent || '';
+ if (thumb.dataset.for !== on.dataset.choice) { thumb.dataset.for = on.dataset.choice; thumb.innerHTML = on.querySelector('.weapon-tile-picture')?.innerHTML || ''; thumb.classList.toggle('picker-thumb-random', on.classList.contains('weapon-tile-random')); }
+ picker.querySelector('.picker-name').textContent = name;
+}
+export function wirePicker(picker) {
+ const toggle = picker.querySelector('.picker-toggle'), panel = picker.querySelector('.picker-panel');
+ const open = on => { panel.hidden = !on; toggle.setAttribute('aria-expanded', String(on)); picker.classList.toggle('open', on); if (on) panel.querySelector('.weapon-tile[aria-pressed="true"]')?.scrollIntoView?.({ block: 'nearest' }); };
+ toggle.onclick = () => open(panel.hidden);
+ panel.addEventListener('click', e => { if (e.target.closest('.weapon-tile:not(:disabled)')) setTimeout(() => { open(false); toggle.focus(); }); });
+ watchWeaponGrid(panel.querySelector('.weapon-grid-frame'));
+ syncPicker(picker);
+ return { open, sync: () => syncPicker(picker) };
+}
+
 // Scroll cue: the frame fades its bottom edge while more tiles lie below.
 export function watchWeaponGrid(frame) {
  const grid = frame?.querySelector('.weapon-grid'); if (!grid) return;

@@ -56,10 +56,10 @@ export const COURSES = {
  static: [
   lesson('orbs', 'place orbs', 24, 'hold [E] and place two full loads of orbs', 'hold [PLACE] and place two full loads of orbs', { note: 'stand still and they refill faster', highlight: 'seed-pips' }),
   lesson('volley', 'volley', 3, 'place four or more orbs then press [LMB] / [SPACE] to fire them at a target', 'place four or more orbs then tap [LAUNCH] at a target',
-   { note: 'more orbs hit much harder so never fire fewer than four', highlight: 'seed-pips' }),
-  lesson('stream', 'stream', 3, 'get close and hold [C] on a target', 'get close and hold [STREAM] on a target', { note: 'stay on one target to ramp it up', highlight: 'seed-pips' }),
+   { note: 'more orbs hit much harder so never fire fewer than four · they leave slow then speed up so lead a moving target', highlight: 'seed-pips' }),
+  lesson('stream', 'stream', 3, 'get close and hold [C] on a target', 'get close and hold [STREAM] on a target', { note: 'stay on one target to ramp it up · it drinks orbs fast', highlight: 'seed-pips' }),
   lesson('pulse', 'hex', 3, 'press [X] to throw out the hex then [X] again to pulse it', 'tap [HEX] to throw out the hex then tap it again to pulse it',
-   { note: 'the hex needs ten orbs in hand (the x mark on the orb bar) and its spinning sides zap whoever they cross', highlight: 'hex-recharge' }),
+   { note: 'the hex needs ten orbs in hand (the x mark on the orb bar) · its sides zap enemies · shots from outside cannot hurt anyone inside and teammates can step in · leave it and it spins a moment before fading', highlight: 'hex-recharge' }),
  ],
  rifle: [
   lesson('single', 'single shots', 5, 'tap [LMB] / [SPACE] once to fire a single shot', 'tap [FIRE] once for a single shot', { note: 'let go between shots', highlight: 'seed-pips' }),
@@ -68,16 +68,22 @@ export const COURSES = {
    { note: 'standing still tightens it more', highlight: 'rifle-spread', touchHighlight: 'touch-stream' }),
   lesson('reload', 'reload', 2, 'fire a shot then press [R]', 'fire a shot then tap [RELOAD]', { note: `a mag holds ${RIFLE.magazine} rounds`, highlight: 'seed-pips', touchHighlight: 'touch-hex' }),
   lesson('grenade', 'grenade', 2, 'press [E] to throw a grenade', 'tap [NADE] to throw one', { note: 'stay clear of where it lands', highlight: 'hex-recharge' }),
-  lesson('nova', 'nova', 1, 'press [X] for nova', 'tap [NOVA]', { note: `${SURGE.charge} seconds to power up then ${SURGE.duration} seconds of double damage with no reloading and it ends on a full mag`, highlight: 'extended-recharge' }),
+  lesson('nova', 'nova', 1, 'press [X] for nova', 'tap [NOVA]', { note: `${SURGE.charge} seconds to power up then ${SURGE.duration} seconds of double damage, no reloading, faster feet, tighter shots and less damage taken · ends on a full mag`, highlight: 'extended-recharge' }),
  ],
  shotgun: [
   lesson('sfire', 'fire', 4, 'press [LMB] / [SPACE] for each shell and fire two full loads', 'tap [FIRE] for each shell and fire two full loads', { note: 'every shot throws you back so press [R] to reload', touchNote: 'every shot throws you back so tap [RELOAD] to reload', highlight: 'seed-pips' }),
-  lesson('saim', 'aim in', 2, 'hold [RMB] / [SHIFT] and fire', 'hold [AIM] and fire', { note: 'a tighter cone lands more pellets further out', touchHighlight: 'touch-stream' }),
+  lesson('saim', 'aim in', 2, 'hold [RMB] / [SHIFT] and fire', 'hold [AIM] and fire', { note: 'a tighter cone lands more pellets further out · the red hits hard and the fade past it less and less', touchHighlight: 'touch-stream' }),
   lesson('double', 'double', 2, 'press [E] to fire both shells', 'tap [DOUBLE] to fire both shells', { note: 'needs two shells loaded', highlight: 'seed-pips' }),
   lesson('sreload', 'reload', 2, 'press [R] to reload', 'tap [RELOAD] to reload', { note: 'you get two shells', highlight: 'seed-pips' }),
-  lesson('blast', 'blast', 1, 'press [X] to ready the blast, then [X] again to fire it', 'tap [BLAST] to ready it, then tap it again to fire', { note: 'the red cone shows where the shells spread and split', highlight: 'hex-recharge' }),
+  lesson('blast', 'blast', 1, 'press [X] to ready the blast, let it charge for 3 seconds, then [X] again to fire it', 'tap [BLAST] to ready it, let it charge for 3 seconds, then tap it again to fire', { note: 'the red cone shows where the shells spread and split · it is short range so get close', highlight: 'hex-recharge' }),
  ],
 };
+// Shown when a course is done (owner, v138): where to go next and how the
+// team games read.
+export const COURSE_DONE_NOTES = Object.freeze({
+ basics: 'solo: you and your robots against robots · multiplayer: host a room and fill seats with robots · in team games every side has its colour (amber, cyan, violet) on hats and rings · friendly fire is on: teammates take half',
+ weapon: 'after a death, [CHANGE WEAPON] picks what you come back with',
+});
 export const COURSE_NAMES = Object.freeze({ basics: 'basics', ...Object.fromEntries(WEAPONS.map(w => [w.id, w.name.toLowerCase()])) });
 
 const isCrate = id => typeof id === 'string' && id.startsWith('tutorial-crate');

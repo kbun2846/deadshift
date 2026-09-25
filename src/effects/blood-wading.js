@@ -39,7 +39,7 @@ export class Wading {
 // m). Three merged stages, shown as `level` passes WADING.stages: boots, then
 // legs and hem, then up the coat and on the shoulders and arm (what the
 // top-down camera sees best). Returns { root, set(level) }.
-export function makeBloodStains(parent) {
+export function makeBloodStains(parent, arm = null) {
  const root = new THREE.Group(); parent.add(root);
  const box = new THREE.BoxGeometry(1, 1, 1), red = new THREE.MeshLambertMaterial({ color: '#9a1622' }), dark = new THREE.MeshLambertMaterial({ color: '#6a0d16' });
  let seed = 7; const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -75,7 +75,13 @@ export function makeBloodStains(parent) {
  for (let i = 0; i < 5; i++) { const a = random() * Math.PI * 2, r = .25 + random() * .12, s = .03 + random() * .035; fleck(brimEarly, Math.sin(a) * r, 1.104, Math.cos(a) * r, s, .006, s * 1.3); }
  for (let i = 0; i < 10; i++) { const a = random() * Math.PI * 2, r = .26 + random() * .1, s = .035 + random() * .045; fleck(brim, Math.sin(a) * r, 1.104, Math.cos(a) * r, s, .006, s * 1.3); }
  for (let i = 0; i < 6; i++) { const a = random() * Math.PI * 2, r = random() * .15, s = .03 + random() * .04; fleck(brim, Math.sin(a) * r, 1.307, Math.cos(a) * r, s, .006, s * 1.2); }
- for (let i = 0; i < 5; i++) { const s = .04 + random() * .04; fleck(stages[2], .27 + (random() - .5) * .1, .773, -.2 + (random() - .5) * .3, s, .006, s * 1.4); }
+ // The arm's flecks ride the arm itself (arm-local: its top at +.083), so
+ // they hide with it: holding the Nominal or Ballast hides this arm for an
+ // IK one, and flecks left at its old place floated beside the shoulder.
+ const armStage = new THREE.Group();
+ for (let i = 0; i < 5; i++) { const s = .04 + random() * .04; fleck(armStage, (random() - .5) * .1, .083, (random() - .5) * .3, s, .006, s * 1.4); }
+ if (!arm) armStage.position.set(.27, .69, -.2); // (no arm of its own: where the arm is drawn)
+ (arm || root).add(armStage); compact(armStage); armStage.visible = false;
  for (const stage of [...stages, brim, brimEarly]) { root.add(stage); compact(stage); stage.visible = false; }
  box.dispose(); red.dispose(); dark.dispose();
  let shown = -1;
@@ -84,9 +90,9 @@ export function makeBloodStains(parent) {
   set(level) {
    const n = WADING.stages.filter(t => level >= t).length;
    if (n === shown) return; shown = n;
-   stages.forEach((stage, i) => { stage.visible = i < n; }); brim.visible = n >= 3; brimEarly.visible = n >= 2;
+   stages.forEach((stage, i) => { stage.visible = i < n; }); brim.visible = armStage.visible = n >= 3; brimEarly.visible = n >= 2;
   },
-  dispose() { [...stages, brim, brimEarly].forEach(stage => stage.traverse(o => { if (o.userData.goreMerged) o.geometry.dispose(); })); root.removeFromParent(); },
+  dispose() { armStage.removeFromParent(); [...stages, brim, brimEarly, armStage].forEach(stage => stage.traverse(o => { if (o.userData.goreMerged) o.geometry.dispose(); })); root.removeFromParent(); },
  };
 }
 
@@ -98,7 +104,8 @@ export function makeGunStains(gun, key) {
  const root = new THREE.Group(); root.userData.gunStains = true;
  const bounds = new THREE.Box3(), part = new THREE.Box3(), inverse = new THREE.Matrix4();
  gun.updateMatrixWorld(true); inverse.copy(gun.matrixWorld).invert();
- gun.traverse(o => { if (!o.isMesh || !o.visible || o.parent?.userData.gunStains || o.userData.goreMerged) return; o.geometry.computeBoundingBox?.(); part.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld).applyMatrix4(inverse); bounds.union(part); });
+ // Only what is really shown (a hidden model's bounds put flecks in the air).
+ gun.traverseVisible(o => { if (!o.isMesh || o.parent?.userData.gunStains || o.userData.goreMerged) return; o.geometry.computeBoundingBox?.(); part.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld).applyMatrix4(inverse); bounds.union(part); });
  const stages = [new THREE.Group(), new THREE.Group()];
  if (!bounds.isEmpty()) {
   const box = new THREE.BoxGeometry(1, 1, 1), red = new THREE.MeshLambertMaterial({ color: '#9a1622' }), dark = new THREE.MeshLambertMaterial({ color: '#6a0d16' });

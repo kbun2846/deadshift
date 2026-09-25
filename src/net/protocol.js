@@ -24,7 +24,7 @@
 // events are numbered and resent until the client acknowledges them, so
 // shots, deaths and kill-feed lines are never lost.
 import { weaponOrDefault } from '../items.js';
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);
@@ -85,7 +85,7 @@ export function loadout(sim) {
  return { ammo: sim.ammo, rechargeProgress: round(sim.rechargeProgress, 3), rechargeWait: round(sim.rechargeWait, 3), hexCooldown: round(sim.hexCooldown, 2),
   grenadeCooldown: round(sim.grenadeCooldown, 2), rifle: flat(sim.rifle), shotgun: flat(sim.shotgun), spraying: !!sim.spray.active,
   surge: sim.surge ? { phase: sim.surge.phase, t: round(sim.surge.t, 3), cooldown: round(sim.surge.cooldown, 2), active: !!sim.surge.active } : undefined,
-  scatter: sim.scatter ? { armed: !!sim.scatter.armed, cooldown: round(sim.scatter.cooldown, 2) } : undefined };
+  scatter: sim.scatter ? { armed: !!sim.scatter.armed, armedFor: round(sim.scatter.armedFor || 0, 2), cooldown: round(sim.scatter.cooldown, 2) } : undefined };
 }
 export function applyLoadout(sim, l) {
  if (!l) return;
@@ -94,7 +94,7 @@ export function applyLoadout(sim, l) {
  if (l.shotgun) Object.assign(sim.shotgun, l.shotgun);
  sim.spray.active = !!l.spraying;
  if (l.surge && sim.surge && ['idle', 'charging', 'active'].includes(l.surge.phase)) Object.assign(sim.surge, { phase: l.surge.phase, t: +l.surge.t || 0, cooldown: +l.surge.cooldown || 0, active: !!l.surge.active });
- if (l.scatter && sim.scatter) { sim.scatter.armed = !!l.scatter.armed; sim.scatter.cooldown = +l.scatter.cooldown || 0; }
+ if (l.scatter && sim.scatter) { sim.scatter.armed = !!l.scatter.armed; sim.scatter.armedFor = +l.scatter.armedFor || 0; sim.scatter.cooldown = +l.scatter.cooldown || 0; }
 }
 
 // Messages from the other side are untrusted: anything malformed is dropped.
@@ -107,6 +107,8 @@ export function readMessage(data) {
   return { t: 'input', inputs, ack: Number.isInteger(data.ack) ? data.ack : 0 };
  }
  if (data.t === 'choose') return { t: 'choose', weapon: weaponOrDefault(data.weapon), go: data.go !== false };
+ // A side picked in the lobby (team modes): a known team id, or null.
+ if (data.t === 'team') return { t: 'team', team: ['red', 'blue', 'gold'].includes(data.team) ? data.team : null };
  if (data.t === 'pick' || data.t === 'respawn') return { t: data.t };
  if (data.t === 'ping' || data.t === 'pong') return Number.isFinite(data.s) ? { t: data.t, s: data.s } : null;
  if (data.t === 'hello') return { t: 'hello', version: data.version, name: cleanName(data.name) };

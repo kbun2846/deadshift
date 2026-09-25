@@ -15,18 +15,25 @@
 // five reach the cap.
 // It uses no shells from the magazine; the cooldown starts when it fires.
 //
-// Plain state on the sim: `sim.scatter` { armed, cooldown } and the flying
+// It must be readied SCATTER.prime (3) seconds before the second X fires it
+// (v143, owner); `armedFor` counts up, `scatterPrimed` event at 3 s.
+// Plain state on the sim: `sim.scatter` { armed, armedFor, cooldown } and the flying
 // shells in `sim.scatterShells`. Events for the screen and sound:
-// scatterArm, scatterFire, scatterSplit, scatterHit, scatterBurst.
+// scatterArm, scatterPrimed, scatterFire, scatterSplit, scatterHit, scatterBurst.
 import { SCATTER } from '../config/gameplay.js';
 import { targetRadius } from '../target-radius.js';
+import { cropCircle } from '../crops.js';
 export { SCATTER };
 
 export function resetScatter(sim, keepCooldown = false) {
  const cooldown = keepCooldown ? sim.scatter?.cooldown || 0 : 0;
- sim.scatter = { armed: false, cooldown, tally: new Map() };
+ sim.scatter = { armed: false, armedFor: 0, cooldown, tally: new Map() };
  sim.scatterShells = [];
 }
+// Readied long enough to fire (owner, v143: SCATTER.prime seconds after the
+// first X; a second X sooner does nothing).
+export const scatterPrimed = sim => !!sim.scatter?.armed && (sim.scatter.armedFor || 0) >= SCATTER.prime - 1e-6;
+export const scatterPrimeLeft = sim => (sim.scatter?.armed ? Math.max(0, SCATTER.prime - (sim.scatter.armedFor || 0)) : 0);
 export const scatterReady = sim => sim.weapon === 'shotgun' && !sim.scatter.armed && sim.scatter.cooldown <= 1e-8;
 
 // Damage to `target` from Scatter `volley`, within the cap.
@@ -58,9 +65,13 @@ function launch(sim) {
 function split(sim, shell, x, z, into = false) {
  const heading = Math.atan2(shell.dz, shell.dx);
  for (let i = 0; i < SCATTER.split; i++) {
-  const a = heading + ((i + .5) / SCATTER.split * 2 - 1) * SCATTER.childSpread + (Math.random() - .5) * .08;
+  // Scattered, not a neat arc (owner, v143): each small shell turns a little
+  // more at random and flies anywhere from about half to 1.4x as far, so the
+  // bursts land short, long and off to the sides.
+  const a = heading + ((i + .5) / SCATTER.split * 2 - 1) * SCATTER.childSpread + (Math.random() - .5) * .34;
+  const far = SCATTER.childNear + Math.random() * (SCATTER.childFar - SCATTER.childNear);
   // Into a body: a short way, so each meets it at once.
-  sim.scatterShells.push({ id: ++sim.serial, big: false, volley: shell.volley, x, z, dx: Math.cos(a), dz: Math.sin(a), travel: 0, limit: into ? .9 : Math.max(.3, SCATTER.reach - SCATTER.splitAt), speed: SCATTER.childSpeed, skip: null });
+  sim.scatterShells.push({ id: ++sim.serial, big: false, volley: shell.volley, x, z, dx: Math.cos(a), dz: Math.sin(a), travel: 0, limit: into ? .9 : Math.max(.3, (SCATTER.reach - SCATTER.splitAt) * far), speed: SCATTER.childSpeed, skip: null });
  }
  sim.events.push({ type: 'scatterSplit', x, z, dx: shell.dx, dz: shell.dz });
 }
@@ -82,6 +93,8 @@ function burst(sim, volley, x, z, segmentBox) {
   const d = Math.max(0, Math.hypot(prop.x - x, prop.z - z) - Math.min(prop.w || 0, prop.d || 0) / 2);
   if (d <= r) sim.hitProp(prop, { damage: Math.round(power(d)), x: prop.x, z: prop.z, vx: prop.x - x, vz: prop.z - z });
  }
+ // Crops in reach catch fire (owner, v144), behind no wall, like a grenade's.
+ cropCircle(sim, { x, z }, r, false, (a, b) => !shut(b.x, b.z));
  sim.events.push({ type: 'scatterBurst', x, z, radius: r });
 }
 
@@ -93,9 +106,13 @@ export function stepScatter(sim, input, dt, { segmentBox, segmentCircle }) {
  s.cooldown = Math.max(0, s.cooldown - dt);
  const alive = p.hp > 0 && !p.dead;
  if (s.armed && (!alive || sim.weapon !== 'shotgun')) s.armed = false;
+ if (s.armed) {
+  const was = s.armedFor || 0; s.armedFor = was + dt;
+  if (was < SCATTER.prime && s.armedFor >= SCATTER.prime) sim.events.push({ type: 'scatterPrimed', x: p.x, z: p.z });
+ } else s.armedFor = 0;
  if (input.scatter && alive && sim.weapon === 'shotgun') {
-  if (s.armed) launch(sim);
-  else if (scatterReady(sim)) { s.armed = true; sim.events.push({ type: 'scatterArm', x: p.x, z: p.z }); }
+  if (s.armed) { if (scatterPrimed(sim)) launch(sim); }
+  else if (scatterReady(sim)) { s.armed = true; s.armedFor = 0; sim.events.push({ type: 'scatterArm', x: p.x, z: p.z }); }
  }
  if (!sim.scatterShells.length) return;
  const born = [];

@@ -8,6 +8,7 @@ import { HostSession } from '../src/net/host-session.js';
 import { ClientSession } from '../src/net/client-session.js';
 import { movementInput, playerInput, readMessage, cleanName, PROTOCOL_VERSION } from '../src/net/protocol.js';
 import { MATCH } from '../src/net/arena.js';
+import { SPAWN_APART } from '../src/config/match.js';
 import { interiorSpawns } from '../src/net/spawn-points.js';
 import { mapColliders } from '../src/maps.js';
 
@@ -16,12 +17,12 @@ const createSim = m => new Simulation(m);
 
 // A room with a host and `clients` joiners. `weapons` picks what each chooses
 // (host first); null leaves that player on the weapon menu.
-function room({ clients = 1, clock, weapons = [], mode = 'ffa' } = {}) {
+function room({ clients = 1, clock, weapons = [], mode = 'ffa', settings = { robots: 'off' } } = {}) {
  const net = createLoopback();
  const hostSim = createSim(map);
  let time = 0;
  const now = clock || (() => time);
- const host = new HostSession({ transport: net.host('ABCDE'), map, local: hostSim, createSim, now, name: 'Hosty', random: seeded(7) });
+ const host = new HostSession({ transport: net.host('ABCDE'), map, local: hostSim, createSim, now, name: 'Hosty', random: seeded(7), settings });
  const joined = [];
  for (let i = 0; i < clients; i++) {
   const sim = createSim(map);
@@ -343,20 +344,18 @@ test('everyone gets the lobby (players, colour slots, spawn setting) and a ping 
  assert.deepEqual(readMessage({ t: 'ping', s: 1.5, extra: 1 }), { t: 'ping', s: 1.5 });
 });
 
-test('spawning together puts everyone in one building; random spreads them out', () => {
+test('spawns are scattered, nobody within a screen of anyone else; nobody can spawn everyone together any more', () => {
  const r = room({ clients: 2 });
  assert.equal(r.host.setSpawnMode('nonsense'), false);
- assert.equal(r.host.setSpawnMode('together'), true);
+ assert.equal(r.host.setSpawnMode('together'), false, 'retired (owner, v0.9b)');
+ for (const seat of r.host.arena.seats.values()) { r.host.arena.out(seat); }
  for (const seat of r.host.arena.seats.values()) r.host.arena.spawn(seat);
- const inside = [...r.host.arena.seats.values()].map(s => map.buildings.find(b => buildingContains(b, s.sim.player))?.id);
- assert.ok(inside[0]);
- assert.ok(inside.every(id => id === inside[0]), `all in ${inside[0]}: ${inside}`);
  const bodies = [...r.host.arena.seats.values()].map(s => s.sim.player);
  for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++)
-  assert.ok(Math.hypot(bodies[i].x - bodies[j].x, bodies[i].z - bodies[j].z) >= 1.4, 'a body apart');
- assert.equal(r.joined[0].session.lobby().spawnMode, 'random', 'joiners learn the setting with the next lobby update');
+  assert.ok(Math.hypot(bodies[i].x - bodies[j].x, bodies[i].z - bodies[j].z) >= SPAWN_APART, 'a screen apart');
+ assert.equal(r.host.setSpawnMode('team'), true);
  for (let i = 0; i < 40; i++) r.tick();
- assert.equal(r.joined[0].session.lobby().spawnMode, 'together');
+ assert.equal(r.joined[0].session.lobby().spawnMode, 'team');
 });
 
 test('the host resets the map: every prop stands again, crops regrow, and every screen is told', () => {
@@ -407,12 +406,13 @@ test('an ffa round lasts ten minutes, then the results, then everyone back in th
 
 // --- Rounds: lobby, weapon pick, modes, settings -----------------------------
 
-test('a room opens in the lobby: nobody in the world, the host picks the mode and settings, unready modes refused', () => {
+test('a room opens in the lobby: nobody in the world, the host picks the mode and settings', () => {
  const r = room({ mode: null });
  assert.equal(r.host.match().phase, 'lobby');
  assert.ok([...r.host.arena.seats.values()].every(s => !s.present));
  assert.equal(r.host.choose('rifle'), false, 'no weapon pick in the lobby');
- assert.equal(r.host.setMode('2v2'), false, 'listed, not ready');
+ assert.equal(r.host.setMode('2v2'), true, 'every mode is ready (v0.9b)');
+ assert.equal(r.host.setMode('nope'), false);
  assert.equal(r.host.setMode('practice'), true);
  assert.equal(r.host.setSetting('health', 750), true);
  assert.equal(r.host.setSetting('health', 1), false);

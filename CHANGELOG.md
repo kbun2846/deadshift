@@ -2,6 +2,33 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.92 (2026-09-25)
+
+### Solo
+- Gamemodes > SOLO (was 1V1): 1V1, 2V2 or 3V3 against robots, with your own robot teammates. Enemy robots and your robots are set separately (weapon or random, skill, aim, temper); first to 3, 5, 10 or endless; friendly fire; spawns scattered or with team. Your weapon can be random.
+- Weapons and maps are dropdowns with a scrolling picture grid. The page fits phones.
+
+### Multiplayer
+- Every mode works: FFA, PRACTICE, 1V1, 2V2, 2V2V2 and 3V3. Robots fill empty seats (setting), + ROBOT adds one by hand, and a late joiner takes a robot's seat.
+- Players pick their side in the lobby. Sides are AMBER, CYAN and VIOLET, worn on hats, scarves and base rings, and on the lobby, scoreboard and results.
+- TUNE a robot in the lobby (weapon, skill, aim, temper), or APPLY TO ALL, which also sets up robots added later.
+- Friendly fire (on by default in team games) does half damage. Spawns scattered (nobody within a screen of anyone) or with team.
+- The host setup and lobby fit phones; the lobby map is a dropdown.
+
+### Robots
+- New skill: perfect. Robots play as squads: some stay with you, some go help a teammate in a fight, some roam; a side splits up or sometimes moves as a group.
+
+### Weapons
+- Aim lines up through the muzzle, so shots land on the cursor.
+- Static: volleys launch slow then fast and leave a short beam; placed orbs drift faster; the stream does 8% less and uses orbs 20% faster; enemy orbs are darker blue. The hex lets teammates in, blocks shots from outside and spins at its edge for a moment if not pulsed.
+- Nominal: the nova gives 15% more speed, tighter shots and 18% less damage taken.
+- Ballast: the red cone shows full power up close and a fifth at 6.8 m, then fades out over 4 m more, to about 10 a hit at the very end; aimed shots do about 20 more point blank. The blast must charge 3 s before it fires (a pulsing ring, embers and a countdown show it), its small shells land scattered, and its explosions burn crops. Bigger blast effects.
+
+### Other
+- CHANGE WEAPON after a death picks what you respawn with. Ctrl+W no longer closes the game while playing (key lock).
+- Blood no longer floats on the player. The sheriff's office has a door on every side. Bigger solo score with the health bar centred.
+- Tutorials updated for all of the above. Lots of bug fixes.
+
 ## alpha v0.9 (2026-09-24)
 
 ### 1V1

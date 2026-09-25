@@ -46,7 +46,8 @@ export function interiorSpawns(map, colliders) {
 
 // A random building, then a random spot in it, preferring spots with nobody
 // within `space` metres. `others`: [{x, z}] of players already in the world.
-export function pickSpawn(rooms, others = [], random = Math.random, space = 6) {
+// `strict`: null rather than a spot that is too close.
+export function pickSpawn(rooms, others = [], random = Math.random, space = 6, strict = false) {
  if (!rooms.length) return null;
  const clear = p => others.every(o => Math.hypot(o.x - p.x, o.z - p.z) >= space);
  const order = rooms.map(room => ({ room, key: random() })).sort((a, b) => a.key - b.key).map(e => e.room);
@@ -54,6 +55,7 @@ export function pickSpawn(rooms, others = [], random = Math.random, space = 6) {
   const free = room.points.filter(clear);
   if (free.length) return free[Math.floor(random() * free.length)];
  }
+ if (strict) return null;
  const room = order[0];
  return room.points[Math.floor(random() * room.points.length)];
 }

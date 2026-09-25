@@ -86,7 +86,7 @@ export const WarmUp = {
     // The detail-effect pools sit hidden until something happens, and compile
     // only compiles what is visible: shown for the warm-up, so the first
     // grenade or gunshot does not stop the game for a second to build shaders.
-    const fxMeshes = this.fx?.meshes || [];
+    const fxMeshes = [...(this.fx?.meshes || []), this.orbBeams?.mesh, this.scatterView?.mesh].filter(Boolean);
     for (const mesh of fxMeshes) { this.interiorVisibility.apply(mesh); mesh.visible = true; }
     // On Extreme the scene is drawn into the composer's (linear) render target,
     // not the (sRGB) canvas, and the output colour space is part of every

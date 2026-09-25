@@ -16,12 +16,12 @@ test('a joiner\'s own copy mirrors the nova and blast but never runs them', () =
  ticks(s, 30); assert.equal(s.surge.phase, 'charging'); assert.ok(!s.events.some(e => e.type === 'surgeStart' || e.type === 'propBreak'));
 });
 test('shells already fired keep flying after the shooter dies', () => {
- const s = make('shotgun'); s.step({ aimX: 1, aimZ: 0, scatter: true }); s.step({ aimX: 1, aimZ: 0, scatter: true });
+ const s = make('shotgun'); s.step({ aimX: 1, aimZ: 0, scatter: true }); s.scatter.armedFor = SCATTER.prime; s.step({ aimX: 1, aimZ: 0, scatter: true });
  s.player.hp = 0; ticks(s, 90); assert.equal(s.scatterShells.length, 0); assert.equal(s.events.filter(e => e.type === 'scatterBurst').length, SCATTER.shells * SCATTER.split);
 });
 test('the dev damage multiplier cannot push a blast past its cap', () => {
  const s = make('shotgun'); s.dev.damageOut = 4; const t = { id: 't', kind: 'robot', x: 1.3, z: 0, baseX: 1.3, hp: 9000, maxHp: 9000, flash: 0, respawn: 0 }; s.targets.push(t);
- s.step({ aimX: 1, aimZ: 0, scatter: true }); s.step({ aimX: 1, aimZ: 0, scatter: true }); ticks(s, 90); assert.ok(9000 - t.hp <= SCATTER.max + 1e-6, 'dealt ' + (9000 - t.hp));
+ s.step({ aimX: 1, aimZ: 0, scatter: true }); s.scatter.armedFor = SCATTER.prime; s.step({ aimX: 1, aimZ: 0, scatter: true }); ticks(s, 90); assert.ok(9000 - t.hp <= SCATTER.max + 1e-6, 'dealt ' + (9000 - t.hp));
 });
 test('the hex reads as not ready without ten orbs in hand', () => {
  assert.equal(xAbilityState({ weapon: 'static', hexOrbs: [], hexSpin: null, hexCooldown: 0, ammo: 6 }), 'cooldown');

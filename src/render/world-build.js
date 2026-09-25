@@ -634,7 +634,7 @@ export const WorldBuild = {
     crackle.frustumCulled=false;gun.add(crackle);
     gun.userData.crackle=crackle;gun.userData.crackleTick=-1;
     const ring = new THREE.Mesh(new THREE.RingGeometry(.49, .515, 40), new THREE.MeshBasicMaterial({ color: '#4b7065', transparent: true, opacity: .35, side: THREE.DoubleSide }));
-    ring.rotation.x = -Math.PI / 2; ring.position.y = .065; g.add(ring);
+    ring.rotation.x = -Math.PI / 2; ring.position.y = .065; g.add(ring); g.userData.ring = ring;
     const chevron = new THREE.Shape(); chevron.moveTo(0, 0); chevron.lineTo(-.11, .2); chevron.lineTo(.11, .2); chevron.closePath();
     const pointer = new THREE.Mesh(new THREE.ShapeGeometry(chevron), new THREE.MeshBasicMaterial({ color: '#f3e7c5', side: THREE.DoubleSide }));
     pointer.rotation.x = -Math.PI / 2; pointer.position.set(0, .08, -.95); g.add(pointer);

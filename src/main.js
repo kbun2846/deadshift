@@ -1,6 +1,7 @@
 // deadshift, by killerbunny2846.
 import {bindTouchAction} from './ui/touch-action.js';
 import { installMobileBrowser, enterFullscreen } from './ui/mobile-browser.js';
+import { lockGameKeys, unlockGameKeys, keyLockSupported } from './ui/key-lock.js';
 import {migrateGameStorage} from './storage-migration.js';
 import {isPlayable} from './playable-area.js';
 import {detectedControls,createInputPreference} from './ui/input-preference.js';
@@ -30,17 +31,17 @@ import { createLobbyPanel } from './ui/lobby-panel.js';
 import { createLobbyScreen } from './ui/lobby-screen.js';
 import { createWeaponPick } from './ui/weapon-pick.js';
 import { pickView } from './render/pick-view.js';
-import { PICK, MODES, SETTINGS as MATCH_SETTINGS } from './config/match.js';
+import { PICK, MODES, SETTINGS as MATCH_SETTINGS, SIDE_COLOURS } from './config/match.js';
 const modeLabel=document.querySelector('.brand .mode');
 import { GAME_KEYS } from './config/controls.js';
 import { NETWORK } from './config/network.js';
 import { bindRifleMouse, weaponAiming,ballastInput } from './weapons/rifle-input.js';
 import { advanceAimCursor } from './ui/aim-cursor.js';
-import { createAimDamping, aimsByPoint } from './aim-damping.js';
+import { createAimDamping, aimsByPoint, muzzleLateral, muzzleBearing } from './aim-damping.js';
 import { tutorialMapFor, Tutorial } from './tutorial.js';
 import { createTutorialCard } from './ui/tutorial-card.js';
 import { installMenu } from './ui/menu.js';
-import { createDuel, readDuel } from './duel.js';
+import { createDuel, readDuel, DUEL_MODES } from './duel.js';
 import { createOnlinePlay } from './online-play.js';
 import { drawSim } from './net/projectiles.js';
 import { createMultiplayerHud } from './ui/multiplayer-hud.js';
@@ -93,7 +94,8 @@ const sim = new Simulation(map), sound = new Soundscape(), budget = new RenderBu
 const bots = new BotMatch(map, { createSim: m => new Simulation(m) });
 // 1V1 against a robot (duel.js): set up by start() from the URL.
 const duel=createDuel($('game'),{sim,bots,hooks:{
- over:()=>{running=false;releaseInput();sound.suspend(true);updateHUD();},
+ // (Dead when it ended, a team match: the death screen and its weapon grid go.)
+ over:()=>{if(deathPick){deathPick=false;weaponPick.hide();}clearDeath();running=false;releaseInput();sound.suspend(true);updateHUD();},
  rematch:()=>{clearDeath();reset();running=true;paused=false;sound.suspend(false);$('world').focus();updateHUD();},
  menu:()=>returnToMenu(),
 }});
@@ -154,7 +156,7 @@ catch (error) {
 // bootstrap.js waits for this before revealing the game.
 export const ready = view.warmProgramsParallel().then(() => { view.programsWarmed = true; });
 let running = false, started = false, paused = false, accumulator = 0, lastTime = null, elapsed = 0;
-let deathActive=false,deathElapsed=0,deathMenuOpen=false;
+let deathActive=false,deathElapsed=0,deathMenuOpen=false,deathPick=false,nextWeapon=null;
 // One death screen for practice and online (death-screen.js): the respawn
 // comes RESPAWN_TIME after the death (online the host's clock decides).
 const deathScreen=createDeathScreen($('game'),{
@@ -162,7 +164,10 @@ const deathScreen=createDeathScreen($('game'),{
  menu:()=>{$('main-menu').click();},
  respawn:()=>{if(online.active)online.respawnNow();else respawnPractice();},
  // Online: pick again (the weapon pick opens; the respawn waits for it).
- changeWeapon:()=>{if(online.active)online.pickAgain();else{const id=map.id;$('main-menu').click();menuFlow.pickWeapons(id);}},
+ // Solo (owner): the weapon grid over the death screen; picking goes back to
+ // the countdown, and the new weapon comes with the respawn (or when the
+ // count runs out with the grid still open: whatever is picked there).
+ changeWeapon:()=>{if(online.active){online.pickAgain();return;}deathPick=true;deathScreen.root.classList.add('hidden');weaponPick.show(nextWeapon||sim.weapon,{timed:false});},
  lobby:()=>openLobby(),
 });
 function beginDeath(){
@@ -228,7 +233,10 @@ view.birds.onFlap = flight => sound.wingbeat(flight.name);
 // restart at a random open spot on the map, clear of any robots (openSpot).
 function randomPracticeSpawn(){
  if(map.training||online?.active)return false;
- const at=openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:14});
+ // VS ROBOTS: a screen away from every robot (bots.apart, owner v0.9b);
+ // "with my team": beside one of your robots.
+ const mate=bots.teamSpawn&&bots.living().find(b=>b.team==='blue');
+ const at=(mate&&bots.spot(mate.sim.player,2.5,6))||openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:bots.apart||14})||openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:14});
  if(!at)return false;
  const aim={aimX:sim.player.aimX,aimZ:sim.player.aimZ};sim.respawn(at);Object.assign(sim.player,aim);previousPlayer={...sim.player};
  return true;
@@ -244,18 +252,32 @@ async function start(weapon=sim.weapon,course) {
   // On a touchscreen a game goes full screen (hides the address bar and
   // toolbars) when the browser allows it and the setting is on.
   if(settings.fullscreen&&(touchPrompts||matchMedia('(pointer: coarse)').matches))enterFullscreen();
+  // Keyboard: full screen with Ctrl+W and co. held (ui/key-lock.js); a start
+  // with no click behind it (a page load) tries again on the first press.
+  else if(settings.keyLock&&keyLockSupported()){keyLockWanted=true;tryKeyLock();}
   started = true; running = true; document.body.classList.add('playing');
   $('intro').classList.add('hidden'); ['weapon', 'reticle'].forEach(id => $(id).classList.remove('hidden'));
   $('world').focus();
   // 1V1: the URL carries the choices (menu.js); one robot, no targets.
-  {const q=new URLSearchParams(location.search);if(!map.training&&q.get('mode')==='duel'){duel.begin(readDuel(q.get('duel'))||{});modeLabel.textContent='1V1';}}
+  {const q=new URLSearchParams(location.search);if(!map.training&&q.get('mode')==='duel'){duel.begin(readDuel(q.get('duel'))||{});modeLabel.textContent=(DUEL_MODES[duel.config?.mode]?.name||'1V1');}}
   if(tutorial){$('tutorial-guide').classList.remove('hidden');updateTutorial();}
   try { await sound.start(); if (paused) sound.suspend(true); }
   catch (error) { console.warn('Audio unavailable:', error); }
 }
 
+// Key lock: one try per game from a user gesture (start, or the first click
+// or key in the game); leaving the game lets go (and leaves full screen).
+let keyLockWanted=false,keyLocked=false;
+function tryKeyLock(){if(!keyLockWanted||keyLocked||navigator.userActivation&&!navigator.userActivation.isActive)return;lockGameKeys().then(ok=>{if(!ok)return;
+ // Back at the menu by the time it took (a click on MAIN MENU): let go.
+ if(!started){unlockGameKeys();if(document.fullscreenElement)document.exitFullscreen?.().catch?.(()=>{});return;}
+ keyLocked=true;keyLockWanted=false;});}
+window.addEventListener('pointerdown',()=>{if(started&&keyLockWanted&&!keyLocked)tryKeyLock();},true);
+window.addEventListener('keydown',e=>{if(started&&keyLockWanted&&!keyLocked&&!e.repeat)tryKeyLock();},true);
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&keyLocked){keyLocked=false;keyLockWanted=false;}});
 function returnToMenu(){
-  online.close();perfReadout.reset();devWindow.hide();bots.clear();if(duel.active){duel.stop();modeLabel.textContent='PRACTICE';}
+  keyLockWanted=false;if(keyLocked){keyLocked=false;unlockGameKeys();if(document.fullscreenElement)document.exitFullscreen?.().catch?.(()=>{});}
+  online.close();perfReadout.reset();devWindow.hide();bots.clear();if(deathPick){deathPick=false;weaponPick.hide();}nextWeapon=null;if(duel.active){duel.stop();modeLabel.textContent='PRACTICE';}
   if(choosing)menuFlow.cancelOnlinePick();choosing=false;lastKiller=null;lastOneShot=false;onlineMenus(false);view.deathView?.clear();
   running=false;started=false;paused=false;mapOpen=false;mapWasPaused=false;settingsOpen=false;
   releaseInput();reset();sound.suspend(true);
@@ -288,11 +310,15 @@ function setPaused(value) {
 }
 
 function reset() {
+  if(deathPick){deathPick=false;weaponPick.hide();}
+  if(nextWeapon){sim.weapon=weaponOrDefault(nextWeapon);nextWeapon=null;applyInputPreference();}
   deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');
   if(tutorial){tutorial=new Tutorial(courseFor(sim.weapon));tutorialSaved=false;tutorialCard.invalidate();updateTutorial();}
   releaseInput(); sound.clearFlights(); sim.reset(); if(started)randomPracticeSpawn(); view.reset(sim); accumulator = 0; sound.lastStep = 0;
   // Restart keeps the robots (enemies sent back out away from you, allies by
   // you); the menu clears them.
+  // All out first, so each side's first robot is placed afresh (VS ROBOTS "with my team").
+  for(const bot of bots.bots)bot.alive=false;
   for(const bot of bots.bots)bots.respawnAt(bot,sim);
   duel.reset();
   previousPlayer = { ...sim.player }; dirty = true; devTools.syncSpeed();updateHUD();
@@ -332,7 +358,7 @@ function aimOnTarget(){
  const p=sim.player;if(!running||p.dead)return false;
  const dot=aimDotPoint();if(!dot||!Number.isFinite(dot.x))return false;
  // Online, the other players (the local sim holds no targets there).
- const pool=online.active?(online.others(1)||[]).map(o=>({...o,kind:'player'})):[...sim.targets,...bots.lockPool()];
+ const pool=online.active?(online.foes(1)||[]).map(o=>({...o,kind:o.robot?'robot':'player'})):[...sim.targets,...bots.lockPool()];
  return pool.some(t=>{
   if(t.hp!==undefined&&t.hp<=0)return false;
   const foot=view.screenPoint(t.x,t.z,.05);
@@ -407,7 +433,7 @@ function lockMode(){ return touchPrompts ? !!settings.aimAssist : inputMode!=='m
 // each described with what the lock needs: its velocity, whether it is
 // dodging, inside a building you are not in, or behind a solid obstacle.
 function lockPool(){
- if(online.active)return (online.others(1)||[]).map(t=>({...t,mover:true}));
+ if(online.active)return (online.foes(1)||[]).map(t=>({...t,mover:true}));
  return [...sim.targets.map(t=>({...t,mover:false})),...bots.lockPool().map(t=>({...t,mover:true}))];
 }
 function describeLockTarget(t){
@@ -537,17 +563,22 @@ const lobbyPanel=createLobbyPanel($('game'),{
 // opens with the weapon pick (weapon-pick.js), which comes back after a death
 // only through CHANGE WEAPON. Which one shows follows the round's state from
 // the host, every frame (syncOnlineScreens).
+if(import.meta.env.DEV)window.__online=online;
 const lobbyScreen=createLobbyScreen($('game'),{
  kick:id=>online.kick(id),
  setMode:mode=>online.setMode(mode),
  setSetting:(key,value)=>online.setSetting(key,value),
- start:()=>{online.startRound(online.lobby().mode||'ffa');},
+ start:()=>{if(!online.startRound(online.lobby().mode||'ffa'))toast((online.startError()||'CANNOT START').toUpperCase(),3200);},
+ addRobot:()=>{if(!online.addRobot())toast('THE ROOM IS FULL',2000);},
+ tuneRobot:(id,setup)=>online.tuneRobot(id,setup),
+ tuneAllRobots:setup=>{if(online.tuneAllRobots(setup))toast('EVERY ROBOT SET',1600);},
+ chooseTeam:team=>online.chooseTeam(team),
  leave:()=>$('main-menu').click(),
  copyInvite:()=>online.copyInvite(),
 });
 const weaponPick=createWeaponPick($('game'),{
  pick:weapon=>{if(online.active)online.choose(weapon,false);},
- go:weapon=>{if(online.active){online.choose(weapon,true);weaponPick.hide();}else changeWeaponSolo(weapon);},
+ go:weapon=>{if(online.active){online.choose(weapon,true);weaponPick.hide();}else if(deathPick){nextWeapon=weaponOrDefault(weapon);closeDeathPick();toast('NEXT LIFE · '+(weaponInfo(nextWeapon)?.name||'').toUpperCase(),1800);}else changeWeaponSolo(weapon);},
  back:()=>closeSoloPick(),
 });
 // CHANGE WEAPON in the pause menu: solo practice (the same weapon grid, no
@@ -559,7 +590,13 @@ pauseWeaponBtn.onclick=()=>{
  if(online.active){online.pickAgain();setPaused(false);return;}
  $('pause-panel').classList.add('hidden');weaponPick.show(sim.weapon,{timed:false});
 };
+// Back from the death screen's weapon grid to the countdown.
+function closeDeathPick(){
+ deathPick=false;weaponPick.hide();
+ if(deathActive){deathScreen.root.classList.remove('hidden');deathScreen.root.querySelector('.death-actions button:not([hidden])')?.focus();}
+}
 function closeSoloPick(){
+ if(deathPick){closeDeathPick();return;}
  if(!weaponPick.open||online.active)return;
  weaponPick.hide();$('pause-panel').classList.remove('hidden');pauseWeaponBtn.focus();
 }
@@ -629,7 +666,10 @@ function clearDeath(){
 // Practice: back on your feet at the start, the world as you left it.
 function respawnPractice(){
  if(online.active||!deathActive)return;
+ // The grid still open when the count runs out: what is picked there comes along.
+ if(deathPick){nextWeapon=weaponPick.selected||nextWeapon;deathPick=false;weaponPick.hide();}
  clearDeath();
+ if(nextWeapon){sim.weapon=weaponOrDefault(nextWeapon);nextWeapon=null;applyInputPreference();}
  sim.respawn({x:map.spawn.x,z:map.spawn.z});randomPracticeSpawn();
  view.cutCamera();previousPlayer={...sim.player};
  running=true;paused=false;sound.suspend(false);$('world').focus();updateHUD();
@@ -845,8 +885,11 @@ window.addEventListener('keydown', e => {
   }
   if(lobbyPanel.open){navigateMenu(e,lobbyPanel.root,()=>closeLobby());if(['Space','Tab','KeyQ','KeyE','Escape','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();return;}
   if(devDialog.isOpen){devDialog.keydown(e);return;}
+  // The match result card (VS ROBOTS): the keys work its buttons.
+  if(duel.resultOpen){navigateMenu(e,duel.root,()=>{});if(['Space','Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();return;}
   if(deathActive){
-   if(deathMenuOpen)navigateMenu(e,deathScreen.root,()=>{});
+   if(deathPick)navigateMenu(e,weaponPick.root,()=>closeDeathPick());
+   else if(deathMenuOpen)navigateMenu(e,deathScreen.root,()=>{});
    if(['Escape','Space','Tab','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
    return;
   }
@@ -858,7 +901,7 @@ window.addEventListener('keydown', e => {
    return;
   }
   const menuRoot=settingsOpen?$('settings-panel'):mapOpen?$('map-panel'):paused?$('pause-panel'):!started?$('intro'):lobbyScreen.open?lobbyScreen.root:weaponPick.open?weaponPick.root:choosing?$('intro'):null;
-  if(navigateMenu(e,menuRoot,()=>{if(settingsOpen)closeSettings();else if(mapOpen)toggleMap();else if(paused)setPaused(false);else if(lobbyScreen.open||weaponPick.open)return;else menuFlow.back();}))return;
+  if(navigateMenu(e,menuRoot,()=>{if(settingsOpen)closeSettings();else if(mapOpen)toggleMap();else if(paused)setPaused(false);else if(lobbyScreen.open||weaponPick.open){if(deathPick)closeDeathPick();return;}else menuFlow.back();}))return;
   if(settingsOpen){
     if(e.code==='Escape'){e.preventDefault();closeSettings();}
     if(e.code==='Tab'){
@@ -971,13 +1014,15 @@ function frame(time) {
         const pt = targetLock.point, dx = pt.x - sim.player.x, dz = pt.z - sim.player.z, l = Math.hypot(dx, dz) || 1;
         // The body faces the gliding aim point directly (no extra turn easing on
         // top of the glide), so the character, cone and dot sweep together.
-        aimX = dx / l; aimZ = dz / l; aimPointX = pt.x; aimPointZ = pt.z; digitalAim = false;
+        // Trigger guns turn so the barrel's line (not the body's) meets it.
+        const lateral = aimsByPoint(sim.weapon) ? muzzleLateral(sim.weapon) : 0, bearing = lateral && l > lateral + .3 ? muzzleBearing(sim.player.x, sim.player.z, pt.x, pt.z, lateral) : Math.atan2(dz, dx);
+        aimX = Math.cos(bearing); aimZ = Math.sin(bearing); aimPointX = pt.x; aimPointZ = pt.z; digitalAim = false;
         if (arrows.active && !touchPrompts) inputMode = 'keyboard';
       }
       else if (digitalAim) { aimX = manualX; aimZ = manualZ; inputMode = 'keyboard'; }
       else if (inputMode === 'mouse') {
         const cursorAim = view.aim(mouse.x, mouse.y, sim.player);
-        ({ aimX, aimZ, aimPointX, aimPointZ } = aimsByPoint(sim.weapon) ? aimDamping.apply(cursorAim, sim.player) : cursorAim);
+        ({ aimX, aimZ, aimPointX, aimPointZ } = aimsByPoint(sim.weapon) ? aimDamping.apply(cursorAim, sim.player, 1 / 60, muzzleLateral(sim.weapon)) : cursorAim);
       }
       else if (moveX || moveZ) { aimX = moveX; aimZ = moveZ; digitalAim = true; }
       // The no-mouse lesson: Q fired while aiming with the arrow keys.
@@ -1008,6 +1053,8 @@ function frame(time) {
     const renderDelta = view.gpuBusy() ? budget.hold(dt) : budget.tick(dt);
     if (renderDelta > 0) {
       view.tutorialGuide=tutorial&&!tutorial.complete?{zone:tutorial.zone,target:tutorial.pointer(sim)}:null;
+      // Team games: your ring your side's colour, like your teammates' (SIDE_COLOURS).
+      view.setTeamRing(online.active?(SIDE_COLOURS[online.myTeam]?.ring||null):bots.bots.some(b=>b.team==='blue')?SIDE_COLOURS.blue.ring:null);
       view.remotePlayers = online.active ? online.others(running ? accumulator / RULES.step : 1) : bots.others(running ? accumulator / RULES.step : 1);
       view.update(online.active?drawSim(sim,online.foreign()):bots.active?drawSim(sim,bots.foreign(elapsed)):sim, renderDelta, running||online.active, elapsed, previousPlayer, running ? accumulator / RULES.step : 1);
       robotMinds.update(bots,view,!!sim.dev.robotMinds&&!online.active);
@@ -1036,6 +1083,8 @@ function frame(time) {
    if(!deathMenuOpen&&!duel.over&&deathElapsed>=DEATH_MENU_DELAY){
     deathMenuOpen=true;document.body.classList.add('dead-menu');damageFeedback.clear();outgoingFeedback.clear();
     deathScreen.show(online.active?(online.match()?.mode==='practice'?'online-practice':'online'):'practice');
+    // The tutorial keeps its course's weapon (the pause menu hides it too).
+    $('death-change-weapon').hidden=!online.active&&!!map.training;
     deathScreen.setKiller(online.active?lastKiller:undefined,lastOneShot);
     if(!online.active)sound.suspend(true);
    }

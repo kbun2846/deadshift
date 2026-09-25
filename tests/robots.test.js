@@ -95,7 +95,7 @@ test('robots spend most of a fight fighting, not hiding, and never crash with no
  }
 });
 
-test('allies are on your side: never your targets, never hurt you, and keep near you as you walk', () => {
+test('allies are on your side: never your targets, never hurt you, and an escort keeps near you as you walk', () => {
  const you = new Simulation(map); you.player.id = 'you';
  const bots = new BotMatch(map, { createSim: m => new Simulation(m), random });
  const ally = bots.spawn(you, 'rifle', { team: 'blue' });
@@ -105,6 +105,8 @@ test('allies are on your side: never your targets, never hurt you, and keep near
  assert.ok(you.otherPlayers.length > 0, 'but it is a body you bump into');
  bots.after(you);
  assert.equal(bots.lockPool().length, 0, 'target lock never picks an ally');
+ // (Roles come from squad.js; an escort is the one that keeps near you.)
+ ally.brain.role = 'escort'; ally.brain.roleUntil = Infinity;
  const hp = you.player.hp, far = [];
  for (let i = 0; i < 60 * 20; i++) {
   const t = i / 60, a = t * .25;

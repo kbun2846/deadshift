@@ -7,6 +7,7 @@
 // using (the same models as your own, at the middle detail), swapped when they
 // change weapon; one model per weapon is built once and shared by every avatar.
 import * as THREE from 'three';
+import { SIDE_COLOURS } from './config/match.js';
 import { RULES } from './config/gameplay.js';
 import { makeRifle } from './weapons/rifle-model.js';
 import { makeShotgun } from './weapons/shotgun-model.js';
@@ -41,6 +42,10 @@ function gunModel(view, weapon) {
  return byWeapon.get(weapon).clone();
 }
 
+// A side's base ring is wider and brighter, so the side reads at a glance
+// (shared; never disposed).
+let teamRing = null;
+export const TEAM_RING = () => (teamRing ??= Object.assign(new THREE.RingGeometry(.45, .56, 40), { userData: { shared: true } }));
 const BASE = { legs: '#3a3440', face: '#d6b58a', brim: '#e7d3ad', crown: '#cdb487' };
 // One colourway per slot (0 is the host). `swatch` is the colour shown next to
 // the player's name in the lobby and on the scoreboard.
@@ -57,10 +62,13 @@ export const playerColour = slot => PLAYER_COLOURS[((slot | 0) % PLAYER_COLOURS.
 export class RemotePlayers {
  constructor(view) { this.view = view; this.avatars = new Map(); }
 
- build(id, slot, loose = false) {
+ // `side` (team games): the team id paints the hat and scarf in its side's
+ // colour (SIDE_COLOURS).
+ build(id, slot, loose = false, side = null) {
   const v = this.view, c = { ...BASE, ...playerColour(slot) }, root = new THREE.Group(), g = new THREE.Group(), body = new THREE.Group();
+  const hat = SIDE_COLOURS[side]; if (hat) { c.crown = c.brim = hat.hat; c.band = hat.band; c.collar = hat.ring; }
   root.add(g); g.add(body); if (!loose) v.scene.add(root);
-  if (isRobotSlot(slot)) return this.buildRobot(id, slot, loose, root, g, body);
+  if (isRobotSlot(slot)) return this.buildRobot(id, slot, loose, root, g, body, side);
   // Head and legs are tagged like your own (renderer makePlayer), so a body
   // made from this one loses the right parts (death-corpse.js).
   for (const x of [-.15, .15]) v.box(x, .14, 0, .18, .27, .27, c.legs, body).userData.deathPart = 'leg';
@@ -78,7 +86,7 @@ export class RemotePlayers {
   const hand = new THREE.Group(); hand.position.set(...GUN_AT); body.add(hand);
   const ring = new THREE.Mesh(new THREE.RingGeometry(.49, .53, 40), new THREE.MeshBasicMaterial({ color: c.ring, transparent: true, opacity: .55, side: THREE.DoubleSide, depthWrite: false }));
   ring.rotation.x = -Math.PI / 2; ring.position.y = .065; g.add(ring);
-  const avatar = { root, group: g, body, hand, weapon: null, slot, seen: true, colours: c, stains, wading: stains ? new Wading() : null };
+  const avatar = { root, group: g, body, hand, weapon: null, slot, seen: true, colours: c, stains, wading: stains ? new Wading() : null, ring, ringColour: c.ring, ringOpacity: .55 };
   if (!loose) this.avatars.set(id, avatar);
   return avatar;
  }
@@ -86,12 +94,12 @@ export class RemotePlayers {
  // A robot (bots/): the tin gunslinger in its make (skinOf: steel, copper...),
  // no blood stains, a base ring in its visor colour (an ally's is green,
  // with a pennant).
- buildRobot(id, slot, loose, root, g, body) {
-  const ally = isAllySlot(slot), skin = skinOf(slot), glow = buildRobotBody(this.view, body, ally, skin);
+ buildRobot(id, slot, loose, root, g, body, side = null) {
+  const ally = isAllySlot(slot), skin = skinOf(slot), glow = buildRobotBody(this.view, body, ally, skin, side);
   const hand = new THREE.Group(); hand.position.set(...GUN_AT); body.add(hand);
   const ring = new THREE.Mesh(new THREE.RingGeometry(ally ? .47 : .49, .53, 40), new THREE.MeshBasicMaterial({ color: ally ? ALLY_COLOURS.ring : skin.eye, transparent: true, opacity: ally ? .8 : .55, side: THREE.DoubleSide, depthWrite: false }));
   ring.rotation.x = -Math.PI / 2; ring.position.y = .065; g.add(ring);
-  const avatar = { root, group: g, body, hand, weapon: null, slot, seen: true, robot: true, glow,
+  const avatar = { root, group: g, body, hand, weapon: null, slot, seen: true, robot: true, glow, ring, ringColour: ally ? ALLY_COLOURS.ring : skin.eye, ringOpacity: ally ? .8 : .55,
    colours: { coat: skin.body, arm: skin.body, legs: skin.legs }, stains: null, wading: null };
   if (!loose) this.avatars.set(id, avatar);
   return avatar;
@@ -104,9 +112,15 @@ export class RemotePlayers {
   for (const avatar of this.avatars.values()) avatar.seen = false;
   for (const p of players) {
    let avatar = this.avatars.get(p.id);
-   if (avatar && avatar.slot !== (p.slot ?? 1)) { this.remove(p.id); avatar = null; }
-   avatar ||= this.build(p.id, p.slot ?? 1);
+   // A new side repaints by rebuilding; not a damaged robot's (its armour
+   // would be shed a second time): it takes its side at its next life.
+   const sideChanged = avatar && avatar.side !== (p.side || null) && !(avatar.robot && p.hp < (p.maxHp || 500));
+   if (avatar && (avatar.slot !== (p.slot ?? 1) || sideChanged)) { this.remove(p.id); avatar = null; }
+   if (!avatar) { avatar = this.build(p.id, p.slot ?? 1, false, p.side || null); avatar.side = p.side || null; }
    avatar.seen = true;
+   // Team rounds: the base ring in their side's colour (p.ring).
+   const ringColour = p.ring || avatar.ringColour;
+   if (avatar.ring && avatar.shownRing !== ringColour) { avatar.shownRing = ringColour; avatar.ring.material.color.set(ringColour); avatar.ring.material.opacity = p.ring ? .95 : avatar.ringOpacity; if (p.ring) { avatar.ownRing ??= avatar.ring.geometry; avatar.ring.geometry = TEAM_RING(); } else if (avatar.ownRing) avatar.ring.geometry = avatar.ownRing; }
    const weapon = p.weapon || 'static';
    if (avatar.weapon !== weapon) { avatar.hand.clear(); avatar.hand.add(gunModel(this.view, weapon)); avatar.weapon = weapon; }
    avatar.root.position.set(p.x, 0, p.z);
@@ -127,12 +141,13 @@ export class RemotePlayers {
  // A body for a corpse (remote-corpses.js): this slot's avatar, not in the
  // scene or the list, posed at (x, z) facing the aim, holding `weapon`.
  // `dispose` frees what is its own (not the shared gun models).
- looseBody(slot, weapon, x, z, aimX, aimZ) {
-  const avatar = this.build(null, slot, true);
+ // (Its side: the living avatar's, so a dead teammate keeps the green hat.)
+ looseBody(slot, weapon, x, z, aimX, aimZ, side = [...this.avatars.values()].find(a => a.slot === slot)?.side || null) {
+  const avatar = this.build(null, slot, true, side);
   avatar.hand.add(gunModel(this.view, weapon || 'static'));
   avatar.root.position.set(x, 0, z); avatar.group.rotation.y = Math.atan2(-aimX, -aimZ);
   avatar.root.updateMatrixWorld(true);
-  avatar.dispose = () => avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun && !o.userData.surgeShell) { o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });
+  avatar.dispose = () => avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun && !o.userData.surgeShell) { if (!o.geometry.userData.shared) o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });
   return avatar;
  }
 
@@ -143,7 +158,8 @@ export class RemotePlayers {
   avatar.root.removeFromParent(); avatar.stains?.dispose();
   // The merged body geometry is this avatar's own; its material is shared with
   // the world and stays. The base ring's material is its own.
-  avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun && !o.userData.surgeShell) { o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });
+  avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun && !o.userData.surgeShell) { if (!o.geometry.userData.shared) o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });
+  if (avatar.ownRing && avatar.ring?.geometry !== avatar.ownRing) avatar.ownRing.dispose();
   this.avatars.delete(id);
  }
 

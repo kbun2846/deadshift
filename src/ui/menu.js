@@ -8,8 +8,7 @@ import { DEFAULT_MAP, menuMaps } from '../maps.js';
 import { NETWORK } from '../config/network.js';
 import { savedName } from '../online-play.js';
 import { createSettingsRows } from './lobby-settings.js';
-import { cleanSettings } from '../config/match.js';
-import { robotOptionRows } from './robot-options.js';
+import { cleanSettings, MODES } from '../config/match.js';
 import { buildDuelMenu } from './duel-menu.js';
 import { duelParam } from '../duel.js';
 
@@ -33,7 +32,6 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  }});
  $('duel-mode').onclick=()=>show('duel');$('duel-start').onclick=()=>duelMenu.start();
  // Host setup: the mode and robots (previews) round the round settings.
- robotOptionRows($('host-mode'),['mode']);robotOptionRows($('host-robots'),['fill','skill']);
  // Online: host a room (you get a code to share) or type a friend's code.
  // main.js does the connecting; this page only shows how it is going.
  const status=text=>{$('online-status').textContent=text||'';$('host-status').textContent=text||'';};
@@ -56,10 +54,18 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  // lobby screen. The last setup is remembered.
  const SETUP_KEY='deadshift-host-settings';
  let hostSettings=(()=>{try{return cleanSettings(JSON.parse(localStorage.getItem(SETUP_KEY)||'{}'));}catch{return cleanSettings();}})();
- const setupRows=createSettingsRows($('host-settings'),{onChange:(key,value)=>{hostSettings={...hostSettings,[key]:value};try{localStorage.setItem(SETUP_KEY,JSON.stringify(hostSettings));}catch{}setupRows.render({settings:hostSettings,editable:true});}});
+ const setupRows=createSettingsRows($('host-settings'),{onChange:(key,value)=>{hostSettings={...hostSettings,[key]:value};try{localStorage.setItem(SETUP_KEY,JSON.stringify(hostSettings));}catch{}setupRows.render({settings:hostSettings,mode:hostMode,editable:true});}});
  setupRows.render({settings:hostSettings,editable:true});
  $('online-host').onclick=()=>{if(!who().name.trim()){status('Enter a username first.');$('online-name').focus();return;}status('');show('host-setup');};
- $('host-create').onclick=()=>go({role:'host',...who(),settings:hostSettings});
+ // The mode to open with (the lobby can change it), remembered like the settings.
+ const MODE_KEY='deadshift-host-mode';
+ let hostMode=(()=>{try{const m=localStorage.getItem(MODE_KEY);return MODES.some(x=>x.id===m)?m:'ffa';}catch{return 'ffa';}})();
+ $('host-mode').classList.add('round-settings');
+ $('host-mode').innerHTML='<div class="round-setting host-mode-row"><span class="round-setting-label">mode</span><div class="round-choices" role="group" aria-label="mode">'+MODES.map(m=>'<button type="button" class="plain-text" data-mode="'+m.id+'" aria-pressed="false">'+m.name+'</button>').join('')+'</div></div>';
+ const showHostMode=()=>{for(const b of $('host-mode').querySelectorAll('[data-mode]'))b.setAttribute('aria-pressed',String(b.dataset.mode===hostMode));setupRows.render({settings:hostSettings,mode:hostMode,editable:true});};
+ for(const b of $('host-mode').querySelectorAll('[data-mode]'))b.onclick=()=>{hostMode=b.dataset.mode;try{localStorage.setItem(MODE_KEY,hostMode);}catch{}showHostMode();};
+ showHostMode();
+ $('host-create').onclick=()=>go({role:'host',...who(),settings:hostSettings,mode:hostMode});
  $('online-join-form').onsubmit=e=>{e.preventDefault();go({role:'join',code:$('online-code').value,...who()});};
  // A shared link (?join=CODE) lands straight on this page and joins.
  const invite=NETWORK.enabled&&new URLSearchParams(location.search).get('join');
@@ -184,6 +190,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const list=rows=>'<table class="controls-grid"><thead><tr><th scope="col">Action</th><th scope="col">Keybind</th></tr></thead><tbody>'+rows.map(([action,binding,note])=>'<tr><th scope="row">'+action+'</th><td>'+binding+(note?'<small>'+note+'</small>':'')+'</td></tr>').join('')+'</tbody></table>';
   $('settings-controls').innerHTML='<details class="weapon-control-entry general-group"><summary>General</summary>'+list(generalControls)+'</details>'+'<details class="weapon-control-entry weapons-group"><summary>Weapons</summary><div class="weapon-control-list">'+WEAPONS.map(weapon=>'<details class="weapon-control-entry"><summary>'+weapon.name+'</summary>'+list(weapon.controls||[])+'</details>').join('')+'</div></details>';
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">SHOW HUD CONTROL HINTS<input id="control-hints" type="checkbox" checked/></label>');
+ // Keyboard: full screen with Ctrl+W and the other browser shortcuts held (key-lock.js).
+ $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">LOCK BROWSER SHORTCUTS<input id="key-lock" type="checkbox" checked/></label><p class="settings-note" id="key-lock-note">Keyboard: plays full screen so Ctrl + W (dodge while walking up) and other browser shortcuts cannot close or leave the game. Hold Esc to leave full screen. Chrome and Edge.</p>');
  // Moved into Settings > Mobile by mobile-settings.js, with the opacity.
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">AIM ASSIST<input id="aim-assist" type="checkbox" checked/></label>');
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">VIBRATION<input id="vibration" type="checkbox" checked/></label>');

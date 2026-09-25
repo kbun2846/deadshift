@@ -17,6 +17,18 @@
 //
 // Nominal and Ballast only: Static aims by direction and never reads a point.
 import { usesTrigger } from './items.js';
+
+// The gun sits to the right of the body (the muzzle `lateral` metres off the
+// facing line, on the +90° side: (-aimZ, aimX)), and bullets leave parallel
+// to the facing. So the body turns a little left of the cursor's bearing,
+// just enough that the barrel's line runs through the cursor (owner: the
+// shot, the cone and the gun on the cursor, not the body's centre).
+export const MUZZLE_LATERAL = Object.freeze({ rifle: .27, shotgun: .20 });
+export const muzzleLateral = weapon => MUZZLE_LATERAL[weapon] || 0;
+export function muzzleBearing(px, pz, tx, tz, lateral = 0) {
+ const dx = tx - px, dz = tz - pz, d = Math.max(Math.hypot(dx, dz), lateral + .3);
+ return Math.atan2(dz, dx) - (lateral ? Math.asin(lateral / d) : 0);
+}
 export const AIM_FEEL = Object.freeze({
  closeRange: 2,
  turnRate: 120,
@@ -36,7 +48,7 @@ export function createAimDamping(feel = AIM_FEEL) {
   return {
     reset() { previousBearing = null; },
     get engaged() { return previousBearing !== null; },
-    apply(aim, player, dt = 1 / 60) {
+    apply(aim, player, dt = 1 / 60, lateral = 0) {
       if (!aim) return aim;
       // view.aim omits the point when the ray misses the aim plane; fall back to
       // the raw delta so a missing point is measured rather than assumed distant.
@@ -55,17 +67,18 @@ export function createAimDamping(feel = AIM_FEEL) {
         desired = facing + step;
       } else {
         previousBearing = null;
-        desired = Math.atan2(dz, dx);
+        desired = muzzleBearing(player.x, player.z, pointX, pointZ, lateral);
       }
       const error = wrap(desired - facing);
       const turn = Math.sign(error) * Math.min(Math.abs(error) * (1 - Math.exp(-turnRate * dt)), maxTurnSpeed * dt);
       const angle = facing + turn;
       const aimX = Math.cos(angle), aimZ = Math.sin(angle);
-      // Keep the focus point on the facing the character actually has, so the
-      // cone, the spread projection and the shot all agree during the turn. Its
+      // Keep the focus point on the line the barrel actually has (the facing,
+      // moved out to the muzzle's side), so the cone, the spread projection and
+      // the shot all agree during the turn; once turned it is the cursor. Its
       // depth is the cursor's, floored at the cutoff so it never collapses.
-      const reach = Math.max(distance, closeRange);
-      return { aimX, aimZ, aimPointX: player.x + aimX * reach, aimPointZ: player.z + aimZ * reach };
+      const reach = Math.sqrt(Math.max(0, Math.max(distance, closeRange) ** 2 - lateral * lateral));
+      return { aimX, aimZ, aimPointX: player.x + aimX * reach - aimZ * lateral, aimPointZ: player.z + aimZ * reach + aimX * lateral };
     },
   };
 }

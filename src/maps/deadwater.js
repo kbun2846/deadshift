@@ -19,7 +19,8 @@ export const deadwater = {
   buildings: [
     { ...building('saloon', -12, -5, 10, 10, 2.9, 'SALOON', '#b58f70', '#687269'), angle: Math.PI / 2, doors: ['front', 'right'], windows: [{ side: 'front', offset: 3, width: 1.65 }] },
     { ...building('supplies', 12, -7, 8, 9, 2.7, 'SUPPLIES', '#c4ae8c', '#a37154'), doors: ['front', 'left'] },
-    building('sheriff', -13, 17, 8, 7, 2.6, 'SHERIFF', '#cbb58f', '#77786b'),
+    // A door on every side (owner, v0.9b; it had only the front).
+    { ...building('sheriff', -13, 17, 8, 7, 2.6, 'SHERIFF', '#cbb58f', '#77786b'), doors: ['front', 'back', 'left', 'right'] },
     { ...building('freight', -19, -36, 11, 9, 3, '', '#ad9273', '#777d70'), doors: ['front', 'right'], windows: [{ side: 'left', offset: -1.5, width: 1.5 }] },
     { ...building('boarding-house', 17, -34, 9, 11, 3.1, '', '#a08a70', '#8b745c'), angle: -Math.PI / 2, doors: ['front', 'back'], windows: [{ side: 'right', offset: 2.5, width: 1.6 }] },
     { ...building('abandoned-store', -43, -18, 9, 8, 2.65, '', '#95836b', '#747768'), angle: Math.PI / 2, abandoned: true, doors: ['front'], windows: [{ side: 'front', offset: -2.8, width: 1.4, boarded: true }, { side: 'back', offset: 1.8, width: 1.5, boarded: true }] },

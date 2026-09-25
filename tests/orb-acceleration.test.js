@@ -28,7 +28,7 @@ test('small volleys scale down proportionally and quick shot stays unchanged',()
 });
 test('launch accelerates rapidly with a modest terminal speed and synchronized distance curve',()=>{
  const early=launchDistance(.05)/.05,late=(launchDistance(.5)-launchDistance(.45))/.05;
- assert.ok(early<late&&late<38&&late>35);
+ assert.ok(early<late*.4&&late<64&&late>58,'leaves slow, lands fast');
  for(const d of [6,12,24,45])assert.ok(Math.abs(launchDistance(launchDuration(d))-d)<1e-5);
 });
 test('small volley sizes retain their capped range bonus',()=>{

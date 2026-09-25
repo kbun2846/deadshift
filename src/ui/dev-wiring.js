@@ -47,7 +47,7 @@ export function installDevWiring(ctx) {
    if (!robotsAllowed()) return;
    const weapon = weaponFromChoice(sim.dev.robotWeapon);
    // Skill and style (bots/robot-profile.js): picked here, or at random.
-   const skill = [null, 'easy', 'normal', 'hard', 'rookie', 'expert'][sim.dev.robotSkill || 0] || null, style = [null, 'balanced', 'rusher', 'marksman', 'flanker', 'cautious', 'blend'][sim.dev.robotStyle || 0] || null;
+   const skill = [null, 'easy', 'normal', 'hard', 'rookie', 'expert', 'perfect'][sim.dev.robotSkill || 0] || null, style = [null, 'balanced', 'rusher', 'marksman', 'flanker', 'cautious', 'blend'][sim.dev.robotStyle || 0] || null;
    const temper = [null, 'calm', 'shifting', 'aggressive'][sim.dev.robotTemper || 0] || null;
    const made = [];
    for (let i = 0; i < (sim.dev.robotCount || 1); i++) { const bot = bots.spawn(sim, weapon, { team: ['ffa', 'red', 'blue'][sim.dev.robotSide || 0] || 'ffa', skill, style, temper }); if (bot) made.push(bot); else break; }

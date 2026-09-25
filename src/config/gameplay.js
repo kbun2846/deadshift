@@ -6,6 +6,10 @@
 // Units: metres, seconds, radians and damage points.
 
 // ---- Player movement, Static (orbs, lightning stream, hex) ----
+// A launched orb's speed (owner, v0.9b): leaves at `start` m/s, so the throw
+// reads, then ramps (time constant `ramp` s) to `top` and lands fast. Before:
+// 18 up to 38 m/s.
+export const ORB_LAUNCH = Object.freeze({ start: 7, top: 64, ramp: .11 });
 export const HEX_BASE_PULSE=150,HEX_BASE_ZAP=20;
 // The hex's zaps (its spinning edges) hit 15 harder, on top of the boost (owner, v0.83).
 export const HEX_ZAP_BONUS=15;
@@ -22,13 +26,18 @@ export const RULES = Object.freeze({
   // A dodge pressed up to this long before it is possible still happens (input buffer, s).
   dodgeBuffer: .15,
   dodgeDistance: 3.5, dodgeDuration: .24, maxStamina: 1, dodgeStaminaCost: 1, staminaDelay: .6, staminaRecharge: 1.6, dodgeHitRadius: .18, dodgeDamageMultiplier: .5,
-  sprayWarmup: .2, sprayAmmoTime: .25, sprayRange: 8, sprayInnerAngle: Math.PI * 8 / 180, sprayOuterAngle: Math.PI * 22 / 180,
-  sprayInnerDPS: 196, sprayOuterDPS: 77, sprayTurnRate: Math.PI * .65, sprayRecoil: 2.8,
+  // sprayAmmoTime: seconds of stream per orb (owner, v0.9b: used 20% faster, .25 before).
+  sprayWarmup: .2, sprayAmmoTime: .25 / 1.2, sprayRange: 8, sprayInnerAngle: Math.PI * 8 / 180, sprayOuterAngle: Math.PI * 22 / 180,
+  // (v0.9b, owner: the stream 8% lighter: 196 / 77 before.)
+  sprayInnerDPS: 196 * .92, sprayOuterDPS: 77 * .92, sprayTurnRate: Math.PI * .65, sprayRecoil: 2.8,
   sprayRampTime: 1.5, sprayMaxMultiplier: 1.5,
-  maxSeeds: 12, seedInterval: .145, seedLife: 9, driftSpeed: .72,
+  // Placed orbs drift out faster (owner, v0.9b; .72 before).
+  maxSeeds: 12, seedInterval: .145, seedLife: 9, driftSpeed: 1.5,
   orbRadius: .15,
   hexCost: 10, hexFormationTime: .55, hexSpeed: 3.6, hexRange: 12, hexPulseRadius: 1.65, hexReach: 2.3, hexPulseDamage: boostedHexDamage(HEX_BASE_PULSE), hexEdgeDamage: boostedHexDamage(HEX_BASE_ZAP)+HEX_ZAP_BONUS, hexSpinDuration: 1, hexCooldown: 30,
-  launchSpeed: 31, launchLife: 1.8, launchOvershoot: .55, interceptCorridor: 1.1, playerHealth: 500, targetHealth: 250, dummyHealth: 300, targetRespawn: 4.5,
+  // Owner (v0.9b): a hex not pulsed holds at its full size, still turning, this long before it fades (X still pulses it).
+  hexLinger: 1.6,
+  launchSpeed: 31, launchLife: 1.8, launchOvershoot: .2, interceptCorridor: .5, interceptReach: 1.5, playerHealth: 500, targetHealth: 250, dummyHealth: 300, targetRespawn: 4.5,
   rechargeDelay: .8, rechargeInterval: .65, stationaryRecharge: 1.25 * 1.18, focusDistance: 7,
 });
 
@@ -42,7 +51,8 @@ export const ORB_VOLLEY_TOTALS=Object.freeze([0,9.28,20.88,34.8,90,125,165,205,2
 // Mouse players get a very slight pull on a volley's landing point (no other aim
 // help; touch and keys have aim assist): a visible target within `radius` of
 // the cursor draws the point `pull` of the way onto it.
-export const MOUSE_VOLLEY_ASSIST = Object.freeze({ radius: .9, pull: .18 });
+// Owner (v0.9b): very subtle, so the volley lands where the cursor is.
+export const MOUSE_VOLLEY_ASSIST = Object.freeze({ radius: .6, pull: .06 });
 // Splash shape, kept separate from the blast's total so the volley budget the
 // damage curve is built on stays exactly where it was. `edge` is the fraction
 // still landing at the rim, and `heavyCore` is the extra a large volley adds at
@@ -77,7 +87,11 @@ export const RIFLE_CONVERGE=8;
 // point blank (+`firstShellBonus` on the first), falling off more gently than
 // before so a mid-range hit still counts (~150 there, ~300 up close). `recoil`
 // is the launch every shot gives. Shift / RMB aims in (a tighter cone).
-export const SHOTGUN=Object.freeze({shells:2,pellets:12,shellDamage:300,firstShellBonus:15,reload:2.5,dodges:2,range:7.5,spread:.30,aimSpread:.18,doubleDelay:.05,doubleRecoilLead:.12,doubleRecoilScale:1.3,interval:.26,
+// shellDamage 287 (owner, v0.9b: 300 before, a touch lighter).
+// v140 (owner): `range` is the red part of the cone (full power up close,
+// still decent at its edge); past it pellets fly `fade` metres more, weaker
+// and weaker to nothing, drawn as the red fading out.
+export const SHOTGUN=Object.freeze({shells:2,pellets:12,shellDamage:287,firstShellBonus:15,reload:2.5,dodges:2,range:6.8,fade:4,aimClose:1.08,spread:.30,aimSpread:.18,doubleDelay:.05,doubleRecoilLead:.12,doubleRecoilScale:1.3,interval:.26,
  recoil:5.4,launchScale:8,look:.6});
 // Ballast's X, Scatter (weapons/scatter.js): press X to ready it (the cone
 // turns red), X again to fire `shells` big red shells across a wide cone
@@ -88,7 +102,7 @@ export const SHOTGUN=Object.freeze({shells:2,pellets:12,shellDamage:300,firstShe
 // `burstEdge` of it at the rim; they stack). A big shell hit does
 // `bigDamage`, a small one `childDamage`. One target takes at most `max`
 // from one Scatter. `cooldown` from when it fires.
-export const SCATTER=Object.freeze({cooldown:40,shells:5,split:4,spread:.55,speed:24,splitAt:5.5,reach:11,childSpread:.34,childSpeed:30,
+export const SCATTER=Object.freeze({cooldown:40,prime:3,shells:5,split:4,spread:.55,speed:24,splitAt:5.5,reach:11,childSpread:.34,childNear:.45,childFar:1.4,childSpeed:30,
  bigDamage:40,childDamage:14,burstDamage:18,burstEdge:.3,burstRadius:1.4,max:460,recoil:2.4});
 // A burst from one attacker that removes this share of max health inside this
 // window is a Ballast "headless" kill (see AGENTS.md).
@@ -100,7 +114,10 @@ export const BALLAST_FATAL_FRACTION=.85;
 // `duration` seconds of 2x bullets that use no ammo, 85% damage taken and
 // 1.1x speed; `cooldown` after it ends; breakables within `breakRadius` break
 // as the beams arrive.
-export const SURGE=Object.freeze({charge:2,duration:5,cooldown:50,damage:2,taken:.85,speed:1.1,breakRadius:3.2});
+// v0.9b (owner): 15% faster than before (1.1 → 1.265), another 18% less
+// damage taken (.85 → .697), and the cone (hip and aimed, and the recoil kick)
+// tighter while it runs (`spread`).
+export const SURGE=Object.freeze({charge:2,duration:5,cooldown:50,damage:2,taken:.85*.82,speed:1.1*1.15,spread:.6,breakRadius:3.2});
 // bonus: added to every grenade hit (v0.83: +50); surgeBonus: instead, for one
 // thrown during Nominal's Surge (+100).
 export const GRENADE=Object.freeze({range:12,fuse:1.4,windup:.18,cooldown:25,radius:4,coreRadius:.7,damage:240,edgeDamage:35,bonus:50,surgeBonus:100});
@@ -120,8 +137,8 @@ export const AUTO_RANGE = Object.freeze({
 // back to grab a target they just let go of within cooldown.
 const DEG = Math.PI / 180;
 export const AIM_ASSIST = Object.freeze({
- touch: Object.freeze({ pull: .85, hold: 40 * DEG, release: 14 * DEG, cooldown: .5, reacquire: 4 * DEG, maxRange: 16 }),
- keyboard: Object.freeze({ pull: .5, hold: 26 * DEG, release: 9 * DEG, cooldown: .5, reacquire: 3 * DEG, maxRange: 14 }),
+ touch: Object.freeze({ pull: .6, hold: 40 * DEG, release: 14 * DEG, cooldown: .5, reacquire: 4 * DEG, maxRange: 16 }),
+ keyboard: Object.freeze({ pull: .3, hold: 26 * DEG, release: 9 * DEG, cooldown: .5, reacquire: 3 * DEG, maxRange: 14 }),
 });
 
 // The tutorial's targets stay lighter than practice's (RULES.targetHealth /

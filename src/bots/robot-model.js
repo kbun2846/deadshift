@@ -24,6 +24,7 @@
 // bursts off, and it sparks and smokes where it lies for a few seconds
 // (RobotWrecks) before being cleared away.
 import * as THREE from 'three';
+import { SIDE_COLOURS } from '../config/match.js';
 import { buildArmour, shedAll } from './robot-wear.js';
 
 export const ROBOT_SLOT = 100;          // slots from here up are robots
@@ -74,8 +75,11 @@ export function glowMaterials(view) {
 
 // The body into `body` (a Group), merged; returns the glowing parts and the
 // armour (robot-wear.js).
-export function buildRobotBody(view, body, ally = false, skin = ROBOT_SKINS[0]) {
- const c = ROBOT_COLOURS, k = skin, v = view;
+// `side` (team games): the team id paints the cap its side's colour
+// (SIDE_COLOURS); otherwise the make's own.
+export function buildRobotBody(view, body, ally = false, skin = ROBOT_SKINS[0], side = null) {
+ const c = ROBOT_COLOURS, v = view, cap = SIDE_COLOURS[side] || (ally ? SIDE_COLOURS.friend : null);
+ const k = cap ? { ...skin, hat: cap.hat, crown: cap.band } : skin;
  // Legs: the player's, in the make's darker metal, with a knee plate.
  for (const x of [-.15, .15]) {
   v.box(x, .14, 0, .18, .27, .27, k.legs, body).userData.deathPart = 'leg';

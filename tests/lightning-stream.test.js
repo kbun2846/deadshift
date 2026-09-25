@@ -25,14 +25,14 @@ test('stream windup warns without damage or spending ammo', () => {
   step(sim, { spray: false }); assert.equal(sim.spray.active, false);
 });
 
-test('each ammo provides exactly 0.25 seconds (three seconds at full ammo) of stream, with no recharge during firing', () => {
+test('each ammo provides exactly RULES.sprayAmmoTime of stream (12 of them at full ammo), with no recharge during firing', () => {
   const sim = make([{ id: 'a', x: 3, z: 0 }]); sim.targets[0].hp = 10000;
   step(sim, {}, .01);
   // Isolate firing time from recoil movement for exact damage integration.
   const startHP = sim.targets[0].hp;
   for (let i = 0; i < 320; i++) sim.stepSpray(.01);
   assert.equal(sim.ammo, 0); assert.equal(sim.spray.active, false);
-  const duration=12*.25;
+  const duration=12*RULES.sprayAmmoTime;
   const expected = RULES.sprayInnerDPS * (1 - .25 * (3 - .65) / RULES.sprayRange) * (duration+(RULES.sprayMaxMultiplier-1)*(duration-RULES.sprayRampTime/2));
   assert.ok(Math.abs(startHP - sim.targets[0].hp - expected) < 1e-6);
   for (let i = 0; i < 300; i++) step(sim);

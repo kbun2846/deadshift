@@ -58,13 +58,18 @@ export class ProjectileMirror {
  }
 
  // Everything to draw, moved on from its snapshot by `now - stamp` (capped).
- lists(now) {
+ // `isEnemy(slot)`: whose orbs are drawn darker (owner, v0.9b: an enemy's
+ // Static orbs a deeper blue, a teammate's as your own). Default: everyone.
+ lists(now, isEnemy = null) {
   const out = { shots: [], hexOrbs: [], rifleBullets: [], shotgunPellets: [], grenades: [], scatterShells: [] };
-  for (const player of this.byPlayer.values()) {
+  for (const [slot, player] of this.byPlayer) {
+   const enemy = isEnemy ? !!isEnemy(slot) : true;
    for (const s of player.orbs.values()) {
     const ahead = Math.min(.12, Math.max(0, now - s.stamp));
-    s.drawX ??= s.x; const moved = { ...s, x: s.x + s.vx * ahead, z: s.z + s.vz * ahead };
-    (s.hex ? out.hexOrbs : out.shots).push(Object.assign(s.view ||= {}, moved));
+    s.drawX ??= s.x;
+    // Into the orb's own draw object (no new object per orb per frame).
+    const view = Object.assign(s.view ||= {}, s); view.view = undefined; view.enemy = enemy; view.x = s.x + s.vx * ahead; view.z = s.z + s.vz * ahead;
+    (s.hex ? out.hexOrbs : out.shots).push(view);
    }
    for (const b of player.bullets) {
     const ahead = Math.min(.1, Math.max(0, now - b.stamp)) * RIFLE.bulletSpeed;

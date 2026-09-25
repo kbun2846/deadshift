@@ -11,7 +11,8 @@ export const AIM_CURSOR = Object.freeze({
  // Static is a placement weapon, not a reflex one: orbs are set down and the
  // beam is turn-rate locked anyway. A little weight suits it, so it sits
  // between the rifle's hipfire and its sights rather than tracking loosely.
- static: { rate: 40, maxSpeed: 4800 },
+ // (v0.9b: quicker, so the cursor never seems to drift on its own.)
+ static: { rate: 43, maxSpeed: 5300 },
 });
 export function advanceAimCursor(cursor,target,dt,aiming,weapon='rifle'){
  const dx=target.x-cursor.x,dy=target.y-cursor.y,distance=Math.hypot(dx,dy);

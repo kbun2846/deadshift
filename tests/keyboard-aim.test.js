@@ -52,7 +52,7 @@ for(const horizontal of ['ArrowLeft','ArrowRight'])for(const vertical of ['Arrow
   s.step({...command,surge:true});assert.equal(s.surge.phase,'charging');
   s=fresh('shotgun');s.step({...command,fire:true});assert.equal(s.shotgun.ammo,1,'a press fires');
   s=fresh('shotgun');s.step({...command,doubleShot:true,aiming:true});for(let i=0;i<6;i++)s.step(command);assert.equal(s.shotgun.ammo,0);
-  s=fresh('shotgun');s.step({...command,scatter:true});assert.ok(s.scatter.armed);s.step(command);s.step({...command,scatter:true});assert.equal(s.scatterShells.length,5);
+  s=fresh('shotgun');s.step({...command,scatter:true});assert.ok(s.scatter.armed);s.step(command);s.scatter.armedFor=3;s.step({...command,scatter:true});assert.equal(s.scatterShells.length,5);
   for(const weapon of ['static','rifle','shotgun']){s=fresh(weapon);s.step({...command,moveX:aim.x,moveZ:aim.z,dodge:true});assert.ok(s.player.dodgeRemaining>0);}
  });
 }

@@ -10,7 +10,7 @@ test('a readied Scatter vents steam both ways with bounded quality budgets, and 
   fx.update(sim,.1,quality);assert.equal(fx.mesh.count,0);assert.equal(fx.shake,0);
   sim.step({scatter:true});for(let i=0;i<120;i++)fx.update(sim,1/60,quality);
   assert.ok(fx.shake>.08);assert.ok(fx.mesh.count<=32);assert.ok(fx.puffs.some(p=>p.side===1&&p.vx>0));assert.ok(fx.puffs.some(p=>p.side===-1&&p.vx<0));
-  sim.step({scatter:true});for(let i=0;i<90;i++)fx.update(sim,1/60,quality);assert.equal(fx.mesh.count,0);assert.ok(fx.shake<.001);
+  sim.scatter.armedFor=3;sim.step({scatter:true});for(let i=0;i<90;i++)fx.update(sim,1/60,quality);assert.equal(fx.mesh.count,0);assert.ok(fx.shake<.001);
   fx.clear();assert.equal(fx.shake,0);assert.equal(fx.mesh.count,0);
  }
 });

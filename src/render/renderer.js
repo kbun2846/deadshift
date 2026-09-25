@@ -66,6 +66,7 @@ import { CrispOutput, CRISP } from './crisp-output.js';
 import { makeTargetDamage, targetYaw } from '../effects/target-damage.js';
 import { BloodDrops, BLEED } from '../effects/blood-drops.js';
 import { Wading, makeBloodStains, makeGunStains } from '../effects/blood-wading.js';
+import { OrbBeams } from '../effects/orb-beams.js';
 import { RIFLE_MUZZLE } from '../config/gameplay.js';
 // Longest the renderer will hold a frame back waiting for the GPU (gpuBusy).
 // Drawn after every other see-through thing: a faded roof's depth, then its colour.
@@ -211,7 +212,7 @@ export class WorldView {
     this.propInstances = new PropInstances(this.scene); this.propInstances.build(this.props);
     this.player = this.makePlayer(); this.scene.add(this.player);
     // Blood picked up walking through pools (blood-wading.js).
-    this.player.userData.bloodStains = makeBloodStains(this.player.userData.body); this.wading = new Wading();
+    this.player.userData.bloodStains = makeBloodStains(this.player.userData.body, this.player.userData.staticArm); this.wading = new Wading();
     this.targets = new Map();
     for (const target of map.targets) {
       const group = this.makeTarget(target.moving, target.kind); group.rotation.y = targetYaw(target.id); this.interiorVisibility.applyEntity(group); this.targets.set(target.id, group); this.scene.add(group);
@@ -227,9 +228,12 @@ export class WorldView {
     this.robotScrap = new RobotScrap(this);
     // Ballast's Scatter shells and blasts (weapons/scatter-view.js).
     this.scatterView = new ScatterView(this);
+    // Static's launched orbs leave a short beam where they flew.
+    this.orbBeams = new OrbBeams(this);
     this.shotGeo = new THREE.SphereGeometry(.125, 7, 5);
     this.shotMaterial = new THREE.MeshBasicMaterial({ color: '#d6fff0' });
     this.seedMaterial = new THREE.MeshStandardMaterial({ color: '#b8e4ff', emissive: '#548eb7', emissiveIntensity: .7, roughness: .38 });
+    this.enemySeedMaterial = new THREE.MeshStandardMaterial({ color: '#2d4f9e', emissive: '#1a3a8f', emissiveIntensity: .8, roughness: .38 });
     this.trailGeo = new THREE.CylinderGeometry(.032, .07, 1, 5); this.trailGeo.rotateX(Math.PI / 2);
     this.trailMaterial = new THREE.MeshBasicMaterial({ color: '#a1ffe0', transparent: true, opacity: .75 });
     this.orbElectricMaterial = new THREE.LineBasicMaterial({ color: '#e0fff5', transparent: true, opacity: .8, depthWrite: false, toneMapped: false });
@@ -387,6 +391,12 @@ export class WorldView {
   // Almost every box is merged away by batch(), which only reads it. The one
   // edit (terrainUV) takes its own copy first; batch() never disposes a
   // shared one.
+  // Team rounds: your base ring in your side's colour (null: the usual).
+  setTeamRing(colour) {
+    const ring = this.player?.userData.ring; if (!ring || this.teamRing === colour) return;
+    this.teamRing = colour; ring.material.color.set(colour || '#4b7065'); ring.material.opacity = colour ? .95 : .35;
+    ring.userData.own ??= ring.geometry; ring.geometry = colour ? (ring.userData.wide ??= new THREE.RingGeometry(.45, .56, 40)) : ring.userData.own;
+  }
   box(x, y, z, w, h, d, color, parent) {
     const key = w + ',' + h + ',' + d;
     let template = BOX_TEMPLATES.get(key);
@@ -991,6 +1001,8 @@ export class WorldView {
     if (e.type === 'hexPulse') this.fx.hexPulse(e.nodes);
     if (e.type === 'hexZap') this.fx.electric(e.b.x, .75, e.b.z, 1);
     if (e.type === 'hexFizzle') this.fx.electric(e.x, .75, e.z, .7);
+    // A shot stopped by a hex shield: a small crackle where it would have landed.
+    if (e.type === 'hexBlock') this.fx.electric(e.x, .8, e.z, .45);
     if (e.type.startsWith('hex')) { this.electric.event(e); if (e.type === 'hexPulse') { this.shake = Math.max(this.shake, .2); this.fxLight.color.set('#b8ecff'); this.fxLight.position.set(e.nodes[0].originX, 1.3, e.nodes[0].originZ); this.fxLightLevel = 35; } }
     if (e.type === 'dodge') {
       this.burst(e.x, e.z, 12 * (FOOTFALL_PARTICLES[this.qualityName] ?? 1), 'dust', this.kickedDustColor(e.x, e.z));
@@ -999,6 +1011,8 @@ export class WorldView {
       this.dustTrail.dashStart();
     }
     if (e.type === 'impactMark') this.surfaceMarks.enqueue('bullet',e);
+    // A launched orb's path, lit for a moment (effects/orb-beams.js).
+    if ((e.type === 'impactMark' || e.type === 'pointImpact') && Number.isFinite(e.fromX)) this.orbBeams.add(e.fromX, e.fromZ, e.x, e.z);
     if (e.type === 'seed') this.burst(e.x, e.z, 2, 'hit');
     if (e.type === 'launch') {
       this.burst(e.x, e.z, 9, 'dust');
@@ -1324,6 +1338,7 @@ export class WorldView {
     if(!this.shotgunView)this.shotgunView=new ShotgunView(this);
     this.shotgunView.update(sim,fdt);
     this.scatterView?.update(sim,fdt);
+    this.orbBeams?.update(fdt);
     if(!this.grenadeView)this.grenadeView=new GrenadeView(this);
     this.grenadeView.update(sim);
     this.deathView?.update(fdt); this.remoteCorpses?.update(fdt); this.robotWrecks?.update(fdt); this.robotScrap?.update(fdt); this.surgeView?.update(fdt);
@@ -1462,8 +1477,9 @@ export class WorldView {
       present.add(s.id); let g = this.shots.get(s.id);
       if (!g) {
         g = new THREE.Group();
-        const orb = new THREE.Mesh(this.shotGeo, this.seedMaterial); g.add(orb);
-        const aura = new THREE.Mesh(this.shotGeo, new THREE.MeshBasicMaterial({color:'#91d9ff',transparent:true,opacity:.12,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false})); aura.scale.setScalar(1.7); g.add(aura);
+        // An enemy's orbs are a deeper, darker blue (owner, v0.9b); yours and a teammate's as always.
+        const orb = new THREE.Mesh(this.shotGeo, s.enemy ? this.enemySeedMaterial : this.seedMaterial); g.add(orb);
+        const aura = new THREE.Mesh(this.shotGeo, new THREE.MeshBasicMaterial({color:s.enemy?'#2f5fd0':'#91d9ff',transparent:true,opacity:.12,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false})); aura.scale.setScalar(1.7); g.add(aura);
         const trail = new THREE.Mesh(this.trailGeo, this.trailMaterial); g.add(trail);
         const electricGeometry = new THREE.BufferGeometry(); electricGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(7 * 6 * 2 * 3), 3));
         const electricity = new THREE.LineSegments(electricGeometry, this.orbElectricMaterial); g.add(electricity);
@@ -1618,6 +1634,9 @@ export class WorldView {
       for (const g of this.electric.pulseParts()) apply(g);
       this.particlePool.forEach(apply); this.rings.forEach(r => apply(r.mesh));
       for (const mesh of this.fx.meshes) if (mesh.visible) apply(mesh);
+      // Orb beams and blast shells hide indoors like every other effect.
+      if (this.orbBeams?.mesh.visible) apply(this.orbBeams.mesh);
+      if (this.scatterView?.mesh.visible) apply(this.scatterView.mesh);
       for (const b of this.blasts) { apply(b.core); apply(b.ring); for (const p of b.smoke) { apply(p.mesh); apply(p.flame); } }
       // Gated through intensity, never through visibility. The number of lights
       // in the scene is compiled into every shader, so hiding this light when it
@@ -1784,7 +1803,7 @@ export class WorldView {
   // Debris only (online map reset): the world's marks and leftovers, not the
   // camera, the players or anything in flight.
   clearDebris() {
-    this.deathView?.clear(); this.surgeView?.clear(); this.remoteCorpses?.clear(); this.robotWrecks?.clear(); this.robotScrap?.clear(); this.scatterView?.clear(); this.drops?.clear(); this.bleeds?.clear();
+    this.orbBeams?.clear(); this.deathView?.clear(); this.surgeView?.clear(); this.remoteCorpses?.clear(); this.robotWrecks?.clear(); this.robotScrap?.clear(); this.scatterView?.clear(); this.drops?.clear(); this.bleeds?.clear();
     this.blood?.clear?.();
     this.surfaceMarks.clear(); this.cropView.reset();
     this.particles.length = 0; this.fx.clear();
@@ -1804,7 +1823,7 @@ export class WorldView {
   }
 
   reset(sim) {
-    this.deathView?.clear(); this.surgeView?.clear(); this.blood?.clear(); this.remoteCorpses?.clear(); this.robotWrecks?.clear(); this.robotScrap?.clear(); this.scatterView?.clear(); this.drops?.clear(); this.bleeds?.clear(); this.cleanPlayer();
+    this.orbBeams?.clear(); this.deathView?.clear(); this.surgeView?.clear(); this.blood?.clear(); this.remoteCorpses?.clear(); this.robotWrecks?.clear(); this.robotScrap?.clear(); this.scatterView?.clear(); this.drops?.clear(); this.bleeds?.clear(); this.cleanPlayer();
     this.fx.clear();
     this.remote?.clear();
     this.rifleView?.clear();this.shotgunView?.clear();

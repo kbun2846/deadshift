@@ -21,8 +21,8 @@ const IDLE = Object.freeze(playerInput({}));
 // Events that other screens need to see. Everything else stays with its sim.
 export const SHARED_EVENTS = new Set(['explosion', 'grenadeExplosion', 'propBreak', 'propHit', 'propRestore', 'impactMark', 'rifleImpact',
  'rifleShot', 'shotgunShot', 'launch', 'sprayArc', 'hexPulse', 'hexZap', 'hexFizzle', 'pointImpact', 'wall', 'trailEnd', 'hit', 'kill',
- 'cropDust', 'cropAsh', 'syphon', 'surgeCharge', 'surgeStart', 'surgeEnd', 'scatterArm', 'scatterFire', 'scatterSplit', 'scatterHit', 'scatterBurst', 'dodge', 'seed', 'playerDeath', 'playerDamage', 'outgoingDamage', 'rifleReloaded', 'shotgunReload', 'grenadeThrow', 'sprayStart',
- 'mapReset', 'matchStart', 'matchEnd', 'roundEnd', 'respawn']);
+ 'cropDust', 'cropAsh', 'syphon', 'surgeCharge', 'surgeStart', 'surgeEnd', 'scatterArm', 'scatterPrimed', 'scatterFire', 'scatterSplit', 'scatterHit', 'scatterBurst', 'dodge', 'seed', 'playerDeath', 'playerDamage', 'outgoingDamage', 'rifleReloaded', 'shotgunReload', 'grenadeThrow', 'sprayStart',
+ 'hexBlock', 'mapReset', 'matchStart', 'matchEnd', 'roundEnd', 'respawn']);
 // Seconds between pings to each joiner (their round trip shows in the lobby
 // and on the scoreboard).
 const PING_EVERY = 1;
@@ -48,12 +48,14 @@ function foldKey(by, e) {
 }
 
 export class HostSession {
- constructor({ transport, map, local, createSim, config = NETWORK, name = 'Host', now = () => performance.now() / 1000, random = Math.random, settings }) {
+ constructor({ transport, map, local, createSim, config = NETWORK, name = 'Host', now = () => performance.now() / 1000, random = Math.random, settings, mode = null }) {
   Object.assign(this, { transport, map, local, createSim, config, now });
   this.tick = 0; this.remotes = new Map(); this.ended = null; this.notices = []; this.removed = new Set();
   this.arena = new Arena({ map, createSim, random, settings });
   this.hostSeat = this.arena.addSeat('host', name || 'Host', local);
   this.hostSeat.slot = 0;
+  // The mode picked on the host setup page (the lobby can change it).
+  if (mode) this.arena.setMode(mode);
   this.log = []; this.eventSeq = 0; this.localEvents = []; this.newFeed = []; this.folds = new Map(); this.sentTick = -1;
   transport.onMessage = (from, data) => this.receive(from, data);
   transport.onLeave = id => this.remove(id, 'left');
@@ -91,6 +93,7 @@ export class HostSession {
   if (message.t === 'choose') this.arena.choose(from, message.weapon, message.go);
   if (message.t === 'pick') this.arena.pickAgain(from);
   if (message.t === 'respawn') this.arena.respawnNow(from);
+  if (message.t === 'team') this.arena.chooseTeam(from, message.team);
  }
 
  admit(id, hello) {
@@ -99,6 +102,8 @@ export class HostSession {
   if (this.removed.has(id)) return this.transport.send(id, { t: 'removed', reason: 'The host removed you from the game.' });
   if (hello.version !== PROTOCOL_VERSION) return this.transport.send(id, { t: 'full', reason: 'This game is running a different version. Reload the page on both devices.' });
   if (this.playerCount >= this.config.maxPlayers) return this.transport.send(id, { t: 'full', reason: 'That game is full.' });
+  // Robots make room for a player (one filling a seat first).
+  if (this.arena.seats.size >= this.config.maxPlayers) { const bot = this.robotSeats().find(s => s.robot.auto) || this.robotSeats()[0]; if (bot) this.removeRobot(bot.id); }
   const used = new Set([0, ...[...this.remotes.values()].map(r => r.slot)]);
   let slot = 1; while (used.has(slot)) slot++;
   // Names are unique in a room: a second "Sam" plays as "Sam 2".
@@ -116,6 +121,7 @@ export class HostSession {
  // The host takes a player out of the game. They are told why, and cannot
  // come back into this room.
  kick(id) {
+  if (this.arena.seats.get(id)?.robot) { this.removeRobot(id); return true; }
   const remote = this.remotes.get(id);
   if (!remote) return false;
   this.removed.add(id);
@@ -123,6 +129,23 @@ export class HostSession {
   this.remove(id, 'removed');
   return true;
  }
+
+ // The side to show in the lobby: the one picked while in the lobby, the
+ // one dealt during a round.
+ shownTeam(seat) { return this.arena.phase === 'lobby' ? this.arena.wantedTeam(seat) : seat.team; }
+
+ // Robots (arena-robots.js): the host's + ROBOT and REMOVE.
+ robotSeats() { return [...this.arena.seats.values()].filter(s => s.robot); }
+ addRobot() {
+  if (this.arena.seats.size >= this.config.maxPlayers) return null;
+  const seat = this.arena.addRobot(); if (seat) { seat.previous = { ...seat.sim.player }; this.notices.push(seat.name + ' joined'); }
+  return seat;
+ }
+ // TUNE (one robot's weapon, skill, aim, temper) and APPLY TO ALL (every
+ // robot, and the ones added after).
+ tuneRobot(id, setup) { return this.arena.robots.tune(this.arena.seats.get(id), setup); }
+ tuneAllRobots(setup) { return this.arena.robots.tuneAll(setup); }
+ removeRobot(id) { const seat = this.arena.seats.get(id); if (!this.arena.removeRobot(id)) return false; this.transport.broadcast({ t: 'leave', id }); this.notices.push(seat.name + ' left'); return true; }
 
  // Who else is here, for the host's player list.
  players() { return [...this.remotes.values()].map(r => ({ id: r.id, name: r.name })); }
@@ -132,9 +155,10 @@ export class HostSession {
  lobby() {
   const ping = r => (r.ping === null ? null : Math.round(r.ping));
   return {
-   players: [{ id: 'host', name: this.hostSeat.name, slot: 0, ping: 0, host: true, present: this.hostSeat.present },
-    ...[...this.remotes.values()].map(r => ({ id: r.id, name: r.name, slot: r.slot, ping: ping(r), host: false, present: r.seat.present }))],
-   spawnMode: this.arena.settings.spawnMode, settings: { ...this.arena.settings }, mode: this.arena.mode, map: this.arena.mapId, phase: this.arena.phase,
+   players: [{ id: 'host', name: this.hostSeat.name, slot: 0, ping: 0, host: true, present: this.hostSeat.present, team: this.shownTeam(this.hostSeat) },
+    ...[...this.remotes.values()].map(r => ({ id: r.id, name: r.name, slot: r.slot, ping: ping(r), host: false, present: r.seat.present, team: this.shownTeam(r.seat) })),
+    ...this.robotSeats().map(s => ({ id: s.id, name: s.name, slot: s.slot, ping: null, host: false, robot: true, auto: !!s.robot.auto, setup: { ...s.robot.setup }, present: s.present, team: this.arena.phase === 'lobby' ? null : s.team }))],
+   spawnMode: this.arena.settings.spawnMode, settings: { ...this.arena.settings }, robotSetup: { ...this.arena.robotSetup }, mode: this.arena.mode, map: this.arena.mapId, phase: this.arena.phase,
   };
  }
 
@@ -144,6 +168,7 @@ export class HostSession {
  resetMap() { this.arena.resetWorld(); }
  setMode(mode) { return this.arena.setMode(mode); }
  startRound(mode) { return this.arena.startRound(mode); }
+ get startError() { return this.arena.startError; }
  endRound() { this.arena.endRound(); }
  restartMatch() { return this.arena.newMatch(); }
  match() { return this.arena.matchState(); }
@@ -161,6 +186,7 @@ export class HostSession {
  choose(weapon, go = true) { return this.arena.choose('host', weapon, go); }
  pickAgain() { return this.arena.pickAgain('host'); }
  respawnNow() { return this.arena.respawnNow('host'); }
+ chooseTeam(team) { return this.arena.chooseTeam('host', team); }
  toMenu() { this.arena.leaveWorld('host'); }
 
  // Called by main.js right before it steps the host's own sim this tick,
@@ -180,6 +206,7 @@ export class HostSession {
   // The host's own sim keeps its dev settings: dev tools are host-only online.
   this.arena.after(this.hostSeat);
   const hostMark = this.hostSeat.mark;
+  this.arena.robots.hear('host', this.local.events.slice(hostMark));
   for (const remote of [...this.remotes.values()]) {
    remote.previous = { ...remote.sim.player };
    // Normally one input per tick. A backlog (a burst after a network hiccup)
@@ -193,7 +220,9 @@ export class HostSession {
     const held = remote.silent < .25 ? { ...playerInput({ ...remote.last }), dodge: false, launch: false, tapFire: false, grenade: false, doubleShot: false, reload: false, hex: false, surge: false, scatter: false, quickShot: false } : IDLE;
     remote.sim.dev = { speed: 1 };
     this.arena.stepSeat(remote.seat, input || held);
-    this.record(remote.id, remote.sim.drainEvents());
+    const events = remote.sim.drainEvents();
+    this.arena.robots.hear(remote.id, events);
+    this.record(remote.id, events);
    }
    remote.silent += 1 / 60;
    if (t - remote.pingAt >= PING_EVERY) { remote.pingAt = t; this.transport.send(remote.id, { t: 'ping', s: t }); }
@@ -201,10 +230,26 @@ export class HostSession {
    // A joiner still building the world (seconds on a phone) sends nothing yet.
    if (this.now() - remote.heard > (remote.loaded ? this.config.timeout : this.config.loadGrace)) this.remove(remote.id, 'timeout');
   }
+  // Robots: each its brain's input, stepped like a joiner's seat.
+  const robots = this.robotSeats();
+  if (robots.length) {
+   this.arena.robots.beginTick(this.arena.time);
+   for (const seat of robots) {
+    seat.previous = { ...seat.sim.player };
+    const input = this.arena.robots.input(seat, 1 / 60) || IDLE;
+    seat.sim.dev = { speed: 1 };
+    this.arena.stepSeat(seat, input);
+    const events = seat.sim.drainEvents();
+    this.arena.robots.hear(seat.id, events);
+    this.record(seat.id, events);
+   }
+  }
   // The host's own events, including damage the others did to it just now
   // (main.js drains the sim after this).
   this.record('host', this.local.events.slice(hostMark));
   this.newFeed.push(...this.arena.endTick());
+  // Seats the rules took out (a robot stepping aside, spare robots): everyone is told.
+  for (const id of this.arena.leaves.splice(0)) this.transport.broadcast({ t: 'leave', id });
   this.record('world', this.arena.worldEvents || []);
   // Damage the others did to the host this tick lands in the host's own sim
   // after its step; main.js drains it with the rest.
@@ -282,18 +327,20 @@ export class HostSession {
  }
 
  seatState(seat, lastSeq = 0) {
-  return { ...playerState(seat.id, seat.sim.player, lastSeq), name: seat.name, slot: seat.slot, weapon: seat.weapon, present: seat.present, dead: seat.dead, life: seat.life };
+  return { ...playerState(seat.id, seat.sim.player, lastSeq), name: seat.name, slot: seat.slot, weapon: seat.weapon, present: seat.present, dead: seat.dead, life: seat.life, team: seat.team, robot: seat.robot ? 1 : 0 };
  }
 
  states() {
-  return [this.seatState(this.hostSeat), ...[...this.remotes.values()].map(r => this.seatState(r.seat, r.lastSeq))];
+  return [this.seatState(this.hostSeat), ...[...this.remotes.values()].map(r => this.seatState(r.seat, r.lastSeq)), ...this.robotSeats().map(s => this.seatState(s))];
  }
 
  // What the renderer draws for everyone but the host: the host steps these
  // sims on the same clock as its own, so they blend with the same alpha.
  others(alpha = 1) {
-  return [...this.remotes.values()].filter(r => r.seat.present && !r.seat.dead)
-   .map(r => ({ ...blend(r.id, r.name, r.previous, r.sim.player, alpha), weapon: r.seat.weapon, slot: r.slot }));
+  const list = [...this.remotes.values()].filter(r => r.seat.present && !r.seat.dead)
+   .map(r => ({ ...blend(r.id, r.name, r.previous, r.sim.player, alpha), weapon: r.seat.weapon, slot: r.slot, team: r.seat.team, hp: r.sim.player.hp, maxHp: r.sim.player.maxHp }));
+  for (const s of this.robotSeats()) if (s.present && !s.dead) list.push({ ...blend(s.id, s.name, s.previous || s.sim.player, s.sim.player, alpha), weapon: s.weapon, slot: s.slot, team: s.team, robot: true, hp: s.sim.player.hp, maxHp: s.sim.player.maxHp });
+  return list;
  }
 
  // The arena's standings plus each player's round trip.

@@ -228,6 +228,10 @@ body.dying .health-hud,body.dying #weapon,body.dying #reticle,body.dying .rifle-
 .aim-cone .cone-zone{fill:#d8393c;fill-opacity:.12;stroke:none;transition:fill-opacity .11s ease-out}
 .aim-cone.firing .cone-zone{fill-opacity:0;transition:none}
 .aim-cone.unloaded .cone-zone{fill-opacity:0}
+/* Ballast (v140): red to its range, then fading out where the pellets weaken to nothing. */
+.aim-cone.fading .cone-zone{fill:url(#ballast-fade);fill-opacity:.17}
+.aim-cone.fading.unloaded .cone-zone,.aim-cone.fading.firing .cone-zone{fill-opacity:0}
+.aim-cone .cone-fade-edges{fill:none;stroke:url(#ballast-fade-edge);stroke-width:1.25;stroke-opacity:.6}
 @media(prefers-reduced-motion:reduce){.aim-cone .cone-zone{transition:none}}
 #game .map-choice{position:relative;border:0}
 #game .map-choice .map-caption{display:block;height:108px;padding:0 8px;background:#484344;overflow:hidden}
@@ -531,7 +535,8 @@ body.mp-between #weapon,body.mp-between #reticle,body.mp-between .health-hud,bod
 #game .lobby-screen .lobby-ping{color:#c9c3b6}
 #game .lobby-screen button.lobby-remove{flex:none;width:auto;margin:0;min-height:30px;height:30px;padding:0 12px;font:700 12px/30px var(--hud-font,Arial),sans-serif;letter-spacing:.08em}
 #game .lobby-count{color:#eee9df;margin-left:6px}
-#game .lobby-modes,#game .lobby-maps{display:flex;flex-wrap:wrap;border:1px solid var(--button-edge);width:max-content;max-width:100%}
+#game .lobby-modes{display:flex;flex-wrap:wrap;border:1px solid var(--button-edge);width:max-content;max-width:100%}
+#game .lobby-maps{display:block;width:100%}
 #game .lobby-modes button:disabled:not([aria-pressed=true]),#game .lobby-maps button:disabled:not([aria-pressed=true]){color:#7f8783;opacity:1;cursor:default}
 #game .lobby-screen-foot{display:flex;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap}
 #game .lobby-screen-foot button{width:auto;min-width:200px;margin:0}
@@ -739,15 +744,116 @@ body:not(.playing) .fire-indicator,body.dying .fire-indicator{display:none}
 /* In a 1V1 (duel.js): the score top centre (the match clock's place), you
    blue and the robot pink as in the kill feed; the result card is the
    multiplayer results card with REMATCH and MAIN MENU. */
-#game .duel-score{position:absolute;z-index:5;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:baseline;gap:10px;white-space:nowrap;font:800 16px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.08em;color:#eee9df;text-shadow:0 1px 3px #15201bc0;pointer-events:none;font-variant-numeric:tabular-nums}
-#game .duel-score b{font-size:22px}
-#game .duel-score .duel-you{color:var(--mp-you,#8fd0ff)}
+/* (v0.9b, owner: bigger, the health bar centred under it.) A dark pill,
+   your side blue on the left, theirs pink on the right, big numbers. */
+#game .duel-score{position:absolute;z-index:5;top:10px;left:50%;transform:translateX(-50%);display:grid;grid-template-columns:auto auto auto;align-items:center;column-gap:14px;row-gap:3px;padding:7px 18px 6px;border-radius:12px;background:#141a18c9;border:1px solid #ffffff1f;box-shadow:0 4px 14px #0006;white-space:nowrap;color:#eee9df;pointer-events:none;font-variant-numeric:tabular-nums}
+#game .duel-score .duel-side{display:flex;align-items:center;gap:10px;font:800 13px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.14em}
+#game .duel-score .duel-side em{font-style:normal}
+#game .duel-score b{font:900 34px/1 Arial Black,Arial,sans-serif;letter-spacing:0;min-width:.8em;text-align:center}
+#game .duel-score .duel-you{color:var(--mp-you,#8fd0ff);justify-self:end}
 #game .duel-score .duel-robot{color:var(--mp-enemy,#e8afb9)}
-#game .duel-score i{font-style:normal;opacity:.6}
-#game .duel-score small{font-size:10px;letter-spacing:.14em;opacity:.7}
+#game .duel-score .duel-dash{font:900 22px/1 Arial,sans-serif;opacity:.5}
+#game .duel-score small{grid-column:1/-1;justify-self:center;font:700 10px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.18em;opacity:.7}
 body:not(.playing) #game .duel-score{display:none}
-body[data-controls=touch] #game .duel-score{top:10px;font-size:13px}
-body[data-controls=touch] #game .duel-score b{font-size:18px}
+body[data-controls=touch] #game .duel-score{top:max(8px,env(safe-area-inset-top));padding:5px 14px 5px}
+body[data-controls=touch] #game .duel-score b{font-size:26px}
+body[data-controls=touch] #game .duel-score .duel-side{font-size:11px}
+/* The health bar centred, under the score, whatever the layout. */
+body.duel-on.playing #game .health-hud{top:92px;left:50%;transform:translateX(-50%)}
+body[data-controls=touch].duel-on.playing #game .health-hud{top:calc(max(8px,env(safe-area-inset-top)) + 74px);left:50%;transform:translateX(-50%)}
+#game .duel-heading{margin:10px 0 -2px;padding-top:10px;border-top:1px solid #ffffff1a;color:#9fb0aa;font:800 11px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.2em;text-transform:uppercase}
+#game .duel-allies{display:grid;gap:14px}
 #game .duel-results .duel-detail{margin:0 0 16px;color:#9fb0aa;font:700 11px/1.4 var(--hud-font,Arial),sans-serif;letter-spacing:.1em}
 #game .duel-results .duel-results-actions{display:grid;gap:10px}
 #game .duel-results .duel-results-actions button{margin:0;width:100%;height:52px;min-height:52px}
+
+/* Team rounds and robots online (v0.9b): a side's colour on its players in
+   the lobby, the scoreboard and the results, each side's kills beside the
+   match clock, robots tagged; the line under the modes says what the mode is. */
+#game .lobby-screen .lobby-tag.lobby-team,#game .lobby-tag.lobby-team{background:var(--team);color:#151718}
+#game .lobby-screen .lobby-robot .lobby-name{color:#c9d2ce}
+#game .lobby-mode-note{margin:-2px 0 12px;color:#9fb0aa;font:600 11px/1.35 var(--hud-font,Arial),sans-serif;letter-spacing:.06em;text-transform:none}
+#game .board-team,#game .board-robot{display:inline-block;margin-left:7px;padding:2px 5px;border-radius:2px;font:800 9px/1 Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;vertical-align:middle}
+#game .board-team{background:var(--team);color:#151718}
+#game .board-robot{background:#9fb0aa33;color:#9fb0aa}
+#game .match-clock .clock-teams{display:inline-flex;align-items:baseline;gap:8px;margin-left:12px;font-size:14px}
+#game .match-clock .clock-team{color:var(--team)}
+#game .match-clock .clock-team b{font-size:18px}
+#game .match-clock .clock-teams i{font-style:normal;opacity:.55}
+#game .host-mode-row{flex-direction:column;align-items:stretch;gap:6px}
+#game .host-mode-row .round-choices{flex-wrap:nowrap}
+#game .host-mode-row .round-choices button{flex:1 1 auto;min-width:0;padding:0 6px;text-align:center;justify-content:center}
+#game .round-setting[data-key=robotSkill]{flex-direction:column;align-items:stretch;gap:6px}
+#game .round-setting[data-key=robotSkill] .round-choices{flex-wrap:nowrap}
+#game .round-setting[data-key=robotSkill] .round-choices button{flex:1 1 auto;min-width:0;padding:0 6px;text-align:center;justify-content:center}
+#game .lobby-mode-note{margin:8px 0 12px}
+/* Picking a side in the lobby (team modes). */
+#game .lobby-side-choices{display:flex;gap:6px;margin:0 0 12px}
+#game .lobby-side-choices button.lobby-side{flex:1 1 0;width:auto;margin:0;min-height:34px;height:34px;padding:0 10px;border:1px solid var(--team);border-radius:4px;background:color-mix(in srgb,var(--team) 14%,#1c2120);color:var(--team);font:800 12px/32px var(--hud-font,Arial),sans-serif;letter-spacing:.12em;text-transform:uppercase;text-align:center}
+#game .lobby-side-choices button.lobby-side small{font-size:10px;opacity:.8;margin-left:4px}
+#game .lobby-side-choices button.lobby-side[aria-pressed=true]{background:var(--team);color:#151718}
+#game .lobby-side-choices button.lobby-side:disabled{opacity:.4}
+/* VS ROBOTS on phones (v0.9b): the page never wider than the screen, each
+   row stacked (label, choices, note) in one column, six skill buttons that
+   shrink to fit, five weapon tiles to a row. */
+.menu-shell [data-page="duel"]{width:min(540px,calc(100vw - 32px));min-width:0}
+@media(max-width:600px){
+ .menu-shell:has([data-page="duel"]:not([hidden])){padding:20px 16px}
+ #game .duel-setting{flex-wrap:nowrap}
+ #game .duel-setting .round-choices{width:100%;min-width:0}
+ #game .duel-setting .round-choices button{font-size:10.5px;letter-spacing:.04em;padding:0 3px;min-height:34px;height:34px;line-height:34px}
+ #game .duel-options .weapon-grid{grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:6px}
+ #game .duel-options .weapon-grid button.weapon-tile{height:80px}
+ #game .duel-options .weapon-grid .weapon-tile-name{font-size:8.5px;letter-spacing:.06em}
+ #game .duel-options .weapon-grid.map-grid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}
+ #game .duel-options .weapon-grid.map-grid button.weapon-tile{height:92px}
+ #game [data-page="duel"] h2{margin:12px 0 16px}
+}
+/* Dropdown pickers (weapon-grid.js pickerHTML, v0.9b): the choice on a bar
+   (picture, name, caret); open, the grid scrolls in a panel under it. */
+#game .picker{position:relative;min-width:0}
+#game .picker button.picker-toggle{display:flex;align-items:center;gap:12px;width:100%;height:56px;min-height:56px;margin:0;padding:4px 14px 4px 6px;border:1px solid #ffffff22;border-radius:10px;background:#3a41408c;color:#eee9df;text-align:left;box-shadow:none;transform:none;font:800 13px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.12em;text-transform:uppercase}
+#game .picker button.picker-toggle:is(:hover,:focus-visible){background:#4a5250b3;color:#fff;border-color:var(--ui-accent)}
+#game .picker.open button.picker-toggle{border-color:var(--ui-accent);border-bottom-left-radius:0;border-bottom-right-radius:0}
+#game .picker .picker-thumb{position:relative;flex:none;width:58px;height:46px;display:grid;place-items:center;overflow:hidden;border-radius:7px;background:#1c2120}
+#game .picker .picker-thumb>img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 2px 3px #0008)}
+#game .picker .picker-thumb .weapon-tile-fan{position:absolute;inset:0}
+#game .picker .picker-thumb .weapon-tile-fan img{position:absolute;left:22%;top:8%;width:56%;height:84%;opacity:.42;filter:grayscale(.5);transform:translateX(calc(var(--fan) * 34%)) rotate(calc(var(--fan) * 16deg))}
+#game .picker .picker-thumb .weapon-tile-mystery{position:absolute;inset:0;display:grid;place-items:center;font:900 22px/1 Arial Black,Arial,sans-serif;color:var(--ui-accent);text-shadow:0 2px 5px #000c}
+#game [data-duel="map"] .picker .picker-thumb>img{object-fit:cover}
+#game .picker .picker-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#game .picker .picker-caret{flex:none;width:10px;height:10px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-3px) rotate(45deg);transition:transform .15s;opacity:.8}
+#game .picker.open .picker-caret{transform:translateY(2px) rotate(-135deg)}
+#game .picker .picker-panel{padding:10px;border:1px solid var(--ui-accent);border-top:0;border-radius:0 0 10px 10px;background:#1c2120f2}
+#game .picker .picker-panel .weapon-grid{max-height:min(46vh,220px)}
+#game .lobby-maps .picker{margin:0 0 12px}
+#game .lobby-maps .picker .picker-thumb>img{object-fit:cover}
+#game .picker button.picker-toggle:disabled{opacity:1;cursor:default}
+@media(max-height:500px){#game [data-page="duel"] h2{margin:8px 0 10px}#game [data-page="duel"] .duel-note{margin:-4px 0 8px}}
+/* Phones (v0.9b): host setup and the lobby fit a 390px portrait screen. Every
+   settings row stacks (label above), its buttons share the width. */
+@media(max-width:600px){
+ #game #host-settings .round-setting,#game .lobby-screen .round-setting{flex-direction:column;align-items:stretch;gap:6px}
+ #game #host-settings .round-choices,#game .lobby-screen .round-choices,#game .lobby-modes{flex-wrap:nowrap;width:100%;min-width:0}
+ #game #host-settings .round-choices button,#game .lobby-screen .round-choices button,#game .lobby-modes button{flex:1 1 0;min-width:0;padding:0 3px;font-size:10.5px;letter-spacing:.04em;text-align:center;justify-content:center;overflow:hidden;text-overflow:clip}
+ #game .lobby-screen{padding:8px}
+ #game .lobby-screen-card{width:100%;max-width:calc(100vw - 16px);padding:14px 12px;box-sizing:border-box}
+ #game .lobby-screen-head{flex-wrap:wrap;gap:6px}
+ #game .lobby-screen .lobby-code{font-size:11px;letter-spacing:.08em;padding:5px 7px;max-width:100%}
+ #game .lobby-columns,#game .lobby-column{min-width:0}
+ #game .lobby-heading{flex-wrap:wrap;gap:6px}
+ #game .lobby-screen button.lobby-add-robot{padding:0 8px;font-size:11px;letter-spacing:.04em}
+ #game .lobby-modes button{flex:1 1 auto;padding:0 2px}
+}
+/* TUNE a lobby robot (v138): its row opens a panel under it. */
+#game .lobby-screen button.lobby-tune{flex:none;width:auto;margin:0;min-height:30px;height:30px;padding:0 10px;font:700 12px/30px var(--hud-font,Arial),sans-serif;letter-spacing:.08em}
+#game .lobby-screen button.lobby-tune[aria-expanded=true]{background:var(--ui-accent);color:#151718}
+#game .lobby-screen .lobby-tune-panel{list-style:none;display:flex;flex-direction:column;gap:8px;margin:4px 0 10px;padding:10px;border:1px solid var(--ui-accent);border-radius:8px;background:#1b201f}
+#game .lobby-tune-panel .lobby-tune-row{flex-direction:column;align-items:stretch;gap:6px}
+#game .lobby-tune-panel .round-choices{flex-wrap:nowrap;width:100%;min-width:0}
+#game .lobby-tune-panel .round-choices button{flex:1 1 0;min-width:0;padding:0 3px;font-size:10.5px;letter-spacing:.04em;text-align:center;justify-content:center;overflow:hidden}
+#game .lobby-tune-panel .picker .picker-panel .weapon-grid{grid-template-columns:repeat(auto-fill,minmax(64px,1fr))}
+#game .lobby-tune-foot{display:flex;gap:8px}
+#game .lobby-screen .lobby-tune-foot button{flex:1;text-align:center;justify-content:center;width:auto;margin:0;min-height:34px;height:34px;padding:0 8px;font:800 12px/34px var(--hud-font,Arial),sans-serif;letter-spacing:.08em}
+#game .lobby-screen .lobby-tune-foot button.lobby-tune-all{background:var(--ui-accent);color:#151718}
+@media(max-width:600px){#game .lobby-screen button.lobby-tune{padding:0 6px;font-size:11px;letter-spacing:.04em}#game .lobby-screen button.lobby-remove{padding:0 6px;font-size:11px;letter-spacing:.04em}}

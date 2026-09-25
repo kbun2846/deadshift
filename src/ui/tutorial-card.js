@@ -2,7 +2,7 @@
 // instructions for this player's controls, the counter and meter, and the
 // highlight on whichever HUD element the lesson is about. It only redraws
 // when something it shows has changed.
-import { COURSE_NAMES, lessonMarkup } from '../tutorial.js';
+import { COURSE_NAMES, COURSE_DONE_NOTES, lessonMarkup } from '../tutorial.js';
 const byId = id => document.getElementById(id);
 
 export function createTutorialCard() {
@@ -28,7 +28,7 @@ export function createTutorialCard() {
    byId('tutorial-title').textContent = tutorial.complete ? `${course} done` : lesson.title;
    const text = tutorial.complete ? (tutorial.course === 'basics' ? 'weapon tutorials are in gamemodes' : 'try another weapon in the tutorial menu') : touchPrompts ? lesson.touch : lesson.keys;
    byId('tutorial-hint').innerHTML = lessonMarkup(text);
-   const note = lesson && ((touchPrompts && lesson.touchNote) || lesson.note);
+   const note = tutorial.complete ? COURSE_DONE_NOTES[tutorial.course === 'basics' ? 'basics' : 'weapon'] : lesson && ((touchPrompts && lesson.touchNote) || lesson.note);
    byId('tutorial-note').hidden = !note; byId('tutorial-note').innerHTML = note ? lessonMarkup(note) : '';
    const count = byId('tutorial-count');
    count.hidden = tutorial.complete;

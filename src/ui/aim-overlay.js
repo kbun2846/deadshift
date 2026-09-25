@@ -2,7 +2,7 @@
 // around it, Ballast's shot cone and Nominal's spread brackets and zone.
 // Owns its own elements; main.js hands it the game state once a frame.
 import { RULES } from '../config/gameplay.js';
-import { SHOTGUN, shotgunSpread } from '../weapons/shotgun.js';
+import { SHOTGUN, shotgunSpread, shotgunReach } from '../weapons/shotgun.js';
 import { SCATTER } from '../config/gameplay.js';
 import { rifleSpread, rifleAim, RIFLE_MUZZLE } from '../weapons/rifle.js';
 import { viewWidth, viewHeight } from '../viewport.js';
@@ -19,8 +19,12 @@ export function chargeRingColor(t){
 export function createAimOverlay(game){
  const cone=document.createElementNS('http://www.w3.org/2000/svg','svg');cone.classList.add('aim-cone');
  // Two layers: the filled danger zone inside the spread, and the guide edges.
- cone.innerHTML='<path class="cone-zone"/><path class="cone-edges"/>';game.append(cone);
- const coneZone=cone.querySelector('.cone-zone'),coneEdges=cone.querySelector('.cone-edges');
+ // Ballast (v140): the red runs to SHOTGUN.range, then fades to nothing over
+ // `fade` (the pellets' weakening reach): the zone and a second pair of
+ // edges wear gradients laid along the aim each frame.
+ cone.innerHTML='<defs><linearGradient id="ballast-fade" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d8393c" stop-opacity="1"/><stop class="fade-at" offset=".6" stop-color="#d8393c" stop-opacity="1"/><stop offset="1" stop-color="#d8393c" stop-opacity="0"/></linearGradient><linearGradient id="ballast-fade-edge" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f8e1bc" stop-opacity="1"/><stop offset="1" stop-color="#f8e1bc" stop-opacity="0"/></linearGradient></defs><path class="cone-zone"/><path class="cone-edges"/><path class="cone-fade-edges"/>';game.append(cone);
+ const coneZone=cone.querySelector('.cone-zone'),coneEdges=cone.querySelector('.cone-edges'),fadeEdges=cone.querySelector('.cone-fade-edges');
+ const fadeGrad=cone.querySelector('#ballast-fade'),fadeAt=cone.querySelector('.fade-at'),edgeGrad=cone.querySelector('#ballast-fade-edge');
  const spreadMarker=document.createElement('div');spreadMarker.id='rifle-spread';spreadMarker.className='rifle-spread';spreadMarker.innerHTML='<i></i><i></i>';game.append(spreadMarker);
  const secondarySpread=spreadMarker.cloneNode(true);secondarySpread.id='rifle-spread-secondary';secondarySpread.classList.add('secondary-spread');secondarySpread.hidden=true;game.append(secondarySpread);
  const reticleEl=game.querySelector('#reticle'),chargeRing=game.querySelector('#charge-ring'),chargeFill=chargeRing.querySelector('.charge-ring-fill');
@@ -64,11 +68,14 @@ export function createAimOverlay(game){
   // Scatter readied (Ballast X): the cone is its wide red one instead.
   const scatter=sim.weapon==='shotgun'&&!!sim.scatter?.armed;
   cone.classList.toggle('scatter',scatter);
+  // Still charging (the first 3 s): fainter and pulsing faster.
+  cone.classList.toggle('priming',scatter&&(sim.scatter.armedFor||0)<SCATTER.prime);
   cone.classList.toggle('unloaded',sim.weapon==='shotgun'
    ? !(sim.shotgun.ammo>0)&&!scatter
    : !(sim.rifle.ammo>0&&sim.rifle.reload<=0));
   if(sim.weapon==='shotgun'){
-   const p=sim.player,range=scatter?SCATTER.reach:SHOTGUN.range,angle=Math.atan2(p.aimZ,p.aimX),spread=scatter?SCATTER.spread:shotgunSpread(aiming);
+   cone.classList.toggle('fading',!scatter);
+   const p=sim.player,red=scatter?SCATTER.reach:SHOTGUN.range,range=scatter?SCATTER.reach:shotgunReach(),angle=Math.atan2(p.aimZ,p.aimX),spread=scatter?SCATTER.spread:shotgunSpread(aiming);
    const muzzleX=view.player.position.x+p.aimX*.96-p.aimZ*.20,muzzleZ=view.player.position.z+p.aimZ*.96+p.aimX*.20;
    // Cosmetic cutout only; projectile origins and point-blank collisions are unchanged.
    const guideStart=.7;
@@ -80,7 +87,18 @@ export function createAimOverlay(game){
    // Readied Scatter also marks where the big shells split: an arc across the cone.
    let splitArc='';
    if(scatter){for(let i=0;i<=8;i++){const a=angle-spread+spread*2*i/8,q=view.screenPoint(muzzleX+Math.cos(a)*SCATTER.splitAt,muzzleZ+Math.sin(a)*SCATTER.splitAt,.77);splitArc+=`${i?'L':'M'}${q.x.toFixed(1)},${q.y.toFixed(1)} `;}}
-   setAttr(coneEdges,'d',`M${origin.x},${origin.y} L${farLeft.x},${farLeft.y} M${nearEnd.x},${nearEnd.y} L${farRight.x},${farRight.y} ${splitArc}`);
+   // Solid edges to the end of the red; faint ones on through the fade.
+   const redLeft=view.screenPoint(muzzleX+Math.cos(angle-spread)*red,muzzleZ+Math.sin(angle-spread)*red,.77);
+   const redRight=view.screenPoint(muzzleX+Math.cos(angle+spread)*red,muzzleZ+Math.sin(angle+spread)*red,.77);
+   setAttr(coneEdges,'d',`M${origin.x},${origin.y} L${redLeft.x},${redLeft.y} M${nearEnd.x},${nearEnd.y} L${redRight.x},${redRight.y} ${splitArc}`);
+   if(!scatter){
+    const a=view.screenPoint(muzzleX+Math.cos(angle)*guideStart,muzzleZ+Math.sin(angle)*guideStart,.77),b=view.screenPoint(muzzleX+Math.cos(angle)*range,muzzleZ+Math.sin(angle)*range,.77);
+    const r=view.screenPoint(muzzleX+Math.cos(angle)*red,muzzleZ+Math.sin(angle)*red,.77);
+    for(const g of [fadeGrad]){setAttr(g,'x1',a.x.toFixed(1));setAttr(g,'y1',a.y.toFixed(1));setAttr(g,'x2',b.x.toFixed(1));setAttr(g,'y2',b.y.toFixed(1));}
+    setAttr(edgeGrad,'x1',r.x.toFixed(1));setAttr(edgeGrad,'y1',r.y.toFixed(1));setAttr(edgeGrad,'x2',b.x.toFixed(1));setAttr(edgeGrad,'y2',b.y.toFixed(1));
+    setAttr(fadeAt,'offset',((red-guideStart)/(range-guideStart)).toFixed(3));
+    setAttr(fadeEdges,'d',`M${redLeft.x},${redLeft.y} L${farLeft.x},${farLeft.y} M${redRight.x},${redRight.y} L${farRight.x},${farRight.y}`);
+   }else setAttr(fadeEdges,'d','');
    // The same quad the edges bound, closed so it can carry a fill.
    setAttr(coneZone,'d',`M${origin.x},${origin.y} L${farLeft.x},${farLeft.y} L${farRight.x},${farRight.y} L${nearEnd.x},${nearEnd.y} Z`);
   }
@@ -104,7 +122,7 @@ export function createAimOverlay(game){
    // distances, so each shows the band bullets actually fall in there.
    // The convergence floor belongs to the barrel alone — applying it to the
    // bracket too is what dragged the near one out to arm's length.
-   const aim=rifleAim(p,distance),target=rifleSpread(distance,speed,aiming);
+   const aim=rifleAim(p,distance),target=rifleSpread(distance,speed,aiming,!!sim.surge?.active);
    // Eased, so the band widens and narrows as you speed up and stop instead of stepping.
    const now=performance.now(),step=Math.min(.1,(now-(lastSpreadAt||now))/1000);lastSpreadAt=now;
    spreadShown=spreadShown==null?target:spreadShown+(target-spreadShown)*(1-Math.exp(-step*14));
@@ -150,7 +168,7 @@ export function createAimOverlay(game){
    setAttr(coneZone,'d',
     `M${nl.x},${nl.y} L${fl.x},${fl.y} L${fr.x},${fr.y} L${nr.x},${nr.y} Z`);
    // The brackets are the rifle's guide; it needs no drawn cone edges.
-   setAttr(coneEdges,'d','');
+   setAttr(coneEdges,'d','');setAttr(fadeEdges,'d','');cone.classList.remove('fading');
   }
  }
  return {update,place,

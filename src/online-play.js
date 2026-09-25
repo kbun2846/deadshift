@@ -9,12 +9,14 @@ import { ProjectileMirror } from './net/projectiles.js';
 import { supportsMode, multiplayerMaps } from './maps.js';
 import { DEFAULT_WEAPON } from './items.js';
 import { pickState } from './net/host-session.js';
+import { SIDE_COLOURS } from './config/match.js';
 
 const NAME_KEY = 'deadshift-username';
 export const savedName = () => { try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; } };
 const saveName = name => { try { localStorage.setItem(NAME_KEY, name); } catch {} };
 
 export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, server, pickWeapon }) {
+ let teamCache = { tick: null, map: new Map() };
  let session = null, code = null, lastLife = 0;
  const mirror = new ProjectileMirror();
  const badge = document.createElement('button');
@@ -40,7 +42,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   badge.textContent = 'ROOM ' + code + ' · ' + count + '/' + NETWORK.maxPlayers + (session.transport?.offline ? ' · OFFLINE' : '');
  };
 
- async function request({ role, code: typed, name: typedName, settings }, status) {
+ async function request({ role, code: typed, name: typedName, settings, mode }, status) {
   const name = cleanName(typedName);
   if (!name) throw new Error('Enter a username first.');
   saveName(name);
@@ -54,7 +56,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   if (!code) throw new Error('Room codes are ' + NETWORK.codeLength + ' letters and numbers.');
   status(role === 'host' ? 'Opening room…' : 'Finding room ' + code + '…');
   const { goOnline } = await import('./net/online.js');
-  const joined = await goOnline({ role: role === 'host' ? 'host' : 'client', code, map, local: sim, createSim, server, name, settings });
+  const joined = await goOnline({ role: role === 'host' ? 'host' : 'client', code, map, local: sim, createSim, server, name, settings, mode });
   if (role !== 'host') {
    // Wait for the host to let us in (or turn us away) before leaving the menu.
    const deadline = performance.now() + 8000;
@@ -97,14 +99,26 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   choose(weapon, go = true) { session?.choose(weapon, go); },
   pickAgain() { session?.pickAgain(); },
   respawnNow() { session?.respawnNow(); },
-  others(alpha) { return session ? session.others(alpha) : null; },
+  // Everyone else to draw; in a team round each wears their side's ring.
+  // Team games: a teammate is a friend (green hat and ring), the rest foes (red).
+  others(alpha) { const mine = api.myTeam; return session ? session.others(alpha).map(o => { if (!mine || !o.team) return o; const side = SIDE_COLOURS[o.team] ? o.team : null; return side ? { ...o, side, ring: SIDE_COLOURS[side].ring } : o; }) : null; },
+  // Your side in a team round (null otherwise).
+  get myTeam() { if (!session) return null; return session.role === 'host' ? session.hostSeat.team || null : session.latest(session.id)?.team || null; },
+  // Who you can hurt: everyone but your side.
+  foes(alpha) { const mine = api.myTeam, list = api.others(alpha) || []; return mine ? list.filter(o => o.team !== mine) : list; },
   // Everyone else's projectiles, for drawing (net/projectiles.js).
   foreign() {
    if (!session) return null;
-   if (session.role === 'client') return session.foreignProjectiles();
+   // Teammates' orbs look like your own; everyone else's a deeper blue.
+   // Slot → side, worked out once per tick (not per frame).
+   const tick = session.role === 'host' ? session.tick : session.snapshots?.at(-1)?.tick;
+   if (teamCache.tick !== tick) teamCache = { tick, map: new Map((session.role === 'host' ? [...session.arena.seats.values()] : session.snapshots?.at(-1)?.players || []).map(p => [p.slot, p.team])) };
+   const mine = api.myTeam, teamOf = teamCache.map;
+   const isEnemy = slot => !mine || teamOf.get(slot) !== mine;
+   if (session.role === 'client') return session.foreignProjectiles(isEnemy);
    mirror.update(session.remoteProjectiles(), performance.now() / 1000);
    // Practice targets live in the host's match, not in its own sim.
-   return { ...mirror.lists(performance.now() / 1000), targets: session.arena.targets };
+   return { ...mirror.lists(performance.now() / 1000, isEnemy), targets: session.arena.targets };
   },
   // Events from the others since last frame: [{ by, e, shooter, slot }].
   events() {
@@ -132,6 +146,13 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   setSetting(key, value) { return session?.role === 'host' ? session.setSetting(key, value) : false; },
   setMode(mode) { return session?.role === 'host' ? session.setMode(mode) : false; },
   startRound(mode) { return session?.role === 'host' ? session.startRound(mode) : false; },
+  // Why the host's last START was refused (a mode short of players, or too many).
+  startError() { return session?.role === 'host' ? session.startError : null; },
+  addRobot() { return session?.role === 'host' ? session.addRobot() : null; },
+  tuneRobot(id, setup) { return session?.role === 'host' ? session.tuneRobot(id, setup) : false; },
+  tuneAllRobots(setup) { return session?.role === 'host' ? session.tuneAllRobots(setup) : false; },
+  // Team modes: the side you want (everyone, in the lobby).
+  chooseTeam(team) { session?.chooseTeam(team); },
   endRound() { if (session?.role === 'host') session.endRound(); },
   scoreboard() { return session ? session.scoreboard() : []; },
   killerOf(myId) {

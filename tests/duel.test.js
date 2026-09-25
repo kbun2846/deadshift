@@ -9,10 +9,12 @@ import { readDuelChoices, DUEL_ROWS } from '../src/ui/duel-menu.js';
 
 const seeded = (seed = 7) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 
-test('1V1 choices survive the URL and bad values fall back', () => {
- const cfg = { botWeapon: 'shotgun', skill: 'expert', aim: 'sharper', temper: 'calm', firstTo: 10 };
+test('VS ROBOTS choices survive the URL and bad values fall back', () => {
+ const cfg = { ...DUEL_DEFAULTS, mode: '3v3', botWeapon: 'shotgun', skill: 'expert', aim: 'sharper', temper: 'calm', firstTo: 10, friendlyFire: 'off', allyWeapon: 'rifle', allySkill: 'rookie', allyAim: 'sloppier', allyTemper: 'aggressive' };
  assert.deepEqual(readDuel(duelParam(cfg)), cfg);
  assert.deepEqual(readDuel(duelParam({ ...cfg, botWeapon: null })), { ...cfg, botWeapon: null });
+ // The v132 dotted form is still read (as a 1V1).
+ assert.deepEqual(readDuel('shotgun.expert.sharper.calm.10'), { ...DUEL_DEFAULTS, botWeapon: 'shotgun', skill: 'expert', aim: 'sharper', temper: 'calm', firstTo: 10 });
  assert.deepEqual(readDuel('laser.godlike.x.y.7'), { ...DUEL_DEFAULTS });
  assert.equal(readDuel(null), null);
 });
@@ -24,11 +26,11 @@ test('first to N ends it once, endless never does', () => {
  const e = new DuelScore(0); for (let i = 0; i < 50; i++) e.point('robot'); assert.equal(e.winner, null);
 });
 
-test('skill runs rookie to expert, each better than the last', () => {
- assert.deepEqual(SKILL_LEVELS, ['rookie', 'easy', 'normal', 'hard', 'expert']);
+test('skill runs rookie to perfect, each better than the last', () => {
+ assert.deepEqual(SKILL_LEVELS, ['rookie', 'easy', 'normal', 'hard', 'expert', 'perfect']);
  for (let i = 1; i < SKILL_LEVELS.length; i++) {
   const a = SKILLS[SKILL_LEVELS[i - 1]], b = SKILLS[SKILL_LEVELS[i]];
-  assert.ok(b.aim < a.aim && b.miss < a.miss && b.reaction[0] < a.reaction[0] && b.tech > a.tech, SKILL_LEVELS[i]);
+  assert.ok(b.aim < a.aim && b.miss < a.miss && b.reaction[0] < a.reaction[0] && b.tech >= a.tech && b.turn > a.turn, SKILL_LEVELS[i]);
  }
  assert.ok(SKILLS.expert.miss > 0, 'nobody is a dead shot');
 });
@@ -82,5 +84,26 @@ test('the 1V1 page remembers sane choices only', () => {
  const bad = readDuelChoices(store('{"weapon":"x","skill":"god","firstTo":99,"aim":"??"}'));
  assert.equal(bad.skill, 'normal'); assert.equal(bad.firstTo, 5); assert.equal(bad.aim, 'even'); assert.equal(bad.botWeapon, null);
  assert.deepEqual(readDuelChoices(store('not json')).temper, 'shifting');
- for (const r of DUEL_ROWS) for (const [v] of r.choices) if (r.key !== 'firstTo') assert.ok(r.notes[v], r.key + ' ' + v + ' has a note');
+ for (const r of DUEL_ROWS) for (const [v] of r.choices) if (!['firstTo', 'spawn', 'friendlyFire'].includes(r.key)) assert.ok(r.notes[v], r.key + ' ' + v + ' has a note');
+ assert.ok(Object.values(DUEL_ROWS.find(r => r.key === 'skill').notes).every(n => n.split(/[ ,]+/).filter(Boolean).length === 2), 'two words a skill');
+});
+
+test('VS ROBOTS 2V2 / 3V3: your robots and theirs as asked, friendly fire at half, points for each side', () => {
+ const el = () => ({ hidden: false, className: '', innerHTML: '', textContent: '', classList: { add() {}, remove() {}, contains: () => true, toggle() {} }, setAttribute() {}, append() {}, querySelector: () => el(), focus() {} });
+ const previous = globalThis.document; globalThis.document = { createElement: el };
+ try {
+  for (const [mode, allies, enemies] of [['2v2', 1, 2], ['3v3', 2, 3]]) {
+   const map = maps.deadwater, sim = new Simulation(map), bots = new BotMatch(map, { createSim: m => new Simulation(m), random: seeded(4) });
+   const duel = createDuel(el(), { sim, bots, random: seeded(5) });
+   duel.begin({ mode, firstTo: 3, friendlyFire: 'on', botWeapon: 'shotgun', skill: 'hard', allyWeapon: 'rifle', allySkill: 'rookie', allyTemper: 'calm' });
+   const blue = bots.bots.filter(b => b.team === 'blue'), red = bots.bots.filter(b => b.team === 'red');
+   assert.equal(blue.length, allies); assert.equal(red.length, enemies);
+   assert.ok(blue.every(b => b.sim.weapon === 'rifle' && b.profile.skill === 'rookie' && b.profile.temper === 'calm'));
+   assert.ok(red.every(b => b.sim.weapon === 'shotgun' && b.profile.skill === 'hard'));
+   assert.equal(bots.friendlyFire, .5);
+   blue[0].alive = false; duel.frame(.016); assert.equal(duel.score.robot, 1, 'your robot down: their point');
+   red[0].alive = false; duel.frame(.016); assert.equal(duel.score.you, 1, 'an enemy down: yours');
+   duel.stop(); assert.equal(bots.friendlyFire, 0);
+  }
+ } finally { globalThis.document = previous; }
 });

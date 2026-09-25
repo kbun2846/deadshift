@@ -2,10 +2,10 @@ import { RIFLE, RIFLE_MUZZLE, RIFLE_CONVERGE, RULES, SURGE } from '../config/gam
 import { targetRadius } from '../target-radius.js';
 export { RIFLE, RIFLE_MUZZLE, RIFLE_CONVERGE };
 export const rifleDamage=distance=>RIFLE.damage-(RIFLE.damage-RIFLE.minDamage)*Math.max(0,Math.min(1,(distance-RIFLE.effectiveRange)/(RIFLE.falloffEnd-RIFLE.effectiveRange)));
-export function rifleSpread(distance,speed=0,aiming=false){
+export function rifleSpread(distance,speed=0,aiming=false,surging=false){
  // Angular error is independent of cursor depth. The HUD projects this cone
  // at the cursor; a close cursor cannot tighten shots that keep travelling.
- return (aiming?RIFLE.aimSpread:RIFLE.hipSpread)*(1+RIFLE.movingSpread*Math.min(1,speed/RULES.speed));
+ return (aiming?RIFLE.aimSpread:RIFLE.hipSpread)*(1+RIFLE.movingSpread*Math.min(1,speed/RULES.speed))*(surging?SURGE.spread:1);
 }
 export const rifleMuzzle=p=>({
  x:p.x+p.aimX*RIFLE_MUZZLE.forward-p.aimZ*RIFLE_MUZZLE.lateral,
@@ -18,7 +18,9 @@ export const rifleMuzzle=p=>({
 export function rifleAim(p,aimDistance){
  const reach=Math.max(Number.isFinite(aimDistance)?aimDistance:RIFLE_CONVERGE,RIFLE_CONVERGE);
  const {x,z}=rifleMuzzle(p);
- const targetX=p.x+p.aimX*reach,targetZ=p.z+p.aimZ*reach;
+ // Parallel to the facing from the muzzle: the aim already turns the body so
+ // this line meets the cursor (aim-damping.js muzzleBearing).
+ const targetX=x+p.aimX*reach,targetZ=z+p.aimZ*reach;
  const dx=targetX-x,dz=targetZ-z,range=Math.hypot(dx,dz)||1e-6;
  return {x,z,targetX,targetZ,range,angle:Math.atan2(dz,dx)};
 }
@@ -29,9 +31,9 @@ export function rifleShotError(sample){
  return Math.sign(sample)*Math.sqrt(Math.abs(sample));
 }
 // One shot's recoil: a random knock off line, larger as a burst builds.
-export function kickRifle(r,sample){
+export function kickRifle(r,sample,scale=1){
  r.kick=Math.min(1,(r.kick||0)+RIFLE.recoilBuild);
- r.sway=Math.max(-RIFLE.recoilMax,Math.min(RIFLE.recoilMax,(r.sway||0)+(sample*2-1)*RIFLE.recoilKick*(.5+r.kick)));
+ r.sway=Math.max(-RIFLE.recoilMax,Math.min(RIFLE.recoilMax,(r.sway||0)+(sample*2-1)*RIFLE.recoilKick*scale*(.5+r.kick)));
 }
 export function resetRifle(sim){sim.rifle={ammo:RIFLE.magazine,capacity:RIFLE.magazine,reloadCapacity:RIFLE.magazine,cooldown:0,reload:0,aiming:false,triggerHeld:false,burst:0,sway:0,kick:0};sim.magazines=[];sim.rifleBullets=[];}
 export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
@@ -81,7 +83,7 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
  if(!r.ammo){sim.events.push({type:'cock'});return;}
  if(!sim.dev.ammo&&!surging)r.ammo--;sim.stats.launched++;
  const distance=Math.hypot(p.aimPointX-p.x,p.aimPointZ-p.z);
- const spread=sim.dev.noSpread?0:rifleSpread(distance,Math.hypot(p.vx,p.vz),r.aiming);
+ const spread=sim.dev.noSpread?0:rifleSpread(distance,Math.hypot(p.vx,p.vz),r.aiming,surging);
  // The barrel is laid on the convergence point rather than run parallel to the
  // player. Fired parallel, every bullet passed a fixed offset to one side of
  // the crosshair no matter how tight the spread was — which is what made even
@@ -91,7 +93,7 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
  // The cone is where the last shots knocked it (the HUD draws it there too),
  // then this shot kicks it again, from the hip only.
  const angle=aim.angle+(r.sway||0)+rifleShotError(Math.random()-Math.random())*spread;
- if(!r.aiming&&!sim.dev.noRecoil)kickRifle(r,Math.random());
+ if(!r.aiming&&!sim.dev.noRecoil)kickRifle(r,Math.random(),surging?SURGE.spread:1);
  const dx=Math.cos(angle),dz=Math.sin(angle);
  // Include the player-to-muzzle segment so the barrel cannot shoot through cover.
  const blocked=sim.colliders.some(b=>!b.playerOnly&&segmentBox(p.x,p.z,x,z,b)!==null);

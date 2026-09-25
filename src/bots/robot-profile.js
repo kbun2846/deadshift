@@ -28,10 +28,13 @@ export const SKILLS = Object.freeze({
  normal: { label: 'normal', reaction: [.2, .34],  aim: 1.15, settle: .4,  turn: 11, lead: .88, dodge: .45, trigger: 1.05, burst: 1,  shake: .55, miss: .15, tech: .6 },
  hard:   { label: 'hard',   reaction: [.12, .2],  aim: .6,   settle: .26, turn: 15, lead: .97, dodge: .7,  trigger: .8,  burst: .75, shake: .17, miss: .05, tech: .95 },
  expert: { label: 'expert', reaction: [.1, .15],  aim: .45,  settle: .2,  turn: 18, lead: 1,   dodge: .85, trigger: .7,  burst: .65, shake: .1,  miss: .03, tech: 1 },
+ // Perfect (owner, v0.9b): the hands maxed, nearly unbeatable. Same guns,
+ // same health: only reaction, aim, tracking, dodging and knowing the game.
+ perfect: { label: 'perfect', reaction: [.05, .07], aim: .1,   settle: .08, turn: 34, lead: 1,   dodge: 1,   trigger: .45, burst: .5,  shake: .02, miss: 0,   tech: 1 },
 });
 // The menus' order, weakest first (1V1, dev tools). Random picks only from
 // easy / normal / hard.
-export const SKILL_LEVELS = Object.freeze(['rookie', 'easy', 'normal', 'hard', 'expert']);
+export const SKILL_LEVELS = Object.freeze(['rookie', 'easy', 'normal', 'hard', 'expert', 'perfect']);
 
 // range: scales the weapon's range band (below 1 = closer). aggr: 0 timid to
 // 1 reckless. strafe: how wide it weaves; strafeTime: how long between side

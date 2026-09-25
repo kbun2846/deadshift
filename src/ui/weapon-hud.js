@@ -1,5 +1,6 @@
 // Shared presentation contract: name, accent, capacity, ammo, status, and controls.
 import { RIFLE } from '../weapons/rifle.js';
+import { scatterPrimeLeft } from '../weapons/scatter.js';
 import { WEAPONS } from '../items.js';
 import { SHOTGUN, shotgunReloadRounds } from '../weapons/shotgun.js';
 import { setText, setStyle, setAttr } from './dom-writes.js';
@@ -45,7 +46,7 @@ export function createWeaponHUD(root){
   const mark=!rifle&&!shotgun?deployed+RULES.hexCost:0;
   setAttr(ammo,'data-hex',mark?(available>=RULES.hexCost?'ready':'short'):'');
   setText(countEl,`${available} / ${capacity}`);
-  setText(status,shotgun?(sim.shotgun.reload?`RELOADING · ${sim.shotgun.reload.toFixed(1)}s`:sim.scatter?.armed?(touch?'BLAST READY · TAP IT AGAIN':'BLAST READY · X TO FIRE'):sim.shotgun.ammo<=0?'EMPTY / RELOAD':sim.shotgun.aiming?'FOCUSED':'READY'):rifle?(sim.rifle.reload>0?`RELOADING · ${sim.rifle.reload.toFixed(1)}s`:available===0?'EMPTY · RELOAD':sim.rifle.aiming?'FOCUSED':'READY'):(deployed?`${deployed} DEPLOYED`:available<config.capacity?'RECHARGING':'READY'));
+  setText(status,shotgun?(sim.shotgun.reload?`RELOADING · ${sim.shotgun.reload.toFixed(1)}s`:sim.scatter?.armed?(scatterPrimeLeft(sim)>0?`BLAST CHARGING · ${scatterPrimeLeft(sim).toFixed(1)}s`:touch?'BLAST READY · TAP IT AGAIN':'BLAST READY · X TO FIRE'):sim.shotgun.ammo<=0?'EMPTY / RELOAD':sim.shotgun.aiming?'FOCUSED':'READY'):rifle?(sim.rifle.reload>0?`RELOADING · ${sim.rifle.reload.toFixed(1)}s`:available===0?'EMPTY · RELOAD':sim.rifle.aiming?'FOCUSED':'READY'):(deployed?`${deployed} DEPLOYED`:available<config.capacity?'RECHARGING':'READY'));
   for(let i=0;i<ammo.children.length;i++){const pip=ammo.children[i];
    const kind=i<deployed?'filled':i<deployed+available?'available':'spent';
    const fill=shotgun||rifle?(reloading?Math.max(0,Math.min(1,rounds-i))*100:0):(i===deployed+available?sim.rechargeProgress/sim.rechargeInterval*100:0);

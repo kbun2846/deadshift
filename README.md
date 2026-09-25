@@ -1,13 +1,26 @@
-deadshift alpha v0.9 is a minimalist top down shooter with distinct weapons and explosive combat, playable in the browser on mobile or pc
+deadshift alpha v0.92 is a minimalist top down shooter with distinct weapons and explosive combat, playable in the browser on mobile or pc
 
 - three distinct weapons: static, nominal and ballast
-- online multiplayer for up to 4 players: host a game, share the room code, and play rounds from a lobby
+- online multiplayer for up to 6 players, with robots: host a game, share the room code, and play rounds from a lobby
   - free-for-all with a round clock and kill limit, or practice with targets where nothing counts
   - host settings: spawns, round length, kill limit, health, respawn wait
   - weapon pick at the start of each round, pings, kill feed and scoreboard
-- weapon tutorials, solo practice and 1v1 against a robot
+- weapon tutorials, solo practice and solo matches against robots
 - built for multiple maps, with more to come; the alpha is tested on deadwater outpost, a desert town with enterable buildings, destructible props and a crop field that burns
 - touch controls with an editable layout, five graphics presets
+
+## what's new in v0.92
+
+- solo (was 1v1): 1v1, 2v2 or 3v3 against robots, with your own robot teammates; set the enemy and your robots separately
+- every multiplayer mode works: 1v1, 2v2, 2v2v2, 3v3 and ffa, with robots filling empty seats; pick your side in the lobby
+- tune each robot in the lobby (weapon, skill, aim, temper) or apply one setup to all
+- sides wear their colour (amber, cyan, violet) on hats and rings; friendly fire on for half damage
+- robots play as squads: some stay with you, some help teammates, some roam; enemies split up or group
+- new robot skill: perfect
+- scattered spawns, or spawn with your team
+- ballast: the cone fades out to its full reach; the blast charges for 3 s, lands scattered and burns crops
+- static: volleys land where you aim, the hex shelters teammates from outside fire; nova is faster and tougher
+- weapon and map dropdowns, menus fit phones, aim through the muzzle, change weapon after a death
 
 ## what's new in v0.9
 

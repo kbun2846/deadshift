@@ -43,8 +43,8 @@ export function robotOptionRows(container, keys, { soon = true } = {}) {
  return container;
 }
 
-// The lobby's empty slots: "empty · ADD ROBOT" rows under the players (the
-// button does nothing yet).
+// The lobby's empty seats: "empty seat · + ROBOT" rows under the players
+// (the host's + ROBOT adds one: net/arena-robots.js).
 export function emptySlotRows(count, canAdd) {
- return Array.from({ length: Math.max(0, count) }, () => `<li class="lobby-player lobby-empty"><span class="lobby-empty-dot" aria-hidden="true"></span><span class="lobby-name">empty slot</span>${canAdd ? '<button type="button" class="secondary plain-text lobby-add-robot" title="Robots in rooms are coming soon">+ ROBOT <span class="soon-tag">soon</span></button>' : ''}</li>`).join('');
+ return Array.from({ length: Math.max(0, count) }, () => `<li class="lobby-player lobby-empty"><span class="lobby-empty-dot" aria-hidden="true"></span><span class="lobby-name">empty seat</span>${canAdd ? '<button type="button" class="secondary plain-text lobby-add-robot" title="Add a robot to this room">+ ROBOT</button>' : ''}</li>`).join('');
 }

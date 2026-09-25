@@ -181,6 +181,8 @@ export class ClientSession {
 
  // The weapon pick: picked (go false) or picked and in (go true).
  choose(weapon, go = true) { this.transport.send('host', { t: 'choose', weapon, go }); }
+ // Team modes: the side you want (the host's lobby decides if there is room).
+ chooseTeam(team) { this.transport.send('host', { t: 'team', team }); }
  pickAgain() { this.transport.send('host', { t: 'pick' }); }
  respawnNow() { this.transport.send('host', { t: 'respawn' }); }
 
@@ -194,7 +196,7 @@ export class ClientSession {
  match() { return this.matchState || { phase: 'playing', left: 0, number: 1, results: null }; }
 
  // Everyone's shots, to draw (see projectiles.js).
- foreignProjectiles() { return this.projectiles.lists(this.now()); }
+ foreignProjectiles(isEnemy = null) { return this.projectiles.lists(this.now(), isEnemy); }
 
  // Other players, placed where they were `interpolationDelay` seconds ago.
  others() {
@@ -207,7 +209,7 @@ export class ClientSession {
    if (a.id === this.id || !a.present || a.dead) continue;
    const b = after?.players.find(p => p.id === a.id);
    const alpha = b ? Math.min(1, Math.max(0, (tick - before.tick) / (after.tick - before.tick))) : 1;
-   list.push({ ...blend(a.id, this.names.get(a.id) || '', a, b || a, alpha), weapon: a.weapon, slot: a.slot });
+   list.push({ ...blend(a.id, this.names.get(a.id) || a.name || '', a, b || a, alpha), weapon: a.weapon, slot: a.slot, team: a.team, robot: !!a.robot, hp: a.hp, maxHp: a.maxHp });
   }
   return list;
  }

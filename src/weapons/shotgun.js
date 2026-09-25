@@ -5,7 +5,7 @@ export { SHOTGUN };
 // both. The range and the pellets' fall-off are the same for every shot.
 export const shotgunDamage=(firstShell=false)=>SHOTGUN.shellDamage+(firstShell?SHOTGUN.firstShellBonus:0);
 export function shotgunPelletContact(b,target){
- if(b.travel>b.range*.15)return 1;
+ if(b.travel>SHOTGUN.range*.15)return 1;
  // Up close pellets mix full and glancing contacts, so a centred double is
  // usually a little short of the full 600, and perfect ones stay rare.
  const contact=b.contactSample<.8?1:.55;
@@ -13,14 +13,18 @@ export function shotgunPelletContact(b,target){
  const offCenter=Math.abs((target.x-b.x)*b.dz-(target.z-b.z)*b.dx);
  return contact*(offCenter<=radius*.55?1:.55);
 }
-// Pellet power by how far it has flown (0-1 of the range): full near the
-// muzzle, gentler than before through the middle (owner: mid-range hits
-// should count), then tailing off.
-export function shotgunFalloff(distance,range){
- const depth=Math.max(0,Math.min(1,distance/range));
- if(depth<=.15)return 1;
- if(depth<=.6)return 1-(depth-.15)/.45*.25;
- return .75-(depth-.6)/.4*.5;
+// Pellet power by how far it has flown (owner, v140): in the red part of
+// the cone (SHOTGUN.range) full up close, a fifth at its edge (EDGE);
+// past it, fading with the drawn red to END (about 10 on a hit) at
+// range + fade, and nothing beyond.
+export const SHOTGUN_EDGE=.2,SHOTGUN_END=.14;
+export const shotgunReach=()=>SHOTGUN.range+SHOTGUN.fade;
+export function shotgunFalloff(distance,range=SHOTGUN.range,fade=SHOTGUN.fade){
+ const depth=Math.max(0,distance/range);
+ if(depth<=.25)return 1;
+ if(depth<=1)return 1-(depth-.25)/.75*(1-SHOTGUN_EDGE);
+ const t=(distance-range)/fade;
+ return t>=1?0:SHOTGUN_EDGE+(SHOTGUN_END-SHOTGUN_EDGE)*t;
 }
 export const shotgunSpread=aiming=>aiming?SHOTGUN.aimSpread:SHOTGUN.spread;
 export const shotgunReloadRounds=remaining=>SHOTGUN.shells*Math.max(0,Math.min(1,((1-remaining/SHOTGUN.reload)-.3)/.7));
@@ -42,7 +46,8 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
   for(const t of sim.targets){if(t.hp<=0)continue;const f=segmentCircle(b.x,b.z,ex,ez,t.x,t.z,targetRadius(t));if(f!==null&&f<first){first=f;target=t;prop=null;blocked=true;}}
   b.x+=(ex-b.x)*first;b.z+=(ez-b.z)*first;b.travel+=travel*first;
   if(blocked){
-   const damage=b.damage*shotgunFalloff(b.travel,b.range);
+   // Aimed in, point blank (owner, v142): about 20 more a shell.
+   const damage=b.damage*shotgunFalloff(b.travel)*(b.aimed&&b.travel<=SHOTGUN.range*.25?SHOTGUN.aimClose:1);
    if(target){const contact=shotgunPelletContact(b,target);if(contact>0){const key=b.volley+':'+target.id,hit=hits.get(key)||{target,damage:0,vx:b.forwardX,vz:b.forwardZ,volley:b.volley};hit.damage+=damage*contact;hits.set(key,hit);}}
    else if(prop)sim.hitProp(prop,{damage,owner:p.id,volley:b.volley,x:b.x,z:b.z,vx:b.dx,vz:b.dz});
    sim.events.push({type:'rifleImpact',x:b.x,z:b.z});b.dead=true;
@@ -62,12 +67,12 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
   if(s.ammo<=0)return;
   const shellDamage=shotgunDamage(s.ammo===SHOTGUN.shells);
   s.ammo--;s.spent++;sim.stats.launched++;s.cooldown=sim.dev.shotgunRapid?0:SHOTGUN.interval;
-  const volley=++sim.volley,range=SHOTGUN.range,spread=shotgunSpread(s.aiming);
+  const volley=++sim.volley,range=shotgunReach(),spread=shotgunSpread(s.aiming);
   const x=p.x+p.aimX*.96-p.aimZ*.20,z=p.z+p.aimZ*.96+p.aimX*.20;
   const blocked=sim.colliders.some(c=>!c.playerOnly&&segmentBox(p.x,p.z,x,z,c)!==null);
   for(let i=0;i<SHOTGUN.pellets;i++){
    const angle=Math.atan2(p.aimZ,p.aimX)+((i+Math.random())/SHOTGUN.pellets*2-1)*spread;
-   sim.shotgunPellets.push({x:blocked?p.x:x,z:blocked?p.z:z,dx:Math.cos(angle),dz:Math.sin(angle),forwardX:p.aimX,forwardZ:p.aimZ,travel:0,range,damage:shellDamage/SHOTGUN.pellets,damageType:'ballast',contactSample:Math.random(),volley});
+   sim.shotgunPellets.push({x:blocked?p.x:x,z:blocked?p.z:z,dx:Math.cos(angle),dz:Math.sin(angle),forwardX:p.aimX,forwardZ:p.aimZ,travel:0,range,damage:shellDamage/SHOTGUN.pellets,damageType:'ballast',contactSample:Math.random(),volley,aimed:!!s.aiming});
   }
   const kick=sim.dev.noKnockback?0:SHOTGUN.recoil*recoilScale;p.blastVX=-p.aimX*kick*SHOTGUN.launchScale;p.blastVZ=-p.aimZ*kick*SHOTGUN.launchScale;p.ballastLaunch=true;
   // `charge`: how big the flash, smoke, sound and shake are (one size now).

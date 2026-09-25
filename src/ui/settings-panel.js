@@ -35,6 +35,7 @@ export function installSettingsPanel(settings, hooks) {
   settings.controlHints = byId('control-hints').checked;
   settings.aimAssist = byId('aim-assist').checked;
   settings.fullscreen = byId('fullscreen-play').checked;
+  settings.keyLock = byId('key-lock').checked;
   settings.vibration = byId('vibration').checked;
   settings.mobileOpacity = Number(byId('mobile-opacity').value);
   document.body.style.setProperty('--mobile-opacity', settings.mobileOpacity);
@@ -56,9 +57,10 @@ export function installSettingsPanel(settings, hooks) {
  byId('control-hints').checked = settings.controlHints;
  byId('aim-assist').checked = settings.aimAssist;
  byId('fullscreen-play').checked = settings.fullscreen;
+ byId('key-lock').checked = settings.keyLock;
  byId('vibration').checked = settings.vibration;
  byId('mobile-opacity').value = String(settings.mobileOpacity);
- for (const id of ['graphics-preset', 'fps-limit', 'control-hints', 'mobile-opacity', 'aim-assist', 'fullscreen-play', 'vibration']) byId(id).addEventListener('change', applySettings);
+ for (const id of ['graphics-preset', 'fps-limit', 'control-hints', 'mobile-opacity', 'aim-assist', 'fullscreen-play', 'key-lock', 'vibration']) byId(id).addEventListener('change', applySettings);
  // The slider needs to read live while dragged, not only on release.
  byId('fps-limit').addEventListener('input', applySettings);
  for (const channel of VOLUME_CHANNELS) {

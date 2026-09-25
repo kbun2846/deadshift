@@ -14,7 +14,7 @@ import { assistAim, clearAssist } from './aim-assist.js';
 import { AIM_ASSIST } from './config/gameplay.js';
 const AIM_ASSIST_RANGE = Math.max(...Object.values(AIM_ASSIST).map(l => l.maxRange));
 // Tunable numbers live in config/gameplay.js; re-exported so existing imports keep working.
-import { RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, VOLLEY_BOOST, MOUSE_VOLLEY_ASSIST, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_ZAP_BONUS, HEX_DAMAGE_MULTIPLIER, boostedHexDamage } from './config/gameplay.js';
+import { ORB_LAUNCH, RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, VOLLEY_BOOST, MOUSE_VOLLEY_ASSIST, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_ZAP_BONUS, HEX_DAMAGE_MULTIPLIER, boostedHexDamage } from './config/gameplay.js';
 import { usesTrigger } from './items.js';
 
 // Each trigger weapon's own tick (fire, reload, its extras). Static's orbs,
@@ -29,11 +29,11 @@ export const damagePerOrb = count => {
  // Above three orbs, budget direct impact + the central blast together.
  return n<=3?Math.round(8+16*((n-1)/11)**1.5)*ORB_DAMAGE_MULTIPLIER:(ORB_VOLLEY_TOTALS[n]-explosionFor(n).damage)/n;
 };
-export const launchDistance = time => 38*time-2.4*(1-Math.exp(-time/.12));
+export const launchDistance = time => ORB_LAUNCH.top*time-(ORB_LAUNCH.top-ORB_LAUNCH.start)*ORB_LAUNCH.ramp*(1-Math.exp(-time/ORB_LAUNCH.ramp));
 export function launchDuration(distance) {
-  let low=0,high=distance/18+.18;
+  let low=0,high=distance/ORB_LAUNCH.start+.18;
   for(let i=0;i<28;i++){const mid=(low+high)/2;if(launchDistance(mid)<distance)low=mid;else high=mid;}
-  return Math.max(.18,high);
+  return Math.max(.08,high);
 }
 // Preserve the original range rounding, then apply the volley buff exactly.
 export const rangedOrbDamage = (base,distance,multiplier=ORB_DAMAGE_MULTIPLIER) => multiplier===0?base:Math.round(base/multiplier*(1+.2*Math.max(0,Math.min(1,(distance-6)/18))))*multiplier;
@@ -109,6 +109,15 @@ export function segmentCircle(ax, az, bx, bz, cx, cz, radius) {
   if (disc < 0) return null;
   const t = (-b - Math.sqrt(disc)) / (2 * a);
   return t >= 0 && t <= 1 ? t : null;
+}
+
+// Is (x, z) inside a hex shield (Simulation.hexShield)? Six sides, or round
+// while it spins after the pulse.
+export function insideShield(sh, x, z) {
+  const dx = x - sh.x, dz = z - sh.z;
+  if (sh.round) return Math.hypot(dx, dz) <= sh.limit / Math.cos(Math.PI / 6);
+  for (let i = 0; i < 6; i++) { const a = (i + .5) * Math.PI / 3 + sh.rotation; if (dx * Math.cos(a) + dz * Math.sin(a) > sh.limit + 1e-7) return false; }
+  return true;
 }
 
 export class Simulation {
@@ -208,7 +217,7 @@ export class Simulation {
   // player can see (the cheap range check first; sight rays are the cost).
   assistTargets() {
     const p = this.player, reach = AIM_ASSIST_RANGE;
-    return this.targets.filter(t => !(t.hp !== undefined && t.hp <= 0) && Math.hypot(t.x - p.x, t.z - p.z) <= reach && this.canSeeTarget(t.x, t.z));
+    return this.targets.filter(t => !t.friendly && !(t.hp !== undefined && t.hp <= 0) && Math.hypot(t.x - p.x, t.z - p.z) <= reach && this.canSeeTarget(t.x, t.z));
   }
 
   // Can the player actually see something standing at (x, z)? Not if it is
@@ -391,7 +400,7 @@ export class Simulation {
       if(s.launched && s.launchX!==undefined){
         const t=Math.min(s.age,s.travelDuration),progress=Math.min(1,launchDistance(t)/launchDistance(s.travelDuration));
         nx=s.launchX+(s.targetX-s.launchX)*progress;nz=s.launchZ+(s.targetZ-s.launchZ)*progress;
-        const speed=(38-20*Math.exp(-t/.12))/launchDistance(s.travelDuration);
+        const speed=(ORB_LAUNCH.top-(ORB_LAUNCH.top-ORB_LAUNCH.start)*Math.exp(-t/ORB_LAUNCH.ramp))/launchDistance(s.travelDuration);
         s.vx=(s.targetX-s.launchX)*speed;s.vz=(s.targetZ-s.launchZ)*speed;
       }
       let first = 2, target = null, prop = null, aimedTarget = false;
@@ -414,7 +423,7 @@ export class Simulation {
         if (t !== null && t < first) { first = t; target = null; prop = this.props.find(p => p.id === box.propId) || null; }
       }
       for (const candidate of this.targets) {
-        if (candidate.hp <= 0) continue;
+        if (candidate.hp <= 0 || candidate.friendly) continue;
         // Intent is measured against the aim point, not the overshot one.
         const aimedInside = s.launched && Math.hypot(s.focusX - candidate.x, s.focusZ - candidate.z) <= .66;
         if (aimedInside && s.age + 1e-8 < s.travelDuration) continue;
@@ -439,12 +448,12 @@ export class Simulation {
       if (spent !== null) {
         s.x += (nx - s.x) * spent; s.z += (nz - s.z) * spent;
         s.dead = true;
-        this.events.push({ type: 'impactMark', x: s.x, z: s.z, vx: s.vx, vz: s.vz });
+        this.events.push({ type: 'impactMark', x: s.x, z: s.z, vx: s.vx, vz: s.vz, fromX: s.launchX, fromZ: s.launchZ });
       } else if (first <= 1) {
         s.x += (nx - s.x) * first; s.z += (nz - s.z) * first;
         if (s.launched) s.damage = aimedTarget ? this.orbVolleyDamage(s) : s.strayDamage;
         s.dead = true;
-        if (s.launched) this.events.push({ type: 'impactMark', x: s.x, z: s.z, vx: s.vx, vz: s.vz });
+        if (s.launched) this.events.push({ type: 'impactMark', x: s.x, z: s.z, vx: s.vx, vz: s.vz, fromX: s.launchX, fromZ: s.launchZ });
         if (target && s.launched) this.hit(target, s);
         else if (prop && prop.health !== null && s.launched) this.hitProp(prop, s);
         else this.events.push({ type: 'wall', x: s.x, z: s.z, launched: s.launched });
@@ -455,7 +464,7 @@ export class Simulation {
           this.events.push({type:'impactMark',x:s.x,z:s.z,vx:s.vx,vz:s.vz});
           this.events.push({type:'wall',x:s.x,z:s.z,launched:true});
         }
-        this.events.push({ type: 'pointImpact', x: s.x, z: s.z });
+        this.events.push({ type: 'pointImpact', x: s.x, z: s.z, fromX: s.launchX, fromZ: s.launchZ });
       }
       if (!s.launched && s.age > RULES.seedLife && !this.dev.orbs) s.dead = true;
       if (Math.abs(s.x) > this.map.width / 2 || Math.abs(s.z) > this.map.depth / 2) s.dead = true;
@@ -588,7 +597,27 @@ export class Simulation {
     const orb = this.hexOrbs[0];
     if (!orb) return null;
     // Keep the original six-sided footprint even when individual vertices fizzle.
-    return { x: orb.originX, z: orb.originZ, rotation: -orb.age*Math.PI*2, limit: Math.max(0, orb.age * RULES.hexSpeed * Math.cos(Math.PI / 6) - RULES.radius) };
+    return { x: orb.originX, z: orb.originZ, rotation: -orb.age*Math.PI*2, limit: Math.max(0, Math.min(orb.age * RULES.hexSpeed, RULES.hexRange) * Math.cos(Math.PI / 6) - RULES.radius) };
+  }
+
+  // The hex as a shield (owner, v0.9b): anyone inside a deployed hex (still
+  // spreading, holding at its edge, or spinning after the pulse) takes no
+  // damage from anything that comes from outside it. `shields` is every
+  // hex in the game (the arena / BotMatch / main.js hand it to each sim);
+  // hexShield() is this sim's own, for that list.
+  hexShield() {
+    const b = this.hexBoundary();
+    if (b) return { ...b, limit: b.limit + RULES.radius, owner: this.player.id };
+    const spin = this.hexSpin; if (!spin) return null;
+    const r = Math.max(...spin.nodes.map(n => Math.hypot(n.x - spin.originX, n.z - spin.originZ)));
+    return { x: spin.originX, z: spin.originZ, rotation: 0, limit: r * Math.cos(Math.PI / 6), owner: this.player.id, round: true };
+  }
+  shieldedFrom(x, z) {
+    for (const sh of this.shields || []) {
+      if (!insideShield(sh, x, z)) continue;
+      if (!insideShield(sh, this.player.x, this.player.z)) return sh;
+    }
+    return null;
   }
 
   withinHex(x, z) {
@@ -679,7 +708,7 @@ export class Simulation {
       // within reach of the cursor pulls it.
       let best = null, bestD = MOUSE_VOLLEY_ASSIST.radius;
       for (const t of this.targets) {
-        if (t.hp <= 0) continue;
+        if (t.hp <= 0 || t.friendly) continue;
         const d = Math.hypot(t.x - x, t.z - z);
         if (d < bestD && this.canSeeTarget(t.x, t.z)) { bestD = d; best = t; }
       }
@@ -738,7 +767,9 @@ export class Simulation {
         if (candidate.hp <= 0) continue;
         const toX = candidate.x - p.x, toZ = candidate.z - p.z;
         const along = toX * dirX + toZ * dirZ;
-        if (along <= 0 || along >= aimDistance) continue;
+        // Only a target just short of the cursor (owner: the volley lands where
+        // the cursor is, the refocus only catches one standing right there).
+        if (along <= 0 || along >= aimDistance || along < aimDistance - RULES.interceptReach) continue;
         if (Math.abs(toX * dirZ - toZ * dirX) > RULES.interceptCorridor) continue;
         if (this.colliders.some(b => !b.playerOnly && !b.destructible && segmentBox(p.x, p.z, candidate.x, candidate.z, b) !== null)) continue;
         let earliest = Infinity, crossing = 0;
@@ -991,13 +1022,14 @@ export class Simulation {
     this.stepHexSpin(dt);
     for (const orb of this.hexOrbs) {
       orb.age += dt;
-      const angle=orb.index*Math.PI/3-orb.age*Math.PI*2,radius=orb.age*RULES.hexSpeed;
+      const angle=orb.index*Math.PI/3-orb.age*Math.PI*2,radius=Math.min(orb.age*RULES.hexSpeed,RULES.hexRange);
       const x = orb.originX+Math.cos(angle)*radius, z = orb.originZ+Math.sin(angle)*radius;
       orb.vx=(x-orb.x)/dt;orb.vz=(z-orb.z)/dt;
       for(const prop of this.breakablePropsAlong(orb.x,orb.z,x,z,.3))
         this.hitProp(prop,{electric:true,damage:prop.hp,x:prop.x,z:prop.z,vx:orb.vx,vz:orb.vz});
       orb.x = x; orb.z = z;
-      if (Math.hypot(x - orb.originX, z - orb.originZ) >= RULES.hexRange || Math.abs(x) > this.map.width / 2 || Math.abs(z) > this.map.depth / 2) {
+      // At full size it holds, still turning, for hexLinger, then fades.
+      if (orb.age >= RULES.hexRange / RULES.hexSpeed + RULES.hexLinger || Math.abs(x) > this.map.width / 2 || Math.abs(z) > this.map.depth / 2) {
         orb.dead = true; this.events.push({ type: 'hexFizzle', x, z });
       }
     }
@@ -1020,7 +1052,7 @@ export class Simulation {
     const orb = this.hexOrbs[0]; if (!orb) return;
     const radius = Math.hypot(orb.x - orb.originX, orb.z - orb.originZ);
     for (const victim of victims) {
-      if (victim.hp <= 0 || victim.id === this.player.id || (victim.team !== undefined && victim.team === this.player.team)) continue;
+      if (victim.hp <= 0 || victim.id === this.player.id || (victim.team && victim.team !== 'ffa' && victim.team === this.player.team)) continue;
       let dx = victim.x - orb.originX, dz = victim.z - orb.originZ;
       const distance = Math.hypot(dx, dz);
       if (distance > 1e-6) { dx /= distance; dz /= distance; } else { dx = 1; dz = 0; }
@@ -1047,6 +1079,11 @@ export class Simulation {
 
   hit(target, shot) {
     if (target.hp <= 0 || shot.owner === target.id) return;
+    // Inside someone's hex, and this came from outside it: nothing lands.
+    if (!shot.environmental && this.shields?.length && this.shieldedFrom(target.x, target.z)) { this.events.push({ type: 'hexBlock', x: target.x, z: target.z }); return; }
+    // A teammate (friendly fire on) takes only their share, here, so the
+    // numbers, the hit marker and any KILL match what really landed.
+    if (target.friendly && target.share !== undefined && target.share !== 1) shot = { ...shot, damage: shot.damage * target.share };
     // Dev one-hit kills: any hit that isn't the world's own (fire) finishes it.
     // Dev damage dealt (a multiplier) and one-hit kills: never the world's own (fire).
     if (this.dev.damageOut && this.dev.damageOut !== 1 && !shot.environmental) shot = { ...shot, damage: shot.damage * this.dev.damageOut };

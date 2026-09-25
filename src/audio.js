@@ -207,7 +207,7 @@ export class Soundscape {
   }
 
   // Sounds a weapon makes, as opposed to sounds the world makes.
-  static WEAPON_EVENTS = new Set(['shotgunShot','shotgunReload','shotgunReloaded','scatterArm','scatterFire','scatterSplit','scatterBurst',
+  static WEAPON_EVENTS = new Set(['shotgunShot','shotgunReload','shotgunReloaded','scatterArm','scatterPrimed','scatterFire','scatterSplit','scatterBurst',
     'rifleShot','rifleReload','cock','grenadeWindup','grenadeThrow',
     'sprayStart','sprayArc','hexDeploy','hexPulse','hexZap','hexFizzle','seed','launch','surgeCharge','surgeStart','surgeEnd']);
 
@@ -244,6 +244,7 @@ export class Soundscape {
     // Scatter (Ballast X): a rising click readied, a deep red boom, a crack as
     // each big shell splits, a small pop for each little explosion.
     if(e.type==='scatterArm'){this.tone(220,520,.12,.04,'square');this.tone(440,660,.08,.02,'sine');return;}
+    if(e.type==='scatterPrimed'){this.tone(330,880,.16,.05,'square');this.tone(660,990,.12,.03,'sine');return;}
     if(e.type==='scatterFire'){this.impact(.3,.28,900);this.tone(80,30,.4,.16,'triangle');this.tone(160,60,.25,.07,'sawtooth');return;}
     if(e.type==='scatterSplit'){this.impact(.05,.06,2600);return;}
     if(e.type==='scatterBurst'){const now=this.context?.currentTime??0;if(now-(this.lastBurst||-1)<.035)return;this.lastBurst=now;this.impact(.07+Math.random()*.03,.1,700+Math.random()*500);this.tone(120,50,.12,.035,'sine');return;}

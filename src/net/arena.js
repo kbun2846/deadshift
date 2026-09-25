@@ -35,7 +35,7 @@
 //  - 'results' (ffa): the standings for RESULTS seconds, then back to 'lobby'.
 // Nobody spawns inside the ground the weapon-pick camera shows (pick-view.js).
 // Nothing here touches the DOM, three.js or the network.
-import { interiorSpawns, pickSpawn } from './spawn-points.js';
+import { interiorSpawns, pickSpawn, openSpot } from './spawn-points.js';
 import { stepCrops } from '../crops.js';
 import { segmentBox } from '../simulation.js';
 import { RULES } from '../config/gameplay.js';
@@ -43,12 +43,15 @@ import { weaponOrDefault, WEAPONS } from '../items.js';
 import { mapColliders } from '../maps.js';
 import { pickArea, inPickArea } from '../render/pick-view.js';
 
-import { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS } from '../config/match.js';
-export { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS };
+import { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS, TEAMS, modeById, SPAWN_APART } from '../config/match.js';
+import { ArenaRobots, ROBOT_SETUP } from './arena-robots.js';
+export { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS, TEAMS };
 // Kept for older callers and tests: the defaults.
 export const MATCH = Object.freeze({ respawn: SETTINGS.respawn.default, health: SETTINGS.health.default, length: SETTINGS.roundLength.default, results: RESULTS });
 export const SPAWN_MODES = SETTINGS.spawnMode.values;
 export const SYPHON_SHARE = .5;
+// Friendly fire (owner, v0.9b): a teammate's shot does half.
+export const FRIENDLY_SHARE = .5;
 const IDLE = Object.freeze({ moveX: 0, moveZ: 0, aimX: 0, aimZ: 0 });
 const newStats = () => ({ kills: 0, deaths: 0, dealt: 0, taken: 0, time: 0, weaponTime: {} });
 
@@ -68,24 +71,64 @@ export class Arena {
   this.mode = 'ffa'; this.mapId = map.id; this.targets = [];
   this.phase = 'lobby'; this.clock = 0; this.resultsLeft = 0; this.results = null; this.matchNumber = 0;
   this.pendingEvents = [];
+  // Robot seats (arena-robots.js), each side's building this round, and why
+  // the last START was refused (for the host's screen).
+  this.robotSetup = { ...ROBOT_SETUP, skill: this.settings.robotSkill || ROBOT_SETUP.skill };
+  this.robots = new ArenaRobots(this); this.teamRooms = new Map(); this.startError = null; this.teamKills = new Map(); this.leaves = [];
  }
 
  // A player joins. `sim` is the host's own (main.js) sim for the host seat.
  // Mid-round they go straight to the weapon pick.
- addSeat(id, name, sim = null) {
+ // Mid-round, in a mode with a fixed number of seats: a robot filling a seat
+ // steps aside for them (they take its side); with no seat free they sit out
+ // on the bench until the next round.
+ addSeat(id, name, sim = null, { robot = false } = {}) {
   sim ||= this.createSim(this.map);
   sim.worldAuthority = false; sim.targets = []; sim.otherPlayers = []; sim.dev = { speed: 1 };
   sim.player.id = id; sim.player.hp = 0; sim.player.dead = true;
   const seat = { id, name, sim, present: false, dead: false, respawnIn: 0, life: 0, weapon: null, picking: null,
-   stats: newStats(), proxies: null, mark: 0 };
+   stats: newStats(), proxies: null, mark: 0, team: null, robot: null, bench: false };
   this.seats.set(id, seat);
-  if (this.phase === 'playing') this.startPick(seat);
+  if (this.phase === 'playing' && !robot) {
+   const entry = modeById(this.mode);
+   if (entry?.size && this.seats.size > entry.size) {
+    const stand = [...this.seats.values()].find(s => s.robot?.auto) || [...this.seats.values()].find(s => s.robot);
+    if (stand) { seat.team = stand.team; this.dropSeat(stand.id); } else seat.bench = true;
+   } else if (entry?.teams) seat.team = this.smallestTeam(entry);
+   if (!seat.bench) this.startPick(seat);
+  }
   return seat;
  }
 
- removeSeat(id) { this.seats.delete(id); }
+ // A player leaving mid-round in a fixed-size mode, with robots on fill: a
+ // robot takes their seat and side.
+ // A seat taken out by the rules (a robot stepping aside, spare robots): the
+ // host tells everyone (`leaves`, drained by HostSession).
+ dropSeat(id) { if (this.seats.delete(id)) this.leaves.push(id); }
 
- get counting() { return this.mode === 'ffa'; }
+ removeSeat(id) {
+  const seat = this.seats.get(id); this.seats.delete(id);
+  const entry = modeById(this.mode);
+  if (seat && !seat.robot && !seat.bench && this.phase === 'playing' && entry?.size) {
+   const bench = [...this.seats.values()].find(s => s.bench);
+   if (bench) { bench.bench = false; bench.team = seat.team; this.startPick(bench); }
+   else if (this.settings.robots === 'fill') { const bot = this.robots.add({ auto: true }); if (bot) bot.team = seat.team; }
+  }
+ }
+
+ // + ROBOT in the lobby (or the host's tools): a robot that stays until removed.
+ addRobot() { return this.seats.size < 6 ? this.robots.add() : null; }
+ removeRobot(id) { const seat = this.seats.get(id); if (!seat?.robot) return false; this.seats.delete(id); return true; }
+
+ // Every mode but practice keeps score.
+ get counting() { return this.mode !== 'practice'; }
+ get teamMode() { return !!modeById(this.mode)?.teams; }
+ // Whether a can hurt b: not themselves, and not a teammate.
+ hostile(a, b) { return a !== b && (!a.team || a.team !== b.team); }
+ smallestTeam(entry) {
+  const count = id => [...this.seats.values()].filter(s => s.team === id).length;
+  return TEAMS.slice(0, entry.teams).map(t => t.id).sort((x, y) => count(x) - count(y))[0];
+ }
 
  // --- Host controls (lobby) -------------------------------------------------
 
@@ -93,20 +136,64 @@ export class Arena {
   if (!SETTINGS[key] || !SETTINGS[key].values.includes(value)) return false;
   this.settings[key] = value;
   if (key === 'spawnMode') this.togetherRoom = null;
+  // Robot skill: every robot's (like APPLY TO ALL for the skill alone).
+  if (key === 'robotSkill') this.robots.tuneAll({ ...this.robotSetup, skill: value });
   return true;
  }
  setSpawnMode(mode) { return this.setSetting('spawnMode', mode); }
+
+ // Team modes (owner, v0.9b): each player picks a side in the lobby (full
+ // sides refuse more); null: no preference. Kept for the next rounds;
+ // startRound deals the rest.
+ chooseTeam(id, team) {
+  const seat = this.seats.get(id), entry = modeById(this.mode);
+  if (!seat || seat.robot || this.phase !== 'lobby') return false;
+  if (team === null) { seat.wantTeam = null; return true; }
+  if (!entry?.teams || !TEAMS.slice(0, entry.teams).some(t => t.id === team)) return false;
+  const taken = [...this.seats.values()].filter(s => s !== seat && !s.robot && s.wantTeam === team).length;
+  if (taken >= entry.per) return false;
+  seat.wantTeam = team; return true;
+ }
+ // Who wants which side, as the lobby shows it (only in team modes).
+ wantedTeam(seat) { const entry = modeById(this.mode); return entry?.teams && TEAMS.slice(0, entry.teams).some(t => t.id === seat.wantTeam) ? seat.wantTeam : null; }
  // The mode for the next round, chosen in the lobby (everyone sees it).
  setMode(mode) {
-  if (this.phase !== 'lobby' || !MODES.find(m => m.id === mode)?.ready) return false;
+  if (this.phase !== 'lobby' || !modeById(mode)?.ready) return false;
   this.mode = mode; return true;
  }
 
  // A round of `mode` from the lobby (or restarted mid-round): a fresh map and
  // scores, and everyone to the weapon pick.
+ //
+ // Seats: robots added to fill the last round go; with robots on "fill" the
+ // empty seats the mode needs (FFA: up to four) get new ones. A mode with a
+ // fixed number of seats refuses to start with too many players, or too few
+ // with robots off (`startError` says which). Sides are dealt round-robin,
+ // players first (host, then as they joined), then robots.
  startRound(mode = this.mode) {
-  const entry = MODES.find(m => m.id === mode);
+  const entry = modeById(mode);
   if (!entry?.ready) return false;
+  this.startError = null;
+  // Every check first, so a refused START (a mid-round restart included)
+  // leaves the seats as they were.
+  const humans = [...this.seats.values()].filter(s => !s.robot).length, kept = [...this.seats.values()].filter(s => !s.robot?.auto).length;
+  if (entry.size && humans > entry.size) { this.startError = entry.name + ' is for ' + entry.size + ' players'; return false; }
+  const fill = this.settings.robots === 'fill' && entry.fillTo ? Math.max(0, Math.min(6, entry.fillTo) - kept) : 0;
+  if (entry.size && Math.min(kept, entry.size) + fill < entry.size) { this.startError = entry.name + ' needs ' + entry.size + ' players: add robots, or set robots to fill'; return false; }
+  for (const seat of [...this.seats.values()]) if (seat.robot?.auto) this.dropSeat(seat.id);
+  if (entry.size) while (this.seats.size > entry.size) { const bot = [...this.seats.values()].reverse().find(s => s.robot); if (!bot) break; this.dropSeat(bot.id); }
+  if (this.settings.robots === 'fill' && entry.fillTo) while (this.seats.size < entry.fillTo && this.robots.add({ auto: true }));
+  if (entry.size && this.seats.size < entry.size) { this.startError = entry.name + ' needs ' + entry.size + ' players: add robots, or set robots to fill'; return false; }
+  // Sides: players who picked one first (while it has room), then the rest
+  // of the players, then robots, each to the side with the fewest.
+  for (const seat of this.seats.values()) { seat.team = null; seat.bench = false; }
+  if (entry.teams) {
+   const sides = TEAMS.slice(0, entry.teams).map(t => t.id), count = id => [...this.seats.values()].filter(s => s.team === id).length;
+   const people = [...this.seats.values()].filter(s => !s.robot), bots = [...this.seats.values()].filter(s => s.robot);
+   for (const seat of people) if (sides.includes(seat.wantTeam) && count(seat.wantTeam) < entry.per) seat.team = seat.wantTeam;
+   for (const seat of [...people, ...bots]) if (!seat.team) seat.team = [...sides].sort((a, b) => count(a) - count(b))[0];
+  }
+  this.teamRooms.clear(); this.teamKills = new Map();
   this.mode = mode;
   this.resetWorld();
   this.feed = []; this.pendingKills.clear(); this.togetherRoom = null;
@@ -120,7 +207,7 @@ export class Arena {
 
  // Back to the lobby: everyone out of the world, the targets put away.
  endRound() {
-  for (const seat of this.seats.values()) { this.out(seat); seat.picking = null; }
+  for (const seat of [...this.seats.values()]) { if (seat.robot?.auto) { this.seats.delete(seat.id); continue; } this.out(seat); seat.picking = null; seat.bench = false; }
   this.phase = 'lobby'; this.results = null; this.targets = [];
   this.pendingEvents.push({ type: 'roundEnd', number: this.matchNumber });
  }
@@ -145,7 +232,12 @@ export class Arena {
 
  // --- Players in and out of the world ----------------------------------------
 
- startPick(seat, keep = null) { seat.picking = { left: PICK.time, weapon: keep, go: false }; }
+ startPick(seat, keep = null) {
+  if (seat.bench) return;
+  // A robot picks at once: its setup's weapon, or one at random.
+  if (seat.robot) { seat.picking = { left: 0, weapon: seat.robot.setup?.weapon || WEAPONS[Math.floor(this.random() * WEAPONS.length)].id, go: true }; return; }
+  seat.picking = { left: PICK.time, weapon: keep, go: false };
+ }
 
  // A weapon picked (or changed) on the pick screen; `go` sends them in now.
  choose(id, weapon, go = true) {
@@ -202,10 +294,41 @@ export class Arena {
 
  spawn(seat) {
   const others = [...this.seats.values()].filter(s => s !== seat && s.present && !s.dead).map(s => s.sim.player);
-  // Together: everyone in one building (picked once per round), a body apart.
-  const together = this.settings.spawnMode === 'together' && this.rooms.length;
-  if (together) this.togetherRoom ||= this.rooms[Math.floor(this.random() * this.rooms.length)];
-  const at = pickSpawn(together ? [this.togetherRoom] : this.rooms, others, this.random, together ? 1.6 : 6) || this.map.spawn;
+  // Scattered (owner, v0.9b): nobody within SPAWN_APART (about a screen) of
+  // anyone else, in a room or failing that in the open. "With my team" (team
+  // modes): each side in its own building (picked per round, a different one
+  // each while there are enough), a body apart.
+  const withTeam = seat.team && this.settings.spawnMode === 'team' && this.rooms.length;
+  if (!withTeam) {
+   const at = pickSpawn(this.rooms, others, this.random, SPAWN_APART, true)
+    || this.openOutside(others)
+    || pickSpawn(this.rooms, others, this.random, 8) || this.map.spawn;
+   return this.enter(seat, at);
+  }
+  let rooms = this.rooms, gap = 6;
+  if (withTeam) {
+   if (!this.teamRooms.has(seat.team)) {
+    const used = new Set(this.teamRooms.values()), free = this.rooms.filter(r => !used.has(r));
+    const pool = free.length ? free : this.rooms;
+    this.teamRooms.set(seat.team, pool[Math.floor(this.random() * pool.length)]);
+   }
+   rooms = [this.teamRooms.get(seat.team)]; gap = 1.6;
+  }
+  const at = pickSpawn(rooms, others, this.random, gap) || pickSpawn(this.rooms, others, this.random, 1.6) || this.map.spawn;
+  this.enter(seat, at);
+ }
+
+ // An open spot a screen from everyone, never in the weapon-pick view's ground.
+ openOutside(others) {
+  for (let i = 0; i < 12; i++) {
+   const at = openSpot(this.map, this.world.colliders, { random: this.random, others, space: SPAWN_APART, tries: 200 });
+   if (!at) return null;
+   if (!inPickArea(this.noSpawn, at.x, at.z)) return at;
+  }
+  return null;
+ }
+
+ enter(seat, at) {
   seat.sim.weapon = seat.weapon || weaponOrDefault(null);
   seat.sim.respawn(at, seat.id);
   seat.sim.player.hp = seat.sim.player.maxHp = this.settings.health;
@@ -213,21 +336,42 @@ export class Arena {
   if (seat.id !== 'host') seat.sim.dev = { speed: 1 };
   this.handWorld(seat.sim);
   seat.present = true; seat.dead = false; seat.respawnIn = 0; seat.picking = null; seat.life++;
+  this.robots.spawned(seat);
  }
 
  living(except) { return [...this.seats.values()].filter(s => s !== except && s.present && !s.dead && s.sim.player.hp > 0); }
 
  handWorld(sim) { sim.props = this.world.props; sim.colliders = this.world.colliders; sim.crops = this.world.crops; }
 
+ // Living seats and every hex shield, once per tick (before() runs once per
+ // seat per tick; this was worked out again for each).
+ tickShared() {
+  if (this.shared?.time !== this.time) {
+   const living = this.living(null);
+   this.shared = { time: this.time, living, shields: living.map(s => s.sim.hexShield()).filter(Boolean) };
+  }
+  return this.shared;
+ }
+
  // Right before a seat's sim steps.
  before(seat) {
   const sim = seat.sim;
   this.handWorld(sim);
   seat.proxies = new Map();
-  const players = this.living(seat).map(other => {
+  // Every hex in the round shields whoever is inside it from outside fire
+  // (worked out once a tick, shared by every seat: `tickShared`).
+  const shared = this.tickShared();
+  sim.shields = shared.shields;
+  sim.player.team = seat.team;
+  const living = shared.living.filter(s => s !== seat && s.present && !s.dead && s.sim.player.hp > 0);
+  // The other sides; teammates too with friendly fire on (they take
+  // FRIENDLY_SHARE of it, arena transferDamage).
+  const ff = this.settings.friendlyFire === 'on';
+  const players = living.filter(other => this.hostile(seat, other) || ff).map(other => {
    const p = other.sim.player;
-   const proxy = { id: other.id, kind: 'player', x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false };
-   seat.proxies.set(other.id, { proxy, before: p.hp, seat: other });
+   const friend = !this.hostile(seat, other);
+   const proxy = { id: other.id, kind: other.robot ? 'robot' : 'player', team: other.team, friendly: friend, share: friend ? FRIENDLY_SHARE : 1, x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false };
+   seat.proxies.set(other.id, { proxy, before: p.hp, seat: other, x0: p.x, z0: p.z });
    return proxy;
   });
   // Practice targets: stand-ins too, so this sim never moves or revives them.
@@ -237,7 +381,7 @@ export class Arena {
    return proxy;
   });
   sim.targets = [...players, ...targets];
-  sim.otherPlayers = this.living(seat).map(o => ({ x: o.sim.player.x, z: o.sim.player.z, hp: o.sim.player.hp }));
+  sim.otherPlayers = living.map(o => ({ x: o.sim.player.x, z: o.sim.player.z, hp: o.sim.player.hp }));
   seat.mark = sim.events.length;
  }
 
@@ -254,14 +398,19 @@ export class Arena {
 
  transferDamage(attacker, proxies, events) {
   if (!proxies) return;
-  for (const { proxy, before, seat: victim, target } of proxies.values()) {
-   const lost = before - proxy.hp;
+  for (const { proxy, before, seat: victim, target, x0, z0 } of proxies.values()) {
+   let lost = before - proxy.hp;
+   // Pushed out of the attacker's hex: the real body moves too.
+   if (victim && x0 !== undefined && !victim.dead && (proxy.x !== x0 || proxy.z !== z0)) { const vp = victim.sim.player; vp.x += proxy.x - x0; vp.z += proxy.z - z0; }
    if (target) {
     target.flash = Math.max(target.flash || 0, proxy.flash || 0);
     if (lost > 0 && target.hp > 0) { target.hp = Math.max(0, target.hp - lost); if (target.hp <= 0) target.respawn = RULES.targetRespawn; }
     continue;
    }
    if (lost <= 0 || victim.dead) continue;
+   // A teammate's shot (friendly fire on): halved already in the attacker's
+   // sim (the proxy's `share`, Simulation.hit); never a kill to their name.
+   const friendly = !!attacker && attacker !== victim && !this.hostile(attacker, victim);
    const report = [...events].reverse().find(e => (e.type === 'kill' || e.type === 'hit') && e.id === victim.id) || {};
    const damageType = report.damageType || (report.electric ? 'electric' : 'gunshot');
    const impact = { x: report.directionX || 0, z: report.directionZ || 0 };
@@ -271,11 +420,11 @@ export class Arena {
    const dealt = victim.sim.damagePlayer(lost, owner, !attacker, false, impact.x || impact.z ? impact : null, attacker ? damageType : 'fire');
    if (this.counting) {
     victim.stats.taken += dealt;
-    if (attacker && attacker !== victim) attacker.stats.dealt += dealt;
+    if (attacker && attacker !== victim && !friendly) attacker.stats.dealt += dealt;
    }
    // One shot: from full health to dead in one hit (this tick's damage from
    // this attacker, or one volley the sim already calls a one-shot).
-   if (hpBefore > 0 && vp.hp <= 0) this.died(victim, attacker, attacker ? damageType : 'fire', !!attacker && (hpBefore >= vp.maxHp - 1e-6 || !!report.oneShot));
+   if (hpBefore > 0 && vp.hp <= 0) this.died(victim, friendly ? null : attacker, attacker ? damageType : 'fire', !friendly && !!attacker && (hpBefore >= vp.maxHp - 1e-6 || !!report.oneShot));
   }
  }
 
@@ -298,6 +447,9 @@ export class Arena {
   victim.stats.deaths++;
   if (killer && killer !== victim) {
    killer.stats.kills++;
+   // The side's tally lives on the round, not on the seats (a seat that
+   // leaves mid-round takes its kills with it otherwise).
+   if (killer.team) this.teamKills.set(killer.team, (this.teamKills.get(killer.team) || 0) + 1);
    this.syphon(killer);
    // Everyone this attacker killed in this tick is one kill-feed line.
    // One-shots get a line of their own ("X one shot Y").
@@ -331,7 +483,7 @@ export class Arena {
  matchState() {
   const left = this.phase === 'playing' ? (this.counting ? this.clock : 0) : this.phase === 'results' ? this.resultsLeft : 0;
   return { phase: this.phase, mode: this.mode, map: this.mapId, left: Math.max(0, Math.round(left * 10) / 10), number: this.matchNumber,
-   killLimit: this.counting ? this.settings.killLimit : 0, results: this.results };
+   killLimit: this.counting ? this.settings.killLimit : 0, results: this.results, teams: this.phase === 'playing' ? this.teamScores() : null };
  }
 
  // Once per tick, after every seat has stepped: the world, targets, respawns,
@@ -380,11 +532,16 @@ export class Arena {
   // few seconds (everyone stands still), then the lobby.
   if (this.phase === 'playing' && this.counting) {
    this.clock -= dt;
-   const leader = Math.max(0, ...[...this.seats.values()].map(s => s.stats.kills));
+   // Team modes: a side's kills together.
+   const teams = this.teamScores();
+   const leader = teams ? Math.max(0, ...teams.map(t => t.kills)) : Math.max(0, ...[...this.seats.values()].map(s => s.stats.kills));
    if (this.clock <= 0 || (this.settings.killLimit && leader >= this.settings.killLimit)) {
     const board = this.scoreboard();
     this.phase = 'results'; this.resultsLeft = RESULTS;
-    this.results = { winner: board[0] && board[0].kills > 0 ? { id: board[0].id, name: board[0].name, kills: board[0].kills } : null, board };
+    const topTeam = teams && teams[0].kills > 0 && (teams.length < 2 || teams[0].kills > teams[1].kills) ? teams[0] : null;
+    this.results = teams
+     ? { winner: topTeam ? { team: topTeam.id, name: topTeam.name + ' TEAM', kills: topTeam.kills } : null, board, teams, draw: !!teams[0]?.kills && !topTeam }
+     : { winner: board[0] && board[0].kills > 0 ? { id: board[0].id, name: board[0].name, kills: board[0].kills } : null, board };
     this.worldEvents.push({ type: 'matchEnd', number: this.matchNumber });
    }
   } else if (this.phase === 'results') {
@@ -394,12 +551,19 @@ export class Arena {
   return lines;
  }
 
+ // Team modes: each side's kills, best first (null otherwise).
+ teamScores() {
+  const entry = modeById(this.mode); if (!entry?.teams) return null;
+  return TEAMS.slice(0, entry.teams).map(t => ({ id: t.id, name: t.name, colour: t.colour,
+   kills: this.teamKills?.get(t.id) || 0 })).sort((a, b) => b.kills - a.kills);
+ }
+
  // Ranked by kills, then fewer deaths.
  scoreboard() {
   return [...this.seats.values()].map(s => {
    const used = Object.entries(s.stats.weaponTime).sort((a, b) => b[1] - a[1])[0]?.[0] || s.weapon || null;
    return { id: s.id, name: s.name, kills: s.stats.kills, deaths: s.stats.deaths, dealt: Math.round(s.stats.dealt), taken: Math.round(s.stats.taken),
-    time: Math.round(s.stats.time), weapon: used, present: s.present };
+    time: Math.round(s.stats.time), weapon: used, present: s.present, team: s.team, robot: !!s.robot };
   }).sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.name.localeCompare(b.name));
  }
 }

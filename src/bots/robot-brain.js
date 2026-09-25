@@ -39,6 +39,7 @@
 import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER } from '../config/gameplay.js';
 import { segmentBox } from '../simulation.js';
 import { makeProfile, stepMood } from './robot-profile.js';
+import { muzzleBearing, muzzleLateral } from '../aim-damping.js';
 
 const TAU = Math.PI * 2;
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -261,6 +262,9 @@ export class RobotBrain {
    if (score < bestScore) { bestScore = score; best = m; }
   }
   this.targetId = best ? best.id : null;
+  // Nothing to fight here: a teammate in a fight nearby (squad.js `rally`)
+  // is where to go (help them), unless an investigation is fresher.
+  if (!best && world.rally && !(this.investigate && this.time - this.investigate.at < 2)) this.investigate = { x: world.rally.x + (this.random() - .5) * 4, z: world.rally.z + (this.random() - .5) * 4, at: this.time };
   this.tactic(best && this.time - best.seen < 3 ? best : null, visibleCount);
   const style = this.band(), pf = this.pf;
   const hpShare = p.hp / (p.maxHp || RULES.playerHealth);
@@ -647,7 +651,8 @@ export class RobotBrain {
    tx = p.x + Math.cos(heading) * 6; tz = p.z + Math.sin(heading) * 6; this.aimPoint = null;
   }
   // A hand, not a snap: the turn is limited and eases in.
-  const want = Math.atan2(tz - p.z, tx - p.x);
+  // Like a player's mouse aim: the barrel's line through the point, not the body's.
+  const want = muzzleBearing(p.x, p.z, tx, tz, muzzleLateral(this.sim.weapon));
   if (this.aimAngle == null) this.aimAngle = Math.atan2(p.aimZ, p.aimX);
   const delta = wrap(want - this.aimAngle), max = (target?.visible ? this.pf.turn : this.pf.turn * .45) * dt;
   this.aimAngle = wrap(this.aimAngle + clamp(delta * Math.min(1, dt * 14), -max, max));
@@ -756,7 +761,7 @@ export class RobotBrain {
   // One press, one shell (no charging): aimed in past 4 m, fired inside the
   // range when on target, a tick's release between presses.
   input.aiming = visible && d > 4;
-  const press = shoot && d < SHOTGUN.range * .95 && !this.pressed;
+  const press = shoot && d < SHOTGUN.range * .8 && !this.pressed;   // v141: a fifth at the red's edge, so closer
   input.fire = press; this.pressed = press;
  }
 

@@ -57,6 +57,10 @@ body[data-controls=touch] #game #weapon .seed-pips i.hex-mark::after{right:-3px}
    deeper red, with bright red edges and the split arc (aim-overlay.js). */
 .aim-cone.scatter .cone-zone{fill:#ff2e22;fill-opacity:.24;animation:scatter-cone .6s ease-in-out infinite alternate}
 .aim-cone.scatter .cone-edges{stroke:#ff5a48;stroke-opacity:.95;stroke-width:1.6}
+/* Readied but still charging (v143): faint, dashed and pulsing fast until it can fire. */
+.aim-cone.scatter.priming .cone-zone{animation:scatter-prime .22s ease-in-out infinite alternate}
+.aim-cone.scatter.priming .cone-edges{stroke-dasharray:6 5;stroke-opacity:.7}
+@keyframes scatter-prime{from{fill-opacity:.05}to{fill-opacity:.16}}
 @keyframes scatter-cone{from{fill-opacity:.18}to{fill-opacity:.3}}
 @media (prefers-reduced-motion:reduce){.aim-cone.scatter .cone-zone{animation:none}}
 

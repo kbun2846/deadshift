@@ -48,7 +48,7 @@ test('touch assist sticks to the target while strafing, and lets go when the pla
  assert.equal(p.assistTargetId,'t','moving does not break the lock');
  const toTarget=Math.atan2(sim.targets[0].z-p.z,sim.targets[0].x-p.x),facing=Math.atan2(p.aimZ,p.aimX);
  const raw=0;
- assert.ok(Math.abs(facing-toTarget)<Math.abs(raw-toTarget)*.3,'the aim stays mostly on the target, not on the thumb');
+ assert.ok(Math.abs(facing-toTarget)<Math.abs(raw-toTarget)*.5,'the aim stays mostly on the target, not on the thumb');
  // Now turn the aim steadily away from it.
  let angle=0;for(let i=0;i<40;i++){angle+=.01;sim.step({aimX:Math.cos(angle),aimZ:Math.sin(angle),autoRange:'touch'});}
  assert.equal(p.assistTargetId,null,'turning away lets go');

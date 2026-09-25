@@ -22,7 +22,7 @@ test('orbs converge an overshoot past the aim point, on the same ray',()=>{
 });
 
 test('the overshoot never carries an orb into solid cover behind the target',()=>{
- const sim=new Simulation(empty({props:[{type:'boulder',x:8,z:0}]}));
+ const sim=new Simulation(empty({props:[{type:'boulder',x:7.7,z:0}]}));
  sim.seed();sim.launch(6,0);
  const shot=sim.shots[0];
  // Compare against the same shot with nothing behind it, so the assertion
@@ -76,11 +76,11 @@ test('a stray orb is worth one orb, whatever the volley behind it was',()=>{
  }
 });
 
-test('a volley thrown past a target converges on it instead of clipping it',()=>{
+test('a volley thrown just past a target converges on it instead of clipping it',()=>{
  const sim=new Simulation(empty({targets:[{id:'blocking',x:6,z:0,maxHp:5000}]}));
  spread(sim,8,.5);
- // Aimed well beyond the target, at open ground.
- sim.launch(26,0);
+ // Aimed just beyond the target (within RULES.interceptReach), at open ground.
+ sim.launch(7,0);
  assert.ok(sim.shots.every(s=>Math.abs(s.focusX-6)<1e-6&&Math.abs(s.focusZ)<1e-6),
   'the volley should re-focus onto the target in its path');
  run(sim);
@@ -100,7 +100,7 @@ test('the nearest crossing wins when two targets lie along the path',()=>{
   {id:'near',x:5,z:0,maxHp:5000},
  ]}));
  spread(sim,6,.4);
- sim.launch(26,0);
+ sim.launch(6,0);
  assert.ok(Math.abs(sim.shots[0].focusX-5)<1e-6,'it should stop at the first one it meets');
 });
 
@@ -250,9 +250,16 @@ test('a target behind the aim point is not intercepted onto either',()=>{
  assert.ok(Math.abs(sim.shots[0].focusX-9)<1e-6,'only what stands in the way counts');
 });
 
+test('aimed well past a target, the volley goes where the cursor is (owner, v0.9b)',()=>{
+ const sim=new Simulation(empty({targets:[{id:'blocking',x:6,z:0,maxHp:5000}]}));
+ spread(sim,8,.5);
+ sim.launch(26,0);
+ assert.ok(sim.shots.every(s=>Math.abs(s.focusX-26)<1e-6),'no refocus onto a target far short of the cursor');
+});
+
 test('a target standing in the way is still intercepted onto',()=>{
  const sim=new Simulation(empty({targets:[{id:'blocking',x:7,z:.4,maxHp:5000}]}));
  spread(sim,8,.5);
- sim.launch(24,0);
+ sim.launch(8,0);
  assert.ok(Math.abs(sim.shots[0].focusX-7)<1e-6,'the on-axis case must keep working');
 });

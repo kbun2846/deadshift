@@ -96,7 +96,7 @@ export const DEV_OPTIONS = Object.freeze([
 
   { section: 'robots', kind: 'select', key: 'robotWeapon', label: 'Robot weapon', options: weaponChoices().map(([value, name]) => [value, name]), grid: 'weapons', fallback: 0 },
   { section: 'robots', kind: 'select', key: 'robotSide', label: 'Robot side', options: [['0', 'Enemy (free for all)'], ['1', 'Enemy team'], ['2', 'Ally (your team)']], fallback: 0 },
-  { section: 'robots', kind: 'select', key: 'robotSkill', label: 'Robot skill', options: [['0', 'Random'], ['4', 'Rookie'], ['1', 'Easy'], ['2', 'Normal'], ['3', 'Hard'], ['5', 'Expert']], fallback: 0 },
+  { section: 'robots', kind: 'select', key: 'robotSkill', label: 'Robot skill', options: [['0', 'Random'], ['4', 'Rookie'], ['1', 'Easy'], ['2', 'Normal'], ['3', 'Hard'], ['5', 'Expert'], ['6', 'Perfect']], fallback: 0 },
   { section: 'robots', kind: 'select', key: 'robotStyle', label: 'Robot style', options: [['0', 'Random'], ['1', 'Balanced'], ['2', 'Rusher'], ['3', 'Marksman'], ['4', 'Flanker'], ['5', 'Cautious'], ['6', 'Blend']], fallback: 0 },
   { section: 'robots', kind: 'select', key: 'robotTemper', label: 'Robot temper', options: [['0', 'None (steady)'], ['1', 'Calm'], ['2', 'Shifting'], ['3', 'Aggressive']], fallback: 0 },
   { section: 'robots', kind: 'select', key: 'robotCount', label: 'Robots per spawn', options: [['1', '1'], ['2', '2'], ['3', '3'], ['6', '6']], fallback: 1 },
