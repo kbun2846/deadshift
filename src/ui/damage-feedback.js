@@ -26,6 +26,7 @@ export const STACK_WINDOW=1.5;
 export const BURN_BEAT=.3;
 export class DamageFeedbackState{
  constructor(){this.items=[];this.serial=0;this.time=0;this.pending=0;}
+ clear(){this.items=[];this.pending=0;}
  update(time){if(time<this.time){this.items=[];this.pending=0;}this.time=time;this.items=this.items.filter(item=>time-item.touched<FEEDBACK_LIFE);}
  add(damage,time){
   this.update(time);if(!(damage>0))return;
@@ -54,6 +55,8 @@ export function createDamageFeedback(parent){
  const state=new DamageFeedbackState(),nodes=new Map();
  return {
   add:(damage,time)=>state.add(damage,time),
+  // A new life starts clean (the clock stands still while you are dead).
+  clear(){state.clear();for(const node of nodes.values())node.remove();nodes.clear();},
   update(sim,view){
    state.update(sim.time);
    const ids=new Set(state.items.map(item=>item.id));

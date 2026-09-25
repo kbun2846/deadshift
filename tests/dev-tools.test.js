@@ -23,20 +23,23 @@ test('practice invulnerability, cooldown and movement overrides can be disabled'
  assert.equal(sim.damagePlayer(10,'fire',true),0);
  sim.hex();assert.equal(sim.hexCooldown,0);sim.stepHex(RULES.hexFormationTime);sim.hex();
  for(let i=0;i<60;i++)sim.step({moveX:1});
- assert.ok(sim.player.vx>RULES.speed*3);assert.equal(sim.player.stamina,2);
+ assert.ok(sim.player.vx>RULES.speed*3);assert.equal(sim.player.stamina,1);
  sim.dev={};assert.equal(sim.damagePlayer(10,'fire',true),10);
 });
 
 import {readFileSync} from 'node:fs';
-import {DEV_CODE,DEV_OPTIONS,DEV_SECTIONS,BULK_KEYS,optionsFor} from '../src/ui/dev-options.js';
+import {DEV_OPTIONS,DEV_SECTIONS,BULK_KEYS,optionsFor} from '../src/ui/dev-options.js';
+import {checkDevCode,DEV_CODE_HASH} from '../src/ui/dev-code.js';
 import {maps} from '../src/maps.js';
 import {WEAPONS} from '../src/items.js';
 import {HostSession} from '../src/net/host-session.js';
 import {ClientSession} from '../src/net/client-session.js';
 import {createLoopback} from '../src/net/transport.js';
 
-test('the tools open with Shift+P from the pause menu and code 1213, and are silent before that',()=>{
- assert.equal(DEV_CODE,'1213');
+test('the tools open with Shift+P from the pause menu and the access code, and are silent before that',()=>{
+ // Only a hash of the code is in the source; the old code and near misses fail.
+ assert.equal(DEV_CODE_HASH.length,64);
+ for(const wrong of ['1213','','0000','1234'])assert.equal(checkDevCode(wrong),false,wrong);
  const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
  assert.ok(/paused&&[^\n]*e\.code==='KeyP'&&e\.shiftKey/.test(main),'Shift+P while paused opens the code prompt');
  assert.ok(/\(e\.code==='KeyO'\|\|e\.code==='KeyP'\)[^\n]*devTools\.isUnlocked\(\)/.test(main),'P and O do nothing until unlocked');

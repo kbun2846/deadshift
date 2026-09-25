@@ -5,7 +5,7 @@ import { RiflePose } from './rifle-pose.js';
 import { RIFLE_QUALITY, CASING_CAPACITY, casingPose } from './rifle-quality.js';
 import { NO_FX } from '../effects/effects-detail.js';
 const UP=new THREE.Vector3(0,1,0);
-const BULLET_GLOW=new THREE.Color('#ffd98a'),PORT_SMOKE=new THREE.Color('#bdb5a2');
+const BULLET_GLOW=new THREE.Color('#ffd98a'),SURGE_GLOW=new THREE.Color('#f2f8ff'),PORT_SMOKE=new THREE.Color('#bdb5a2');
 function disposeObject(root){const materials=new Set();root.traverse(o=>{o.geometry?.dispose();if(o.material)materials.add(o.material);});materials.forEach(m=>m.dispose());}
 
 export class RifleView{
@@ -18,6 +18,8 @@ export class RifleView{
   this.bulletMat=new THREE.MeshBasicMaterial({color:'#ffffff',toneMapped:false});
   this.outlineMat=new THREE.MeshBasicMaterial({color:'#10201d',side:THREE.BackSide});
   this.trailMat=new THREE.MeshBasicMaterial({color:'#fff3b0',transparent:true,opacity:.9,depthWrite:false,toneMapped:false});
+  // Surge rounds: a long white beam of light behind each (additive, so it glows).
+  this.beamMat=new THREE.MeshBasicMaterial({color:'#f4fbff',transparent:true,opacity:.9,depthWrite:false,toneMapped:false,blending:THREE.AdditiveBlending});
   this.sparkMat=new THREE.MeshBasicMaterial({color:'#ffe276',toneMapped:false});
   this.smokeMat=new THREE.MeshBasicMaterial({color:'#b4ad98',transparent:true,opacity:.18,depthWrite:false});
   this.smokeMat.onBeforeCompile=shader=>{
@@ -59,12 +61,13 @@ export class RifleView{
   this.bullets=this.batch(slug,this.bulletMat,8);this.outlines=this.batch(slug.clone().scale(1.45,1.12,1.45),this.outlineMat,8);
   this.bands=this.batch(new THREE.CylinderGeometry(.046,.046,.025,segments).translate(0,-.068,0),this.brass,8);
   this.trails=this.batch(this.quality.trailTaper?new THREE.CylinderGeometry(.022,.002,.3,6):new THREE.CylinderGeometry(.013,.013,.3,4),this.trailMat,8);
+  this.beams=this.batch(new THREE.CylinderGeometry(.05,.012,1,6),this.beamMat,8);
   this.casings=this.batch(new THREE.CylinderGeometry(.018,.018,.075,segments),this.brass,CASING_CAPACITY);
   this.magazines=this.batch(new THREE.BoxGeometry(.075,.045,.22),this.steel,24);
   this.sparks=this.batch(new THREE.BoxGeometry(.016,.016,.065),this.sparkMat,32);
   this.smoke=this.batch(new THREE.IcosahedronGeometry(.07,0),this.smokeMat,24);
   this.smoke.geometry.setAttribute('instanceFade',new THREE.InstancedBufferAttribute(new Float32Array(24),1));
-  this.batches=[this.bullets,this.outlines,this.bands,this.trails,this.casings,this.magazines,this.sparks,this.smoke];this.particles=[];
+  this.batches=[this.bullets,this.outlines,this.bands,this.trails,this.beams,this.casings,this.magazines,this.sparks,this.smoke];this.particles=[];
  }
  shot(){
   // Made at load now (see WorldView), so a shot can arrive before the view's
@@ -109,16 +112,20 @@ export class RifleView{
   this.pose.update(sim,this.aimBlend,settle,recoil);
   this.active=active;this.staticParts.forEach(p=>p.visible=sim.weapon==='static');
   this.flash.visible=active&&sim.time<this.flashTime;
-  let count=0;const fx=this.view.fx||NO_FX;
+  let count=0,beams=0;const fx=this.view.fx||NO_FX;
   for(const b of sim.rifleBullets){
    if(count>=8||!this.visible(sim,b.x,b.z))continue;
    this.dummy.position.set(b.x,.74,b.z);this.direction.set(b.dx,0,b.dz);this.dummy.quaternion.setFromUnitVectors(UP,this.direction);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();
    this.bullets.setMatrixAt(count,this.dummy.matrix);this.outlines.setMatrixAt(count,this.dummy.matrix);this.bands.setMatrixAt(count,this.dummy.matrix);
    // A soft hot glow riding each round, drawn by the detail layer.
-   if(fx.on)fx.glow({x:b.x,y:.74,z:b.z,size:.32,life:.03,color:BULLET_GLOW,glow:.9});
+   if(fx.on)fx.glow({x:b.x,y:.74,z:b.z,size:b.surge?.55:.32,life:.03,color:b.surge?SURGE_GLOW:BULLET_GLOW,glow:b.surge?1.4:.9});
+   if(b.surge){
+    // A white beam trailing the round, up to 2.4 m long.
+    const beam=Math.min(2.4,b.travel+.2);this.dummy.position.set(b.x-b.dx*beam/2,.74,b.z-b.dz*beam/2);this.dummy.scale.set(1,beam,1);this.dummy.updateMatrix();this.beams.setMatrixAt(beams++,this.dummy.matrix);this.dummy.position.set(b.x,.74,b.z);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();
+   }
    const length=Math.min(this.quality.trailLength??.3,b.travel);this.dummy.position.addScaledVector(this.direction,-length/2-.08);this.dummy.scale.set(1,length/.3,1);this.dummy.updateMatrix();this.trails.setMatrixAt(count,this.dummy.matrix);count++;
   }
-  this.bullets.count=this.outlines.count=count;this.trails.count=this.quality.trail?count:0;
+  this.bullets.count=this.outlines.count=count;this.beams.count=beams;if(beams)this.beams.instanceMatrix.needsUpdate=true;this.trails.count=this.quality.trail?count:0;
   this.bands.count=this.quality.detail>=2?count:0;
   count=0;let kept=0;
   for(const e of this.effects){
@@ -129,7 +136,7 @@ export class RifleView{
    if(e.visible)this.place(this.casings,count++,pose.x,pose.y,pose.z,pose.rx,pose.ry,pose.rz);
   }
   this.effects.length=kept;this.casings.count=count;count=0;
-  for(const m of sim.magazines){if(count>=24||!this.visible(sim,m.x,m.z))continue;this.place(this.magazines,count++,m.x,.025+Math.max(0,.6-4.9*m.age*m.age),m.z,0,m.angle,0,m.extended?1.3:1);}
+  for(const m of sim.magazines){if(count>=24||!this.visible(sim,m.x,m.z))continue;this.place(this.magazines,count++,m.x,.025+Math.max(0,.6-4.9*m.age*m.age),m.z,0,m.angle,0,1);}
   this.magazines.count=count;
   let sparks=0,smoke=0;kept=0;
   for(const p of this.particles){

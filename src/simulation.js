@@ -1,18 +1,20 @@
 import {recordBallastDamage} from './weapons/ballast-damage.js';
 import {isPlayable,confinePlayableMovement} from './playable-area.js';
-import {resetShotgun,stepShotgun} from './weapons/shotgun.js';
+import {resetShotgun,stepShotgun,SHOTGUN} from './weapons/shotgun.js';
 import { mapColliders, mapProps, buildingContains, buildingWalls } from './maps.js';
 import { cropSegments, cropPoint, affectCrop, cropCircle, stepCrops } from './crops.js';
 import { RIFLE, resetRifle, stepRifle } from './weapons/rifle.js';
 import { targetRadius } from './target-radius.js';
 export { targetRadius };
 import { resetGrenades, stepGrenades } from './weapons/grenade.js';
+import { resetSurge, stepSurge, endSurge, SURGE } from './weapons/surge.js';
+import { resetScatter, stepScatter } from './weapons/scatter.js';
 import { autoRangeDistance, AUTO_RANGE } from './auto-range.js';
 import { assistAim, clearAssist } from './aim-assist.js';
 import { AIM_ASSIST } from './config/gameplay.js';
 const AIM_ASSIST_RANGE = Math.max(...Object.values(AIM_ASSIST).map(l => l.maxRange));
 // Tunable numbers live in config/gameplay.js; re-exported so existing imports keep working.
-import { RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_DAMAGE_MULTIPLIER, boostedHexDamage } from './config/gameplay.js';
+import { RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, VOLLEY_BOOST, MOUSE_VOLLEY_ASSIST, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_ZAP_BONUS, HEX_DAMAGE_MULTIPLIER, boostedHexDamage } from './config/gameplay.js';
 import { usesTrigger } from './items.js';
 
 // Each trigger weapon's own tick (fire, reload, its extras). Static's orbs,
@@ -40,7 +42,7 @@ export function hexPower(distance) {
   return { radius: .28 + (RULES.hexPulseRadius - .28) * maturity,
     damage: boostedHexDamage(Math.round(10 + (HEX_BASE_PULSE - 10) * maturity * maturity)),
     reach: .55 + (RULES.hexReach - .55) * maturity,
-    zapDamage: boostedHexDamage(Math.round(6 + (HEX_BASE_ZAP - 6) * maturity)) };
+    zapDamage: boostedHexDamage(Math.round(6 + (HEX_BASE_ZAP - 6) * maturity)) + HEX_ZAP_BONUS };
 }
 export function hexPulseDamageAt(power, distance) {
   if (distance > power.radius + 1e-8) return 0;
@@ -59,7 +61,7 @@ export function explosionFor(count) {
   const power = (Math.min(12, count) - 2) / 10;
   const n=Math.min(12,count);
   const extraScale=Math.sqrt(Math.max(1,count/12));
-  return { radius: (.55 + power * 2.15) * (count >= 12 ? 1.12 : 1)*extraScale, damage: (n<=3?(6+power*54)*1.15:30+170*((n-4)/8)**1.15)*(145/200)*extraScale };
+  return { radius: (.55 + power * 2.15) * (count >= 12 ? 1.12 : 1)*extraScale, damage: (n<=3?(6+power*54)*1.15:30+170*((n-4)/8)**1.15)*(145/200)*extraScale*VOLLEY_BOOST };
 }
 
 export function inside(point, box, padding = 0) {
@@ -123,19 +125,24 @@ export class Simulation {
     this.worldAuthority = true;
     this.reset();
   }
+  // The map's practice targets, fresh (none when `noTargets`: a 1V1).
+  practiceTargets() {
+    if (this.noTargets) return [];
+    return this.map.targets.map(t => {
+      const maxHp = t.maxHp ?? (t.kind === 'dummy' ? RULES.dummyHealth : RULES.targetHealth);
+      return { ...t, baseX: t.x, spawnX: t.x, spawnZ: t.z, hp: maxHp, maxHp, respawn: 0, flash: 0 };
+    });
+  }
   // How close another player's centre can come to ours: two body radii.
   touchingPlayer() { const p = this.player, limit = RULES.radius * 2; return this.otherPlayers.some(o => !(o.hp <= 0) && Math.hypot(o.x - p.x, o.z - p.z) < limit); }
 
   reset() {
     this.dev.speed=1;
     resetRifle(this);resetShotgun(this);
-    resetGrenades(this);
+    resetGrenades(this); resetSurge(this); resetScatter(this);
     this.time = 0; this.serial = 0; this.volley = 0; this.shots = []; this.hexOrbs = []; this.hexSpin = null; this.hexCooldown = 0; this.events = [];
     this.player = this.freshPlayer('local', this.map.spawn);
-    this.targets = this.map.targets.map(t => {
-      const maxHp = t.maxHp ?? (t.kind === 'dummy' ? RULES.dummyHealth : RULES.targetHealth);
-      return { ...t, baseX: t.x, spawnX: t.x, spawnZ: t.z, hp: maxHp, maxHp, respawn: 0, flash: 0 };
-    });
+    this.targets = this.practiceTargets();
     this.stats = { kills: 0, bestVolley: 0, hits: 0, launched: 0 };
     this.props = mapProps(this.map).map(p => ({ ...p, hp: p.health, flash: 0 }));
     this.colliders = mapColliders(this.map); this.stats.propsDestroyed = 0;
@@ -159,7 +166,7 @@ export class Simulation {
   // Online: back into the world after dying or picking a weapon. A fresh body
   // and a full loadout, but the world (props, crops, the clock) is untouched.
   respawn(at, id = this.player.id) {
-    resetRifle(this); resetShotgun(this); resetGrenades(this);
+    resetRifle(this); resetShotgun(this); resetGrenades(this); resetSurge(this, true); resetScatter(this, true);
     this.shots = []; this.hexOrbs = []; this.hexSpin = null; this.hexCooldown = 0;
     this.volleyKills = new Map(); this.volleys = new Map(); this.seedCooldown = 0;
     this.ammo = RULES.maxSeeds; this.rechargeProgress = 0; this.rechargeWait = 0; this.firstRefill = false;
@@ -168,7 +175,8 @@ export class Simulation {
   }
 
   get seeds() { return this.shots.filter(s => !s.launched); }
-  get maxStamina(){return this.weapon==='shotgun'?1:this.weapon==='rifle'?RIFLE.maxStamina:RULES.maxStamina;}
+  // One dodge per weapon; Ballast gets two (owner's call, v0.83).
+  get maxStamina(){return this.weapon==='shotgun'?SHOTGUN.dodges:RULES.maxStamina;}
   // Nominal has no self-movement of its own, so holding a position is the one
   // thing it trades for. Standing still pays it back in dodges, matching the
   // stationary bonus Static already gets on its ammo pool.
@@ -176,6 +184,17 @@ export class Simulation {
   get rechargeRate() { return Math.hypot(this.player.vx, this.player.vz) < .15 ? RULES.stationaryRecharge : 1; }
   get rechargeInterval() { return RULES.rechargeInterval / (this.firstRefill ? 1.4 : 1); }
   get interior() { return this.map.buildings.find(b => buildingContains(b, this.player)) || null; }
+  // The building (x, z) is inside, or null (target lock: a target going indoors).
+  buildingAt(x, z) { return this.map.buildings.find(b => buildingContains(b, { x, z })) || null; }
+  // Is anything solid that is not breakable (walls, buildings, fences, rocks;
+  // not crates, barrels or other props) between (ax, az) and (bx, bz)?
+  obstacleBetween(ax, az, bx, bz) {
+    for (const c of this.colliders) {
+      if (c.playerOnly || c.propId !== undefined || c.walkOver) continue;
+      if (segmentBox(ax, az, bx, bz, c, .05) !== null) return true;
+    }
+    return false;
+  }
   get roofId() { return this.interior?.id ?? null; }
   get playerHitRadius() { return this.player.dodgeRemaining > 0 ? RULES.dodgeHitRadius : RULES.radius; }
 
@@ -232,12 +251,23 @@ export class Simulation {
   }
 
   step(input, dt = RULES.step) {
-    if(this.player.hp<=0){this.killPlayer();return;}
+    if(this.player.hp<=0)this.killPlayer();
+    // Dev "freeze game": the world stops (shots, orbs, grenades, pellets and
+    // shells hang in the air, timers and targets hold, crops stop burning)
+    // and only you move: walking, dodging, aiming. Your weapon is held too.
+    const frozen=!!this.dev.freeze;
+    if(frozen)input={moveX:input.moveX,moveZ:input.moveZ,aimX:input.aimX,aimZ:input.aimZ,aimPointX:input.aimPointX,aimPointZ:input.aimPointZ,autoRange:input.autoRange,smoothAim:input.smoothAim,dodge:input.dodge};
     if(usesTrigger(this.weapon))input={...input,spray:false,hex:false,seed:false,launch:false};
-    if (this.worldAuthority) stepCrops(this, dt, (a, b) => !this.colliders.some(c => !c.playerOnly && segmentBox(a.x, a.z, b.x, b.z, c) !== null));
-    if(this.player.dead)return;
+    if (this.worldAuthority && !frozen) stepCrops(this, dt, (a, b) => !this.colliders.some(c => !c.playerOnly && segmentBox(a.x, a.z, b.x, b.z, c) !== null));
+    // Dead: what you already fired keeps flying and landing (blast shells,
+    // grenades, bullets, pellets); you do nothing new.
+    if(this.player.dead){const idle={aimX:this.player.aimX,aimZ:this.player.aimZ};if(!this.dev.freeze){stepScatter(this,idle,dt,{segmentBox,segmentCircle});stepGrenades(this,idle,dt,segmentBox);if(this.weapon!=='static')WEAPON_STEPS[this.weapon]?.(this,idle,dt,{segmentBox,segmentCircle});}return;}
     if(this.dev.ammo||this.dev.orbs)this.ammo=RULES.maxSeeds; if(this.dev.cooldowns)this.hexCooldown=0; if(this.dev.stamina)this.player.stamina=this.maxStamina;
-    this.time += dt; this.hexCooldown = Math.max(0, this.hexCooldown - dt);
+    // Dev max health: the bar keeps its share when the maximum changes.
+    { const want=this.dev.maxHealth||RULES.playerHealth,p=this.player; if(this.dev.maxHealth!=null&&p.maxHp!==want&&p.hp>0){p.hp=Math.max(1,Math.round(p.hp/p.maxHp*want));p.maxHp=want;} }
+    // Dev regenerate: back to full over a couple of seconds.
+    if(this.dev.regen&&this.player.hp>0)this.player.hp=Math.min(this.player.maxHp,this.player.hp+this.player.maxHp*.5*dt);
+    if(!frozen){this.time += dt; this.hexCooldown = Math.max(0, this.hexCooldown - dt);}
     if (this.hexCooldown < 1e-8) this.hexCooldown = 0;
     const p = this.player;
     if (!input.spray || input.dodge || p.hp <= 0 || p.dodgeRemaining > 0) {
@@ -254,7 +284,7 @@ export class Simulation {
     const length = Math.hypot(input.moveX || 0, input.moveZ || 0);
     const ix = length ? (input.moveX || 0) / Math.max(1, length) : 0;
     const iz = length ? (input.moveZ || 0) / Math.max(1, length) : 0;
-    const moveSpeed=RULES.speed*(input.aiming?RIFLE.aimMoveMultiplier:1);
+    const moveSpeed=RULES.speed*(input.aiming?RIFLE.aimMoveMultiplier:1)*(this.surge?.active?SURGE.speed:1);
     if (wasDodging && !p.dodgeRemaining) { p.vx = ix * moveSpeed; p.vz = iz * moveSpeed; }
     // A dodge pressed a moment too early (still mid-dodge, or a charge just
     // short) is held for RULES.dodgeBuffer and happens the instant it can,
@@ -330,12 +360,16 @@ export class Simulation {
     const usePoint = pointed && !lock;
     p.aimPointX = usePoint ? input.aimPointX : p.x + p.aimX * p.aimReach;
     p.aimPointZ = usePoint ? input.aimPointZ : p.z + p.aimZ * p.aimReach;
+    if(frozen)return;
+    stepSurge(this,input,dt,{breakAround:(x,z,r)=>this.breakAround(x,z,r)});
+    stepScatter(this,input,dt,{segmentBox,segmentCircle});
     stepGrenades(this,input,dt,segmentBox);
     WEAPON_STEPS[this.weapon]?.(this,input,dt,{segmentBox,segmentCircle});
     this.recharge(dt);
     this.seedCooldown -= dt;
     if (this.worldAuthority) for (const prop of this.props) prop.flash = Math.max(0, prop.flash - dt);
-    if (input.launch && !this.spray.active) this.launch(input.launchPointX, input.launchPointZ, input.quickShot);
+    // (No auto-range means a mouse: the volley's light pull, MOUSE_VOLLEY_ASSIST.)
+    if (input.launch && !this.spray.active) this.launch(input.launchPointX, input.launchPointZ, input.quickShot, !input.autoRange);
     if (input.hex && !this.spray.active) this.hex();
     this.stepHex(dt);
     if (input.seed && !this.spray.active && this.seedCooldown <= 0 && this.ammo > 0 && (this.dev.orbs || this.seeds.length < RULES.maxSeeds)) this.seed();
@@ -617,7 +651,7 @@ export class Simulation {
       if (this.colliders.some(b => !b.playerOnly && segmentBox(p.x, p.z, sx, sz, b, .1) !== null)) continue;
       x = sx; z = sz; break;
     }
-    this.seedCooldown = RULES.seedInterval;
+    this.seedCooldown = this.dev.fastSeeds ? 0 : RULES.seedInterval;
     if (this.colliders.some(b => !b.playerOnly && segmentBox(p.x, p.z, x, z, b, .1) !== null)) {
       this.events.push({ type: 'wall', x, z, launched: false }); return;
     }
@@ -627,7 +661,7 @@ export class Simulation {
     this.events.push({ type: 'seed', x, z, count: this.seeds.length });
   }
 
-  launch(pointX, pointZ, quickShot=false) {
+  launch(pointX, pointZ, quickShot=false, mouseAssist=false) {
     const isQuickShot=quickShot&&!this.seeds.length;
     if(quickShot&&!this.seeds.length&&this.ammo>0){
       if(this.seedCooldown>0)return;
@@ -640,6 +674,17 @@ export class Simulation {
     // side, each on its own straight path. They stop here and never fuse.
     let x = Number.isFinite(pointX) ? pointX : p.aimPointX ?? p.x + p.aimX * RULES.focusDistance;
     let z = Number.isFinite(pointZ) ? pointZ : p.aimPointZ ?? p.z + p.aimZ * RULES.focusDistance;
+    if (mouseAssist) {
+      // The nearest target (a player, robot or practice target) you can see
+      // within reach of the cursor pulls it.
+      let best = null, bestD = MOUSE_VOLLEY_ASSIST.radius;
+      for (const t of this.targets) {
+        if (t.hp <= 0) continue;
+        const d = Math.hypot(t.x - x, t.z - z);
+        if (d < bestD && this.canSeeTarget(t.x, t.z)) { bestD = d; best = t; }
+      }
+      if (best) { x += (best.x - x) * MOUSE_VOLLEY_ASSIST.pull; z += (best.z - z) * MOUSE_VOLLEY_ASSIST.pull; }
+    }
     let wallFocus=false;
     if((this.interior && !this.canAimAt(x,z)) || this.colliders.some(b=>!b.playerOnly && !b.destructible && inside({x,z},b))) {
       let first=1;
@@ -715,10 +760,11 @@ export class Simulation {
       s.launched = true; s.age = 0; s.volley = volley;
       s.launchX=s.x;s.launchZ=s.z;
       // A stray is worth one orb, whatever the volley behind it was worth.
-      s.strayDamage = isQuickShot ? 6 : damagePerOrb(1);
+      s.strayDamage = isQuickShot ? 6 * VOLLEY_BOOST : damagePerOrb(1);
       s.damage = s.strayDamage; s.quickShot = isQuickShot;
-      // Spent on breakable scenery, never on the target it was aimed at.
-      s.pierceBudget = s.strayDamage;
+      // Spent on breakable scenery, never on the target it was aimed at
+      // (what it breaks is as before the volley boost).
+      s.pierceBudget = s.strayDamage / VOLLEY_BOOST;
       s.wallFocus=wallFocus;
       // The aim point decides intent; the travel point decides where it flies.
       s.focusX = x; s.focusZ = z;
@@ -846,7 +892,7 @@ export class Simulation {
       const { x, z } = this.player;
       this.hexOrbs = Array.from({ length: 6 }, (_, index) => {
         const angle = index * Math.PI / 3;
-        return { id: ++this.serial, index, x, z, originX: x, originZ: z, muzzleX:x+this.player.aimX*.8,muzzleZ:z+this.player.aimZ*.8, age: 0,
+        return { id: ++this.serial, index, x, z, originX: x, originZ: z, muzzleX:x+this.player.aimX*.8,muzzleZ:z+this.player.aimZ*.8, age: this.dev.instantHex ? RULES.hexFormationTime : 0,
           vx: Math.cos(angle) * RULES.hexSpeed, vz: Math.sin(angle) * RULES.hexSpeed, hex: true };
       });
       this.events.push({ type: 'hexDeploy', x, z }); return;
@@ -1002,6 +1048,8 @@ export class Simulation {
   hit(target, shot) {
     if (target.hp <= 0 || shot.owner === target.id) return;
     // Dev one-hit kills: any hit that isn't the world's own (fire) finishes it.
+    // Dev damage dealt (a multiplier) and one-hit kills: never the world's own (fire).
+    if (this.dev.damageOut && this.dev.damageOut !== 1 && !shot.environmental) shot = { ...shot, damage: shot.damage * this.dev.damageOut };
     if (this.dev.oneHit && !shot.environmental) shot = { ...shot, damage: Math.max(shot.damage, target.hp) };
     // Any kill by Ballast is the headless death (owner's rule; it used to
     // need a massive fast burst, see ballast-damage.js, kept for the record).
@@ -1037,6 +1085,10 @@ export class Simulation {
 
   damagePlayer(damage, owner, environmental = false, selfBlast = false, impact = null, damageType = environmental?'fire':selfBlast?'explosion':'gunshot') {
     if (this.dev.invulnerable || this.dev.ghost || !owner || owner === this.player.id && !selfBlast || this.player.hp <= 0 || !Number.isFinite(damage) || damage <= 0) return 0;
+    // Surge takes the edge off everything (not your own blasts' push, just damage).
+    if (this.surge?.active) damage *= SURGE.taken;
+    // Dev damage taken (a multiplier; 0 is off).
+    if (this.dev.damageIn != null && this.dev.damageIn !== 1) { damage *= this.dev.damageIn; if (damage <= 0) return 0; }
     const dealt = Math.min(this.player.hp, !environmental && this.player.dodgeRemaining > 0 ? Math.max(1, Math.round(damage * RULES.dodgeDamageMultiplier)) : damage);
     if(damageType==='ballast'){recordBallastDamage(this.player,dealt,this.time,owner);if(dealt>=this.player.hp)damageType='ballastFatal';}
     this.player.hp -= dealt;
@@ -1047,6 +1099,9 @@ export class Simulation {
 
   killPlayer(impact=null,damageType='impact'){
     const p=this.player;if(p.dead)return;
+    // A nova ends (its cooldown runs) and a readied blast is dropped.
+    if(this.surge&&this.surge.phase!=='idle'&&!this.predictOnly)endSurge(this,false);
+    if(this.scatter)this.scatter.armed=false;
     p.hp=0;p.dead=true;p.ballastLaunch=false;p.vx=p.vz=p.dodgeRemaining=p.blastVX=p.blastVZ=0;
     this.spray.active=false;this.rifle.triggerHeld=false;this.rifle.aiming=false;
     const length=impact?Math.hypot(impact.x,impact.z):0;
@@ -1056,7 +1111,7 @@ export class Simulation {
   }
 
   applyBlastKnockback(x,z,radius,strength,coreRadius=0){
-    const p=this.player;if(p.dead||p.hp<=0||strength<=0)return;
+    const p=this.player;if(p.dead||p.hp<=0||strength<=0||this.dev.noKnockback)return;
     const dx=p.x-x,dz=p.z-z,distance=Math.hypot(dx,dz);if(distance>radius)return;
     // A core as wide as the blast leaves no falloff band to interpolate over;
     // dividing by it would make the impulse NaN and throw the player nowhere.
@@ -1104,10 +1159,7 @@ export class Simulation {
     }
     this.colliders = mapColliders(this.map);
     this.crops = cropSegments(this.map);
-    this.targets = this.map.targets.map(t => {
-      const maxHp = t.maxHp ?? (t.kind === 'dummy' ? RULES.dummyHealth : RULES.targetHealth);
-      return { ...t, baseX: t.x, spawnX: t.x, spawnZ: t.z, hp: maxHp, maxHp, respawn: 0, flash: 0 };
-    });
+    this.targets = this.practiceTargets();
     this.events.push({ type: 'mapReset' });
   }
 
@@ -1127,28 +1179,49 @@ export class Simulation {
     const blast = explosionFor(volley.arrived); if (!blast) return;
     const { x, z } = volley;
     // Snapshot cover so removing one prop cannot change damage order within a blast.
-    const cover = [...this.colliders];
-    const damageAt = (victim, propId) => {
-      const distance = Math.hypot(victim.x - x, victim.z - z);
+    // Splash, measured the way it looks (owner's report: it was inconsistent):
+    //  - to the edge of a body, not its centre: a player half inside the
+    //    blast is hit (it used to take nothing until its centre was in);
+    //  - only walls and buildings shelter (not crates or barrels);
+    //  - sheltered only when the centre and both sides of the body are all
+    //    behind something (a corner no longer eats the whole blast).
+    const walls = this.colliders.filter(box => !box.playerOnly && box.propId === undefined);
+    const shut = (bx, bz) => walls.some(box => segmentBox(x, z, bx, bz, box) !== null);
+    const damageAt = (victim, propId, reach = 0) => {
+      const centre = Math.hypot(victim.x - x, victim.z - z), distance = Math.max(0, centre - reach);
       if (distance > blast.radius) return 0;
-      if (cover.some(box => !box.playerOnly && box.propId !== propId && segmentBox(x, z, victim.x, victim.z, box) !== null)) return 0;
+      if (shut(victim.x, victim.z)) {
+        const ux = centre > 1e-6 ? (victim.x - x) / centre : 1, uz = centre > 1e-6 ? (victim.z - z) / centre : 0, side = reach * .8;
+        if (!side || (shut(victim.x - uz * side, victim.z + ux * side) && shut(victim.x + uz * side, victim.z - ux * side))) return 0;
+      }
       return Math.max(1, Math.round(blast.damage * splashFalloff(distance, blast.radius, volley.arrived)));
     };
-    const selfDamage=damageAt(this.player,null);
+    const selfDamage=damageAt(this.player,null,RULES.radius);
     if(selfDamage){
       this.damagePlayer(selfDamage,this.player.id,false,true,{x:this.player.x-x,z:this.player.z-z},'electric');
       this.applyBlastKnockback(x,z,blast.radius,Math.max(0,Math.min(1,(volley.arrived-5)/7))*2.2);
     }
-    cropCircle(this, { x, z }, blast.radius, false, (a, b) => !cover.some(c => !c.playerOnly && segmentBox(a.x, a.z, b.x, b.z, c) !== null));
+    cropCircle(this, { x, z }, blast.radius, false, (a, b) => !walls.some(c => segmentBox(a.x, a.z, b.x, b.z, c) !== null));
     for (const target of this.targets) if (target.hp > 0) {
-      const damage = damageAt(target, null);
+      const damage = damageAt(target, null, targetRadius(target));
       if (damage) this.hit(target, { damage, volley: id, blast: true, vx: target.x - x, vz: target.z - z });
     }
     for (const prop of this.props) if (prop.hp !== null && prop.hp > 0) {
-      const damage = damageAt(prop, prop.id);
+      const damage = damageAt(prop, prop.id, Math.min(prop.w || 0, prop.d || 0) / 2);
       if (damage) this.hitProp(prop, { damage, x: prop.x, z: prop.z, vx: prop.x - x, vz: prop.z - z });
     }
     this.events.push({ type: 'explosion', x, z, count: volley.arrived, radius: blast.radius, damage:blast.damage });
+  }
+
+  // Surge's beams: breakable props within `radius` of (x, z) break, thrown
+  // outward (only on the sim that owns the world, or offline).
+  breakAround(x, z, radius) {
+    for (const prop of this.props) {
+      if (prop.hp === null || !(prop.hp > 0)) continue;
+      const dx = prop.x - x, dz = prop.z - z, d = Math.hypot(dx, dz);
+      if (d > radius) continue;
+      this.hitProp(prop, { damage: prop.hp, owner: this.player.id, damageType: 'impact', x: prop.x, z: prop.z, vx: dx / (d || 1), vz: dz / (d || 1) });
+    }
   }
 
   drainEvents() { return this.events.splice(0); }

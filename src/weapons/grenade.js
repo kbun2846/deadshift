@@ -4,7 +4,7 @@ export { GRENADE };
 export const grenadeDamage=distance=>distance>GRENADE.radius?0:Math.round(GRENADE.edgeDamage+(GRENADE.damage-GRENADE.edgeDamage)*Math.max(0,1-Math.max(0,distance-GRENADE.coreRadius)/(GRENADE.radius-GRENADE.coreRadius))**1.4);
 export function resetGrenades(sim){sim.grenades=[];sim.grenadeCooldown=0;sim.grenadeThrowTime=-10;}
 export function stepGrenades(sim,input,dt,segmentBox){
- sim.grenadeCooldown=sim.dev.grenadeCooldown?0:Math.max(0,sim.grenadeCooldown-dt);
+ sim.grenadeCooldown=sim.dev.grenadeCooldown||sim.dev.cooldowns?0:Math.max(0,sim.grenadeCooldown-dt);
  const p=sim.player;
  if(sim.weapon==='rifle'&&input.grenade&&sim.grenadeCooldown<=1e-8&&p.hp>0&&!p.dodgeRemaining){
   const dx=p.aimPointX-p.x,dz=p.aimPointZ-p.z,distance=Math.hypot(dx,dz),scale=Math.min(1,GRENADE.range/(distance||1));
@@ -17,7 +17,7 @@ export function stepGrenades(sim,input,dt,segmentBox){
  // the one-shot bookkeeping and the merged damage numbers group on. Reusing
  // the serial for both let a grenade collide with an unrelated rifle bullet's
  // volley and be read as a single shot.
- sim.grenades.push({id:++sim.serial,volley:++sim.volley,x,z,y:.85,startX:x,startZ:z,targetX,targetZ,age:0,flight:Math.min(.95,.32+travel*.04),arc:Math.min(3.1,1+travel*.15,sim.interior?Math.max(.3,sim.interior.height-1.2):4),released:false,blocked:false});
+ sim.grenades.push({id:++sim.serial,volley:++sim.volley,x,z,y:.85,startX:x,startZ:z,targetX,targetZ,age:0,flight:Math.min(.95,.32+travel*.04),arc:Math.min(3.1,1+travel*.15,sim.interior?Math.max(.3,sim.interior.height-1.2):4),released:false,blocked:false,bonus:sim.surge?.active?GRENADE.surgeBonus:GRENADE.bonus});
   sim.grenadeCooldown=GRENADE.cooldown;sim.grenadeThrowTime=sim.time;
   sim.events.push({type:'grenadeWindup',x:p.x,z:p.z});
  }
@@ -37,7 +37,7 @@ export function stepGrenades(sim,input,dt,segmentBox){
   if(age+1e-8<GRENADE.fuse)continue;
   const cover=[...sim.colliders];
   const damageAt=(victim,propId=null)=>{
-   const damage=grenadeDamage(Math.hypot(victim.x-g.x,victim.z-g.z));
+   const base=grenadeDamage(Math.hypot(victim.x-g.x,victim.z-g.z)),damage=base?base+(g.bonus??GRENADE.bonus):0;
    return damage&&!cover.some(b=>!b.playerOnly&&b.propId!==propId&&segmentBox(g.x,g.z,victim.x,victim.z,b)!==null)?damage:0;
   };
   for(const target of sim.targets){const damage=target.hp>0?damageAt(target):0;if(damage)sim.hit(target,{damage,volley:g.volley,blast:true,vx:target.x-g.x,vz:target.z-g.z});}

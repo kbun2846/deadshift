@@ -49,25 +49,22 @@ for(const horizontal of ['ArrowLeft','ArrowRight'])for(const vertical of ['Arrow
   s=fresh('static');s.step({...command,spray:true});assert.ok(s.spray.active);
   s=fresh('rifle');s.step({...command,fire:true,aiming:true});assert.equal(s.rifle.ammo,RIFLE.magazine-1);
   s.step({...command,grenade:true});assert.ok(s.grenades.length>0);
-  s.step({...command,extendedReload:true});assert.ok(s.rifle.reload>0);
-  s=fresh('shotgun');s.step({...command,fire:true});s.step({...command,fire:false});assert.equal(s.shotgun.ammo,1);
-  s=fresh('shotgun');s.step({...command,fire:true});s.step({...command,fire:true,storeCharge:true});assert.ok(s.shotgun.stored);
-  s.step({...command,doubleShot:true,aiming:true});for(let i=0;i<6;i++)s.step(command);assert.equal(s.shotgun.ammo,0);
+  s.step({...command,surge:true});assert.equal(s.surge.phase,'charging');
+  s=fresh('shotgun');s.step({...command,fire:true});assert.equal(s.shotgun.ammo,1,'a press fires');
+  s=fresh('shotgun');s.step({...command,doubleShot:true,aiming:true});for(let i=0;i<6;i++)s.step(command);assert.equal(s.shotgun.ammo,0);
+  s=fresh('shotgun');s.step({...command,scatter:true});assert.ok(s.scatter.armed);s.step(command);s.step({...command,scatter:true});assert.equal(s.scatterShells.length,5);
   for(const weapon of ['static','rifle','shotgun']){s=fresh(weapon);s.step({...command,moveX:aim.x,moveZ:aim.z,dodge:true});assert.ok(s.player.dodgeRemaining>0);}
  });
 }
 
-test('Ballast on the keyboard: E charges and fires, Shift stores, Q does not fire',async()=>{
+test('Ballast on the keyboard: Space or the left button fires, E is the double, Shift only aims',async()=>{
  const {ballastInput}=await import('../src/weapons/rifle-input.js');
  const none=new Set();
- assert.deepEqual(ballastInput(false,new Set(['Space']),none),{fire:true,storeCharge:false},'holding Space charges');
- assert.deepEqual(ballastInput(false,none,new Set(['Space'])),{fire:true,storeCharge:false},'a tap of Space still pulls the trigger');
+ assert.deepEqual(ballastInput(false,new Set(['Space']),none),{fire:true});
+ assert.deepEqual(ballastInput(false,none,new Set(['Space'])),{fire:true},'a tap of Space pulls the trigger');
  assert.equal(ballastInput(false,new Set(['KeyE']),none).fire,false,'E is the double shot, not the trigger');
- assert.equal(ballastInput(false,none,new Set(['ShiftLeft'])).storeCharge,true);
- assert.equal(ballastInput(false,none,new Set(['ShiftRight'])).storeCharge,true);
- assert.equal(ballastInput(false,none,new Set(['MouseRight'])).storeCharge,true,'right click still stores');
- assert.equal(ballastInput(true,none,none).fire,true,'left button still fires');
- assert.deepEqual(ballastInput(false,new Set(['ShiftLeft']),none),{fire:false,storeCharge:false},'holding Shift only focuses; storing is the press');
+ assert.equal(ballastInput(true,none,none).fire,true,'left button fires');
+ assert.deepEqual(ballastInput(false,new Set(['ShiftLeft']),none),{fire:false},'Shift aims in, nothing else');
 });
 
 test('a tap part way through a turn leaves the aim in between: taps give the angles between the keys',()=>{
@@ -79,7 +76,8 @@ test('a tap part way through a turn leaves the aim in between: taps give the ang
 });
 
 test('a dodge pressed just before the last one ends still happens (input buffer)', () => {
- const sim = make('rifle');
+ // (Ballast: the only weapon with two dodges.)
+ const sim = make('shotgun');
  sim.step({ moveX: 1, dodge: true });
  const first = sim.events.filter(e => e.type === 'dodge').length;
  const ticks = Math.round(RULES.dodgeDuration * 60);
@@ -87,7 +85,7 @@ test('a dodge pressed just before the last one ends still happens (input buffer)
  sim.step({ moveX: 1, dodge: true }); // pressed ~3 ticks early
  for (let i = 0; i < 6; i++) sim.step({ moveX: 1 });
  assert.equal(sim.events.filter(e => e.type === 'dodge').length, first + 1, 'the early press was kept');
- const late = make('rifle');
+ const late = make('shotgun');
  late.step({ moveX: 1, dodge: true });
  for (let i = 0; i < ticks - Math.round(RULES.dodgeBuffer * 60) - 6; i++) late.step({ moveX: 1 });
  late.step({ moveX: 1, dodge: true }); // far too early: dropped

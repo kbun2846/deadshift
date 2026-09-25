@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Simulation} from '../src/simulation.js';
 import {RIFLE,rifleDamage,rifleSpread,rifleShotError,rifleAim,rifleMuzzle,RIFLE_CONVERGE} from '../src/weapons/rifle.js';
-import { RULES as FULL_RULES } from '../src/config/gameplay.js';
+import { RULES as FULL_RULES, SURGE, GRENADE } from '../src/config/gameplay.js';
 const FULL = FULL_RULES.targetHealth; // a practice target's full health
-const M=RIFLE.magazine,X=RIFLE.extendedMagazine;
+const M=RIFLE.magazine,R=Math.round(RIFLE.reload*60);
 const make=(extra={})=>{const s=new Simulation({id:'test',width:120,depth:120,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[],...extra});s.weapon='rifle';return s;};
 const tick=(s,input={},n=1)=>{for(let i=0;i<n;i++)s.step({aimX:1,aimZ:0,aimPointX:10,aimPointZ:0,...input});};
 test('rifle fires once on tap, repeats at cadence, and stops at empty magazine',()=>{
@@ -14,12 +14,12 @@ test('rifle fires once on tap, repeats at cadence, and stops at empty magazine',
  // Held fire: one shot now, then one every RIFLE.interval.
  const a=make();tick(a,{fire:true},60);assert.equal(a.stats.launched,Math.ceil(1/RIFLE.interval));
 });
-test('manual reload blocks firing for 1.8 seconds and magazines expire at 30 seconds',()=>{
+test('manual reload blocks firing for the reload time and magazines expire at 30 seconds',()=>{
  const s=make();tick(s,{reload:true});assert.equal(s.magazines.length,0);
  tick(s,{fire:true});tick(s,{reload:true});assert.equal(s.magazines.length,1);
- tick(s,{fire:true},107);assert.equal(s.rifle.ammo,M-1);assert.ok(s.rifle.reload>0);
+ tick(s,{fire:true},R-1);assert.equal(s.rifle.ammo,M-1);assert.ok(s.rifle.reload>0);
  tick(s);assert.equal(s.rifle.ammo,M);assert.equal(s.rifle.reload,0);
- tick(s,{},1692);assert.equal(s.magazines.length,0);
+ tick(s,{},1800-R);assert.equal(s.magazines.length,0);
 });
 test('rifle damage and accuracy improve predictably with range, stance and aim',()=>{
  assert.equal(rifleDamage(5),RIFLE.damage);assert.equal(rifleDamage(22),RIFLE.minDamage);assert.equal(rifleDamage(50),RIFLE.minDamage);
@@ -102,9 +102,9 @@ test('cover intercepts bullets and Static abilities do not activate for rifle',(
 test('shared ammo override supports rifle; Static orb override does not refill it',()=>{
  const s=make();s.dev.ammo=true;tick(s,{fire:true},300);
  assert.equal(s.rifle.ammo,RIFLE.magazine);assert.ok(s.stats.launched>M);
- s.dev={orbs:true};tick(s,{fire:true},200);assert.equal(s.rifle.ammo,0);
+ s.dev={orbs:true};tick(s,{fire:true},Math.ceil(RIFLE.magazine*RIFLE.interval*60)+20);assert.equal(s.rifle.ammo,0);
  s.dev={rifleInstantReload:true};tick(s,{reload:true});assert.equal(s.rifle.ammo,M);assert.equal(s.rifle.reload,0);
- s.dev={};tick(s,{fire:true},30);tick(s,{reload:true});assert.equal(s.rifle.reload,1.8);
+ s.dev={};tick(s,{fire:true},30);tick(s,{reload:true});assert.equal(s.rifle.reload,RIFLE.reload);
 });
 test('empty rifle trigger starts one normal reload and held fire resumes afterwards',()=>{
  const s=make();s.rifle.ammo=1;
@@ -112,13 +112,9 @@ test('empty rifle trigger starts one normal reload and held fire resumes afterwa
  tick(s,{fire:true},180);assert.equal(s.rifle.reload,0);assert.equal(s.magazines.length,0);
  tick(s);assert.equal(s.rifle.reload,0);
  tick(s,{fire:true});assert.equal(s.rifle.reload,RIFLE.reload);
- tick(s,{fire:true},108);assert.equal(s.rifle.ammo,M);
+ tick(s,{fire:true},R);assert.equal(s.rifle.ammo,M);
  assert.equal(s.magazines.length,1);assert.equal(s.events.filter(e=>e.type==='rifleReload').length,1);
  tick(s,{fire:true});assert.equal(s.rifle.ammo,M-1);assert.equal(s.stats.launched,2);
- s.rifle.ammo=0;s.rifle.capacity=X;s.rifle.extendedCooldown=30;
- tick(s);
- tick(s,{fire:true});tick(s,{},108);
- assert.equal(s.rifle.ammo,M);assert.equal(s.rifle.capacity,M);assert.ok(s.rifle.extendedCooldown>0);
 });
 test('rifle aiming slows walking smoothly without reducing dodge travel',()=>{
  const s=make();tick(s,{moveX:1},90);const normal=s.player.vx;
@@ -132,30 +128,38 @@ test('rifle aiming slows walking smoothly without reducing dodge travel',()=>{
  assert.ok(Math.abs(staticGun.player.vx-normal*RIFLE.aimMoveMultiplier)<.001,
   `Static walked at ${staticGun.player.vx.toFixed(2)} while aiming`);
 });
-test('Nominal has three dodge charges and Static retains two',()=>{
- const s=make();s.reset();assert.equal(s.maxStamina,3);assert.equal(s.player.stamina,3);
- for(let i=0;i<3;i++){tick(s,{moveX:1,dodge:true});tick(s,{moveX:1},15);}
- assert.equal(s.events.filter(e=>e.type==='dodge').length,3);
- tick(s,{moveX:1,dodge:true});assert.equal(s.events.filter(e=>e.type==='dodge').length,3);
- tick(s,{},400);assert.equal(s.player.stamina,3);
- s.weapon='static';s.reset();assert.equal(s.maxStamina,2);assert.equal(s.player.stamina,2);
+test('Nominal and Static have one dodge, Ballast two',()=>{
+ const s=make();s.reset();assert.equal(s.maxStamina,1);assert.equal(s.player.stamina,1);
+ tick(s,{moveX:1,dodge:true});tick(s,{moveX:1},15);
+ tick(s,{moveX:1,dodge:true});assert.equal(s.events.filter(e=>e.type==='dodge').length,1);
+ tick(s,{},400);assert.equal(s.player.stamina,1);
+ s.weapon='static';s.reset();assert.equal(s.maxStamina,1);
+ s.weapon='shotgun';s.reset();assert.equal(s.maxStamina,2);assert.equal(s.player.stamina,2);
 });
-test('extended magazine loads its big mag, blocks firing during reload and is usable once per 60 seconds',()=>{
- const s=make();tick(s,{extendedReload:true,fire:true});
- assert.equal(s.rifle.reload,1.8);assert.equal(s.rifle.extendedCooldown,60);assert.equal(s.stats.launched,0);
- tick(s,{extendedReload:true,fire:true},107);assert.equal(s.rifle.ammo,M);assert.ok(s.rifle.reload>0);
- tick(s);assert.equal(s.rifle.ammo,X);assert.equal(s.rifle.capacity,X);assert.equal(s.magazines.length,1);
- tick(s,{extendedReload:true});assert.equal(s.rifle.reload,0);assert.equal(s.magazines.length,1);
- tick(s,{fire:true});assert.equal(s.rifle.ammo,X-1);
- tick(s,{reload:true});assert.equal(s.magazines.at(-1).extended,true);tick(s,{},108);
- assert.equal(s.rifle.capacity,M);assert.equal(s.rifle.ammo,M);
- const remainingTicks=Math.ceil(s.rifle.extendedCooldown*60);tick(s,{},remainingTicks);
- tick(s,{extendedReload:true});assert.equal(s.rifle.reload,1.8);assert.equal(s.rifle.extendedCooldown,60);
- s.reset();assert.equal(s.rifle.capacity,M);assert.equal(s.rifle.extendedCooldown,0);
+test('Nominal: a 28-round magazine and a slightly longer reload',()=>{
+ assert.equal(M,28);assert.equal(RIFLE.reload,1.95);
+ const s=make();assert.equal(s.rifle.ammo,28);
 });
-test('extended magazine works with shared ammo and Nominal overrides without changing Static',()=>{
- const s=make();s.dev.ammo=true;tick(s,{extendedReload:true});tick(s,{},108);assert.equal(s.rifle.ammo,X);
- tick(s,{fire:true},60);assert.equal(s.rifle.ammo,X);
- s.dev.extendedCooldown=true;s.dev.rifleInstantReload=true;tick(s,{extendedReload:true});assert.equal(s.rifle.reload,0);assert.equal(s.rifle.ammo,X);
- s.weapon='static';s.reset();tick(s,{extendedReload:true});assert.equal(s.rifle.capacity,M);assert.equal(s.rifle.extendedCooldown,0);
+test('Surge: two seconds of power-up, then five of 2x bullets that use no ammo and never reload, then a full magazine and the cooldown',()=>{
+ const s=make();s.targets=[{id:'t',x:6,z:0,hp:5000,maxHp:5000}];
+ tick(s,{surge:true});assert.equal(s.surge.phase,'charging');assert.ok(s.events.some(e=>e.type==='surgeCharge'));
+ tick(s,{},Math.ceil(SURGE.charge*60)+1);assert.equal(s.surge.phase,'active');assert.ok(s.events.some(e=>e.type==='surgeStart'));
+ const before=s.rifle.ammo;tick(s,{fire:true,aimX:1,aimZ:0,aimPointX:6,aimPointZ:0},60);
+ assert.equal(s.rifle.ammo,before,'no ammo used');assert.equal(s.rifle.reload,0);
+ const hits=s.events.filter(e=>e.type==='outgoingDamage');assert.ok(hits.length>0);
+ assert.ok(hits.every(h=>h.damage>=RIFLE.damage*SURGE.damage-1e-6),'2x bullets at close range');
+ tick(s,{reload:true});assert.equal(s.rifle.reload,0,'no reloading while surging');
+ // Damage taken and speed.
+ const hp=s.player.hp;s.damagePlayer(100,'enemy');assert.equal(hp-s.player.hp,100*SURGE.taken);
+ tick(s,{},Math.ceil(SURGE.duration*60)+1);
+ assert.equal(s.surge.phase,'idle');assert.equal(s.rifle.ammo,s.rifle.capacity,'ends on a full magazine');assert.equal(s.rifle.reload,0);assert.ok(s.surge.cooldown>SURGE.cooldown-3);
+ tick(s,{surge:true});assert.equal(s.surge.phase,'idle','cooling down');
+});
+test('Surge moves you faster, breaks the breakables round you as the beams arrive, and powers up grenades',()=>{
+ const walk=make();tick(walk,{moveX:1},90);const normal=walk.player.vx;
+ const s=make();s.props=[{id:'c',type:'crate',x:1.5,z:0,hp:40,health:40,flash:0}];
+ tick(s,{surge:true});tick(s,{},Math.ceil(SURGE.charge*60)+1);assert.equal(s.props[0].hp,0);
+ tick(s,{moveX:1},90);assert.ok(Math.abs(s.player.vx-normal*SURGE.speed)<.01);
+ tick(s,{grenade:true,aimX:1,aimZ:0,aimPointX:8,aimPointZ:0},2);assert.equal(s.grenades[0]?.bonus,GRENADE.surgeBonus);
+ const plain=make();tick(plain,{grenade:true,aimX:1,aimZ:0,aimPointX:8,aimPointZ:0},2);assert.equal(plain.grenades[0]?.bonus,GRENADE.bonus);
 });

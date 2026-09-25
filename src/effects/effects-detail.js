@@ -32,6 +32,9 @@ const GRAVITY = 9.8;
 // Colour over a spark's life: white-hot, yellow, orange, dull red. Electric
 // sparks run white, ice blue, deep blue instead.
 const HOT = [new THREE.Color('#fff8e6'), new THREE.Color('#ffd36b'), new THREE.Color('#ff8a2a'), new THREE.Color('#9c2a10')];
+// Ballast's Scatter: red-hot, cooling to a dark red.
+const MB_CORE = new THREE.Color('#fff0d6'), MB_GLOW = new THREE.Color('#ff4a26'), MB_RING = new THREE.Color('#ff7a52'), MB_SMOKE_A = new THREE.Color('#4a3b36'), MB_SMOKE_B = new THREE.Color('#6b504a');
+export const SCATTER_RED = [new THREE.Color('#fff0e0'), new THREE.Color('#ff7a5a'), new THREE.Color('#ff2e22'), new THREE.Color('#6e0d08')];
 export const ELECTRIC = [new THREE.Color('#ffffff'), new THREE.Color('#bdefff'), new THREE.Color('#62b8ff'), new THREE.Color('#2a3cff')];
 const SCRATCH = new THREE.Color();
 function ramp(stops, t, out = SCRATCH) {
@@ -277,6 +280,23 @@ export class DetailFX {
    const a = Math.random() * 6.3, r = Math.random() * radius * .6;
    this.ember({ x: x + Math.cos(a) * r, y: (.6 + Math.random()) * reach, z: z + Math.sin(a) * r, vx: Math.cos(a) * 1.5 * reach, vz: Math.sin(a) * 1.5 * reach, vy: (1.5 + Math.random() * 2) * reach, life: (1.2 + Math.random() * 1.6) * reach });
   }
+ }
+
+ // Scatter's little explosions (Ballast X): a hot red-orange pop, a thin ring,
+ // a spit of red sparks, a curl of dark smoke and an ember or two. All from
+ // the shared pools, so twenty at once build nothing new.
+ miniBlast(x, z, radius = 1.4) {
+  if (!this.on) return;
+  this.glow({ x, y: .45, z, size: radius * 1.5, grow: .5, life: .09, color: MB_CORE, glow: 1.9 });
+  this.glow({ x, y: .2, z, size: radius * 2.3, grow: .3, life: .28, color: MB_GLOW, glow: 1 });
+  this.ring({ x, z, radius: radius * 1.05, from: .1, life: .26, color: MB_RING, glow: 1.1 });
+  for (let i = 0, n = this.n(11); i < n; i++) {
+   const a = Math.random() * 6.3, speed = 3 + Math.random() * 6;
+   this.spark({ x, y: .35, z, vx: Math.cos(a) * speed, vy: 1.5 + Math.random() * 4, vz: Math.sin(a) * speed, life: .2 + Math.random() * .35, length: .1 + Math.random() * .08, width: .018, stops: SCATTER_RED });
+  }
+  for (let i = 0, n = this.n(3); i < n; i++) this.puff({ x: x + (Math.random() - .5) * .4, y: .3, z: z + (Math.random() - .5) * .4, vx: (Math.random() - .5) * 1.2, vz: (Math.random() - .5) * 1.2, vy: .9,
+   size: .16 + Math.random() * .1, grow: 2.6, life: .9 + Math.random() * .5, alpha: .38, rise: .6, color: (i % 2 ? MB_SMOKE_A : MB_SMOKE_B) });
+  for (let i = 0, n = this.n(2); i < n; i++) this.ember({ x, y: .5, z, vx: (Math.random() - .5) * 2, vz: (Math.random() - .5) * 2, vy: 1.2 + Math.random(), life: .7 + Math.random() * .6, size: .022, stops: SCATTER_RED });
  }
 
  // Static's electricity touching something: a blue-white spit of sparks that

@@ -531,3 +531,35 @@ test('from full health to dead in one hit reads "one shot" in the kill feed and 
   assert.match(feedLine(line, 'x'), expected ? /one shot/ : /killed/);
  }
 });
+
+test('a Static stream on a slow link never outgrows one message, and the joiner catches up after', () => {
+ const r = room();
+ place(r, 'host', street.x, street.z); place(r, 0, street.x + 3, street.z);
+ let biggest = 0;
+ const send = r.host.transport.send.bind(r.host.transport);
+ r.host.transport.send = (to, m) => { if (m.t === 'snapshot') biggest = Math.max(biggest, JSON.stringify(m).length); send(to, m); };
+ // The joiner's acknowledgements do not arrive for two seconds (a bad patch).
+ const receive = r.host.receive.bind(r.host);
+ r.host.receive = () => {};
+ for (let i = 0; i < 120; i++) r.tick({ host: { spray: true, aimX: 1, aimZ: 0 } });
+ r.host.receive = receive;
+ for (let i = 0; i < 90; i++) r.tick({ host: { spray: true, aimX: 1, aimZ: 0 } });
+ assert.ok(biggest < 16300, 'largest snapshot ' + biggest + ' bytes');
+ const got = r.joined[0].session.drainEvents().map(entry => entry.e);
+ assert.ok(got.filter(e => e.type === 'sprayArc').length > 20, 'the stream reached the joiner');
+ const arc = got.find(e => e.type === 'sprayArc');
+ assert.equal(arc.paths.length, 9); assert.ok(Number.isFinite(arc.paths[0].b.x) && Number.isFinite(arc.paths[0].a.z));
+ assert.ok(got.some(e => e.type === 'playerDamage'), 'and its damage');
+});
+
+test('syphon (FFA, on by default): a kill gives the killer back half the health they had lost', () => {
+ const r = room();
+ const arena = r.host.arena, host = arena.seats.get('host'), other = [...r.host.remotes.values()][0].seat;
+ assert.equal(arena.settings.syphon, 'on');
+ host.sim.player.hp = 200;
+ arena.died(other, host);
+ assert.equal(host.sim.player.hp, 200 + Math.floor((host.sim.player.maxHp - 200) * .5));
+ assert.ok(host.sim.events.some(e => e.type === 'syphon'));
+ arena.setSetting('syphon', 'off'); other.dead = false; host.sim.player.hp = 200;
+ arena.died(other, host); assert.equal(host.sim.player.hp, 200);
+});

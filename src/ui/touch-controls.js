@@ -85,6 +85,26 @@ export function bindFloatingStick(zone, element, { isRunning, onWalkStart, onTap
 // changes. Shapes are clip paths, which also limit where a touch lands.
 // Swap sides mirrors it. A button moved in the layout editor stops being a
 // segment and is drawn as a plain circle wherever it was put.
+// A closed outline through `points`, each corner listed in `round` (index ->
+// radius) softened with a curve, the rest joined straight (arcs are passed in
+// already sampled finely, so they stay smooth). Used for every cluster button:
+// slightly rounded outer corners, and FIRE's corner rounded to sit inside a
+// phone's curved screen corner.
+export function roundedOutline(points,round){
+ const n=points.length,out=[];
+ const toward=(a,b,d)=>{const dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1,k=Math.min(d,l/2)/l;return {x:a.x+dx*k,y:a.y+dy*k};};
+ for(let i=0;i<n;i++){
+  const p=points[i],r=round[i]||0;
+  if(!r){out.push(`${out.length?'L':'M'}${p.x.toFixed(2)} ${p.y.toFixed(2)}`);continue;}
+  const a=toward(p,points[(i-1+n)%n],r),b=toward(p,points[(i+1)%n],r);
+  out.push(`${out.length?'L':'M'}${a.x.toFixed(2)} ${a.y.toFixed(2)} Q${p.x.toFixed(2)} ${p.y.toFixed(2)} ${b.x.toFixed(2)} ${b.y.toFixed(2)}`);
+ }
+ return `path('${out.join(' ')} Z')`;
+}
+// Points along an arc (degrees), ends included.
+function arcPoints(radius,from,to,size,mirrored,steps){
+ const pts=[];for(let k=0;k<=steps;k++)pts.push(ringPoint(radius,from+(to-from)*k/steps,size,mirrored));return pts;
+}
 function ringPoint(radius,degrees,size,mirrored){
  const a=degrees*Math.PI/180;
  return {x:mirrored?radius*Math.cos(a):size-radius*Math.cos(a),y:size-radius*Math.sin(a)};
@@ -99,15 +119,29 @@ export function arrangeTouchCluster(){
  const style=(el,size,shape,label)=>{
   el.classList.add('touch-shaped');
   el.style.setProperty('--size',size+'px');el.style.setProperty('--base',base+'px');el.style.setProperty('--edge','0px');
+  el.style.setProperty('--inset',TOUCH_CLUSTER.inset+'px');el.style.setProperty('--inset-safe',TOUCH_CLUSTER.insetSafeMax+'px');
   el.style.setProperty('--shape',shape);el.style.setProperty('--lx',label.x+'px');el.style.setProperty('--ly',label.y+'px');
  };
  const f=TOUCH_CLUSTER.fire;
  // A slice of FIRE's quarter circle, from a0 to a1 degrees (0 = along the
  // bottom edge, 90 = up the side), drawn the right way round on either side.
+ // FIRE's quarter circle has its screen corner rounded along one smooth
+ // curve (a quadratic from `cornerRound` up the side to `cornerRound` along
+ // the bottom), and a slice keeps only the stretch of that curve inside its
+ // own angles, so FIRE and AIM + FIRE split it without a notch. Worked out
+ // unmirrored, then flipped for the swapped side.
+ const R=TOUCH_CLUSTER.cornerRound,soft=TOUCH_CLUSTER.softRound;
+ const curve=[];for(let k=0;k<=24;k++){const t=k/24,u=1-t;
+  // From the bottom edge (angle 0) to the side (angle 90), control at the corner.
+  const x=u*u*(f-R)+2*u*t*f+t*t*f,y=u*u*f+2*u*t*f+t*t*(f-R);
+  curve.push({x,y,a:Math.atan2(f-y,f-x)*180/Math.PI});}
+ const at=a=>{for(let k=1;k<curve.length;k++){const p=curve[k-1],q=curve[k];if(a<=q.a+1e-9){const t=(a-p.a)/((q.a-p.a)||1);return {x:p.x+(q.x-p.x)*t,y:p.y+(q.y-p.y)*t};}}return curve.at(-1);};
+ const flip=pt=>mirrored?{x:f-pt.x,y:pt.y}:pt;
  const slice=(a0,a1)=>{
-  const p=a=>ringPoint(f,a,f,mirrored),c=mirrored?{x:0,y:f}:{x:f,y:f};
-  const [s,e]=mirrored?[p(a1),p(a0)]:[p(a0),p(a1)];
-  return `path('M${c.x} ${c.y} L${s.x.toFixed(2)} ${s.y.toFixed(2)} A${f} ${f} 0 0 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)} Z')`;
+  const corner=[at(a0),...curve.filter(c=>c.a>a0+1e-6&&c.a<a1-1e-6),at(a1)].map(flip);
+  const arc=arcPoints(f,a1,a0,f,mirrored,28);
+  const points=[...corner,...arc],round={[corner.length]:soft,[points.length-1]:soft};
+  return roundedOutline(points,round);
  };
  const split=ads&&aimFire&&!aimFire.hidden&&!fire.classList.contains('touch-positioned')&&!fire.classList.contains('touch-removed');
  const cut=split?TOUCH_CLUSTER.adsFireDegrees:0;
@@ -115,6 +149,8 @@ export function arrangeTouchCluster(){
  if(aimFire){aimFire.classList.toggle('touch-split-off',!split);if(split)style(aimFire,f,slice(0,cut-1.6),ringPoint(f*.7,cut/2,f,mirrored));}
  // Buttons pulled out in the editor leave the ring, and it closes up without them.
  const order=ads?['touch-stream',...CLUSTER_ORDER.filter(id=>id!=='touch-stream')]:CLUSTER_ORDER;
+ // Out of the ring (pulled out in the editor, or removed): no ring shape left on it.
+ for(const id of [...CLUSTER_ORDER,'touch-launch','touch-aimfire']){const b=byId(id);if(b&&(b.classList.contains('touch-positioned')||b.classList.contains('touch-removed')))b.classList.remove('touch-shaped');}
  const shown=order.map(byId).filter(button=>button&&!button.hidden&&!button.classList.contains('touch-positioned')&&!button.classList.contains('touch-removed'));
  const weight=button=>ads&&button.id==='touch-stream'?TOUCH_CLUSTER.aimWeight:1;
  const n=shown.length,gap=TOUCH_CLUSTER.segmentGap/((inner+outer)/2)*180/Math.PI,total=shown.reduce((sum,b)=>sum+weight(b),0),unit=(90-gap*(n-1))/Math.max(1,total);
@@ -122,8 +158,11 @@ export function arrangeTouchCluster(){
  shown.forEach(button=>{
   const to=from+unit*weight(button),p=(r,a)=>ringPoint(r,a,outer,mirrored);
   const [o1,o2,i2,i1]=[p(outer,from),p(outer,to),p(inner,to),p(inner,from)];
-  const out=mirrored?0:1,back=mirrored?1:0;
-  const shape=`path('M${o1.x.toFixed(2)} ${o1.y.toFixed(2)} A${outer} ${outer} 0 0 ${out} ${o2.x.toFixed(2)} ${o2.y.toFixed(2)} L${i2.x.toFixed(2)} ${i2.y.toFixed(2)} A${inner} ${inner} 0 0 ${back} ${i1.x.toFixed(2)} ${i1.y.toFixed(2)} Z')`;
+  // An annular segment with softly rounded corners: more on the outside
+  // (the edge you see against the game), less on the inside against FIRE.
+  const steps=Math.max(6,Math.round((to-from)/2)),outerArc=arcPoints(outer,from,to,outer,mirrored,steps),innerArc=arcPoints(inner,to,from,outer,mirrored,steps);
+  const pts=[...outerArc,...innerArc],last=outerArc.length-1,soft=TOUCH_CLUSTER.softRound;
+  const shape=roundedOutline(pts,{0:soft,[last]:soft,[last+1]:soft*.6,[pts.length-1]:soft*.6});
   // Label at the segment's middle, weighted between its corners and its
   // centre line: on the end segments, cut straight by the screen edge, the
   // middle of the angle sits too near that edge and the word was cut off.

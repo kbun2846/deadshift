@@ -1,4 +1,4 @@
-import { RIFLE, RIFLE_MUZZLE, RIFLE_CONVERGE, RULES } from '../config/gameplay.js';
+import { RIFLE, RIFLE_MUZZLE, RIFLE_CONVERGE, RULES, SURGE } from '../config/gameplay.js';
 import { targetRadius } from '../target-radius.js';
 export { RIFLE, RIFLE_MUZZLE, RIFLE_CONVERGE };
 export const rifleDamage=distance=>RIFLE.damage-(RIFLE.damage-RIFLE.minDamage)*Math.max(0,Math.min(1,(distance-RIFLE.effectiveRange)/(RIFLE.falloffEnd-RIFLE.effectiveRange)));
@@ -33,11 +33,12 @@ export function kickRifle(r,sample){
  r.kick=Math.min(1,(r.kick||0)+RIFLE.recoilBuild);
  r.sway=Math.max(-RIFLE.recoilMax,Math.min(RIFLE.recoilMax,(r.sway||0)+(sample*2-1)*RIFLE.recoilKick*(.5+r.kick)));
 }
-export function resetRifle(sim){sim.rifle={ammo:RIFLE.magazine,capacity:RIFLE.magazine,reloadCapacity:RIFLE.magazine,extendedCooldown:0,cooldown:0,reload:0,aiming:false,triggerHeld:false,burst:0,sway:0,kick:0};sim.magazines=[];sim.rifleBullets=[];}
+export function resetRifle(sim){sim.rifle={ammo:RIFLE.magazine,capacity:RIFLE.magazine,reloadCapacity:RIFLE.magazine,cooldown:0,reload:0,aiming:false,triggerHeld:false,burst:0,sway:0,kick:0};sim.magazines=[];sim.rifleBullets=[];}
 export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
  const r=sim.rifle,p=sim.player;
- r.extendedCooldown=sim.dev.extendedCooldown?0:Math.max(0,r.extendedCooldown-dt);
- const finishReload=()=>{r.reload=0;r.capacity=r.reloadCapacity;r.ammo=r.capacity;sim.events.push({type:'rifleReloaded',extended:r.capacity===RIFLE.extendedMagazine});};
+ // Surge (surge.js): 2x bullets, no ammo used, no reloading.
+ const surging=!!sim.surge?.active;
+ const finishReload=()=>{r.reload=0;r.capacity=r.reloadCapacity;r.ammo=r.capacity;sim.events.push({type:'rifleReloaded'});};
  const firePressed=input.fire&&!r.triggerHeld;
  if(firePressed)r.burst=0;r.triggerHeld=!!input.fire;
  // Swept collision runs for each travelled segment, even while reloading.
@@ -49,7 +50,7 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
   for(const t of sim.targets){if(t.hp<=0)continue;const hit=segmentCircle(bullet.x,bullet.z,ex,ez,t.x,t.z,targetRadius(t)+.025);if(hit!==null&&hit<first){first=hit;target=t;prop=null;}}
   bullet.x+=(ex-bullet.x)*first;bullet.z+=(ez-bullet.z)*first;bullet.travel+=travel*first;
   if(first<1||target||prop){
-   const shot={bullet:true,damage:rifleDamage(bullet.travel),owner:p.id,volley:bullet.id,x:bullet.x,z:bullet.z,vx:bullet.dx,vz:bullet.dz};
+   const shot={bullet:true,damage:rifleDamage(bullet.travel)*(bullet.surge?SURGE.damage:1),owner:p.id,volley:bullet.id,x:bullet.x,z:bullet.z,vx:bullet.dx,vz:bullet.dz};
    if(target){sim.hit(target,shot);sim.events.push({type:'rifleHit',id:bullet.id,aimed:bullet.aimed});}else if(prop)sim.hitProp(prop,shot);
    sim.volleyKills.delete(shot.volley);
    sim.events.push({type:'impactMark',x:bullet.x,z:bullet.z,vx:bullet.dx,vz:bullet.dz});
@@ -66,22 +67,21 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
  const settle=Math.exp(-dt*(r.aiming?RIFLE.recoilSettleAim:RIFLE.recoilSettle));
  r.sway=(r.sway||0)*settle;r.kick=(r.kick||0)*settle;
  if(r.reload>0){r.reload=Math.max(0,r.reload-dt);if(r.reload<1e-8)finishReload();return;}
- const extended=input.extendedReload&&r.extendedCooldown<=1e-8;
+ if(surging)r.ammo=r.capacity;
  const emptyTrigger=firePressed&&r.ammo<=0;
- if(p.hp>0&&(extended||emptyTrigger||input.reload&&(r.ammo<r.capacity||r.capacity>RIFLE.magazine))){
-  r.reloadCapacity=extended?RIFLE.extendedMagazine:RIFLE.magazine;
-  if(extended)r.extendedCooldown=RIFLE.extendedCooldown;
+ if(p.hp>0&&!surging&&(emptyTrigger||input.reload&&r.ammo<r.capacity)){
+  r.reloadCapacity=RIFLE.magazine;
   r.reload=RIFLE.reload;
-  sim.magazines.push({id:++sim.serial,x:p.x-p.aimZ*.3,z:p.z+p.aimX*.3,angle:Math.atan2(p.aimX,p.aimZ),age:0,extended:r.capacity===RIFLE.extendedMagazine});
+  sim.magazines.push({id:++sim.serial,x:p.x-p.aimZ*.3,z:p.z+p.aimX*.3,angle:Math.atan2(p.aimX,p.aimZ),age:0});
   if(sim.dev.rifleInstantReload)finishReload();
   sim.events.push({type:'rifleReload'});return;
  }
  if(!input.fire||r.cooldown>1e-8||p.hp<=0||p.dodgeRemaining>0)return;
- r.cooldown=RIFLE.interval+Math.min(0,r.cooldown);
+ r.cooldown=RIFLE.interval*(sim.dev.rapidFire?.5:1)+Math.min(0,r.cooldown);
  if(!r.ammo){sim.events.push({type:'cock'});return;}
- if(!sim.dev.ammo)r.ammo--;sim.stats.launched++;
+ if(!sim.dev.ammo&&!surging)r.ammo--;sim.stats.launched++;
  const distance=Math.hypot(p.aimPointX-p.x,p.aimPointZ-p.z);
- const spread=rifleSpread(distance,Math.hypot(p.vx,p.vz),r.aiming);
+ const spread=sim.dev.noSpread?0:rifleSpread(distance,Math.hypot(p.vx,p.vz),r.aiming);
  // The barrel is laid on the convergence point rather than run parallel to the
  // player. Fired parallel, every bullet passed a fixed offset to one side of
  // the crosshair no matter how tight the spread was — which is what made even
@@ -91,11 +91,11 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
  // The cone is where the last shots knocked it (the HUD draws it there too),
  // then this shot kicks it again, from the hip only.
  const angle=aim.angle+(r.sway||0)+rifleShotError(Math.random()-Math.random())*spread;
- if(!r.aiming)kickRifle(r,Math.random());
+ if(!r.aiming&&!sim.dev.noRecoil)kickRifle(r,Math.random());
  const dx=Math.cos(angle),dz=Math.sin(angle);
  // Include the player-to-muzzle segment so the barrel cannot shoot through cover.
  const blocked=sim.colliders.some(b=>!b.playerOnly&&segmentBox(p.x,p.z,x,z,b)!==null);
  const id=++sim.volley;
- sim.rifleBullets.push({id,x:blocked?p.x:x,z:blocked?p.z:z,dx,dz,travel:0,aimed:r.aiming});
- sim.events.push({type:'rifleShot',x,z,id,burstIndex:++r.burst});
+ sim.rifleBullets.push({id,x:blocked?p.x:x,z:blocked?p.z:z,dx,dz,travel:0,aimed:r.aiming,surge:surging});
+ sim.events.push({type:'rifleShot',x,z,id,burstIndex:++r.burst,surge:surging||undefined});
 }

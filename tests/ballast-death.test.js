@@ -22,10 +22,9 @@ test('headless knee death removes head, drops gun, splatters forward and cleans 
  fx.update(1.5);assert.equal(fx.corpse.body.position.y,-.12);assert.equal(fx.corpse.blood.legs.children.length,4);assert.ok(fx.corpse.blood.fragments.every(p=>p.vx>0));assert.ok(fx.corpse.blood.pool.scale.x>1);assert.ok(fx.corpse.blood.streaks.every(s=>s.scale.y>0));
  fx.clear();assert.equal(scene.children.length,1);assert.equal(player.visible,true);geo.dispose();mat.dispose();
 });
-test('heavy close hits need a tighter center, with an independent point-blank contact chance',()=>{
- const b={x:0,z:0,dx:1,dz:0,travel:.3,range:9,charge:1,contactSample:.5};
+test('point-blank hits need a tighter center, with an independent glancing chance',()=>{
+ const b={x:0,z:0,dx:1,dz:0,travel:.3,range:7.5,contactSample:.5};
  assert.equal(shotgunPelletContact(b,{x:1,z:0}),1);assert.equal(shotgunPelletContact(b,{x:1,z:.4}),.55);
  assert.equal(shotgunPelletContact({...b,contactSample:.95},{x:1,z:0}),.55);
- assert.equal(shotgunPelletContact({...b,travel:4},{x:4,z:.4}),1);
- assert.equal(shotgunPelletContact({...b,charge:0},{x:1,z:.4}),1);
+ assert.equal(shotgunPelletContact({...b,travel:4},{x:4,z:.4}),1,'further out every pellet that touches counts');
 });

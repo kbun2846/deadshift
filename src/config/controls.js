@@ -20,7 +20,13 @@ export const TOUCH_CLUSTER = Object.freeze({ fire: 138, gap: 6, ring: 76, segmen
  // Weapons with aim-down-sights (items.js adsFire): AIM moves to the bottom
  // end of the ring and gets this much more arc than the others, and the
  // bottom slice of FIRE (adsFireDegrees of its 90) becomes AIM + FIRE.
- aimWeight: 1.4, adsFireDegrees: 26 });
+ aimWeight: 1.4, adsFireDegrees: 26,
+ // Shapes: every button's outer corners are rounded by `softRound` px, and
+ // FIRE's corner (the screen's corner) by `cornerRound`, so the cluster sits
+ // inside a phone's curved screen corner. The whole cluster stands `inset` px
+ // off both edges, the same on each (safe-area insets only add up to
+ // `insetSafeMax`, so a notch does not push it far in on one side).
+ softRound: 9, cornerRound: 34, inset: 10, insetSafeMax: 16 });
 // Ring order from the thumb's easiest reach outward: dodge first.
 export const CLUSTER_ORDER = Object.freeze(['touch-dodge', 'touch-stream', 'touch-hex', 'touch-place', 'touch-extended', 'touch-grenade']);
 

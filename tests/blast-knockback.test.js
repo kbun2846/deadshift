@@ -13,8 +13,8 @@ test('small orb blasts do not push; six to twelve orbs progressively increase kn
 });
 test('close grenade pushes about 2.8 metres, less than a dash, without costing stamina',()=>{
  const sim=make();sim.weapon='rifle';sim.reset();sim.step({grenade:true,aimX:1,aimZ:0,aimPointX:0,aimPointZ:0});
- const distance=settle(sim);assert.ok(distance>2.6&&distance<RULES.dodgeDistance);assert.equal(sim.player.stamina,3);
- assert.equal(sim.player.hp,260);
+ const distance=settle(sim);assert.ok(distance>2.6&&distance<RULES.dodgeDistance);assert.equal(sim.player.stamina,1);
+ assert.equal(sim.player.hp,210); // 240 at the core plus the +50 every grenade has since v0.83
 });
 test('blast knockback falls off, is blocked by cover, respects walls and resets with spawn speed',()=>{
  const near=make(),far=make();near.explode({x:-.1,z:0,arrived:12},1);far.explode({x:-2.5,z:0,arrived:12},1);

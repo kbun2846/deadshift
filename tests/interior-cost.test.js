@@ -67,7 +67,7 @@ test('the interior shroud costs less the lower the preset goes',()=>{
  for(const tier of ['potato','performance'])
   assert.ok(rule(tier).includes('backdrop-filter:none'),`${tier} must drop the backdrop pass entirely`);
  // And the painted buffer itself has to get coarser, not just the filter.
- const renderer=readFileSync(new URL('../src/render/renderer.js',import.meta.url),'utf8');
+ const renderer=['renderer','world-build','warm-up','vision'].map(f=>readFileSync(new URL('../src/render/'+f+'.js',import.meta.url),'utf8')).join('\n') /* WorldView and its method files */;
  const table=renderer.slice(renderer.indexOf('const VISION_STEP'),renderer.indexOf('const VISION_REPAINT'));
  const step=tier=>Number(table.match(new RegExp(tier+':\\s*(\\d+)'))[1]);
  assert.ok(step('potato')>step('performance'),'Potato paints coarser than Performance');
@@ -79,7 +79,7 @@ test('the interior shroud costs less the lower the preset goes',()=>{
 test('the shroud never goes back to an asynchronously decoded mask',()=>{
  // A `mask-image` data URI decodes off the main thread, so the shroud painted
  // itself unmasked for a frame every time one swapped. That was the flicker.
- const renderer=readFileSync(new URL('../src/render/renderer.js',import.meta.url),'utf8');
+ const renderer=['renderer','world-build','warm-up','vision'].map(f=>readFileSync(new URL('../src/render/'+f+'.js',import.meta.url),'utf8')).join('\n') /* WorldView and its method files */;
  assert.ok(!/visionOverlay\.style\.maskImage/.test(renderer),'no mask-image on the shroud');
  assert.ok(!/image\/svg\+xml.*interiorPolygons/s.test(renderer)||!/feMorphology/.test(renderer.slice(renderer.indexOf('paintVision'))),
   'no SVG filter chain rebuilt for the interior shroud');

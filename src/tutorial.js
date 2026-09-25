@@ -1,5 +1,5 @@
 import { WEAPONS, weapon as weaponById } from './items.js';
-import { RIFLE, TUTORIAL_TARGET_HEALTH } from './config/gameplay.js';
+import { RIFLE, SURGE, TUTORIAL_TARGET_HEALTH } from './config/gameplay.js';
 // The training range and its courses.
 //
 // Two kinds of course share the one range. "basics" is what the home screen's
@@ -41,8 +41,8 @@ export const COURSES = {
  basics: [
   lesson('walk', 'walk', TUTORIAL_ZONES.length, 'hold [W] [A] [S] [D] and walk into the pink zone', 'drag anywhere on the left side to walk into the pink zone',
    { note: 'follow the pink arrow' }),
-  lesson('dash', 'dash', 5, 'hold a direction and press [CTRL] to dash through a crate', 'drag on the left to move and tap [DODGE] to dash through a crate',
-   { note: 'each dash uses a stamina bar', highlight: 'dodge-stamina', touchHighlight: 'touch-dodge' }),
+  lesson('dash', 'dodge', 5, 'hold a direction and press [CTRL] to dodge through a crate', 'drag on the left to move and tap [DODGE] to dodge through a crate',
+   { note: 'each weapon carries its own number of dodges and they refill after a moment', highlight: 'dodge-stamina', touchHighlight: 'touch-dodge' }),
   // Touch only: the right thumb aims while the left walks. Skipped on keys.
   lesson('aimhold', 'aim while walking', 3, '', 'walk with your left thumb and swipe your right thumb toward a target',
    { touchNote: 'a swipe locks on like an arrow key and the next swipe moves on', touchOnly: true }),
@@ -55,11 +55,11 @@ export const COURSES = {
  ],
  static: [
   lesson('orbs', 'place orbs', 24, 'hold [E] and place two full loads of orbs', 'hold [PLACE] and place two full loads of orbs', { note: 'stand still and they refill faster', highlight: 'seed-pips' }),
-  lesson('volley', 'volley', 3, 'place a few orbs then press [LMB] / [SPACE] to fire them at a target', 'place a few orbs then tap [LAUNCH] at a target',
-   { note: 'more orbs hit harder', highlight: 'seed-pips' }),
+  lesson('volley', 'volley', 3, 'place four or more orbs then press [LMB] / [SPACE] to fire them at a target', 'place four or more orbs then tap [LAUNCH] at a target',
+   { note: 'more orbs hit much harder so never fire fewer than four', highlight: 'seed-pips' }),
   lesson('stream', 'stream', 3, 'get close and hold [C] on a target', 'get close and hold [STREAM] on a target', { note: 'stay on one target to ramp it up', highlight: 'seed-pips' }),
-  lesson('pulse', 'hex pulse', 3, 'press [X] to deploy then [X] again to pulse', 'tap [PULSE] to deploy then tap it again to pulse',
-   { note: 'pulse before the ring at your cursor turns red', highlight: 'hex-recharge' }),
+  lesson('pulse', 'hex', 3, 'press [X] to throw out the hex then [X] again to pulse it', 'tap [HEX] to throw out the hex then tap it again to pulse it',
+   { note: 'the hex needs ten orbs in hand (the x mark on the orb bar) and its spinning sides zap whoever they cross', highlight: 'hex-recharge' }),
  ],
  rifle: [
   lesson('single', 'single shots', 5, 'tap [LMB] / [SPACE] once to fire a single shot', 'tap [FIRE] once for a single shot', { note: 'let go between shots', highlight: 'seed-pips' }),
@@ -67,16 +67,15 @@ export const COURSES = {
   lesson('aimin', 'aim in', 3, 'hold [RMB] / [SHIFT] and hit a target', 'hold [AIM] and hit a target',
    { note: 'standing still tightens it more', highlight: 'rifle-spread', touchHighlight: 'touch-stream' }),
   lesson('reload', 'reload', 2, 'fire a shot then press [R]', 'fire a shot then tap [RELOAD]', { note: `a mag holds ${RIFLE.magazine} rounds`, highlight: 'seed-pips', touchHighlight: 'touch-hex' }),
-  lesson('grenade', 'grenade', 2, 'press [E] to throw a grenade', 'tap [GRENADE] to throw one', { note: 'stay out of the blast', highlight: 'hex-recharge' }),
-  lesson('bigmag', 'big mag', 1, `press [X] to load a ${RIFLE.extendedMagazine} round mag`, `tap [EXTEND] to load a ${RIFLE.extendedMagazine} round mag`, { note: `[R] goes back to ${RIFLE.magazine}`, touchNote: `[RELOAD] goes back to ${RIFLE.magazine}`, highlight: 'extended-recharge' }),
+  lesson('grenade', 'grenade', 2, 'press [E] to throw a grenade', 'tap [NADE] to throw one', { note: 'stay clear of where it lands', highlight: 'hex-recharge' }),
+  lesson('nova', 'nova', 1, 'press [X] for nova', 'tap [NOVA]', { note: `${SURGE.charge} seconds to power up then ${SURGE.duration} seconds of double damage with no reloading and it ends on a full mag`, highlight: 'extended-recharge' }),
  ],
  shotgun: [
-  lesson('sfire', 'fire', 4, 'press [LMB] / [SPACE] and fire two full loads', 'tap [FIRE] and fire two full loads', { note: 'press [R] to reload and watch the kick', touchNote: 'tap [RELOAD] in between and watch the kick', highlight: 'seed-pips' }),
-  lesson('charged', 'charged blast', 3, 'hold [LMB] / [SPACE] until it is full then let go', 'hold [FIRE] until it is full then let go',
-   { note: 'the ring at your cursor shows the charge' }),
-  lesson('store', 'store charge', 2, 'hold [LMB] / [SPACE] then press [SHIFT] / [RMB] to store it', 'hold [FIRE] then tap [LOCK] to store it', { note: 'the ring turns white while it is stored' }),
+  lesson('sfire', 'fire', 4, 'press [LMB] / [SPACE] for each shell and fire two full loads', 'tap [FIRE] for each shell and fire two full loads', { note: 'every shot throws you back so press [R] to reload', touchNote: 'every shot throws you back so tap [RELOAD] to reload', highlight: 'seed-pips' }),
+  lesson('saim', 'aim in', 2, 'hold [RMB] / [SHIFT] and fire', 'hold [AIM] and fire', { note: 'a tighter cone lands more pellets further out', touchHighlight: 'touch-stream' }),
   lesson('double', 'double', 2, 'press [E] to fire both shells', 'tap [DOUBLE] to fire both shells', { note: 'needs two shells loaded', highlight: 'seed-pips' }),
   lesson('sreload', 'reload', 2, 'press [R] to reload', 'tap [RELOAD] to reload', { note: 'you get two shells', highlight: 'seed-pips' }),
+  lesson('blast', 'blast', 1, 'press [X] to ready the blast, then [X] again to fire it', 'tap [BLAST] to ready it, then tap it again to fire', { note: 'the red cone shows where the shells spread and split', highlight: 'hex-recharge' }),
  ],
 };
 export const COURSE_NAMES = Object.freeze({ basics: 'basics', ...Object.fromEntries(WEAPONS.map(w => [w.id, w.name.toLowerCase()])) });
@@ -151,7 +150,8 @@ export class Tutorial {
   const id = this.lesson?.id;
   if (id === 'pulse' && !sim.hexOrbs.length && !sim.hexSpin) { sim.hexCooldown = 0; sim.ammo = Math.max(sim.ammo, 10); }
   if (id === 'grenade' && !sim.grenades.length) sim.grenadeCooldown = 0;
-  if (id === 'bigmag' && !sim.rifle.reload) sim.rifle.extendedCooldown = 0;
+  if (id === 'nova' && sim.surge?.phase === 'idle') sim.surge.cooldown = 0;
+  if (id === 'blast' && sim.scatter) sim.scatter.cooldown = 0;
   return before !== this.index * 100 + this.count;
  }
 
@@ -171,12 +171,12 @@ export class Tutorial {
    case 'auto': return e.type === 'rifleShot' && this.credit();
    case 'nomouse': return e.type === 'keyboardShot' && this.credit();
    case 'aimin': return e.type === 'rifleHit' && e.aimed && this.credit(e.id);
-   case 'reload': return e.type === 'rifleReloaded' && !e.extended && this.credit(e.id);
+   case 'reload': return e.type === 'rifleReloaded' && this.credit(e.id);
    case 'grenade': return e.type === 'grenadeExplosion' && this.credit(e.id);
-   case 'bigmag': return e.type === 'rifleReloaded' && e.extended && this.credit(e.id);
+   case 'nova': return e.type === 'surgeStart' && this.credit(e.id);
    case 'sfire': return e.type === 'shotgunShot' && this.credit(e.id);
-   case 'charged': return e.type === 'shotgunShot' && e.charge > .99 && this.credit(e.id);
-   case 'store': return e.type === 'shotgunStored' && this.credit(e.id);
+   case 'blast': return e.type === 'scatterFire' && this.credit(e.id);
+   case 'saim': return e.type === 'shotgunShot' && sim.shotgun?.aiming && this.credit(e.id);
    case 'double': return e.type === 'shotgunDouble' && this.credit(e.id);
    case 'sreload': return e.type === 'shotgunReloaded' && this.credit(e.id);
   }

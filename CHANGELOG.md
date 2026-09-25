@@ -2,6 +2,35 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.9 (2026-09-24)
+
+### 1V1
+- Gamemodes > 1V1 works: you against one robot. Pick the map, your weapon, the robot's weapon (or random), its skill (rookie, easy, normal, hard, expert), its aim (sloppier, as its skill, sharper), its temper (calm, shifting, aggressive), and first to 3, 5, 10 or endless.
+- No practice targets; the score sits at the top; at the end, REMATCH or MAIN MENU. Your last picks are remembered.
+
+### Robots
+- Two new skills: rookie and expert. Robots mix two or three play styles, and their mood shifts during a fight: pushing and hunting when fired up, keeping their distance and taking cover when calm. Getting hurt calms them; a badly hurt enemy fires them up.
+- They read the fight (push, kite, close in, fall back), dodge shots they see coming, and use every weapon's tricks. Their aim is a little worse, with the odd miss; they see only ahead and hear by distance; they spawn further away and fight each other as often as you.
+- Real robot heads (no hats); armour plates fall off as they take damage, and exposed wiring sparks and smokes.
+
+### Weapons
+- Nominal: 28 rounds, faster reload. New X: the nova, 2 s to power up, then 5 s of double damage, no ammo use, a little extra speed and armour, white beams, a full magazine after; 50 s cooldown.
+- Ballast: no more charging; one press, one shell. New X: the blast, five big red shells that each split into four and end in small explosions (up to 460 damage), 40 s cooldown. Two dodges.
+- Static: the hex hits 15 harder; the orb bar marks the tenth orb; bigger volleys.
+- X abilities are named hex, nova and blast everywhere, and the X button shows its state by colour (red cooling down, pink ready, yellow charging, blue in use). Tutorials redone to match.
+
+### Aim and screen
+- Target lock: turn to face someone, or use the arrow keys (or swipes) to switch between targets; no auto-lock. Smooth, accurate tracking that lets go behind walls, indoors and off screen.
+- Every screen shape sees about the same amount of the map. Pink ring shows where gunfire you hear comes from. KILL / ONE SHOT popups. Numbers from your last life no longer show after you respawn.
+- Menus show pictures of the weapons and maps, and every weapon and map list has a coming-soon slot.
+- Touch: see-through buttons that fade at the edges, evenly inset with rounded corners.
+
+### Multiplayer and fixes
+- Fixed games freezing when Static's stream was busy. Syphon (FFA option): a kill heals half your missing health.
+- Online players no longer run the nova or blast twice; shells keep flying after you die; many smaller fixes.
+- Faster loading; fewer draws on busy maps; no stutter on the first death.
+- Dev tools: freeze game, many more options, a larger O window with a quick bar and search.
+
 ## alpha v0.82 (2026-09-24)
 
 ### Robots (a test build, from the dev tools)

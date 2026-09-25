@@ -12,18 +12,24 @@ test('Space shoots, E is the secondary key everywhere the controls are described
  }
 });
 
-test('locked on a player, the aim chases: a walker is kept up with, a dodge pulls ahead, arrows lead', async () => {
+test('locked on a player: accurate and smooth, drifts off on a dodge or behind a wall, glides back, disengages indoors or off screen', async () => {
  const { createTargetLock, TARGET_LOCK } = await import('../src/target-lock.js');
- const run = (speed, seconds, nudgeX = 0) => {
-  const lock = createTargetLock(), player = { x: 0, z: 0 };
-  const t = { id: 'p', x: 5, z: 0, sx: 500, sy: 300 };
-  lock.select([t], { x: 0, y: 300 }, 1, 0, { x: 5, z: 0 });
-  for (let i = 0; i < 30; i++) lock.update([t], player, 1 / 60, null, {});
-  for (let i = 0; i < seconds * 60; i++) { t.z += speed / 60; lock.update([t], player, 1 / 60, null, { nudgeX: 0, nudgeZ: nudgeX }); }
-  return Math.hypot(lock.point.x - t.x, lock.point.z - t.z);
- };
- assert.ok(run(4, 1) < .05, 'a walker is kept up with');
- assert.ok(run(14.6, .24) > .5, 'a dodge pulls ahead');
- assert.ok(run(7.2, 1, 1) < run(7.2, 1), 'leading with the arrow closes the gap');
- assert.ok(TARGET_LOCK.chaseSpeed < 7.2);
+ const setup = () => { const lock = createTargetLock(), t = { id: 'p', mover: true, x: 5, z: 0, vx: 0, vz: 0, sx: 500, sy: 300 }; lock.acquire(t, { x: 3, z: 0 }); return { lock, t }; };
+ const tick = (lock, t, n, move = () => {}) => { for (let i = 0; i < n; i++) { move(t); lock.update([t], { x: 0, z: 0 }, 1 / 60, () => t, {}); } };
+ const off = (lock, t) => Math.hypot(lock.point.x - t.x, lock.point.z - t.z);
+ // A runner is sat on, not chased from behind.
+ { const { lock, t } = setup(); tick(lock, t, 30); t.vz = 7; tick(lock, t, 60, t => { t.z += 7 / 60; }); assert.ok(off(lock, t) < .3, 'on a runner: ' + off(lock, t)); assert.equal(lock.phase, 'track'); }
+ // A dodge: the aim drifts on, then after a moment glides back on.
+ { const { lock, t } = setup(); tick(lock, t, 30); t.vz = 4; tick(lock, t, 10, t => { t.z += 4 / 60; });
+   t.dodging = true; tick(lock, t, 14, t => { t.x += 14.6 / 60; }); assert.ok(off(lock, t) > 1, 'a dodge pulls ahead'); assert.equal(lock.phase, 'drift');
+   t.dodging = false; t.vz = 0; tick(lock, t, Math.round(TARGET_LOCK.relockDelay * 60) - 2); assert.equal(lock.phase, 'wait');
+   tick(lock, t, 40); assert.ok(off(lock, t) < .1, 'back on after a moment'); }
+ // Behind a wall: drift; too long and it lets go.
+ { const { lock, t } = setup(); tick(lock, t, 30); t.blocked = true; tick(lock, t, 10); assert.equal(lock.phase, 'drift');
+   t.blocked = false; tick(lock, t, 40); assert.equal(lock.phase, 'track');
+   t.blocked = true; tick(lock, t, Math.ceil(TARGET_LOCK.blockedLimit * 60) + 2); assert.equal(lock.id, null); }
+ // Indoors (a building you are not in) or off the screen: let go at once.
+ for (const flag of ['inside', 'offscreen']) { const { lock, t } = setup(); tick(lock, t, 5); t[flag] = true; tick(lock, t, 1); assert.equal(lock.id, null, flag); }
+ // Held arrows still lead by hand.
+ { const { lock, t } = setup(); tick(lock, t, 30); for (let i = 0; i < 30; i++) lock.update([t], { x: 0, z: 0 }, 1 / 60, () => t, { nudgeX: 1, nudgeZ: 0 }); assert.ok(lock.point.x > t.x + .5); }
 });

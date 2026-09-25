@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Simulation,RULES,damagePerOrb,explosionFor,splashFalloff} from '../src/simulation.js';
+import { VOLLEY_BOOST } from '../src/config/gameplay.js';
 
 const empty=extra=>({width:80,depth:80,spawn:{x:0,z:0},buildings:[],props:[],fences:[],targets:[],...extra});
 const run=(sim,frames=150)=>{for(let i=0;i<frames;i++)sim.step({});return sim;};
@@ -150,7 +151,7 @@ test('an unobstructed volley is still worth its full launched value',()=>{
  const total=hits.reduce((sum,hit)=>sum+hit.damage,0);
  const blast=explosionFor(12);
  const bump=Math.round(blast.damage*splashFalloff(0,blast.radius,12))-blast.damage;
- assert.ok(total>=335+bump&&total<=355+bump,`full volley totalled ${total}`);
+ assert.ok(total>=335*VOLLEY_BOOST+bump-2&&total<=355*VOLLEY_BOOST+bump+2,`full volley totalled ${total}`);
 });
 
 test('a single orb never produces a blast',()=>{
@@ -164,7 +165,7 @@ test('an orb pays for what it breaks and carries on lighter',()=>{
  const sim=new Simulation(empty({props:[{type:'crate',x:4,z:0}],targets:[{id:'t',x:14,z:0,maxHp:500}]}));
  sim.seed();sim.launch(14,0);
  const budget=sim.shots[0].pierceBudget;
- assert.equal(budget,damagePerOrb(1),'the budget starts at one orb');
+ assert.equal(budget,damagePerOrb(1)/VOLLEY_BOOST,'the budget starts at one orb (as it was before the volley boost)');
  run(sim);
  assert.equal(sim.props[0].hp,0,'a crate it can afford is cleared');
  assert.ok(sim.targets[0].hp<500,'and the orb keeps going');
@@ -174,7 +175,7 @@ test('a breakable it cannot pay for in full takes the remainder and stops it',()
  const sim=new Simulation(empty({props:[{type:'crate',x:4,z:0},{type:'crate',x:8,z:0}],targets:[{id:'t',x:14,z:0,maxHp:500}]}));
  sim.seed();sim.launch(14,0);run(sim);
  const [first,second]=sim.props;
- const left=damagePerOrb(1)-first.health;
+ const left=damagePerOrb(1)/VOLLEY_BOOST-first.health;
  assert.equal(first.hp,0,'the first is affordable and breaks');
  assert.ok(Math.abs(second.hp-(second.health-left))<1e-6,
   `the second should be left on ${second.health-left}, was ${second.hp}`);

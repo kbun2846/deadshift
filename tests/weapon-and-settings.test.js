@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Simulation, RULES, damagePerOrb, explosionFor } from '../src/simulation.js';
+import { Simulation, RULES, damagePerOrb, explosionFor, splashFalloff } from '../src/simulation.js';
+import { VOLLEY_BOOST } from '../src/config/gameplay.js';
 import { deadwater } from '../src/maps.js';
 import { GRAPHICS, RenderBudget, validateSettings, DEFAULT_SETTINGS } from '../src/settings.js';
 
@@ -37,14 +38,15 @@ test('orbs hit the same selected point inside a target', () => {
   const reach = Math.hypot(4.1, 2.1), overshoot = RULES.launchOvershoot;
   const meetX = 4.1 + 4.1 / reach * overshoot, meetZ = 2.1 + 2.1 / reach * overshoot;
   for (const end of ends) { close(end.x, meetX); close(end.z, meetZ); }
-  const splash = Math.round(explosionFor(4).damage * (1 - .75 * Math.hypot(.1, .1) / explosionFor(4).radius));
+  // Splash is measured to the target's edge: the blast is inside it, full strength.
+  const splash = Math.round(explosionFor(4).damage * splashFalloff(0, explosionFor(4).radius, 4));
   close(sim.targets[0].hp, RULES.targetHealth - 4 * damagePerOrb(4) - splash);
 });
 
 test('one orb launches immediately and deals less damage per orb than a full volley', () => {
   const sim = new Simulation(empty()); sim.seed(); sim.launch(10, 0);
   assert.equal(sim.shots.length, 1); assert.equal(sim.shots[0].damage, damagePerOrb(1));
-  close(12 * damagePerOrb(12)+explosionFor(12).damage,345);
+  close(12 * damagePerOrb(12)+explosionFor(12).damage,345*VOLLEY_BOOST);
   assert.equal(sim.ammo, 11);
 });
 

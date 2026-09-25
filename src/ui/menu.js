@@ -10,6 +10,8 @@ import { savedName } from '../online-play.js';
 import { createSettingsRows } from './lobby-settings.js';
 import { cleanSettings } from '../config/match.js';
 import { robotOptionRows } from './robot-options.js';
+import { buildDuelMenu } from './duel-menu.js';
+import { duelParam } from '../duel.js';
 
 export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete, online }) {
  let page=document.querySelector('[data-page]:not([hidden])')?.dataset.page||'home';
@@ -22,10 +24,14 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const show=name=>{if(name==='maps')loadThumbnail();page=name;document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);refreshTypography();document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
  $('tutorial-entry').hidden=tutorialComplete;$('tutorial-mode').hidden=false;
  $('gamemodes').onclick=()=>show('modes');$('practice-mode').onclick=()=>show('maps');
- // 1V1: you against a robot. A preview for now (robot-options.js): the
- // choices light up, START does nothing yet.
- robotOptionRows($('duel-options'),['weapon','skill']);
- $('duel-mode').onclick=()=>show('duel');$('duel-start').onclick=()=>{};
+ // 1V1: you against a robot (duel-menu.js picks, duel.js runs it). The
+ // choices ride in the URL; a map already loaded starts at once.
+ const duelMenu=buildDuelMenu($('duel-options'),{maps:menuMaps(),start:picks=>{
+  const query=new URLSearchParams({map:picks.map||DEFAULT_MAP,weapon:picks.weapon,play:'1',mode:'duel',duel:duelParam(picks)});
+  if(map.id===query.get('map')){try{history.replaceState(null,'',"?"+query);}catch{}start(picks.weapon);}
+  else location.href='?'+query;
+ }});
+ $('duel-mode').onclick=()=>show('duel');$('duel-start').onclick=()=>duelMenu.start();
  // Host setup: the mode and robots (previews) round the round settings.
  robotOptionRows($('host-mode'),['mode']);robotOptionRows($('host-robots'),['fill','skill']);
  // Online: host a room (you get a code to share) or type a friend's code.
@@ -93,6 +99,12 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   if(WEAPON_IMAGES[weapon.id]){picture.decoding='async';picture.src=WEAPON_IMAGES[weapon.id];}
   card.loadPreview=()=>{if(!picture.src&&weapon.preview)picture.src=weapon.preview();};
  }
+ // Coming soon (owner): the list ends with a greyed card that cannot be picked.
+ {
+  const card=document.createElement('article');card.className='weapon-card weapon-soon';
+  card.innerHTML='<button class="weapon-choice" type="button" disabled aria-disabled="true"><span class="weapon-preview weapon-soon-art" aria-hidden="true"><b>+</b></span><span class="weapon-name"><span class="button-label">COMING SOON</span></span><span class="weapon-description">More weapons are on the way.</span></button>';
+  card.loadPreview=()=>{};$('weapon-options').append(card);
+ }
  const weaponList=$('weapon-options');
  const scrollFrame=document.createElement('div');scrollFrame.className='weapon-scroll-frame';
  weaponList.before(scrollFrame);scrollFrame.append(weaponList);
@@ -118,6 +130,12 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   if(picture)card.querySelector('.map-thumbnail').append(picture);
   card.onclick=()=>{selectedMap=option.id;weaponBack='maps';chooseWeapons();};
   $('map-options').append(card);mapCards.set(option.id,card);
+ }
+ // Coming soon: a greyed map card at the end.
+ {
+  const card=document.createElement('button');card.className='map-choice map-soon';card.disabled=true;card.setAttribute('aria-label','More maps coming soon');
+  card.innerHTML=`<span class="map-thumbnail map-soon-art" aria-hidden="true"><b>+</b></span><small class="map-mode">Soon</small><span class="map-caption"><strong>${stretched('COMING')}${stretched('SOON')}</strong></span>`;
+  $('map-options').append(card);
  }
  let thumbnailScheduled=false;
  function loadThumbnail(){
@@ -148,8 +166,10 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const generalControls=[
   ['Move','WASD / drag anywhere on the left half','On touch the stick appears wherever your thumb lands.'],
   ['Aim','Mouse / arrow keys / swipe on the right half','Movement sets facing when not aiming independently. Arrows and swipes lock onto the target that way; a running player pulls ahead of the lock, and holding an arrow leads them. Tap a spot on the world to fire at it.'],
-  ['Aim in','Shift / right mouse button','Works on every weapon: tightens the shot and slows the walk. On Ballast, pressing it while charging also stores the charge.'],
-  ['Dodge','Left Ctrl / DODGE button','Rolls the way you are moving, or the way you are facing when standing still. Goes through breakable scenery.'],
+  ['Aim in','Hold Shift / right mouse button / AIM','Slows the walk and steadies the cursor on every weapon; Nominal and Ballast also tighten their spread.'],
+  ['Dodge','Left Ctrl / DODGE','Rolls the way you are moving, or the way you are facing when standing still, and breaks through breakable scenery. Each weapon carries its own number of dodges (see Weapons); they refill after a moment.'],
+  ['Weapon ability','X / the weapon\'s ability button','Static: the hex. Nominal: the nova. Ballast: the blast. See Weapons.'],
+  ['Scores','Tab / SCORES (online)','Hold to see the round\'s scoreboard.'],
   ['Map','M / map button; M or Escape closes'],
   ['Pause / resume','Esc / pause button'],
   ['Restart current session','RESTART in pause menu'],
@@ -172,7 +192,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const channels=[
   ['master','MASTER','Everything, including the mute bound to N.'],
   ['ambient','AMBIENT','Wind, dust and the birds overhead.'],
-  ['weapons','WEAPONS','Fire, reloads, charges and abilities.'],
+  ['weapons','WEAPONS','Fire, reloads, dodges and each weapon\'s ability (hex, nova, blast).'],
   ['effects','EFFECTS','Impacts, breakage, footsteps and blasts.'],
  ];
  $('settings-audio').innerHTML='<div class="settings-heading">MIX</div>'+channels.map(([key,label,note])=>

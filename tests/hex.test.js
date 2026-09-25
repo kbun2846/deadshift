@@ -10,13 +10,13 @@ test('hex pulse stages, falloff and zaps receive another 40 percent damage',()=>
  for(const distance of [0,.2,1,3,6,12]){
   const maturity=Math.min(1,distance/6),power=hexPower(distance),oldDamage=Math.round(10+140*maturity*maturity);
   assert.equal(power.damage,Math.round(oldDamage*159.6)/100);
-  assert.equal(power.zapDamage,Math.round(Math.round(6+14*maturity)*159.6)/100);
+  assert.equal(power.zapDamage,Math.round(Math.round(6+14*maturity)*159.6)/100+15);
   for(const depth of [0,.25,.5,1]){
    const oldHit=Math.round(oldDamage*(.25+.75*(1-depth)**2));
    assert.equal(hexPulseDamageAt(power,power.radius*depth),Math.round(oldHit*159.6)/100);
   }
  }
- assert.equal(RULES.hexPulseDamage,239.4);assert.equal(RULES.hexEdgeDamage,31.92);
+ assert.equal(RULES.hexPulseDamage,239.4);assert.equal(RULES.hexEdgeDamage,46.92);
 });
 
 test('second X is ignored during formation and requires a fresh press after the delay',()=>{

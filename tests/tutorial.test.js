@@ -104,10 +104,10 @@ test('basics then map finishes the course; weapon courses teach only their weapo
  assert.equal(new Tutorial('nonsense').course,'basics');
 });
 
-test('Nominal course: taps, held fire, aimed hits, reloads, grenades and the big mag',()=>{
+test('Nominal course: taps, held fire, aimed hits, reloads, grenades and the surge',()=>{
  const sim={spray:{active:false}},t=new Tutorial('rifle');
- const events=[{type:'rifleShot',burstIndex:1},{type:'rifleShot',burstIndex:2},{type:'rifleHit',aimed:true},{type:'rifleReloaded'},{type:'grenadeExplosion'},{type:'rifleReloaded',extended:true}];
- const wrong=[{type:'rifleShot',burstIndex:2},{type:'rifleHit',aimed:true},{type:'rifleHit',aimed:false},{type:'rifleReloaded',extended:true},{type:'dodge'},{type:'rifleReloaded'}];
+ const events=[{type:'rifleShot',burstIndex:1},{type:'rifleShot',burstIndex:2},{type:'rifleHit',aimed:true},{type:'rifleReloaded'},{type:'grenadeExplosion'},{type:'surgeStart'}];
+ const wrong=[{type:'rifleShot',burstIndex:2},{type:'rifleHit',aimed:true},{type:'rifleHit',aimed:false},{type:'dodge'},{type:'dodge'},{type:'surgeCharge'}];
  for(const [i,event] of events.entries()){
   t.event(wrong[i],sim);assert.equal(t.count,0,`${t.lesson.id} ignores the wrong action`);
   for(let n=0;n<t.goal;n++)t.event({...event,id:n},sim);
@@ -125,8 +125,11 @@ test('Static and Ballast courses credit their own actions',()=>{
  for(let i=0;i<3;i++)s.event({type:'hexPulse'},sim);s.advance();
  assert.ok(s.complete);
  const b=new Tutorial('shotgun');
- for(const e of [{type:'shotgunShot',charge:.2},{type:'shotgunShot',charge:1},{type:'shotgunStored'},{type:'shotgunDouble'},{type:'shotgunReloaded'}]){
-  for(let n=0;n<b.goal;n++)b.event({...e,id:n},sim);assert.ok(b.ready,b.lesson.id);b.advance();
+ // Fire, aim in (a shot while aiming), double, reload, the blast: the course order.
+ assert.deepEqual(b.lessons.map(l=>l.id),['sfire','saim','double','sreload','blast']);
+ const aimed={...sim,shotgun:{aiming:true}};
+ for(const [e,state] of [[{type:'shotgunShot'},sim],[{type:'shotgunShot'},aimed],[{type:'shotgunDouble'},sim],[{type:'shotgunReloaded'},sim],[{type:'scatterFire'},sim]]){
+  for(let n=0;n<b.goal;n++)b.event({...e,id:n},state);assert.ok(b.ready,b.lesson.id);b.advance();
  }
  assert.ok(b.complete);
 });
@@ -172,4 +175,12 @@ test('touch players learn to aim with the right thumb while walking; keyboard pl
  assert.equal(t.count,2,'two seconds of walking while aiming');
  const k=new Tutorial('basics');k.index=COURSES.basics.findIndex(l=>l.id==='aimhold');k.touch=false;k.update(sim,STEP);
  assert.equal(k.lesson.id,'shoot','keyboard play skips the touch-only lesson');
+});
+
+test('the X abilities go by their names everywhere: hex, nova, blast',()=>{
+ const ids=Object.fromEntries(Object.entries(COURSES).map(([k,l])=>[k,l.map(x=>x.id)]));
+ assert.ok(ids.rifle.includes('nova')&&ids.shotgun.includes('blast')&&COURSES.static.find(l=>l.id==='pulse').title==='hex');
+ const text=JSON.stringify(COURSES).toLowerCase();
+ for(const old of ['surge','scatter','[lock]','store','charged','charging'])assert.ok(!text.includes(old),old+' is not in the game any more');
+ const nova=new Tutorial('rifle');nova.index=nova.lessons.findIndex(l=>l.id==='nova');nova.event({type:'surgeStart',id:1},{});assert.ok(nova.ready);
 });

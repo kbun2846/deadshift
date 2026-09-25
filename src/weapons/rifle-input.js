@@ -4,11 +4,9 @@ import { GAME_KEYS } from '../config/controls.js';
 // Shift is aim-in for every weapon. The pointer's own aim button still works;
 // the weapon argument is kept because callers pass it and a future weapon may
 // want to opt out.
-// Ballast on the keyboard: hold E to charge and let go to fire, just like the
-// left button; Shift saves the charge, just like a click of the right button.
+// Ballast: a press fires (Space or the left button); Shift / right button aim in.
 export const ballastInput=(pointerFiring,keys,tapped)=>({
  fire:pointerFiring||keys.has(GAME_KEYS.shoot)||tapped.has(GAME_KEYS.shoot),
- storeCharge:tapped.has('MouseRight')||tapped.has('ShiftLeft')||tapped.has('ShiftRight'),
 });
 export const weaponAiming=(weapon,pointerAiming,keys)=>pointerAiming||keys.has('ShiftLeft')||keys.has('ShiftRight');
 export function bindRifleMouse(surface,windowTarget,{enabled,state,fire,aim,store}){

@@ -1,8 +1,10 @@
 // The Developer tools panel beside Settings. It stays empty and hidden until
-// the code is entered (pause, Shift+P, DEV_CODE); before that nothing in the
+// the code is entered (pause, Shift+P, the access code: dev-code.js); before that nothing in the
 // game mentions the tools. The options themselves come from dev-options.js,
 // shared with the floating window on O.
-import { DEV_CODE, buildDevOptions, refill, toggleDevOverrides } from './dev-options.js';
+import { buildDevOptions, refill, toggleDevOverrides } from './dev-options.js';
+import { checkDevCode } from './dev-code.js';
+import { RULES } from '../config/gameplay.js';
 export { toggleDevOverrides };
 
 // Stands in for the panel when the markup it needs is not there. Every caller
@@ -22,7 +24,7 @@ export function installDevTools(sim, panel, changed, hooks = {}) {
   let unlocked = false, built = null;
 
   function unlock(code) {
-    if (String(code).trim() !== DEV_CODE) return false;
+    if (!checkDevCode(code)) return false;
     unlocked = true; options.hidden = false;
     // Built on unlock, not at startup: until then the page holds no trace of the tools.
     built ||= buildDevOptions(root.querySelector('.dev-option-list'), { sim, where: 'settings', hooks: { refill: () => refill(sim), ...hooks }, changed });
@@ -30,7 +32,9 @@ export function installDevTools(sim, panel, changed, hooks = {}) {
     return true;
   }
   function lock() {
-    sim.dev = {}; unlocked = false; options.hidden = true; built?.sync(); hooks.onLock?.(); changed();
+    sim.dev = {}; unlocked = false;
+    // Anything the tools changed on the body goes back (dev max health).
+    sim.player.maxHp = RULES.playerHealth; sim.player.hp = Math.min(sim.player.hp, sim.player.maxHp); options.hidden = true; built?.sync(); hooks.onLock?.(); changed();
   }
   root.querySelector('#dev-lock').onclick = lock;
   return {

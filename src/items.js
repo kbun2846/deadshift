@@ -12,51 +12,50 @@
 // backend later) and sent to the game as a list of ids. The game never trusts
 // its own copy for anything paid: see `ownedItems` below and AGENTS.md.
 
-import { RIFLE } from './config/gameplay.js';
+import { RIFLE, SHOTGUN, SURGE, GRENADE, SCATTER, RULES } from './config/gameplay.js';
 import { GAME_KEYS } from './config/controls.js';
 export const ITEM_KIND = Object.freeze({ WEAPON: 'weapon', SKIN: 'skin' });
 
 // Weapon traits the shared code asks about instead of naming weapons:
 //   input   'orbs'    Static's scheme: E places, LMB/Space launches, C streams, X hex.
-//           'trigger' a gun: LMB/Space (or FIRE) fires or charges, RMB/Shift aims,
+//           'trigger' a gun: LMB/Space (or FIRE) fires, RMB/Shift aims in,
 //                     R reloads, E and X are the weapon's two extras.
 //   smoothCursor  the mouse aim point glides (precision weapons); off = raw.
 //   tutorial      per-weapon course tweaks (targetHp: sturdier range targets).
 //   touchButtons  trigger weapons: what the two extra touch buttons say and
 //                 which key they press ({ label, binding, key }).
-//   storesCharge  a right click / AIM tap while charging stores the charge.
-//   adsFire       touch: the bottom slice of FIRE aims and fires at once (a
-//                 weapon whose AIM does something else, like Ballast storing
-//                 its charge, leaves it off).
+//   adsFire       touch: the bottom slice of FIRE aims and fires at once
+//                 (Nominal, where aiming in matters most).
 // A new weapon adds its entry here, its numbers in config/gameplay.js and its
 // step function in simulation.js (WEAPON_STEPS); see AGENTS.md > Adding a weapon.
 export const WEAPONS = Object.freeze([
  { id: 'static', kind: ITEM_KIND.WEAPON, name: 'Static', stats: 'RULES', input: 'orbs', smoothCursor: true,
-   description: 'place drifting electric orbs, launch focused volleys, or unleash a hex pulse and lightning stream',
+   description: 'place drifting electric orbs and launch them in volleys, pour on a lightning stream, or throw out the hex',
    previewAlt: 'Static — light-blue electric gun with a yellow muzzle', accent: '#b8e6ef', capacity: 12,
    // Settings > Controls > Weapons: [action, keybind, note?] rows.
    controls: [['Place orbs','Hold E / hold PLACE'],
-  ['Launch placed orbs','Left click / Space / tap world / FIRE button'],
-  ['Quick shot','Space / left click / tap world / FIRE button','With no drifting orbs, fires one orb for 1 ammo.'],
-  ['Hex deploy / pulse','X / X button','Press again after formation to pulse. Costs 10 ammo.'],
-  ['Lightning stream','Hold C / hold C button','Release to stop.']],
-   hints: { keyboard: [['E', 'PLACE'], ['LMB / SPACE', 'LAUNCH'], ['C', 'STREAM']], touch: [['PLACE', 'HOLD'], ['LAUNCH', 'TAP'], ['STREAM', 'HOLD']] } },
+  ['Launch placed orbs','Left click / Space / tap the world / LAUNCH','Four or more at once hit much harder than three.'],
+  ['Quick shot','Left click / Space / tap the world / LAUNCH','With no orbs placed, fires one orb for 1 ammo.'],
+  ['Hex','X / HEX, then X again',`X throws out the hex (needs ${RULES.hexCost} orbs in hand: the X mark on the orb bar); X again pulses it once it has formed. Its spinning sides zap whoever they cross. ${RULES.hexCooldown}-second cooldown.`],
+  ['Lightning stream','Hold C / hold STREAM','Up close; stay on one target to ramp it up. Release to stop.'],
+  ['Dodge','Left Ctrl / DODGE','One dodge; it refills after a moment.']],
+   hints: { keyboard: [['E', 'PLACE'], ['LMB / SPACE', 'LAUNCH'], ['C', 'STREAM'], ['X', 'HEX']], touch: [['PLACE', 'HOLD'], ['LAUNCH', 'TAP'], ['STREAM', 'HOLD'], ['HEX', 'TAP TWICE']] } },
  { id: 'rifle', kind: ITEM_KIND.WEAPON, name: 'Nominal', stats: 'RIFLE', input: 'trigger', smoothCursor: true, adsFire: true,
-   touchButtons: { extended: { label: 'EXTEND', binding: 'X', key: 'KeyX', aria: `Load ${RIFLE.extendedMagazine}-round magazine` }, grenade: { label: 'NADE', binding: 'E', key: GAME_KEYS.secondary, aria: 'Throw grenade' }, aim: { binding: 'RMB / SHIFT' } },
-   description: 'deliver steady, accurate fire with a classic automatic rifle built for dependable mid range combat',
+   touchButtons: { extended: { label: 'NOVA', binding: 'X', key: 'KeyX', aria: 'Nova' }, grenade: { label: 'NADE', binding: 'E', key: GAME_KEYS.secondary, aria: 'Throw grenade' }, aim: { binding: 'RMB / SHIFT' } },
+   description: 'steady, accurate fire from a classic automatic rifle, with grenades and the nova for when it counts',
    previewAlt: 'Nominal — matte steel rifle, wooden stock and olive-green grenade', accent: '#e1cca2', capacity: RIFLE.magazine,
    // Settings > Controls > Weapons: [action, keybind, note?] rows.
-   controls: [['Fire','Left click or Space / hold either / hold FIRE','One bullet per press; hold for automatic fire.'],['Aim precisely','Hold right click or Shift / hold AIM','Reduces spread at any distance. Standing still also improves accuracy.'],['Reload','R / RELOAD',`${RIFLE.magazine} rounds; ${RIFLE.reload}-second reload. Dropped magazines remain for ${RIFLE.magazineLife} seconds.`],['Extended magazine','X / X touch button',`Loads ${RIFLE.extendedMagazine} rounds in ${RIFLE.reload} seconds. Available every ${RIFLE.extendedCooldown} seconds; R loads a standard ${RIFLE.magazine}-round magazine.`],['Throw grenade','E / NADE touch button','1.4-second fuse, 25-second cooldown. Aim within 12 metres. Deals 240 damage within 0.7 metres, falling to 35 at the 4-metre blast edge; cover blocks it.']],
-   hints: { keyboard: [['LMB / SPACE', 'FIRE / HOLD'], ['RMB / SHIFT', 'AIM'], ['R', 'RELOAD'], ['E', 'GRENADE'], ['X', RIFLE.extendedMagazine + ' ROUNDS']],
-     touch: [['FIRE', 'HOLD'], ['AIM', 'HOLD'], ['RELOAD', 'TAP'], ['NADE', 'TAP'], ['EXTEND', RIFLE.extendedMagazine + ' ROUNDS']] } },
- { id: 'shotgun', kind: ITEM_KIND.WEAPON, name: 'Ballast', stats: 'SHOTGUN', input: 'trigger', smoothCursor: false, tutorial: { targetHp: 400 }, storesCharge: true,
-   touchButtons: { extended: { label: 'LOCK', binding: 'SHIFT / RMB', key: 'MouseRight', aria: 'Store charge' }, grenade: { label: 'DOUBLE', binding: 'E', key: GAME_KEYS.secondary, aria: 'Fire both shells' }, aim: { binding: 'RMB' } },
-   description: 'charge a heavy double barrel and ride its recoil into devastating close range blasts',
+   controls: [['Fire','Left click or Space / hold either / hold FIRE','One bullet per press; hold for automatic fire. On touch the bottom slice of FIRE aims in and fires together.'],['Aim in','Hold right click or Shift / hold AIM','Reduces spread at any distance and slows the walk. Standing still also tightens it; moving widens it.'],['Reload','R / RELOAD',`${RIFLE.magazine} rounds; ${RIFLE.reload}-second reload. Dropped magazines remain for ${RIFLE.magazineLife} seconds.`],['Nova','X / NOVA',`${SURGE.charge} seconds of power-up, then ${SURGE.duration} seconds glowing white: bullets do ${SURGE.damage}x damage and use no ammo, you take ${Math.round((1-SURGE.taken)*100)}% less damage and move ${Math.round((SURGE.speed-1)*100)}% faster. Ends with a full magazine; ${SURGE.cooldown}-second cooldown.`],['Throw grenade','E / NADE',`${GRENADE.fuse}-second fuse, ${GRENADE.cooldown}-second cooldown. Aim within ${GRENADE.range} metres. Deals ${GRENADE.damage+GRENADE.bonus} damage within ${GRENADE.coreRadius} metres, falling to ${GRENADE.edgeDamage+GRENADE.bonus} at the ${GRENADE.radius}-metre blast edge (${GRENADE.surgeBonus-GRENADE.bonus} more during nova); cover blocks it.`],['Dodge','Left Ctrl / DODGE','One dodge; it refills after a moment.']],
+   hints: { keyboard: [['LMB / SPACE', 'FIRE / HOLD'], ['RMB / SHIFT', 'AIM'], ['R', 'RELOAD'], ['E', 'GRENADE'], ['X', 'NOVA']],
+     touch: [['FIRE', 'HOLD'], ['AIM', 'HOLD'], ['RELOAD', 'TAP'], ['NADE', 'TAP'], ['NOVA', 'TAP']] } },
+ { id: 'shotgun', kind: ITEM_KIND.WEAPON, name: 'Ballast', stats: 'SHOTGUN', input: 'trigger', smoothCursor: false, tutorial: { targetHp: 400 },
+   touchButtons: { extended: { label: 'BLAST', binding: 'X', key: 'KeyX', aria: 'Blast' }, grenade: { label: 'DOUBLE', binding: 'E', key: GAME_KEYS.secondary, aria: 'Fire both shells' }, aim: { binding: 'RMB / SHIFT' } },
+   description: 'a heavy double barrel whose recoil throws you, and the blast, a volley of red shells that burst across the ground',
    previewAlt: 'Ballast — matte double-barrel shotgun with walnut stock', accent: '#e6bd8e', capacity: 2,
    // Settings > Controls > Weapons: [action, keybind, note?] rows.
-   controls: [['Charge / fire','Hold / release LMB or Space / FIRE','115–315 damage on the first shell; 100–300 on the second if every pellet lands. Two shells; one native dodge.'],['Store charge','Shift or click RMB while charging / LOCK','Keeps the same charge for both shells for 15 seconds.'],['Double shot','E / DOUBLE','Fires both remaining shells 0.05 seconds apart, or the last shell.'],['Focus cone','Hold Shift or RMB / AIM','Narrows the short cone; pressing either also stores a live charge. Charge increases range from 7.5 to 9 metres.'],['Reload','R / RELOAD','Break open, eject spent shells, insert shells and close. 2.8 seconds; firing after the first shell loads cancels the rest.']],
-   hints: { keyboard: [['LMB / SPACE', 'CHARGE / RELEASE'], ['SHIFT / RMB', 'STORE / FOCUS'], ['E', 'DOUBLE'], ['R', 'RELOAD']],
-     touch: [['FIRE', 'HOLD / RELEASE'], ['LOCK', 'STORE'], ['AIM', 'FOCUS'], ['DOUBLE', 'TAP'], ['RELOAD', 'TAP']] } },
+   controls: [['Fire','LMB or Space / FIRE',`One shell per press, up to ${SHOTGUN.shellDamage+SHOTGUN.firstShellBonus} damage point blank and about half that at mid range. Reaches ${SHOTGUN.range} metres, and every shot throws you back. Two shells.`],['Aim in','Hold right click or Shift / hold AIM','Narrows the cone, so more pellets land further out.'],['Double shot','E / DOUBLE','Fires both remaining shells 0.05 seconds apart, or the last shell.'],['Blast','X / BLAST, then X again',`X readies it (the cone turns red); X again fires ${SCATTER.shells} big red shells that each split into ${SCATTER.split} and end in small explosions. Up to ${SCATTER.max} damage on one target. ${SCATTER.cooldown}-second cooldown.`],['Reload','R / RELOAD',`Break open, eject spent shells, insert shells and close. ${SHOTGUN.reload} seconds; firing after the first shell loads cancels the rest.`],['Dodge','Left Ctrl / DODGE','Two dodges; they refill after a moment.']],
+   hints: { keyboard: [['LMB / SPACE', 'FIRE'], ['RMB / SHIFT', 'AIM'], ['E', 'DOUBLE'], ['R', 'RELOAD'], ['X', 'BLAST']],
+     touch: [['FIRE', 'TAP'], ['AIM', 'HOLD'], ['DOUBLE', 'TAP'], ['RELOAD', 'TAP'], ['BLAST', 'TAP TWICE']] } },
 ]);
 
 // Skins. Each weapon has a default one, which is simply how it looks today.

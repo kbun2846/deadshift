@@ -12,6 +12,7 @@ import { makeRifle } from './weapons/rifle-model.js';
 import { makeShotgun } from './weapons/shotgun-model.js';
 import { Wading, makeBloodStains } from './effects/blood-wading.js';
 import { buildRobotBody, isRobotSlot, isAllySlot, skinOf, ALLY_COLOURS } from './bots/robot-model.js';
+import { wear } from './bots/robot-wear.js';
 
 // Where the gun sits in the hand, as on your own player (renderer makePlayer).
 const GUN_AT = [.27, .74, -.46];
@@ -98,7 +99,8 @@ export class RemotePlayers {
 
  // `players`: [{ id, name, x, z, vx, vz, aimX, aimZ, dodgeRemaining }], already
  // interpolated by the session. `time` drives the walk bob.
- update(players, time, dt = 0, pools = []) {
+ // `sees(p)`: can the local player see them (null: everyone is in view).
+ update(players, time, dt = 0, pools = [], sees = null) {
   for (const avatar of this.avatars.values()) avatar.seen = false;
   for (const p of players) {
    let avatar = this.avatars.get(p.id);
@@ -108,12 +110,15 @@ export class RemotePlayers {
    const weapon = p.weapon || 'static';
    if (avatar.weapon !== weapon) { avatar.hand.clear(); avatar.hand.add(gunModel(this.view, weapon)); avatar.weapon = weapon; }
    avatar.root.position.set(p.x, 0, p.z);
+   avatar.root.visible = !sees || sees(p);
    avatar.group.rotation.y = Math.atan2(-p.aimX, -p.aimZ);
    const speed = Math.hypot(p.vx, p.vz);
    const dodge = p.dodgeRemaining > 0 ? Math.sin(Math.PI * (1 - p.dodgeRemaining / RULES.dodgeDuration)) : 0;
    avatar.body.scale.set(1 + dodge * .12, 1 - dodge * .3, 1 + dodge * .12);
    avatar.body.position.y = Math.sin(time * 17) * .022 * speed / 7;
    avatar.body.rotation.z = Math.sin(time * 8.5) * .018 * speed / 7;
+   // A robot sheds armour and sparks as it is damaged (bots/robot-wear.js).
+   if (avatar.robot && p.hp != null && dt > 0) wear(this.view, avatar, p.hp / (p.maxHp || 500), dt);
    if (avatar.stains && dt > 0) avatar.stains.set(avatar.wading.update(p.x, p.z, p.vx, p.vz, dt, pools, this.view.drops, this.view.map));
   }
   for (const [id, avatar] of this.avatars) if (!avatar.seen) this.remove(id);
@@ -127,16 +132,18 @@ export class RemotePlayers {
   avatar.hand.add(gunModel(this.view, weapon || 'static'));
   avatar.root.position.set(x, 0, z); avatar.group.rotation.y = Math.atan2(-aimX, -aimZ);
   avatar.root.updateMatrixWorld(true);
-  avatar.dispose = () => avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun) { o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });
+  avatar.dispose = () => avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun && !o.userData.surgeShell) { o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });
   return avatar;
  }
 
  remove(id) {
   const avatar = this.avatars.get(id); if (!avatar) return;
+  // A nova on this body ends with it (its white copy shares the body's shapes).
+  this.view.surgeView?.dropBody(avatar.body);
   avatar.root.removeFromParent(); avatar.stains?.dispose();
   // The merged body geometry is this avatar's own; its material is shared with
   // the world and stays. The base ring's material is its own.
-  avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun) { o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });
+  avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun && !o.userData.surgeShell) { o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });
   this.avatars.delete(id);
  }
 

@@ -10,7 +10,7 @@
 // the same in tests (with the loopback transport) and, later, on a dedicated
 // server (with a WebSocket transport and no local player).
 import { NETWORK } from '../config/network.js';
-import { PROTOCOL_VERSION, playerInput, playerState, readMessage, loadout } from './protocol.js';
+import { PROTOCOL_VERSION, playerInput, playerState, readMessage, loadout, packEvent } from './protocol.js';
 import { Arena, SPAWN_MODES, SETTINGS } from './arena.js';
 import { pack } from './projectiles.js';
 
@@ -21,7 +21,7 @@ const IDLE = Object.freeze(playerInput({}));
 // Events that other screens need to see. Everything else stays with its sim.
 export const SHARED_EVENTS = new Set(['explosion', 'grenadeExplosion', 'propBreak', 'propHit', 'propRestore', 'impactMark', 'rifleImpact',
  'rifleShot', 'shotgunShot', 'launch', 'sprayArc', 'hexPulse', 'hexZap', 'hexFizzle', 'pointImpact', 'wall', 'trailEnd', 'hit', 'kill',
- 'cropDust', 'cropAsh', 'dodge', 'seed', 'playerDeath', 'playerDamage', 'outgoingDamage', 'rifleReloaded', 'shotgunReload', 'grenadeThrow', 'sprayStart',
+ 'cropDust', 'cropAsh', 'syphon', 'surgeCharge', 'surgeStart', 'surgeEnd', 'scatterArm', 'scatterFire', 'scatterSplit', 'scatterHit', 'scatterBurst', 'dodge', 'seed', 'playerDeath', 'playerDamage', 'outgoingDamage', 'rifleReloaded', 'shotgunReload', 'grenadeThrow', 'sprayStart',
  'mapReset', 'matchStart', 'matchEnd', 'roundEnd', 'respawn']);
 // Seconds between pings to each joiner (their round trip shows in the lobby
 // and on the scoreboard).
@@ -29,6 +29,23 @@ const PING_EVERY = 1;
 // Events only kept for a few seconds: a client that has not caught up by then
 // has missed them for good (it would be too late to show them anyway).
 const EVENT_KEEP = 180;
+// Bytes a snapshot may use (a data-channel message tops out near 16 KB;
+// over that it is refused and lost). Events that do not fit wait for the
+// next snapshot.
+export const WIRE_BUDGET = 15000;
+// Events that come every tick while something keeps going (a Static
+// stream's damage, its arcs): one per snapshot is plenty, so repeats before
+// a snapshot goes out are folded into the waiting one. Before, a stream
+// sent ~180 events a second, the unacknowledged backlog outgrew one message
+// on a real connection, every snapshot after that was refused, and the
+// other players' games froze.
+function foldKey(by, e) {
+ if (e.type === 'sprayArc') return by + '|arc';
+ if (e.type === 'playerDamage') return by + '|pd';
+ if (e.type === 'outgoingDamage') return by + '|od|' + e.id + '|' + e.volley;
+ if (e.type === 'hit' && e.electric) return by + '|hit|' + e.id + '|' + e.volley;
+ return null;
+}
 
 export class HostSession {
  constructor({ transport, map, local, createSim, config = NETWORK, name = 'Host', now = () => performance.now() / 1000, random = Math.random, settings }) {
@@ -37,7 +54,7 @@ export class HostSession {
   this.arena = new Arena({ map, createSim, random, settings });
   this.hostSeat = this.arena.addSeat('host', name || 'Host', local);
   this.hostSeat.slot = 0;
-  this.log = []; this.eventSeq = 0; this.localEvents = []; this.newFeed = [];
+  this.log = []; this.eventSeq = 0; this.localEvents = []; this.newFeed = []; this.folds = new Map(); this.sentTick = -1;
   transport.onMessage = (from, data) => this.receive(from, data);
   transport.onLeave = id => this.remove(id, 'left');
   transport.onJoin = () => {};
@@ -173,7 +190,7 @@ export class HostSession {
     if (input) { remote.last = input; remote.lastSeq = input.seq; }
     // No input this tick: keep walking the way they were for a moment (a late
     // packet), never repeating a press; a longer silence means stand still.
-    const held = remote.silent < .25 ? { ...playerInput({ ...remote.last }), dodge: false, launch: false, tapFire: false, grenade: false, doubleShot: false, reload: false, hex: false, extendedReload: false, quickShot: false } : IDLE;
+    const held = remote.silent < .25 ? { ...playerInput({ ...remote.last }), dodge: false, launch: false, tapFire: false, grenade: false, doubleShot: false, reload: false, hex: false, surge: false, scatter: false, quickShot: false } : IDLE;
     remote.sim.dev = { speed: 1 };
     this.arena.stepSeat(remote.seat, input || held);
     this.record(remote.id, remote.sim.drainEvents());
@@ -195,12 +212,22 @@ export class HostSession {
  }
 
  // Keeps what other screens should see, numbered, for resending.
+ // The host's own screen gets every event as it happened; the wire gets
+ // them packed (protocol.js packEvent) and folded (foldKey).
  record(by, events) {
   for (const e of events) {
    if (!SHARED_EVENTS.has(e.type)) continue;
-   const entry = { s: ++this.eventSeq, by, tick: this.tick, e };
+   const s = ++this.eventSeq;
+   if (by !== 'host') this.localEvents.push({ s, by, tick: this.tick, e });
+   const key = foldKey(by, e), waiting = key && this.folds.get(key);
+   if (waiting && waiting.tick > this.sentTick) {
+    if (e.type === 'sprayArc') waiting.e = packEvent(e);
+    else { const damage = waiting.e.damage + (e.damage || 0); waiting.e = packEvent({ ...e, damage }); }
+    continue;
+   }
+   const entry = { s, by, tick: this.tick, e: packEvent(e) };
    this.log.push(entry);
-   if (by !== 'host') this.localEvents.push(entry);
+   if (key) this.folds.set(key, entry);
   }
   while (this.log.length && this.log[0].tick < this.tick - EVENT_KEEP) this.log.shift();
  }
@@ -215,11 +242,23 @@ export class HostSession {
   const match = this.match(), lobby = slow ? this.lobby() : undefined;
   // Practice targets move and break: every snapshot, compact.
   const targets = this.arena.targets.length ? this.arena.targets.map(t => [t.id, Math.round(t.x * 100) / 100, Math.round(t.z * 100) / 100, Math.round(t.hp), Math.round((t.flash || 0) * 100) / 100]) : null;
+  this.sentTick = this.tick; this.folds.clear();
   for (const remote of this.remotes.values()) {
-   const ev = this.log.filter(entry => entry.s > remote.ack).slice(0, 240);
-   this.transport.send(remote.id, { t: 'snapshot', tick: this.tick, players, you: { ...loadout(remote.sim), life: remote.seat.life, present: remote.seat.present, dead: remote.seat.dead, respawnIn: remote.seat.respawnIn,
+   const snapshot = { t: 'snapshot', tick: this.tick, players, you: { ...loadout(remote.sim), life: remote.seat.life, present: remote.seat.present, dead: remote.seat.dead, respawnIn: remote.seat.respawnIn,
      weapon: remote.seat.weapon, picking: pickState(remote.seat.picking) },
-    proj, ev, feed, board, world, match, lobby, targets });
+    proj, ev: [], feed, board, world, match, lobby, targets };
+   // As many waiting events, oldest first, as fit the message (WIRE_BUDGET).
+   // (One too big for any message is skipped, not left to block the rest.)
+   const space = WIRE_BUDGET - JSON.stringify(snapshot).length;
+   let room = space;
+   for (const entry of this.log) {
+    if (entry.s <= remote.ack) continue;
+    const size = entry.bytes ??= JSON.stringify(entry).length + 1;
+    if (size > space) continue;
+    if (size > room || snapshot.ev.length >= 240) break;
+    snapshot.ev.push(entry); room -= size;
+   }
+   this.transport.send(remote.id, snapshot);
   }
  }
 

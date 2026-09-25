@@ -21,13 +21,13 @@ export function createWeaponPick(parent, { pick, go, back }) {
   root.id = 'weapon-pick'; root.className = 'weapon-pick hidden'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'Choose a weapon');
   root.innerHTML = `<div class="weapon-pick-card">
     <header class="weapon-pick-head"><span class="weapon-pick-title">choose weapon</span><span class="weapon-pick-timer" role="timer"><b>10</b><i aria-hidden="true"><s></s></i></span></header>
-    <div class="weapon-pick-grid">${WEAPONS.map(w => `<button type="button" class="weapon-pick-choice plain-text" data-weapon="${w.id}" aria-pressed="false" aria-label="${esc(w.name)}"><span class="weapon-pick-art"><img alt="" draggable="false"></span><span class="weapon-pick-name">${esc(w.name)}</span></button>`).join('')}</div>
+    <div class="weapon-pick-grid">${WEAPONS.map(w => `<button type="button" class="weapon-pick-choice plain-text" data-weapon="${w.id}" aria-pressed="false" aria-label="${esc(w.name)}"><span class="weapon-pick-art"><img alt="" draggable="false"></span><span class="weapon-pick-name">${esc(w.name)}</span></button>`).join('')}<button type="button" class="weapon-pick-choice weapon-pick-soon plain-text" disabled aria-disabled="true" aria-label="More weapons coming soon"><span class="weapon-pick-art"><b aria-hidden="true">+</b></span><span class="weapon-pick-name">coming soon</span></button></div>
     <footer class="weapon-pick-foot"><button type="button" class="weapon-pick-back plain-text" hidden>BACK</button><button type="button" class="weapon-pick-go plain-text" disabled>GO</button></footer>
   </div>`;
   parent.append(root);
   const $ = selector => root.querySelector(selector);
   let selected = null;
-  const choices = [...root.querySelectorAll('.weapon-pick-choice')];
+  const choices = [...root.querySelectorAll('.weapon-pick-choice:not(.weapon-pick-soon)')];
   // Shipped pictures go in at once (map-cards.js), so the grid is whole on first show.
   for (const button of choices) { const src = WEAPON_IMAGES[button.dataset.weapon]; if (src) { const img = button.querySelector('img'); img.decoding = 'async'; img.src = src; } }
   const mark = id => {

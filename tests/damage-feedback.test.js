@@ -132,3 +132,19 @@ test('the burn timings hold their intended relationship',()=>{
  assert.ok(STACK_WINDOW>BURN_BEAT,`gap ${STACK_WINDOW} must exceed beat ${BURN_BEAT}`);
  assert.ok(DAMAGE_FEEDBACK_COLORS.length>=2&&DAMAGE_FEEDBACK_COLORS.every(c=>/^#[0-9a-f]{6}$/i.test(c)));
 });
+test('a new life starts with no damage or kill pops from the last one',async()=>{
+ const previous=globalThis.document;
+ const element=()=>({children:[],style:{},setAttribute(){},append(child){this.children.push(child);},remove(){this.removed=true;}});
+ globalThis.document={createElement:element};
+ try{
+  const {createOutgoingFeedback}=await import('../src/ui/outgoing-feedback.js');
+  const parent=element(),mine=createDamageFeedback(parent),theirs=createOutgoingFeedback(parent);
+  mine.add(80,1);theirs.kill({x:0,z:0,oneShot:false},1);theirs.add({id:'bot',damage:40,x:0,z:0,hp:60,maxHp:100},1);
+  mine.clear();theirs.clear();
+  const s=new Simulation({width:40,depth:40,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});s.time=1.2;
+  const view={player:{position:{x:0,z:0}},screenPoint:()=>({x:400,y:300})};
+  mine.update(s,view);theirs.update(s,view);
+  const live=parent.children.flatMap(root=>root.children).filter(n=>!n.removed);
+  assert.equal(live.length,0);
+ }finally{globalThis.document=previous;}
+});

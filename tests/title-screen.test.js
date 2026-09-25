@@ -16,8 +16,9 @@ test('the title is the main menu home page, with the blood installed on it', () 
 });
 
 test('the dev tools link asks for the code until the tools are unlocked', () => {
- const main = read('../src/main.js');
- assert.match(main, /\$\('title-dev'\)\.onclick=\(\)=>\{if\(devTools\.isUnlocked\(\)\)devWindow\.toggle\(\);else\{devFromTitle=true;devDialog\.show\(\);\}\};/);
+ const wiring = read('../src/ui/dev-wiring.js');
+ assert.match(wiring, /\$\('title-dev'\)\.onclick = \(\) => \{ if \(devTools\.isUnlocked\(\)\) devWindow\.toggle\(\); else \{ fromTitle = true; devDialog\.show\(\); \} \};/);
+ assert.match(read('../src/main.js'), /installDevWiring\(/);
 });
 
 test('title blood: the game\'s colours, flat, clipped to the letters, bowls filled, buttons followed', () => {

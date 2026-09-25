@@ -10,9 +10,12 @@ import deadwater from '../assets/thumbnails/deadwater.webp?inline';
 import staticImage from '../assets/weapons/static.webp?inline';
 import rifleImage from '../assets/weapons/rifle.webp?inline';
 import shotgunImage from '../assets/weapons/shotgun.webp?inline';
+import { registerWeaponImages, registerMapImages } from './weapon-grid.js';
 
 export const CARD_IMAGES = Object.freeze({ deadwater });
+registerMapImages(CARD_IMAGES);
 export const WEAPON_IMAGES = Object.freeze({ static: staticImage, rifle: rifleImage, shotgun: shotgunImage });
+registerWeaponImages(WEAPON_IMAGES); // the picture grids (weapon-grid.js)
 // Decode them now, off to one side, so the first weapon page is instant.
 for (const src of Object.values(WEAPON_IMAGES)) { const image = new Image(); image.src = src; image.decode?.().catch(() => {}); }
 export const CARD_SIZE = Object.freeze({ width: 690, height: 855 });

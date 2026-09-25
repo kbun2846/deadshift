@@ -4,10 +4,22 @@ const ADDITION_LIFE=1.2;
 // Damage numbers are whole and always rounded down, so a figure on screen is
 // never more than what actually landed.
 const format=damage=>Math.floor(Number(damage)||0);
+// A kill you made: KILL (ONE SHOT when it took one hit) in red where they
+// fell, popping in like a damage number and drifting up above it.
+const KILL_LIFE=2.2;
+export const killLabel=e=>e.oneShot?'ONE SHOT':'KILL';
 export function createOutgoingFeedback(parent){
- const root=document.createElement('div');root.className='damage-feedback outgoing-feedback';parent.append(root);let items=[],lastTime=0;
- const expire=time=>{if(time<lastTime){items.forEach(i=>i.node.remove());items=[];}lastTime=time;items=items.filter(i=>{if(time-i.updated<2.5)return true;i.node.remove();return false;});};
- return {add(e,time){
+ const root=document.createElement('div');root.className='damage-feedback outgoing-feedback';parent.append(root);let items=[],kills=[],lastTime=0;
+ const expire=time=>{if(time<lastTime){items.forEach(i=>i.node.remove());items=[];kills.forEach(k=>k.node.remove());kills=[];}lastTime=time;items=items.filter(i=>{if(time-i.updated<2.5)return true;i.node.remove();return false;});kills=kills.filter(k=>{if(time-k.born<KILL_LIFE)return true;k.node.remove();return false;});};
+ const pop=(text,className,x,z,time,lift=52)=>{
+  expire(time);
+  const node=document.createElement('span');node.className=className;node.textContent=text;root.append(node);
+  kills.push({node,x,z,born:time,lift,tilt:damageFeedbackTilt(),offset:(Math.random()-.5)*18});
+ };
+ return {clear(){items.forEach(i=>i.node.remove());items=[];kills.forEach(k=>k.node.remove());kills=[];},
+ kill(e,time){pop(killLabel(e),'outgoing-kill',e.x,e.z,time);},
+ // Syphon (FFA): the health a kill gave back, green, over you.
+ heal(e,time){pop('+'+Math.floor(e.amount),'outgoing-heal',e.x,e.z,time,78);},add(e,time){
   expire(time);if(!(e.damage>0))return;
   const item=items.find(i=>i.id===e.id);
   if(item){
@@ -41,5 +53,9 @@ export function createOutgoingFeedback(parent){
    // Placed by transform alone (left/top stay 0): no layout per number per frame.
    setStyle(i.node,'left','0px');setStyle(i.node,'top','0px');
    setStyle(i.node,'transform',`translate(${point.x+i.offset}px,${point.y-18-Math.min(age,2)*10}px) translate(-50%,-50%) scale(${damageFeedbackScale(sinceHit)})`);});
+  kills.forEach(k=>{const age=sim.time-k.born,point=view.screenPoint(k.x,k.z,1.3);
+   setStyle(k.node,'opacity',Math.min(1,age/.04,(KILL_LIFE-age)/.45));
+   setStyle(k.node,'left','0px');setStyle(k.node,'top','0px');
+   setStyle(k.node,'transform',`translate(${point.x+k.offset}px,${point.y-k.lift-Math.min(age,2)*12}px) translate(-50%,-50%) rotate(${k.tilt}deg) scale(${damageFeedbackScale(age)*1.08})`);});
  }};
 }

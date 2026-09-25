@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Simulation,launchDistance,launchDuration,rangedOrbDamage,damagePerOrb,explosionFor,splashFalloff,ORB_VOLLEY_TOTALS,ORB_DAMAGE_MULTIPLIER} from '../src/simulation.js';
-import { RULES as FULL_RULES } from '../src/config/gameplay.js';
+import { RULES as FULL_RULES, VOLLEY_BOOST } from '../src/config/gameplay.js';
 const FULL = FULL_RULES.targetHealth; // a practice target's full health
 const map={width:100,depth:100,spawn:{x:0,z:0},buildings:[],props:[],fences:[],targets:[]};
 test('small volleys scale down proportionally and quick shot stays unchanged',()=>{
@@ -24,7 +24,7 @@ test('small volleys scale down proportionally and quick shot stays unchanged',()
    `each landed orb of ${count} should be worth ${oldBase*ORB_DAMAGE_MULTIPLIER}, got ${hit.damage}`);
  }
  const quick=new Simulation(map);quick.launch(20,0,true);quick.step({});
- assert.equal(quick.shots[0].damage,6);
+ assert.equal(quick.shots[0].damage,6*VOLLEY_BOOST);
 });
 test('launch accelerates rapidly with a modest terminal speed and synchronized distance curve',()=>{
  const early=launchDistance(.05)/.05,late=(launchDistance(.5)-launchDistance(.45))/.05;
@@ -52,10 +52,12 @@ test('combined volley budgets ramp after three and full hits vary from 335 to 35
   for(let i=0;i<120;i++)sim.step({});
   // The band rises by the heavy core the blast now adds at its centre.
   const bump=Math.round(explosionFor(12).damage*splashFalloff(0,explosionFor(12).radius,12))-explosionFor(12).damage;
-  assert.ok(Math.abs((1000-sim.targets[0].hp)-(335+bump+20*roll))<1e-6,
-   `dealt ${1000-sim.targets[0].hp}, expected ${335+bump+20*roll}`);
+  // (Volleys hit 1.75x as hard since v0.83; rounding moves it a few points.)
+  const expected=(335+20*roll)*VOLLEY_BOOST+bump;
+  assert.ok(Math.abs((1000-sim.targets[0].hp)-expected)<10,
+   `dealt ${1000-sim.targets[0].hp}, expected ${expected}`);
   assert.ok(bump>0&&bump<explosionFor(12).damage*.1,'the increase should be slight');
-  assert.equal(sim.events.find(e=>e.type==='explosion').damage,145);
+  assert.ok(Math.abs(sim.events.find(e=>e.type==='explosion').damage-145*VOLLEY_BOOST)<1e-9);
   t.mock.restoreAll();
  }
 });

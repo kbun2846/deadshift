@@ -1,4 +1,15 @@
+import { SURGE } from './config/gameplay.js';
 // Small synthesized sounds: no downloads, sample assets, or audio before a gesture.
+// How far sound carries. Full volume out to `near` metres (about half the
+// screen), then it fades, down to `far` of it at 3x that distance (barely
+// there); quieter than `silent` is not played at all.
+export const HEARING = Object.freeze({ near: 11, far: .05, silent: .012 });
+export function hearingLevel(distance) {
+  if (!(distance > HEARING.near)) return 1;
+  const k = Math.log(1 / HEARING.far) / (2 * HEARING.near);
+  return Math.exp(-k * (distance - HEARING.near));
+}
+
 export class Soundscape {
   constructor() {
     this.context = null; this.enabled = true; this.lastStep = 0; this.lastHit = 0; this.flights = new Set();
@@ -11,7 +22,9 @@ export class Soundscape {
   }
 
   // Gain node for a channel, or the master while the graph is still being built.
-  busFor(name) { return this.buses?.[name ?? this.currentBus] ?? this.master; }
+  // During a far-off event (event(e, level < 1)) everything goes through that
+  // event's own quieter gain first.
+  busFor(name) { const bus = this.buses?.[name ?? this.currentBus] ?? this.master; if (!this.distanceGain) return bus; this.distanceGain.connect(bus); return this.distanceGain; }
 
   setVolumes(mix = {}) {
     for (const channel of ['master', 'ambient', 'weapons', 'effects']) {
@@ -157,19 +170,23 @@ export class Soundscape {
     source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
   }
 
-  rifleShot() {
+  // `surge`: a Surge bullet is louder and heavier: a harder crack, a longer
+  // lower report and a bright electric zing on top.
+  rifleShot(surge = false) {
     if(!this.context||!this.enabled||this.context.state!=='running')return;
     const ctx=this.context,now=ctx.currentTime;
     const source=ctx.createBufferSource(),high=ctx.createBiquadFilter(),low=ctx.createBiquadFilter(),gain=ctx.createGain();
     source.buffer=this.impactBuffer;high.type='highpass';high.frequency.value=140;
     low.type='lowpass';low.Q.value=.45;low.frequency.setValueAtTime(5200,now);low.frequency.exponentialRampToValueAtTime(850,now+.075);
     // A fast pressure crack, then a short decaying report; no pitched oscillator.
-    gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(.20,now+.001);
-    gain.gain.exponentialRampToValueAtTime(.055,now+.013);gain.gain.exponentialRampToValueAtTime(.0001,now+.105);
+    const peak=surge?.34:.20,tail=surge?.16:.105;
+    gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(peak,now+.001);
+    gain.gain.exponentialRampToValueAtTime(surge?.1:.055,now+.013);gain.gain.exponentialRampToValueAtTime(.0001,now+tail);
     source.connect(high);high.connect(low);low.connect(gain);gain.connect(this.busFor('weapons'));
-    source.start(now,Math.random()*.5);source.stop(now+.11);
+    source.start(now,Math.random()*.5);source.stop(now+tail+.01);
     source.onended=()=>{source.disconnect();high.disconnect();low.disconnect();gain.disconnect();};
-    this.impact(.07,.11,380);
+    this.impact(surge?.12:.07,surge?.16:.11,surge?300:380);
+    if(surge){this.tone(1800,520,.07,.045,'sawtooth');this.tone(90,45,.12,.07,'sine');}
   }
 
   healthLoss(damage) {
@@ -190,13 +207,19 @@ export class Soundscape {
   }
 
   // Sounds a weapon makes, as opposed to sounds the world makes.
-  static WEAPON_EVENTS = new Set(['shotgunShot','shotgunReload','shotgunReloaded','shotgunStored',
+  static WEAPON_EVENTS = new Set(['shotgunShot','shotgunReload','shotgunReloaded','scatterArm','scatterFire','scatterSplit','scatterBurst',
     'rifleShot','rifleReload','cock','grenadeWindup','grenadeThrow',
-    'sprayStart','sprayArc','hexDeploy','hexPulse','hexZap','hexFizzle','seed','launch']);
+    'sprayStart','sprayArc','hexDeploy','hexPulse','hexZap','hexFizzle','seed','launch','surgeCharge','surgeStart','surgeEnd']);
 
-  event(e) {
+  // `level`: how loud from where you are (hearingLevel), 1 close by.
+  event(e, level = 1) {
+    if (!(level > HEARING.silent)) return;
     this.currentBus = Soundscape.WEAPON_EVENTS.has(e.type) ? 'weapons' : 'effects';
-    try { this.dispatch(e); } finally { this.currentBus = 'effects'; }
+    if (level < .999 && this.context) {
+      const g = this.context.createGain(); g.gain.value = level; this.distanceGain = g;
+      setTimeout(() => g.disconnect(), 15000); // long enough for a stream's voice
+    }
+    try { this.dispatch(e); } finally { this.currentBus = 'effects'; this.distanceGain = null; }
   }
 
   dispatch(e) {
@@ -205,6 +228,12 @@ export class Soundscape {
       if(now-(this.lastDamageDing??-1)>.065){this.tone(1250,1190,.075,.032,'sine');this.tone(1875,1785,.055,.012,'sine',.012);this.lastDamageDing=now;}return;
     }
     if(e.type==='playerDamage'){this.healthLoss(e.damage);return;}
+    // Surge: a rising whine and rumble for the power-up, a bright boom as it
+    // lands, a falling fizz when it ends.
+    if(e.type==='surgeCharge'){this.tone(90,620,SURGE.charge,.06,'sawtooth');this.tone(180,1240,SURGE.charge,.025,'triangle');this.noise(SURGE.charge,.05,300);return;}
+    if(e.type==='surgeStart'){this.impact(.35,.2,500);this.tone(820,1500,.25,.07,'triangle');this.tone(60,40,.5,.14,'sine');this.impact(.12,.1,3600);return;}
+    if(e.type==='surgeEnd'){this.tone(900,200,.4,.05,'triangle');this.noise(.3,.05,2500);return;}
+    if(e.type==='syphon'){this.tone(520,880,.18,.05,'sine');this.tone(780,1320,.18,.03,'sine',.06);return;}
     if(e.type==='playerDeath'){this.death();return;}
     if(e.type==='grenadeExplosion'){this.event({...e,type:'explosion',count:12});return;}
     if(e.type==='grenadeWindup'){this.impact(.035,.05,1800);}
@@ -212,9 +241,14 @@ export class Soundscape {
     if(e.type==='shotgunShot'){const c=e.charge||0;this.impact(.12+c*.07,.20+c*.10,1100);this.tone(105,34,.20+c*.14,.15+c*.09,'triangle');this.tone(66,28,.20+c*.12,.06+c*.045,'sine');this.impact(.035+c*.02,.07+c*.04,3200);return;}
     if(e.type==='shotgunReload'){this.impact(.07,.07,1500);this.tone(260,140,.06,.03,'triangle');return;}
     if(e.type==='shotgunReloaded'){this.impact(.04,.10,1900);return;}
-    if(e.type==='shotgunStored'){this.tone(300,440,.07,.025,'sine');return;}
+    // Scatter (Ballast X): a rising click readied, a deep red boom, a crack as
+    // each big shell splits, a small pop for each little explosion.
+    if(e.type==='scatterArm'){this.tone(220,520,.12,.04,'square');this.tone(440,660,.08,.02,'sine');return;}
+    if(e.type==='scatterFire'){this.impact(.3,.28,900);this.tone(80,30,.4,.16,'triangle');this.tone(160,60,.25,.07,'sawtooth');return;}
+    if(e.type==='scatterSplit'){this.impact(.05,.06,2600);return;}
+    if(e.type==='scatterBurst'){const now=this.context?.currentTime??0;if(now-(this.lastBurst||-1)<.035)return;this.lastBurst=now;this.impact(.07+Math.random()*.03,.1,700+Math.random()*500);this.tone(120,50,.12,.035,'sine');return;}
     if(e.type==='rifleShot'){
-      this.rifleShot();
+      this.rifleShot(!!e.surge);
     }
     if(e.type==='rifleReload'){this.impact(.045,.08,1400);this.tone(320,170,.05,.035,'triangle');}
     if(e.type==='launch')this.startFlight(e);

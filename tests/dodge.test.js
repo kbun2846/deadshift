@@ -11,15 +11,15 @@ test('dodge moves a modest fixed distance, with equal cardinal and diagonal trav
     assert.equal(sim.player.dodgeRemaining, 0);
   }
 });
-test('two dodges consume stamina, third is blocked, and it replenishes over time', () => {
+test('one dodge (Static) uses the stamina, a second is blocked, and it replenishes over time', () => {
   const sim = make();
-  for (let i = 0; i < 2; i++) { sim.step({ moveX: 1, dodge: true }); finish(sim); }
+  sim.step({ moveX: 1, dodge: true }); finish(sim);
   assert.equal(sim.player.stamina, 0);
-  sim.step({ moveX: 1, dodge: true }); assert.equal(sim.events.filter(e => e.type === 'dodge').length, 2);
+  sim.step({ moveX: 1, dodge: true }); assert.equal(sim.events.filter(e => e.type === 'dodge').length, 1);
   for (let i = 0; i < 150; i++) sim.step({});
   assert.ok(sim.player.stamina >= 1); sim.step({ moveZ: 1, dodge: true });
-  assert.equal(sim.events.filter(e => e.type === 'dodge').length, 3);
-  sim.reset(); assert.equal(sim.player.stamina, 2);
+  assert.equal(sim.events.filter(e => e.type === 'dodge').length, 2);
+  sim.reset(); assert.equal(sim.player.stamina, 1);
 });
 test('a standing dodge rolls the way the player faces, and the direction is captured', () => {
   const sim = make();
@@ -28,7 +28,7 @@ test('a standing dodge rolls the way the player faces, and the direction is capt
   sim.step({ aimX: 0, aimZ: -1 });
   const facingX = sim.player.aimX, facingZ = sim.player.aimZ;
   sim.step({ aimX: 0, aimZ: -1, dodge: true });
-  assert.equal(sim.player.stamina, 1);
+  assert.equal(sim.player.stamina, 0);
   assert.ok(Math.abs(sim.player.dodgeX - facingX) < 1e-9 && Math.abs(sim.player.dodgeZ - facingZ) < 1e-9,
     `rolled ${sim.player.dodgeX},${sim.player.dodgeZ} while facing ${facingX},${facingZ}`);
 });

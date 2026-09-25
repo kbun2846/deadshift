@@ -3,6 +3,7 @@ import { RIFLE } from '../weapons/rifle.js';
 import { WEAPONS } from '../items.js';
 import { SHOTGUN, shotgunReloadRounds } from '../weapons/shotgun.js';
 import { setText, setStyle, setAttr } from './dom-writes.js';
+import { RULES } from '../config/gameplay.js';
 export function shotgunAmmoPresentation(shotgun){
  return {capacity:SHOTGUN.shells,rounds:shotgun.reload>0?Math.max(shotgun.ammo,shotgunReloadRounds(shotgun.reload)):shotgun.ammo};
 }
@@ -39,12 +40,17 @@ export function createWeaponHUD(root){
   const deployed=rifle||shotgun?0:sim.seeds.length,rounds=shotgun||rifle?presentation.rounds:sim.ammo,available=Math.floor(rounds+1e-8);
   const capacity=rifle?presentation.capacity:config.capacity;
   if(capacity!==lastCapacity){lastCapacity=capacity;ammo.dataset.capacity=String(capacity);ammo.replaceChildren(...Array.from({length:capacity},()=>document.createElement('i')));}
+  // Static: a thin bar after the tenth orb in hand (RULES.hexCost: what the
+  // hex needs; placed orbs come first on the bar), lit once you hold that many.
+  const mark=!rifle&&!shotgun?deployed+RULES.hexCost:0;
+  setAttr(ammo,'data-hex',mark?(available>=RULES.hexCost?'ready':'short'):'');
   setText(countEl,`${available} / ${capacity}`);
-  setText(status,shotgun?(sim.shotgun.reload?`RELOADING · ${sim.shotgun.reload.toFixed(1)}s`:sim.shotgun.ammo<=0?'EMPTY / RELOAD':sim.shotgun.stored?`${Math.round(sim.shotgun.charge*100)}% · ${sim.shotgun.hold.toFixed(1)}s`:`${Math.round(sim.shotgun.charge*100)}% CHARGE`):rifle?(sim.rifle.reload>0?`RELOADING · ${sim.rifle.reload.toFixed(1)}s`:available===0?'EMPTY · RELOAD':sim.rifle.aiming?'FOCUSED':'READY'):(deployed?`${deployed} DEPLOYED`:available<config.capacity?'RECHARGING':'READY'));
+  setText(status,shotgun?(sim.shotgun.reload?`RELOADING · ${sim.shotgun.reload.toFixed(1)}s`:sim.scatter?.armed?(touch?'BLAST READY · TAP IT AGAIN':'BLAST READY · X TO FIRE'):sim.shotgun.ammo<=0?'EMPTY / RELOAD':sim.shotgun.aiming?'FOCUSED':'READY'):rifle?(sim.rifle.reload>0?`RELOADING · ${sim.rifle.reload.toFixed(1)}s`:available===0?'EMPTY · RELOAD':sim.rifle.aiming?'FOCUSED':'READY'):(deployed?`${deployed} DEPLOYED`:available<config.capacity?'RECHARGING':'READY'));
   for(let i=0;i<ammo.children.length;i++){const pip=ammo.children[i];
    const kind=i<deployed?'filled':i<deployed+available?'available':'spent';
    const fill=shotgun||rifle?(reloading?Math.max(0,Math.min(1,rounds-i))*100:0):(i===deployed+available?sim.rechargeProgress/sim.rechargeInterval*100:0);
-   if(pip.className!==kind)pip.className=kind;
+   const cls=i===mark-1?kind+' hex-mark':kind;
+   if(pip.className!==cls)pip.className=cls;
    setStyle(pip,'--refill',fill+'%');
   }
   setAttr(ammo,'aria-label',shotgun?(reloading?`Reloading: ${available} of ${capacity} shells shown`:`${available} shells available`):rifle?(sim.rifle.reload>0?`Reloading: ${available} of ${capacity} rounds shown`:`${available} rounds available, magazine capacity ${capacity}`):`${available} orbs available, ${deployed} deployed`);

@@ -1,3 +1,4 @@
+// deadshift, by killerbunny2846.
 import {bindTouchAction} from './ui/touch-action.js';
 import { installMobileBrowser, enterFullscreen } from './ui/mobile-browser.js';
 import {migrateGameStorage} from './storage-migration.js';
@@ -5,6 +6,7 @@ import {isPlayable} from './playable-area.js';
 import {detectedControls,createInputPreference} from './ui/input-preference.js';
 import './styles/mobile-controls.css';
 import './styles/tutorial.css';
+import './styles/x-ability.css';
 import {installTouchLayout} from './ui/touch-layout.js';
 import { bindFloatingStick, arrangeTouchCluster, isTap, TOUCH_TAP, MOVE_STICK } from './ui/touch-controls.js';
 import { installMobileSettings } from './ui/mobile-settings.js';
@@ -38,6 +40,7 @@ import { createAimDamping, aimsByPoint } from './aim-damping.js';
 import { tutorialMapFor, Tutorial } from './tutorial.js';
 import { createTutorialCard } from './ui/tutorial-card.js';
 import { installMenu } from './ui/menu.js';
+import { createDuel, readDuel } from './duel.js';
 import { createOnlinePlay } from './online-play.js';
 import { drawSim } from './net/projectiles.js';
 import { createMultiplayerHud } from './ui/multiplayer-hud.js';
@@ -47,21 +50,26 @@ import { mapById, menuMaps } from './maps.js';
 import { targetRadius } from './target-radius.js';
 import { createTargetLock, TARGET_LOCK } from './target-lock.js';
 import { weapon as weaponInfo, weaponOrDefault, usesTrigger, DEFAULT_WEAPON } from './items.js';
-import { Simulation, RULES, explosionFor } from './simulation.js';
+import { Simulation, RULES } from './simulation.js';
 import { WorldView } from './render/renderer.js';
-import { Soundscape } from './audio.js';
+import { Soundscape, hearingLevel, HEARING } from './audio.js';
+import { createFireIndicator } from './ui/fire-indicator.js';
 import { validateSettings, RenderBudget, AdaptiveResolution } from './settings.js';
 import { installSettingsPanel } from './ui/settings-panel.js';
 import {keyboardAim} from './keyboard-aim.js';
 import { overheadMapSVG } from './ui/overhead-map.js';
-import { installDevTools } from './ui/dev-tools.js';
-import { createDevWindow } from './ui/dev-window.js';
-import { createDevUnlockDialog } from './ui/dev-unlock-dialog.js';
+import { installDevWiring } from './ui/dev-wiring.js';
+import { openSpot } from './net/spawn-points.js';
+import { createToast } from './ui/toast.js';
+import { createRobotMinds } from './ui/robot-minds.js';
+import { addWatermark } from './ui/watermark.js';
 import { viewWidth, viewHeight } from './viewport.js';
 import { installTitle } from './ui/title-screen.js';
 
 const $ = id => document.getElementById(id);
 try{migrateGameStorage(localStorage);}catch{}
+const toast = createToast(document.getElementById('game'));
+const robotMinds = createRobotMinds(document.getElementById('game'));
 try{migrateGameStorage(sessionStorage);}catch{}
 const params = new URLSearchParams(location.search);
 const selectedMap = params.get('map')==='tutorial' ? tutorialMapFor(params.get('weapon')) : mapById(params.get('map'));
@@ -83,6 +91,12 @@ catch { settings = validateSettings({},deviceDefaults); }
 const sim = new Simulation(map), sound = new Soundscape(), budget = new RenderBudget(settings.fps);
 // Robots (bots/): spawned from the developer tools in a solo game.
 const bots = new BotMatch(map, { createSim: m => new Simulation(m) });
+// 1V1 against a robot (duel.js): set up by start() from the URL.
+const duel=createDuel($('game'),{sim,bots,hooks:{
+ over:()=>{running=false;releaseInput();sound.suspend(true);updateHUD();},
+ rematch:()=>{clearDeath();reset();running=true;paused=false;sound.suspend(false);$('world').focus();updateHUD();},
+ menu:()=>returnToMenu(),
+}});
 // Menu clacks (ui-sounds.js): muted with the game, at the master and effects levels.
 installUiSounds({muted:()=>!sound.enabled,level:()=>sound.volume.master*sound.volume.effects});
 const adaptiveResolution = new AdaptiveResolution();
@@ -93,8 +107,27 @@ const updateHealthHUD=createHealthHUD($('game'));
 const perfReadout=createPerfReadout(document.querySelector('.masthead'));
 const damageFeedback=createDamageFeedback($('game'));
 const outgoingFeedback=createOutgoingFeedback($('game'));
+addWatermark($('game'));
+const fireIndicator=createFireIndicator($('game'));
+// Sound carries only so far (audio.js HEARING): how loud an event is from
+// where you stand, from its own position or, failing that, its shooter's.
+function heard(e,shooter){
+ const x=e.x??shooter?.x,z=e.z??shooter?.z;
+ if(!Number.isFinite(x)||!Number.isFinite(z))return {level:1,x:null,z:null};
+ return {level:hearingLevel(Math.hypot(x-sim.player.x,z-sim.player.z)),x,z};
+}
+// Someone else firing within earshot: a pink arc on the side it came from.
+const FIRING=new Set(['rifleShot','shotgunShot','launch','sprayArc','hexPulse','scatterFire']);
+function otherEvent(e,shooter){
+ const {level,x,z}=heard(e,shooter);
+ if(NET_SOUNDS.has(e.type))sound.event(e,level);
+ if(FIRING.has(e.type)&&x!==null&&level>HEARING.silent&&running&&!deathActive){
+  const me=view.screenPoint(sim.player.x,sim.player.z),at=view.screenPoint(shooter?.x??x,shooter?.z??z);
+  fireIndicator.add(Math.atan2(at.y-me.y,at.x-me.x),Math.min(1,.25+level*.9));
+ }
+}
 const abilityHUD=createAbilityHUD();
-const extendedButton=document.createElement('button');extendedButton.id='touch-extended';extendedButton.textContent='X';extendedButton.setAttribute('aria-label','Load extended magazine');document.querySelector('.touch-right').append(extendedButton);
+const extendedButton=document.createElement('button');extendedButton.id='touch-extended';extendedButton.textContent='X';extendedButton.setAttribute('aria-label','Nova');document.querySelector('.touch-right').append(extendedButton);
 const grenadeButton=document.createElement('button');grenadeButton.id='touch-grenade';grenadeButton.textContent='E';grenadeButton.setAttribute('aria-label','Throw grenade');document.querySelector('.touch-right').append(grenadeButton);
 const placeButton=document.createElement('button');placeButton.id='touch-place';document.querySelector('.touch-right').prepend(placeButton);
 // Aim-down-sights weapons: the bottom slice of FIRE aims and fires together
@@ -117,6 +150,9 @@ catch (error) {
   $('error').classList.remove('hidden'); console.error(error); throw error;
 }
 
+// Shaders compile while the loading screen shows (renderer.js warmSteps);
+// bootstrap.js waits for this before revealing the game.
+export const ready = view.warmProgramsParallel().then(() => { view.programsWarmed = true; });
 let running = false, started = false, paused = false, accumulator = 0, lastTime = null, elapsed = 0;
 let deathActive=false,deathElapsed=0,deathMenuOpen=false;
 // One death screen for practice and online (death-screen.js): the respawn
@@ -177,7 +213,7 @@ const sticks = new Map();
 // tools/capture-thumbnail.mjs, which photographs the map card's picture.
 if(import.meta.env.DEV&&params.get('capture')==='thumbnail')window.__capture={view,sim,map};
 // Development only: the robots, for tools and the console.
-if(import.meta.env.DEV)window.__bots=bots;
+if(import.meta.env.DEV){window.__bots=bots;window.__duel=duel;window.__sim=sim;}
 view.onClatter = type => sound.clatter(type);
 // Lost the GPU (usually out of memory on a phone). Twice within a minute on
 // Extreme means it is too heavy for this device: step down to Quality.
@@ -188,12 +224,22 @@ view.onContextLost=()=>{
 };
 view.birds.onFlap = flight => sound.wingbeat(flight.name);
 
+// Solo practice (not the tutorial, not online): you come in, come back and
+// restart at a random open spot on the map, clear of any robots (openSpot).
+function randomPracticeSpawn(){
+ if(map.training||online?.active)return false;
+ const at=openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:14});
+ if(!at)return false;
+ const aim={aimX:sim.player.aimX,aimZ:sim.player.aimZ};sim.respawn(at);Object.assign(sim.player,aim);previousPlayer={...sim.player};
+ return true;
+}
 async function start(weapon=sim.weapon,course) {
   if (started) return;
   if(course!==undefined)tutorialCourse=course;
   sim.weapon=map.training&&tutorialCourse==='basics'?DEFAULT_WEAPON:weaponOrDefault(weapon);
   sim.player.stamina=sim.maxStamina;
   if(map.training){tutorial=new Tutorial(courseFor(sim.weapon));tutorialSaved=false;tutorialCard.invalidate();sim.reset();}
+  else if(randomPracticeSpawn())view.cutCamera?.();
   applyInputPreference();
   // On a touchscreen a game goes full screen (hides the address bar and
   // toolbars) when the browser allows it and the setting is on.
@@ -201,13 +247,15 @@ async function start(weapon=sim.weapon,course) {
   started = true; running = true; document.body.classList.add('playing');
   $('intro').classList.add('hidden'); ['weapon', 'reticle'].forEach(id => $(id).classList.remove('hidden'));
   $('world').focus();
+  // 1V1: the URL carries the choices (menu.js); one robot, no targets.
+  {const q=new URLSearchParams(location.search);if(!map.training&&q.get('mode')==='duel'){duel.begin(readDuel(q.get('duel'))||{});modeLabel.textContent='1V1';}}
   if(tutorial){$('tutorial-guide').classList.remove('hidden');updateTutorial();}
   try { await sound.start(); if (paused) sound.suspend(true); }
   catch (error) { console.warn('Audio unavailable:', error); }
 }
 
 function returnToMenu(){
-  online.close();perfReadout.reset();devWindow.hide();bots.clear();
+  online.close();perfReadout.reset();devWindow.hide();bots.clear();if(duel.active){duel.stop();modeLabel.textContent='PRACTICE';}
   if(choosing)menuFlow.cancelOnlinePick();choosing=false;lastKiller=null;lastOneShot=false;onlineMenus(false);view.deathView?.clear();
   running=false;started=false;paused=false;mapOpen=false;mapWasPaused=false;settingsOpen=false;
   releaseInput();reset();sound.suspend(true);
@@ -230,7 +278,7 @@ function releaseInput() {
 }
 
 function setPaused(value) {
-  if (!started || deathActive || value === paused) return;
+  if (!started || deathActive || value === paused || duel.resultOpen) return;
   if (value) layoutPauseMenu();
   paused = value; running = !value && !choosing; releaseInput();
   $('pause-panel').classList.toggle('hidden', !value); $('reticle').classList.toggle('hidden', value);
@@ -242,10 +290,11 @@ function setPaused(value) {
 function reset() {
   deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');
   if(tutorial){tutorial=new Tutorial(courseFor(sim.weapon));tutorialSaved=false;tutorialCard.invalidate();updateTutorial();}
-  releaseInput(); sound.clearFlights(); sim.reset(); view.reset(sim); accumulator = 0; sound.lastStep = 0;
+  releaseInput(); sound.clearFlights(); sim.reset(); if(started)randomPracticeSpawn(); view.reset(sim); accumulator = 0; sound.lastStep = 0;
   // Restart keeps the robots (enemies sent back out away from you, allies by
   // you); the menu clears them.
   for(const bot of bots.bots)bots.respawnAt(bot,sim);
+  duel.reset();
   previousPlayer = { ...sim.player }; dirty = true; devTools.syncSpeed();updateHUD();
   if(tutorial&&started)$('tutorial-guide').classList.remove('hidden');
 }
@@ -325,9 +374,12 @@ function event(e) {
   if(e.type==='playerDamage'){damageFeedback.add(e.damage,sim.time);buzz(e.damage>=40?HAPTICS.heavy:HAPTICS.hurt,{enabled:settings.vibration,touch:touchPrompts});}
   if(e.type==='kill'&&e.targetKind!=='player')buzz(HAPTICS.kill,{enabled:settings.vibration,touch:touchPrompts});
   if(e.type==='outgoingDamage')outgoingFeedback.add(e,sim.time);
+  // You killed a player (or a robot): KILL where they fell.
+  if(e.type==='kill'&&(e.targetKind==='player'||e.targetKind==='robot'))outgoingFeedback.kill(e,sim.time);
+  if(e.type==='syphon')outgoingFeedback.heal(e,sim.time);
   if(tutorial){tutorial.event(e,sim);updateTutorial();}
-  view.event(e); sound.event(e);
-  if(e.type==='playerDeath')beginDeath();
+  view.event(e); sound.event(e,heard(e).level);
+  if(e.type==='playerDeath'){duel.playerDied();beginDeath();}
   if (e.type === 'hit' || e.type === 'kill') {
     const marker = $('hit-marker'), position = view.screenPoint(e.x, e.z);
     marker.style.left = position.x + 'px'; marker.style.top = position.y + 'px';
@@ -350,47 +402,88 @@ const targetLock=createTargetLock();
 let pendingSwap=null,swipeFrom=null;
 function lockMode(){ return touchPrompts ? !!settings.aimAssist : inputMode!=='mouse'; }
 // What can be locked: alive, in sight, on screen and in range. Online, only
-// other players; offline, the practice targets and dummies.
+// other players; offline, the practice targets and dummies and the robots.
+// Players and robots are `mover`s (target-lock.js follows them differently),
+// each described with what the lock needs: its velocity, whether it is
+// dodging, inside a building you are not in, or behind a solid obstacle.
+function lockPool(){
+ if(online.active)return (online.others(1)||[]).map(t=>({...t,mover:true}));
+ return [...sim.targets.map(t=>({...t,mover:false})),...bots.lockPool().map(t=>({...t,mover:true}))];
+}
+function describeLockTarget(t){
+ const p=sim.player,w=viewWidth(),h=viewHeight(),m=TARGET_LOCK.margin,at=view.screenPoint(t.x,t.z,.6);
+ const offscreen=at.x<m||at.y<m||at.x>w-m||at.y>h-m;
+ const out={id:t.id,x:t.x,z:t.z,sx:at.x,sy:at.y,mover:!!t.mover,vx:t.vx||0,vz:t.vz||0,dodging:(t.dodgeRemaining||0)>0,offscreen};
+ if(t.mover){
+  const inside=sim.buildingAt(t.x,t.z);out.inside=!!inside&&inside!==sim.interior;
+  out.blocked=sim.obstacleBetween(p.x,p.z,t.x,t.z);
+ }
+ return out;
+}
 function lockCandidates(){
- const p=sim.player,w=viewWidth(),h=viewHeight(),m=TARGET_LOCK.margin,out=[];
- const pool=online.active?online.others(1)||[]:[...sim.targets,...bots.lockPool()];
- for(const t of pool){
+ const p=sim.player,out=[];
+ for(const t of lockPool()){
   if(t.hp!==undefined&&t.hp<=0)continue;
   if(Math.hypot(t.x-p.x,t.z-p.z)>TARGET_LOCK.range)continue;
-  const at=view.screenPoint(t.x,t.z,.6);
-  if(at.x<m||at.y<m||at.x>w-m||at.y>h-m)continue;
+  const c=describeLockTarget(t);
+  if(c.offscreen)continue;
   // Only what the player can see: not under another building's roof, and
   // from indoors only out through doors and windows (sim.canSeeTarget).
   // Last, as the costliest test (rays through the walls), run every step.
   if(!sim.canSeeTarget(t.x,t.z))continue;
-  out.push({id:t.id,x:t.x,z:t.z,sx:at.x,sy:at.y});
+  out.push(c);
  }
  return out;
+}
+// Facing onto a target locks it (no one is ever picked for you): with
+// nothing locked, turning your character (walking, the arrows, the stick) so
+// it faces a player, robot or practice target on screen within a narrow
+// cone locks onto it. Letting go by hand holds that one off until you turn
+// away from it (and a moment passes).
+let releasedId=null,releaseHold=0;
+function facingLock(candidates){
+ const p=sim.player;let best=null,score=Infinity;
+ for(const c of candidates){
+  if(c.blocked||c.inside)continue;
+  const dx=c.x-p.x,dz=c.z-p.z,along=dx*p.aimX+dz*p.aimZ;if(along<1)continue;
+  const across=Math.abs(dx*p.aimZ-dz*p.aimX),allowed=Math.max(.7,along*Math.tan(7*Math.PI/180));
+  if(across>allowed)continue;
+  if(c.id===releasedId){if(releaseHold>0)continue;}
+  const s=across/allowed+along*.02;if(s<score){score=s;best=c;}
+ }
+ // The one let go of is free again once you have turned well off it.
+ if(releasedId!==null&&!candidates.some(c=>c.id===releasedId&&Math.abs(Math.atan2((c.z-p.z)*p.aimX-(c.x-p.x)*p.aimZ,(c.x-p.x)*p.aimX+(c.z-p.z)*p.aimZ))<.35))releasedId=null;
+ if(best)targetLock.acquire(best,{x:p.aimPointX??p.x+p.aimX*4,z:p.aimPointZ??p.z+p.aimZ*4});
 }
 function lockTarget(dt){
  if(!lockMode()||sim.player.dead){targetLock.clear();pendingSwap=null;return null;}
  const candidates=lockCandidates();
+ const onMover=()=>targetLock.id!==null&&!!candidates.find(c=>c.id===targetLock.id)?.mover;
  if(pendingSwap){
   // Directions are from where the cursor is now. Idle: the target that way
   // from the aim dot. Locked (the dot is on the target): the next target that
   // way, and with none that way the lock lets go (an arrow then turns the aim
-  // that way as usual).
+  // that way as usual); on a player or robot with the keys, it holds (the
+  // held arrow leads them instead).
   if(targetLock.id===null){
    const p=sim.player,dot=aimDotPoint();
    targetLock.select(candidates,{x:dot.x,y:dot.y},pendingSwap.x,pendingSwap.y,{x:p.aimPointX??p.x+p.aimX*4,z:p.aimPointZ??p.z+p.aimZ*4});
-  }else targetLock.swap(candidates,pendingSwap.x,pendingSwap.y,online.active&&!touchPrompts);
+  }else{const was=targetLock.id;targetLock.swap(candidates,pendingSwap.x,pendingSwap.y,onMover()&&!touchPrompts);if(targetLock.id===null){releasedId=was;releaseHold=1.2;}}
   pendingSwap=null;
  }
- // Online the targets are players: the aim chases them, and held arrows lead.
- const chase=online.active?{nudgeX:(keys.has('ArrowRight')?1:0)-(keys.has('ArrowLeft')?1:0),nudgeZ:(keys.has('ArrowDown')?1:0)-(keys.has('ArrowUp')?1:0)}:null;
+ releaseHold=Math.max(0,releaseHold-dt);
+ if(targetLock.id===null)facingLock(candidates);
+ // Held arrows lead a player or robot by hand (keyboard only).
+ const chase=!touchPrompts?{nudgeX:(keys.has('ArrowRight')?1:0)-(keys.has('ArrowLeft')?1:0),nudgeZ:(keys.has('ArrowDown')?1:0)-(keys.has('ArrowUp')?1:0)}:null;
  return targetLock.update(candidates,sim.player,dt,lockedStill,chase);
 }
 // The locked target, if it still exists and is alive and near, seen or not
-// (target-lock.js keeps the lock through a brief loss of sight).
+// (target-lock.js keeps a practice target through a brief loss of sight, and
+// decides for a player or robot from what describeLockTarget says).
 function lockedStill(id){
- const pool=online.active?online.others(1)||[]:[...sim.targets,...bots.lockPool()],t=pool.find(t=>t.id===id);
+ const t=lockPool().find(t=>t.id===id);
  if(!t||(t.hp!==undefined&&t.hp<=0))return null;
- return Math.hypot(t.x-sim.player.x,t.z-sim.player.z)<=TARGET_LOCK.range*1.2?{id:t.id,x:t.x,z:t.z}:null;
+ return Math.hypot(t.x-sim.player.x,t.z-sim.player.z)<=TARGET_LOCK.range*1.2?describeLockTarget(t):null;
 }
 // Arrow presses, from the cursor: idle, lock onto the target that way; locked,
 // the next target that way, or let go if there is none. Held arrows turn the
@@ -405,81 +498,12 @@ let touchAimStart = null;
 
 
 $('world').tabIndex = 0;
-const spawnBird=()=>view.birds.spawnNext(view.focus,view.birdView())?.name;
-function showDevEntry(unlocked){
- $('dev-open').hidden=!unlocked;
- if(!unlocked)closeDevPanel();
-}
-function closeDevPanel(){
- $('dev-panel').classList.add('hidden');
- $('settings-panel').classList.remove('with-dev');
- $('dev-open').setAttribute('aria-expanded','false');
-}
-// Developer tools (see dev-options.js). Nothing about them shows until the
-// player pauses, presses Shift+P and enters the code.
-function devChanged(){
- dirty=true;updateHUD();
- document.body.classList.toggle('dev-hide-hud',!!sim.dev.hideHud);
- devTools.sync();devWindow.sync();
-}
-const devHooks={
- spawnBird:()=>{const name=spawnBird();if(name)toast('BIRD · '+String(name).toUpperCase());},
- hurt:()=>sim.damagePlayer(50,'dev',false,false,null,'gunshot'),
- kill:()=>sim.damagePlayer(sim.player.hp,'dev',false,false,null,'gunshot'),
- respawnTargets:()=>toast(sim.respawnTargets()+' TARGETS BACK'),
- restoreProps:()=>toast(sim.restoreAllProps()+' PROPS REBUILT'),
- // Robots (bots/): a solo game only.
- spawnRobot:()=>{
-  if(online.active){toast('ROBOTS ARE SOLO ONLY');return;}
-  if(!started){toast('START A GAME FIRST');return;}
-  const weapon=[null,'static','rifle','shotgun'][sim.dev.robotWeapon||0]||null;
-  // Skill and style (bots/robot-profile.js): picked here, or at random.
-  const skill=[null,'easy','normal','hard'][sim.dev.robotSkill||0]||null,style=[null,'balanced','rusher','marksman','flanker','cautious'][sim.dev.robotStyle||0]||null;
-  const bot=bots.spawn(sim,weapon,{team:['ffa','red','blue'][sim.dev.robotSide||0]||'ffa',skill,style});
-  toast(bot?[bot.name,bot.make,String(bot.sim.weapon==='rifle'?'nominal':bot.sim.weapon==='shotgun'?'ballast':'static'),bot.profile.label].join(' · ').toUpperCase():'ROBOT LIMIT REACHED');
- },
- removeRobots:()=>{const n=bots.count;bots.clear();view.robotWrecks?.clear();view.remote?.clear();toast(n+' ROBOTS REMOVED');},
- // Looks only: the same event a real volley sends, with no damage behind it.
- previewBlast:()=>{
-  const p=sim.player,count=sim.dev.blastOrbs||6,blast=explosionFor(count);
-  sim.events.push({type:'explosion',x:p.x+p.aimX*6,z:p.z+p.aimZ*6,count,radius:blast.radius,damage:0,preview:true});
- },
-};
-const devTools=installDevTools(sim,$('dev-panel'),()=>devChanged(),{
- ...devHooks,
- onUnlock:()=>showDevEntry(true),
- onLock:()=>{showDevEntry(false);devWindow.hide();},
-});
-if($('dev-open')&&$('dev-panel'))$('dev-open').onclick=()=>{
- const opening=$('dev-panel').classList.contains('hidden');
- $('dev-panel').classList.toggle('hidden',!opening);
- $('settings-panel').classList.toggle('with-dev',opening);
- $('dev-open').setAttribute('aria-expanded',String(opening));
- if(opening)$('dev-panel').querySelector('summary,select,input,button')?.focus();
-};
-const devWindow=createDevWindow($('game'),{sim,hooks:devHooks,
- quality:()=>settings.quality,
- setQuality:name=>{$('graphics-preset').value=name;settingsPanel.applySettings();},
- changed:()=>devChanged()});
-// Opened from the pause menu, and returns to it.
-let devFromTitle=false;
-const devDialog=createDevUnlockDialog($('game'),{
- unlock:code=>devTools.unlock(code),
- open:()=>{$('pause-panel').classList.add('hidden');},
- close:()=>{if(paused){$('pause-panel').classList.remove('hidden');$('resume').focus();}else if(devFromTitle){$('title-dev').focus();queueMicrotask(()=>{devFromTitle=false;});}},
- enabled:()=>{if(devFromTitle){devFromTitle=false;devWindow.show();}toast('DEV TOOLS UNLOCKED · O OPENS THE WINDOW',2600);}
-});
-// The title's quick link: the code first (the same dialog as Shift+P), then
-// it just opens and closes the developer window.
-$('title-dev').onclick=()=>{if(devTools.isUnlocked())devWindow.toggle();else{devFromTitle=true;devDialog.show();}};
+// Developer tools (ui/dev-wiring.js).
+const {devTools,devWindow,devDialog,showDevNotice}=installDevWiring({$,sim,view,bots,toast,
+ online:()=>online,settings:()=>settings,settingsPanel:()=>settingsPanel,started:()=>started,paused:()=>paused,
+ randomSpot:()=>{const ok=randomPracticeSpawn();if(ok)view.cutCamera?.();return ok;},
+ changed:()=>{dirty=true;updateHUD();}});
 installTitle({page:document.querySelector('[data-page="home"]'),shell:$('intro'),overlay:document.querySelector('#intro .title-blood')});
-function showDevNotice(enabled){toast(enabled?'DEV TOOLS ON':'DEV TOOLS OFF');}
-function toast(text,time=1800){
- devNotice.textContent=text;
- devNotice.classList.add('visible');clearTimeout(devNoticeTimer);
- devNoticeTimer=setTimeout(()=>devNotice.classList.remove('visible'),time);
-}
-const devNotice=document.createElement('div');devNotice.className='toast';devNotice.setAttribute('role','status');$('game').append(devNotice);let devNoticeTimer;
 // The map page's preview of the map this page has loaded (only a loaded map
 // can be photographed; the others show their name until picked once).
 // Cached per map, so each map is captured once per session.
@@ -597,6 +621,8 @@ function onlineMenus(on){
 // settled (it goes at the next death, a map reset or leaving).
 function clearDeath(){
  if(deathActive){deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');}
+ // Nothing from the last life pops up in the new one.
+ damageFeedback.clear();outgoingFeedback.clear();
  if(lobbyFrom==='death')closeLobby();
  view.deathView?.release();
 }
@@ -604,7 +630,7 @@ function clearDeath(){
 function respawnPractice(){
  if(online.active||!deathActive)return;
  clearDeath();
- sim.respawn({x:map.spawn.x,z:map.spawn.z});
+ sim.respawn({x:map.spawn.x,z:map.spawn.z});randomPracticeSpawn();
  view.cutCamera();previousPlayer={...sim.player};
  running=true;paused=false;sound.suspend(false);$('world').focus();updateHUD();
 }
@@ -637,7 +663,7 @@ function syncOnlineScreens(){
 }
 function enterOnline(){onlineMenus(true);syncOnlineScreens();}
 // Loud enough to hear from anyone's gun; the rest stay with their owner.
-const NET_SOUNDS=new Set(['rifleShot','shotgunShot','launch','explosion','grenadeExplosion','propBreak','hexPulse','sprayStart']);
+const NET_SOUNDS=new Set(['rifleShot','shotgunShot','launch','explosion','grenadeExplosion','propBreak','hexPulse','sprayStart','surgeCharge','surgeStart','scatterFire','scatterBurst']);
 function netEvents(){
  const myId=online.myId,isClient=!online.isHost;
  for(const {by,e,shooter,slot} of online.events()){
@@ -651,7 +677,7 @@ function netEvents(){
    continue;
   }
   view.netEvent(e,shooter,slot);
-  if(NET_SOUNDS.has(e.type))sound.event(e);
+  otherEvent(e,shooter);
  }
 }
 function multiplayerFrame(){
@@ -799,7 +825,7 @@ function syncGameCursor(){
 }
 bindRifleMouse($('world'),window,{
  enabled:()=>running&&usesTrigger(sim.weapon),state:(fire,aim)=>{rifleFiring=fire;rifleAiming=aim;},
- fire:()=>{pendingLaunch=true;},store:()=>{if(weaponInfo(sim.weapon)?.storesCharge)tappedKeys.add('MouseRight');},aim:(x,y)=>{setCursorTarget(x,y);inputMode='mouse';}
+ fire:()=>{pendingLaunch=true;},aim:(x,y)=>{setCursorTarget(x,y);inputMode='mouse';}
 });
 window.addEventListener('pointerup',e=>{if(e.pointerType==='mouse'){worldPress=false;if(e.button===0)rifleFiring=false;if(e.button===2)rifleAiming=false;}if(e.pointerId===touchAimPointer){
   const tap=isTap(touchAimStart,e.clientX,e.clientY);
@@ -915,7 +941,8 @@ function frame(time) {
   const stepping = running || (online.active && started);
   if (stepping) {
     // Dev game speed stretches or squeezes time; online sim.dev is reset so it is always 1 there.
-    accumulator += dt * (sim.dev.timeScale || 1);
+    // (Game speed is a solo tool: online it would change everyone's clock.)
+    accumulator += dt * (online.active ? 1 : sim.dev.timeScale || 1);
     while (accumulator >= RULES.step && (running || (online.active && started))) {
       previousPlayer = { ...sim.player };
       if(smoothedCursor()&&inputMode==='mouse')advanceAimCursor(mouse,cursorTarget,RULES.step,aimingNow(),sim.weapon);
@@ -957,7 +984,9 @@ function frame(time) {
       if(tutorial){tutorial.touch=touchPrompts;tutorial.touchAiming=touchAimPointer!==null;tutorial.walking=Math.hypot(touchMove.x,touchMove.z)>.2;if(arrows.active)tutorial.arrowAim=true;if(tappedKeys.has(GAME_KEYS.shoot)&&tutorial.arrowAim&&inputMode==='keyboard')tutorial.event({type:'keyboardShot'},sim);}
       const ballast=ballastInput(rifleFiring,keys,tappedKeys);
       if(!online.active)bots.before(sim);
-      sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), extendedReload:tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(sim.weapon==='rifle'&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),storeCharge:sim.weapon==='shotgun'&&ballast.storeCharge,doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming:aimingNow(),reload:tappedKeys.has('KeyR'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
+      // Freezing is a solo tool: online it would stop only the host.
+      if(online.active&&sim.dev.freeze)sim.dev.freeze=false;
+      sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), surge:sim.weapon==='rifle'&&tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(sim.weapon==='rifle'&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),scatter:sim.weapon==='shotgun'&&tappedKeys.has('KeyX'),doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming:aimingNow(),reload:tappedKeys.has('KeyR'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
         launchPointX: arrows.active?undefined:pendingAimPoint?.aimPointX, launchPointZ: arrows.active?undefined:pendingAimPoint?.aimPointZ }));
       online.afterStep();
       if(!online.active){bots.after(sim);bots.step(sim);}
@@ -966,7 +995,7 @@ function frame(time) {
       for (const e of sim.drainEvents()) event(e);
     }
     if(online.active)netEvents();
-    else if(bots.active)for(const {e,shooter,slot} of bots.drain()){view.netEvent(e,shooter,slot);if(NET_SOUNDS.has(e.type))sound.event(e);}
+    else if(bots.active)for(const {e,shooter,slot} of bots.drain()){view.netEvent(e,shooter,slot);otherEvent(e,shooter);}
     sound.update(sim.player, sim.time);
     sound.updateHex(sim);
   }
@@ -981,6 +1010,7 @@ function frame(time) {
       view.tutorialGuide=tutorial&&!tutorial.complete?{zone:tutorial.zone,target:tutorial.pointer(sim)}:null;
       view.remotePlayers = online.active ? online.others(running ? accumulator / RULES.step : 1) : bots.others(running ? accumulator / RULES.step : 1);
       view.update(online.active?drawSim(sim,online.foreign()):bots.active?drawSim(sim,bots.foreign(elapsed)):sim, renderDelta, running||online.active, elapsed, previousPlayer, running ? accumulator / RULES.step : 1);
+      robotMinds.update(bots,view,!!sim.dev.robotMinds&&!online.active);
       dirty = false; renderedFrames++;
     }
     // The aim dot is page markup, not the 3D frame: it follows every display
@@ -999,17 +1029,19 @@ function frame(time) {
   updateHealthHUD(sim);
   hudTime += dt; if (hudTime >= .08) { updateHUD(); hudTime = 0; keepAwake(running && !deathActive); }
   damageFeedback.update(sim,view);outgoingFeedback.update(sim,view);
+  if(started&&!paused)duel.frame(dt);
+  {const rp=view.player.position,me=view.screenPoint(rp.x,rp.z);fireIndicator.update(running&&!deathActive?dt:10,me.x,me.y,viewWidth(),viewHeight());}
   if(deathActive){
    deathElapsed+=dt;
-   if(!deathMenuOpen&&deathElapsed>=DEATH_MENU_DELAY){
-    deathMenuOpen=true;document.body.classList.add('dead-menu');
+   if(!deathMenuOpen&&!duel.over&&deathElapsed>=DEATH_MENU_DELAY){
+    deathMenuOpen=true;document.body.classList.add('dead-menu');damageFeedback.clear();outgoingFeedback.clear();
     deathScreen.show(online.active?(online.match()?.mode==='practice'?'online-practice':'online'):'practice');
     deathScreen.setKiller(online.active?lastKiller:undefined,lastOneShot);
     if(!online.active)sound.suspend(true);
    }
    // Practice counts its own respawn; online the host's countdown is shown
    // (multiplayerFrame) and the host brings you back.
-   if(!online.active){deathScreen.setTimer(RESPAWN_TIME-deathElapsed);if(deathElapsed>=RESPAWN_TIME)respawnPractice();}
+   if(!online.active&&!duel.over){deathScreen.setTimer(RESPAWN_TIME-deathElapsed);if(deathElapsed>=RESPAWN_TIME)respawnPractice();}
   }
   requestAnimationFrame(frame);
 }
@@ -1044,7 +1076,7 @@ function applyInputPreference(){
   }
   updateWeaponHUD(sim,touchPrompts);
   touchLabel('touch-launch',extras?'FIRE':'LAUNCH','LMB / SPACE');
-  touchLabel('touch-hex',extras?'RELOAD':'PULSE',extras?'R':'X');
+  touchLabel('touch-hex',extras?'RELOAD':'HEX',extras?'R':'X');
   touchLabel('touch-stream',extras?'AIM':'STREAM',extras?extras.aim.binding:'C');
   touchLabel('touch-dodge','DODGE','CTRL');
   touchLabel('touch-place','PLACE','E');

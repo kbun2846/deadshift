@@ -46,7 +46,8 @@ test('player rejects direct self-owned shots and tracks external damage without 
 });
 test('own orb explosions respect falloff, cover, blast boundaries and invulnerability',()=>{
  const blast=explosionFor(12);
- const at=distance=>Math.round(blast.damage*splashFalloff(distance,blast.radius,12));
+ // Splash is measured to the edge of the body (RULES.radius).
+ const at=distance=>Math.round(blast.damage*splashFalloff(Math.max(0,distance-RULES.radius),blast.radius,12));
  const center=make();center.explode({x:0,z:0,arrived:12},1);assert.equal(center.player.hp,500-at(0));
  const edge=make();edge.explode({x:2,z:0,arrived:12},1);
  assert.equal(edge.player.hp,500-at(2));

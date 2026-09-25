@@ -31,8 +31,9 @@ test('grenade damages exposed targets and the player but solid cover blocks spla
  s.targets=[{id:'open',x:10,z:0,hp:500,maxHp:500},{id:'covered',x:12,z:0,hp:500,maxHp:500}];
  s.player.x=10;s.player.z=1;s.colliders=[{x:11,z:0,w:.2,d:4,height:3}];
  tick(s,{},43);
- assert.equal(s.targets[0].hp,260);assert.equal(s.targets[1].hp,500);
- assert.equal(s.player.hp,500-grenadeDamage(1));
+ // (Every grenade hit carries GRENADE.bonus, +50, since v0.83.)
+ assert.equal(s.targets[0].hp,260-GRENADE.bonus);assert.equal(s.targets[1].hp,500);
+ assert.equal(s.player.hp,500-grenadeDamage(1)-GRENADE.bonus);
 });
 test('grenade flight stops at tall walls and clears low cover',()=>{
  for(const [height,blocked]of [[5,true],[.2,false]]){

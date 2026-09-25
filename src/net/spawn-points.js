@@ -57,3 +57,20 @@ export function pickSpawn(rooms, others = [], random = Math.random, space = 6) {
  const room = order[0];
  return room.points[Math.floor(random() * room.points.length)];
 }
+
+// A random open spot anywhere in the map (solo practice spawns, the dev
+// tools' "move to a random spot"): inside the playable area with room round
+// it, clear of every collider, and (when `others` are given) at least
+// `space` metres from each of them. Null if none turns up in `tries`.
+export function openSpot(map, colliders, { random = Math.random, others = [], space = 0, tries = 400, margin = 2 } = {}) {
+ const r = RULES.radius + CLEARANCE + .15;
+ for (let k = 0; k < tries; k++) {
+  const x = (random() - .5) * (map.width - margin * 2), z = (random() - .5) * (map.depth - margin * 2);
+  if (!isPlayable(map, x, z, margin) || blocked(colliders, x, z, r)) continue;
+  // Not wedged into a tiny shell (rail cars, sheds): open ground or a room.
+  if (map.buildings?.some(b => (b.w < MIN_ROOM || b.d < MIN_ROOM) && buildingContains(b, { x, z }))) continue;
+  if (space && others.some(o => Math.hypot(o.x - x, o.z - z) < space)) continue;
+  return { x, z };
+ }
+ return null;
+}

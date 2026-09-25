@@ -26,7 +26,13 @@
 // menu or "remove all" clears them). The make is carried in the slot
 // (ROBOT_SLOT / ALLY_SLOT + make + 1), so the body, its wreck and every
 // event agree on it with nothing else to pass round.
-// Robots come back a few seconds after dying, somewhere away from you.
+// Robots come in and come back a few seconds after dying somewhere well away
+// from you (20 m or more; allies beside you), so they have to find you.
+// Nobody is told where you are: a robot sees and hears like a player would
+// (robot-brain.js), drifts toward you now and then, and is steered off a
+// target others are already on, so a crowd of robots fights each other as
+// much as you, and rarely all piles on you at once (`targeting`).
+// The developer tools' robot settings (sim.dev.robot*) are read here each tick.
 // Their events (shots, hits, deaths) go to the screen the way another
 // player's do (WorldView.netEvent), their projectiles are drawn with yours
 // (net/projectiles.js), and their bodies are drawn by remote-players.js as
@@ -38,19 +44,24 @@ import { NavGrid } from './nav-grid.js';
 import { RobotBrain } from './robot-brain.js';
 import { ROBOT_SLOT, ALLY_SLOT, ROBOT_SKINS } from './robot-model.js';
 import { makeProfile } from './robot-profile.js';
+import { openSpot } from '../net/spawn-points.js';
 
 export const ROBOT_RESPAWN = 4;          // seconds
 export const MAX_ROBOTS = 6;
 export const TEAMS = Object.freeze(['ffa', 'red', 'blue']);   // blue: your side
 export const hostile = (a, b) => a === 'ffa' || b === 'ffa' || a !== b;
 const YOU_TEAM = 'blue';
-const LOUD = new Set(['rifleShot', 'shotgunShot', 'launch', 'explosion', 'grenadeExplosion', 'sprayStart', 'hexPulse']);
+// What anyone can see of a gun: being reloaded, or empty.
+const reloading = sim => sim.weapon === 'rifle' ? sim.rifle.reload > 0 || sim.rifle.ammo <= 0 : sim.weapon === 'shotgun' ? sim.shotgun.reload > 0 || sim.shotgun.ammo <= 0 : sim.ammo + sim.seeds.length < 2;
+const LOUD = new Set(['rifleShot', 'shotgunShot', 'launch', 'explosion', 'grenadeExplosion', 'sprayStart', 'hexPulse', 'scatterFire', 'scatterBurst']);
 
 export class BotMatch {
  constructor(map, { createSim, random = Math.random }) {
   Object.assign(this, { map, createSim, random });
   this.bots = []; this.serial = 0; this.out = []; this.noises = []; this.mirror = new ProjectileMirror(); this.nav = null;
-  this.intel = new Map(); this.clock = 0; this.youHurtBy = null;
+  // Where enemies come in and come back, metres from you (1V1 brings it in).
+  this.enemyRange = [22, 60];
+  this.intel = new Map(); this.clock = 0; this.youHurtBy = null; this.loud = new Set(); this.loudNext = new Set();
  }
 
  get active() { return this.bots.length > 0; }
@@ -60,7 +71,9 @@ export class BotMatch {
  // `skill` and `style` (robot-profile.js ids, or null for any), at a spot
  // 10-18 m from you (an ally: 3-6 m) with a way to walk to you. Takes a make
  // no other robot in the game has. Returns it, or null at the limit.
- spawn(main, weapon = null, { team = 'ffa', skill = null, style = null } = {}) {
+ // `temper` (robot-profile.js TEMPERS): a mood that shifts; `aim`: its own
+ // aim scale on top of the dev one (1V1's robot aim: sharper .7, sloppier 1.5).
+ spawn(main, weapon = null, { team = 'ffa', skill = null, style = null, temper = null, aim = 1 } = {}) {
   if (this.bots.length >= MAX_ROBOTS) return null;
   this.nav ||= new NavGrid(this.map, main.colliders);
   this.nav.refresh(main.colliders);
@@ -70,26 +83,27 @@ export class BotMatch {
   const free = ROBOT_SKINS.map((_, i) => i).filter(i => !taken.has(i));
   const skin = free[Math.floor(this.random() * free.length)];
   const slot = (ally ? ALLY_SLOT : ROBOT_SLOT) + skin + 1;
-  const profile = makeProfile({ skill, style, random: this.random });
+  const profile = makeProfile({ skill, style, temper, random: this.random });
   const sim = this.createSim(this.map);
   sim.worldAuthority = false; sim.dev = { speed: 1 }; sim.targets = []; sim.otherPlayers = [];
   sim.weapon = weapon || WEAPONS[Math.floor(this.random() * WEAPONS.length)].id;
-  const bot = { id, slot, skin, team, profile, make: ROBOT_SKINS[skin].id, name: (ally ? 'ALLY ' : 'ROBOT ') + n, sim,
+  const bot = { id, slot, skin, team, profile, aim, make: ROBOT_SKINS[skin].id, name: (ally ? 'ALLY ' : 'ROBOT ') + n, sim,
    brain: new RobotBrain({ sim, nav: this.nav, random: this.random, team, profile, slotIndex: this.bots.filter(b => b.team === team).length }), alive: true, respawnIn: 0, prev: null };
-  this.place(bot, main, ...(ally ? [3, 6] : [10, 18]));
+  this.place(bot, main, ...(ally ? [3, 6] : this.enemyRange));
   this.bots.push(bot);
   return bot;
  }
 
  place(bot, main, near, far) {
-  const at = this.spot(main.player, near, far) || this.map.spawn;
+  const at = this.spot(main.player, near, far) || (near > 10 && openSpot(this.map, main.colliders, { random: this.random, others: [main.player], space: near })) || this.map.spawn;
   bot.sim.respawn(at, bot.id); this.hand(bot.sim, main);
+  const hp = main.dev?.robotHealth; if (hp) bot.sim.player.hp = bot.sim.player.maxHp = hp;
   bot.prev = { x: at.x, z: at.z }; bot.alive = true; bot.respawnIn = 0;
   bot.brain.reset();
  }
 
  // Where a robot comes back: allies near you, the others away from you.
- respawnAt(bot, main) { if (bot.team === YOU_TEAM) this.place(bot, main, 4, 9); else this.place(bot, main, 16, 30); }
+ respawnAt(bot, main) { if (bot.team === YOU_TEAM) this.place(bot, main, 4, 9); else this.place(bot, main, ...this.enemyRange); }
 
  // An open spot between `near` and `far` metres from `from`, reachable on foot.
  spot(from, near, far) {
@@ -97,19 +111,25 @@ export class BotMatch {
   if (!nav) return null;
   // Open squares are cheap to test; the route (the costly part) only for
   // the few that pass, with a capped search.
-  for (let k = 0, routes = 0; k < 80 && routes < 6; k++) {
+  for (let k = 0, routes = 0; k < 120 && routes < 6; k++) {
    const a = this.random() * Math.PI * 2, d = near + this.random() * (far - near);
    const x = from.x + Math.cos(a) * d, z = from.z + Math.sin(a) * d, i = nav.cellOf(x, z);
    if (i < 0 || !nav.open[i] || nav.clearance[i] < 2) continue;
+   // Not on top of another robot either (an ally's spot is next to you anyway).
+   if (near > 10 && this.living().some(b => Math.hypot(b.sim.player.x - x, b.sim.player.z - z) < 12)) continue;
    routes++;
-   const route = nav.path(x, z, from.x, from.z, 6000);
+   const route = nav.path(x, z, from.x, from.z, 20000);
    const end = route?.[route.length - 1];
    if (end && Math.hypot(end.x - from.x, end.z - from.z) < 2) return { x, z };
   }
   return null;
  }
 
- clear() { this.bots = []; this.out = []; this.noises = []; this.mirror = new ProjectileMirror(); this.intel.clear(); this.youHurtBy = null; }
+// Developer tools: hurt or destroy every robot (dev-wiring.js).
+ hurtAll(amount) { let n = 0; for (const b of this.living()) { b.sim.damagePlayer(amount, 'dev', false, false, null, 'gunshot'); n++; } return n; }
+ destroyAll() { return this.hurtAll(1e6); }
+
+ clear() { this.enemyRange = [22, 60]; this.bots = []; this.out = []; this.noises = []; this.mirror = new ProjectileMirror(); this.intel.clear(); this.youHurtBy = null; }
 
  hand(sim, main) { sim.props = main.props; sim.colliders = main.colliders; sim.crops = main.crops; }
 
@@ -139,7 +159,7 @@ export class BotMatch {
   const standIns = new Set([...this.proxies.values()].map(e => e.proxy));
   main.targets = main.targets.filter(t => !standIns.has(t));
   const events = main.events.slice(this.mark);
-  this.listen(events);
+  this.listen(events, main.player.id);
   for (const { proxy, before, bot } of this.proxies.values()) this.deal(bot, before - proxy.hp, main.player.id, events);
   this.proxies = null;
  }
@@ -154,15 +174,23 @@ export class BotMatch {
  }
 
  // Gunfire and blasts the robots can hear.
- listen(events) { for (const e of events) if (LOUD.has(e.type)) this.noises.push({ x: e.x ?? 0, z: e.z ?? 0 }); }
+ listen(events, who = null) { for (const e of events) if (LOUD.has(e.type)) { this.noises.push({ x: e.x ?? 0, z: e.z ?? 0 }); if (who) this.loudNext.add(who); } }
 
  // --- the robots' own ticks ----------------------------------------------------------------
  step(main, dt = RULES.step) {
   if (!this.active) return;
+  // Dev "freeze game": robots and everything they fired hold still.
+  if (main.dev?.freeze) { this.noises.length = 0; return; }
   const heard = this.noises.splice(0);
+  // Who fired since the last tick (a robot sees a gun go off at it).
+  this.loud = this.loudNext || new Set(); this.loudNext = new Set();
   // The tick's allowance for costly searches, shared by every robot.
   if (this.nav) this.nav.budget = { search: 2, path: 3 };
   const you = main.player, youHere = you.hp > 0 && !you.dead && !main.dev.ghost;
+  const dev = main.dev || {}, passive = !!dev.robotPassive;
+  // Who is already after whom: a target others are on is less tempting.
+  const targeting = new Map();
+  for (const b of this.living()) { const t = b.brain.targetId; if (t != null && b.brain.memory.get(t)?.visible) targeting.set(t, (targeting.get(t) || 0) + 1); }
   const grenades = [main, ...this.bots.map(b => b.sim)].flatMap(s => s.grenades.filter(g => g.released).map(g => ({ x: g.targetX, z: g.targetZ })));
   for (const bot of this.bots) {
    const sim = bot.sim, p = sim.player;
@@ -173,6 +201,7 @@ export class BotMatch {
     bot.alive = false; bot.respawnIn = ROBOT_RESPAWN; continue;
    }
    if (!bot.alive) {
+    if (dev.robotStayDead) continue;
     bot.respawnIn -= dt;
     if (bot.respawnIn <= 0) this.respawnAt(bot, main);
     continue;
@@ -184,11 +213,11 @@ export class BotMatch {
    const proxies = new Map(), enemies = [], bodies = [], friends = [];
    if (youHere) {
     bodies.push(you);
-    if (hostile(bot.team, YOU_TEAM)) {
+    if (hostile(bot.team, YOU_TEAM) && !passive) {
      const proxy = { id: you.id, kind: 'player', x: you.x, z: you.z, baseX: you.x, spawnX: you.x, spawnZ: you.z, hp: you.hp, maxHp: you.maxHp, respawn: 0, flash: 0, moving: false };
      proxies.set(you.id, { proxy, before: you.hp, you: true });
-     enemies.push({ id: you.id, x: you.x, z: you.z, vx: you.vx, vz: you.vz, hp: you.hp, maxHp: you.maxHp });
-    } else friends.push({ id: you.id, leader: true, x: you.x, z: you.z, vx: you.vx, vz: you.vz, aimX: you.aimX, aimZ: you.aimZ, hp: you.hp, maxHp: you.maxHp, hurtBy: this.youHurtBy });
+     enemies.push({ id: you.id, human: true, x: you.x, z: you.z, vx: you.vx, vz: you.vz, hp: you.hp, maxHp: you.maxHp, weapon: main.weapon, aimX: you.aimX, aimZ: you.aimZ, loud: this.loud.has(you.id), reloading: reloading(main) });
+    } else if (!hostile(bot.team, YOU_TEAM)) friends.push({ id: you.id, leader: true, x: you.x, z: you.z, vx: you.vx, vz: you.vz, aimX: you.aimX, aimZ: you.aimZ, hp: you.hp, maxHp: you.maxHp, hurtBy: this.youHurtBy });
    }
    for (const other of this.living()) {
     if (other === bot) continue;
@@ -197,7 +226,7 @@ export class BotMatch {
     if (!hostile(bot.team, other.team)) { friends.push({ id: other.id, x: o.x, z: o.z, vx: o.vx, vz: o.vz, aimX: o.aimX, aimZ: o.aimZ, hp: o.hp, maxHp: o.maxHp }); continue; }
     const proxy = { id: other.id, kind: 'robot', x: o.x, z: o.z, baseX: o.x, spawnX: o.x, spawnZ: o.z, hp: o.hp, maxHp: o.maxHp, respawn: 0, flash: 0, moving: false };
     proxies.set(other.id, { proxy, before: o.hp, bot: other });
-    enemies.push({ id: other.id, x: o.x, z: o.z, vx: o.vx, vz: o.vz, hp: o.hp, maxHp: o.maxHp });
+    enemies.push({ id: other.id, x: o.x, z: o.z, vx: o.vx, vz: o.vz, hp: o.hp, maxHp: o.maxHp, weapon: other.sim.weapon, aimX: o.aimX, aimZ: o.aimZ, loud: this.loud.has(other.id), reloading: reloading(other.sim) });
    }
    for (const t of main.targets) {
     if (t.hp <= 0) continue;
@@ -207,7 +236,12 @@ export class BotMatch {
    sim.targets = [...proxies.values()].map(e => e.proxy);
    sim.otherPlayers = bodies.map(b => ({ x: b.x, z: b.z, hp: b.hp }));
    const intel = bot.team === 'ffa' ? null : this.intel.get(bot.team);
-   const input = bot.brain.step(dt, { enemies, noises: heard, grenades, bodies, friends, intel });
+   bot.brain.aimScale = (dev.robotAim || 1) * (bot.aim || 1);
+   // Others on each target, not counting this robot itself.
+   const mine = bot.brain.targetId, others = new Map(targeting); if (mine != null && others.has(mine)) others.set(mine, others.get(mine) - 1);
+   const input = bot.brain.step(dt, { enemies, noises: heard, grenades, bodies, friends, intel, targeting: others, seeAll: !!dev.robotSeeAll });
+   if (dev.robotHoldFire) { input.fire = input.tapFire = input.launch = input.spray = input.hex = input.grenade = input.doubleShot = input.surge = input.scatter = false; }
+   if (dev.robotFreeze) { input.moveX = input.moveZ = 0; input.dodge = false; }
    sim.step(input, dt);
    main.colliders = sim.colliders;   // what it broke stays broken
    // Everything since the last tick, including a death dealt to it by
@@ -229,7 +263,7 @@ export class BotMatch {
     } else this.deal(entry.bot, lost, bot.id, events);
    }
    sim.targets = [];
-   this.listen(events);
+   this.listen(events, bot.id);
    const shooter = { x: p.x, z: p.z, aimX: p.aimX, aimZ: p.aimZ, vx: p.vx, vz: p.vz };
    for (const e of events) {
     if (e.type === 'playerDeath') { bot.alive = false; bot.respawnIn = ROBOT_RESPAWN; e.weapon = sim.weapon; }
@@ -273,7 +307,7 @@ export class BotMatch {
  others(alpha = 1) {
   return this.living().map(b => {
    const p = b.sim.player, prev = b.prev || p;
-   return { id: b.id, slot: b.slot, robot: true, ally: b.team === YOU_TEAM, x: prev.x + (p.x - prev.x) * alpha, z: prev.z + (p.z - prev.z) * alpha, vx: p.vx, vz: p.vz,
+   return { id: b.id, slot: b.slot, robot: true, hp: b.sim.player.hp, maxHp: b.sim.player.maxHp, ally: b.team === YOU_TEAM, x: prev.x + (p.x - prev.x) * alpha, z: prev.z + (p.z - prev.z) * alpha, vx: p.vx, vz: p.vz,
     aimX: p.aimX, aimZ: p.aimZ, dodgeRemaining: p.dodgeRemaining, weapon: b.sim.weapon };
   });
  }
@@ -286,5 +320,5 @@ export class BotMatch {
  }
 
  // For target lock and aim assist: living robots as targets.
- lockPool() { return this.foes().map(b => ({ id: b.id, kind: 'robot', x: b.sim.player.x, z: b.sim.player.z, hp: b.sim.player.hp, maxHp: b.sim.player.maxHp })); }
+ lockPool() { return this.foes().map(b => { const p = b.sim.player; return { id: b.id, kind: 'robot', x: p.x, z: p.z, vx: p.vx, vz: p.vz, dodgeRemaining: p.dodgeRemaining || 0, hp: p.hp, maxHp: p.maxHp }; }); }
 }

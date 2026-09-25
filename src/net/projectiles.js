@@ -22,8 +22,9 @@ export function pack(sim) {
  return {
   orbs: sim.shots.filter(s => !s.dead).map(orb),
   hex: sim.hexOrbs.filter(s => !s.dead).map(orb),
-  bullets: sim.rifleBullets.filter(b => !b.dead).map(b => ({ x: r2(b.x), z: r2(b.z), dx: r2(b.dx), dz: r2(b.dz), travel: r2(b.travel) })),
+  bullets: sim.rifleBullets.filter(b => !b.dead).map(b => ({ x: r2(b.x), z: r2(b.z), dx: r2(b.dx), dz: r2(b.dz), travel: r2(b.travel), ...(b.surge ? { surge: 1 } : {}) })),
   pellets: sim.shotgunPellets.filter(b => !b.dead).map(b => ({ x: r2(b.x), z: r2(b.z), dx: r2(b.dx), dz: r2(b.dz), travel: r2(b.travel), range: b.range })),
+  scatter: (sim.scatterShells || []).map(b => ({ id: b.id, big: b.big, x: r2(b.x), z: r2(b.z), dx: r2(b.dx), dz: r2(b.dz), speed: b.speed, travel: r2(b.travel), limit: r2(b.limit) })),
   grenades: sim.grenades.filter(g => g.released).map(g => ({ id: g.id, x: r2(g.x), y: r2(g.y), z: r2(g.z), age: r2(g.age), flight: g.flight, released: true })),
  };
 }
@@ -36,7 +37,7 @@ export class ProjectileMirror {
   const seen = new Set();
   for (const [slotText, lists] of Object.entries(packed || {})) {
    const slot = Number(slotText); seen.add(slot);
-   const old = this.byPlayer.get(slot) || { orbs: new Map(), bullets: [], pellets: [], grenades: new Map() };
+   const old = this.byPlayer.get(slot) || { orbs: new Map(), bullets: [], pellets: [], grenades: new Map(), scatter: new Map() };
    const base = (slot + 1) * 1e6;
    const orbs = new Map();
    for (const s of [...(lists.orbs || []), ...(lists.hex || [])]) {
@@ -48,14 +49,17 @@ export class ProjectileMirror {
    const keep = (previous, list) => list.map((b, i) => Object.assign(previous[i] || {}, b, { stamp: now }));
    const grenades = new Map();
    for (const g of lists.grenades || []) { const id = base + g.id; grenades.set(id, Object.assign(old.grenades.get(id) || {}, g, { id, stamp: now })); }
-   this.byPlayer.set(slot, { orbs, bullets: keep(old.bullets, lists.bullets || []), pellets: keep(old.pellets, lists.pellets || []), grenades });
+   // Scatter shells by id (new small ones appear mid-list when a big one splits).
+   const scatter = new Map();
+   for (const b of lists.scatter || []) { const id = base + b.id; scatter.set(id, Object.assign(old.scatter?.get(id) || {}, b, { id, stamp: now })); }
+   this.byPlayer.set(slot, { orbs, bullets: keep(old.bullets, lists.bullets || []), pellets: keep(old.pellets, lists.pellets || []), grenades, scatter });
   }
   for (const slot of [...this.byPlayer.keys()]) if (!seen.has(slot)) this.byPlayer.delete(slot);
  }
 
  // Everything to draw, moved on from its snapshot by `now - stamp` (capped).
  lists(now) {
-  const out = { shots: [], hexOrbs: [], rifleBullets: [], shotgunPellets: [], grenades: [] };
+  const out = { shots: [], hexOrbs: [], rifleBullets: [], shotgunPellets: [], grenades: [], scatterShells: [] };
   for (const player of this.byPlayer.values()) {
    for (const s of player.orbs.values()) {
     const ahead = Math.min(.12, Math.max(0, now - s.stamp));
@@ -71,6 +75,10 @@ export class ProjectileMirror {
     out.shotgunPellets.push(Object.assign(b.view ||= {}, b, { x: b.x + b.dx * ahead, z: b.z + b.dz * ahead, travel: b.travel + ahead }));
    }
    for (const g of player.grenades.values()) out.grenades.push(g);
+   for (const b of player.scatter?.values() || []) {
+    const ahead = Math.min(.1, Math.max(0, now - b.stamp), Math.max(0, (b.limit - b.travel) / b.speed)) * b.speed;
+    out.scatterShells.push(Object.assign(b.view ||= {}, b, { x: b.x + b.dx * ahead, z: b.z + b.dz * ahead }));
+   }
   }
   return out;
  }
@@ -86,6 +94,7 @@ export function drawSim(sim, foreign) {
  view.rifleBullets = [...sim.rifleBullets, ...foreign.rifleBullets];
  view.shotgunPellets = [...sim.shotgunPellets, ...foreign.shotgunPellets];
  view.grenades = [...sim.grenades, ...foreign.grenades];
+ view.scatterShells = [...(sim.scatterShells || []), ...(foreign.scatterShells || [])];
  // Practice targets online: the host's match holds them (see online-play.js).
  if (foreign.targets) view.targets = foreign.targets;
  // Only your own parked orbs drift around you and crackle at your gun.

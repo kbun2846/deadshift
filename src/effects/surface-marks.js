@@ -26,7 +26,7 @@ export class SurfaceMarks {
     ctx.putImageData(pixels, 0, 0);
     const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
     this.material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-    this.ray = new THREE.Raycaster();
+    this.ray = new THREE.Raycaster(); this.ray.layers.enable(1); // props' own meshes sit on layer 1 (prop-instances.js)
     // One receiver above all outdoor road layers gives each blast one continuous
     // burn, including across a road edge. It is projection geometry, not rendered.
     this.groundReceiver=new THREE.Mesh(new THREE.PlaneGeometry(view.map.width+60,view.map.depth+60));

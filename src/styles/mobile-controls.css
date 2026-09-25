@@ -117,8 +117,11 @@ body.playing #game,body.playing #game *{-webkit-touch-callout:none;-webkit-user-
 body[data-controls=touch].playing:not(.paused) #game #touch-controls{left:0;right:0;top:auto;bottom:0;height:0;display:block;padding:0}
 body[data-controls=touch] #game .touch-left{display:none}
 body[data-controls=touch] #game .touch-right{display:block;width:0;height:0}
-body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped{position:fixed;left:auto;top:auto;right:calc(env(safe-area-inset-right) + var(--edge,0px));bottom:calc(env(safe-area-inset-bottom) + var(--base,0px));margin:0;padding:0;display:block;width:var(--size);height:var(--size);min-height:0;border:0;border-radius:0;clip-path:var(--shape);box-shadow:none;background:#182522}
-body[data-controls=touch].touch-swapped #game #touch-controls .touch-right>button.touch-shaped{right:auto;left:calc(env(safe-area-inset-left) + var(--edge,0px))}
+/* The cluster stands the same distance off both edges (--inset), plus the
+   safe-area inset but only up to --inset-safe, so a notch or home bar does
+   not push it far in on one side (touch-controls.js, config/controls.js). */
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped{position:fixed;left:auto;top:auto;right:calc(min(env(safe-area-inset-right,0px),var(--inset-safe,16px)) + var(--inset,0px) + var(--edge,0px));bottom:calc(min(env(safe-area-inset-bottom,0px),var(--inset-safe,16px)) + var(--inset,0px) + var(--base,0px));margin:0;padding:0;display:block;width:var(--size);height:var(--size);min-height:0;border:0;border-radius:0;clip-path:var(--shape);box-shadow:none;background:#182522}
+body[data-controls=touch].touch-swapped #game #touch-controls .touch-right>button.touch-shaped{right:auto;left:calc(min(env(safe-area-inset-left,0px),var(--inset-safe,16px)) + var(--inset,0px) + var(--edge,0px))}
 body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped>:not(.touch-edit-handle){position:absolute;left:var(--lx);top:var(--ly);translate:-50% -50%;margin:0;white-space:nowrap;text-align:center}
 body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped>.button-label{font-size:10.5px!important;letter-spacing:.02em}
 body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped>.touch-binding{display:none}
@@ -192,3 +195,39 @@ body.editing-touch-layout #game #touch-controls .touch-dragging{outline-style:so
  .touch-layout-legend{font-size:11px;gap:4px 10px}.touch-layout-legend b{width:17px;height:17px;font-size:11px}
  body[data-controls=touch] #game .touch-layout-actions button{min-height:34px;padding:6px 12px;font-size:11px!important}
 }
+
+/* Registered so a button's colour can ease (the ability states pulse it). */
+@property --pad-colour{syntax:'<color>';inherits:true;initial-value:#182522}
+
+/* The cluster fades into the game (v0.83): the buttons themselves stay fully
+   opaque as elements, so their words keep their contrast, while their
+   backgrounds are see-through (--pad-colour mixed down by the MOBILE BUTTON
+   OPACITY setting, a little lighter than before) and the ring fades toward
+   its outer edge (a radial mask from the screen corner). Words get a soft
+   dark halo so they read over whatever is behind. */
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped{
+ --pad-colour:#182522;--pad-lift:0;
+ opacity:1;color:#f4efe4;
+ background:color-mix(in srgb,var(--pad-colour) calc(min(1,var(--mobile-opacity,.4)*.72 + var(--pad-lift)) * 100%),transparent);
+ -webkit-mask-image:radial-gradient(circle var(--size) at var(--fade-x,100%) 100%,#000 0,#000 72%,rgba(0,0,0,.4) 100%);
+ mask-image:radial-gradient(circle var(--size) at var(--fade-x,100%) 100%,#000 0,#000 72%,rgba(0,0,0,.4) 100%);
+}
+body[data-controls=touch].touch-swapped #game #touch-controls .touch-right>button.touch-shaped{--fade-x:0%}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped>:not(.touch-edit-handle){text-shadow:0 0 3px #000c,0 1px 2px #000b}
+/* FIRE (and AIM + FIRE) sit inside the ring: no edge fade, a touch more solid,
+   dark words on the pink without a halo. */
+body[data-controls=touch] #game #touch-controls .touch-right>:is(#touch-launch,#touch-aimfire).touch-shaped{-webkit-mask-image:none;mask-image:none;--pad-lift:.12;color:#1b1d1c}
+body[data-controls=touch] #game #touch-controls .touch-right>#touch-launch.touch-shaped{--pad-colour:var(--ui-accent);background:color-mix(in srgb,var(--pad-colour) calc(min(1,var(--mobile-opacity,.4)*.72 + var(--pad-lift)) * 100%),transparent)}
+body[data-controls=touch] #game #touch-controls .touch-right>#touch-aimfire.touch-shaped:not(.touch-split-off):not([hidden]){--pad-colour:#cf8797;background:color-mix(in srgb,var(--pad-colour) calc(min(1,var(--mobile-opacity,.4)*.72 + var(--pad-lift)) * 100%),transparent)}
+body[data-controls=touch] #game #touch-controls .touch-right>:is(#touch-launch,#touch-aimfire).touch-shaped:active{--pad-colour:#f4d2d9;--pad-lift:.6}
+body[data-controls=touch] #game #touch-controls .touch-right>:is(#touch-launch,#touch-aimfire).touch-shaped>:not(.touch-edit-handle){text-shadow:0 0 3px #fff6}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped:active{--pad-colour:#f4d2d9;--pad-lift:.6;color:#161c19;text-shadow:none}
+/* Pulled out of the ring in the editor: a round button, see-through the same
+   way (its words stay solid), with an ability's seconds under its label. */
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positioned{
+ --pad-colour:#182522;--pad-lift:0;opacity:1;color:#f4efe4;
+ background:color-mix(in srgb,var(--pad-colour) calc(min(1,var(--mobile-opacity,.4)*.72 + var(--pad-lift)) * 100%),transparent);
+}
+body[data-controls=touch] #game #touch-controls .touch-right>#touch-launch.touch-positioned{--pad-colour:var(--ui-accent);--pad-lift:.12;color:#1b1d1c}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positioned:active{--pad-colour:#f4d2d9;--pad-lift:.6;color:#161c19}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positioned[data-x-left]:not([data-x-left=""])::after{content:attr(data-x-left);position:absolute;left:50%;bottom:7px;translate:-50% 0;font-size:10px;font-weight:700;opacity:.85;font-variant-numeric:tabular-nums}

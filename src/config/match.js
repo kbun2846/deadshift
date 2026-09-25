@@ -20,6 +20,8 @@ export const SETTINGS = Object.freeze({
  killLimit: { label: 'kill limit', values: [0, 10, 20, 30], names: ['none', '10', '20', '30'], default: 0, modes: ['ffa'] },
  health: { label: 'health', values: [250, 500, 750], names: ['250', '500', '750'], default: 500, modes: ['ffa', 'practice'] },
  respawn: { label: 'respawn wait', values: [8, 12, 16], names: ['8 s', '12 s', '16 s'], default: 12, modes: ['ffa'] },
+ // Syphon: a kill gives the killer back half the health they had lost.
+ syphon: { label: 'syphon', values: ['on', 'off'], names: ['on', 'off'], default: 'on', modes: ['ffa'] },
 });
 export const defaultSettings = () => Object.fromEntries(Object.entries(SETTINGS).map(([key, s]) => [key, s.default]));
 // Untrusted input (a saved choice, a message): only listed values survive.

@@ -603,6 +603,8 @@ body[data-controls=touch] #game .brand .online-badge{position:fixed;margin:0}
    ink; sound off turns the button pink (the game's accent) with a bar struck
    across the speaker. */
 #game .top-actions .icon-button{display:grid!important;place-items:center;place-content:center;padding:0!important;width:38px;height:38px;min-height:38px;text-align:center}
+/* (The forced grid above used to beat [hidden]: SCORES showed in solo games.) */
+#game .top-actions .icon-button[hidden],body[data-controls=keyboard] #game .top-actions #scores-toggle{display:none!important}
 #game .top-actions .icon-button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 #game .top-actions .icon-button .icon-fill{fill:currentColor;stroke-width:1.4}
 #game .top-actions #audio .sound-bar{display:none;stroke-width:2.6}
@@ -646,5 +648,106 @@ body[data-controls=touch] #game .top-actions .icon-button svg{width:18px;height:
 /* Long choice lists (mode, robot weapon): the label above, the choices in one
    row under it, full width, so they never wrap into a ragged block. */
 #game .robot-option[data-robot-option="mode"],#game .robot-option[data-robot-option="weapon"]{flex-direction:column;align-items:stretch;gap:6px}
-#game .robot-option[data-robot-option="mode"] .round-choices,#game .robot-option[data-robot-option="weapon"] .round-choices{flex-wrap:nowrap;justify-content:stretch}
-#game .robot-option[data-robot-option="mode"] .round-choices button,#game .robot-option[data-robot-option="weapon"] .round-choices button{flex:1 1 auto;min-width:0;padding:0 8px;text-align:center;justify-content:center}
+#game .robot-option .weapon-grid-frame{align-self:stretch}
+#game .robot-option[data-robot-option="mode"] .round-choices{flex-wrap:nowrap;justify-content:stretch}
+#game .robot-option[data-robot-option="mode"] .round-choices button{flex:1 1 auto;min-width:0;padding:0 8px;text-align:center;justify-content:center}
+
+/* A kill you made (outgoing-feedback.js): the damage numbers' font and pop, in red. */
+.damage-feedback span.outgoing-kill{color:#ff4056;font-size:27px;font-weight:800;letter-spacing:.08em;-webkit-text-stroke:.9px #251218;paint-order:stroke fill;text-shadow:0 2px 3px #080b0bf2,0 0 7px #ff405666}
+
+/* The maker's mark (ui/watermark.js): faint, bottom centre, above everything, never clickable. */
+.watermark{position:absolute;left:50%;bottom:max(4px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:40;pointer-events:none;user-select:none;font:600 10px/1 Bahnschrift,'Trebuchet MS',sans-serif;letter-spacing:.14em;color:#f2e6d0;opacity:.32;text-shadow:0 1px 2px #0008;white-space:nowrap}
+
+.damage-feedback span.outgoing-heal{color:#7ff0a6;font-size:23px;font-weight:800;letter-spacing:.06em;-webkit-text-stroke:.8px #10251a;paint-order:stroke fill;text-shadow:0 2px 3px #080b0bf2}
+
+/* Gunfire you can hear, by direction (ui/fire-indicator.js). */
+.fire-indicator{position:absolute;inset:0;width:100%;height:100%;z-index:5;pointer-events:none}
+body:not(.playing) .fire-indicator,body.dying .fire-indicator{display:none}
+
+/* Weapon picture grids (ui/weapon-grid.js): robot weapon on the 1V1 page and
+   in the dev window. Small tiles in the weapon pick's look (rounded, see-through,
+   the picture lifting on hover); the picked one ringed pink with a pink name
+   strip, as a picked round choice is pink. Scrolls past two rows, the bottom
+   edge fading while more lie below. */
+#game .weapon-grid-frame{position:relative;min-width:0}
+#game .weapon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px;max-height:calc(2 * 92px + 8px + 8px);overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y proximity;padding:4px;margin:-4px;scrollbar-width:thin}
+#game .weapon-grid-frame.has-more .weapon-grid{-webkit-mask-image:linear-gradient(#000 calc(100% - 26px),#0000);mask-image:linear-gradient(#000 calc(100% - 26px),#0000)}
+#game .weapon-grid button.weapon-tile{position:relative;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;width:100%;height:92px;min-height:0;margin:0;padding:0;overflow:hidden;border:1px solid #ffffff17;border-radius:10px;background:#3a41408c;color:#eee9df;box-shadow:none;transform:none;text-shadow:none;scroll-snap-align:start;cursor:pointer;transition:background .16s,border-color .16s,box-shadow .16s}
+#game .weapon-grid .weapon-tile-picture{position:absolute;inset:5px 5px 22px;display:grid;place-items:center}
+#game .weapon-grid .weapon-tile-picture>img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 3px 4px #0007);transition:transform .18s ease;pointer-events:none}
+#game .weapon-grid .weapon-tile-name{position:relative;display:block;padding:4px 2px;background:#1a1f1ecc;font:800 10px/1.1 var(--hud-font,Arial),sans-serif;letter-spacing:.12em;text-transform:uppercase;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .16s,color .16s}
+@media(hover:hover){#game .weapon-grid button.weapon-tile:not(:disabled):hover{background:#4a5250b3;color:#fff;border-color:#ffffff40}}
+#game .weapon-grid button.weapon-tile:focus-visible{background:#4a5250b3;color:#fff;border-color:#ffffffa0}
+#game .weapon-grid button.weapon-tile:is(:hover,:focus-visible) .weapon-tile-picture>img{transform:scale(1.1) translateY(-2px)}
+#game .weapon-grid button.weapon-tile[aria-pressed=true]{background:#4a5250b3;color:#eee9df;border-color:var(--ui-accent);box-shadow:inset 0 0 0 1px var(--ui-accent)}
+#game .weapon-grid button.weapon-tile[aria-pressed=true] .weapon-tile-name{background:var(--ui-accent);color:var(--button-active-ink)}
+/* RANDOM: every weapon fanned, dimmed, behind a big question mark. */
+#game .weapon-grid .weapon-tile-fan{position:absolute;inset:0;display:block}
+#game .weapon-grid .weapon-tile-fan img{position:absolute;left:22%;top:8%;width:56%;height:84%;opacity:.42;filter:grayscale(.5) drop-shadow(0 2px 3px #0008);transform:translateX(calc(var(--fan) * 34%)) rotate(calc(var(--fan) * 16deg))}
+#game .weapon-grid .weapon-tile-mystery{position:absolute;inset:0;display:grid;place-items:center;font:900 30px/1 Arial Black,Arial,sans-serif;color:var(--ui-accent);text-shadow:0 2px 6px #000c,0 0 10px #e8afb966;transition:transform .18s ease}
+#game .weapon-grid button.weapon-tile-random:is(:hover,:focus-visible) .weapon-tile-mystery{transform:scale(1.12) rotate(-6deg)}
+@media(prefers-reduced-motion:reduce){#game .weapon-grid button.weapon-tile,#game .weapon-grid .weapon-tile-picture img,#game .weapon-grid .weapon-tile-mystery{transition:none}}
+/* The dev window: the name above the grid, tiles a little smaller. */
+#game :is(.dev-tools,.dev-window) .dev-row.dev-row-grid{flex-direction:column;align-items:stretch;gap:6px;cursor:default}
+#game :is(.dev-tools,.dev-window) .dev-row-grid>span{text-transform:none!important}
+#game :is(.dev-tools,.dev-window) .dev-row-grid .weapon-grid{grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:6px;max-height:calc(2 * 74px + 6px + 8px)}
+#game :is(.dev-tools,.dev-window) .dev-row-grid button.weapon-tile{height:74px;border-radius:8px}
+#game :is(.dev-tools,.dev-window) .dev-row-grid .weapon-tile-picture{inset:4px 4px 19px}
+#game :is(.dev-tools,.dev-window) .dev-row-grid .weapon-tile-name{font-size:9px;padding:3px 2px}
+#game :is(.dev-tools,.dev-window) .dev-row-grid .weapon-tile-mystery{font-size:24px}
+/* Phones: every robot option row stacks its label above full-width choices,
+   like the weapon grid, instead of wrapping into a ragged block. */
+@media(max-width:520px){#game .robot-option{flex-direction:column;align-items:stretch;gap:6px}#game .robot-option .round-choices{flex-wrap:nowrap;justify-content:stretch}#game .robot-option .round-choices button{flex:1 1 auto;min-width:0;padding:0 8px;text-align:center;justify-content:center}}
+
+/* Coming soon (owner, v132): every weapon and map menu ends with a greyed
+   tile that cannot be picked: dashed edge, a faint "+", the words. */
+#game .weapon-grid button.weapon-tile-soon,#game .weapon-grid button.weapon-tile-soon:hover{background:#2a302f59;border:1px dashed #ffffff30;color:#8a938f;cursor:default;opacity:1}
+#game .weapon-grid button.weapon-tile-soon .weapon-tile-mystery{color:#ffffff38;text-shadow:none;font-size:34px}
+#game .weapon-grid button.weapon-tile-soon .weapon-tile-name{background:none;font-size:9px;letter-spacing:.1em}
+#game button.weapon-pick-choice.weapon-pick-soon{border:1px dashed #ffffff30;background:#2a302f59;color:#8a938f;cursor:default}
+#game button.weapon-pick-choice.weapon-pick-soon:hover{transform:none;background:#2a302f59}
+#game .weapon-pick-soon .weapon-pick-art b{font:900 44px/1 Arial Black,Arial,sans-serif;color:#ffffff38}
+#game .lobby-maps button.lobby-map-soon:disabled{color:#7f8783;font-style:italic;opacity:1;cursor:default}
+#game .weapon-card.weapon-soon{border-style:dashed;border-color:#ffffff30;background:#1f2423}
+#game .weapon-card.weapon-soon .weapon-choice:disabled{background:none;color:#8a938f;cursor:default;opacity:1}
+#game .weapon-soon .weapon-soon-art{display:grid;place-items:center;background:#262b2a}
+#game .weapon-soon .weapon-soon-art b,#game .map-soon .map-soon-art b{font:900 64px/1 Arial Black,Arial,sans-serif;color:#ffffff30}
+#game .map-choice.map-soon:disabled{border:1px dashed #ffffff30;cursor:default;opacity:1;color:#8a938f}
+#game .map-soon .map-soon-art{display:grid;place-items:center;background:#262b2a}
+#game .map-choice.map-soon :is(.map-caption,.map-mode),#game .map-choice.map-soon:is(:hover,:focus-visible) :is(.map-caption,.map-mode){background:#2e2b2c;color:#8a938f}
+
+/* The 1V1 page (ui/duel-menu.js): wider than the other menu pages so the
+   picture grids sit in one row; each picture choice has its label above,
+   the other rows are the lobby's round settings with a short note under
+   the picked choice. */
+.menu-shell [data-page="duel"]{width:min(540px,100%)}
+#game .duel-options{gap:14px;margin:0 0 6px}
+#game .duel-setting.duel-pictures{display:block}
+#game .duel-setting.duel-pictures>.round-setting-label{display:block;margin:0 0 7px}
+#game .duel-setting{flex-wrap:wrap;row-gap:4px}
+#game .duel-setting .round-choices button{min-width:0}
+#game .duel-row-note{flex-basis:100%;margin:0;color:#9fb0aa;font:600 11px/1.3 var(--hud-font,Arial),sans-serif;letter-spacing:.04em;text-transform:none;text-align:right}
+#game .weapon-grid.map-grid{grid-template-columns:repeat(auto-fill,minmax(112px,1fr))}
+#game .weapon-grid.map-grid button.weapon-tile{height:104px}
+#game .weapon-grid.map-grid .weapon-tile-name{letter-spacing:.05em}
+#game .weapon-grid.map-grid .map-tile .weapon-tile-picture{inset:0 0 21px;border-radius:9px 9px 0 0;overflow:hidden}
+#game .weapon-grid.map-grid .map-tile .weapon-tile-picture>img{object-fit:cover;filter:none}
+#game .weapon-grid.map-grid .map-tile:is(:hover,:focus-visible) .weapon-tile-picture>img{transform:scale(1.06)}
+#game #duel-start{margin-top:14px}
+@media(max-width:520px){#game .duel-setting{flex-direction:column;align-items:stretch;gap:6px}#game .duel-setting .round-choices{flex-wrap:nowrap}#game .duel-setting .round-choices button{flex:1 1 auto;padding:0 6px;text-align:center;justify-content:center}#game .duel-row-note{text-align:left}}
+
+/* In a 1V1 (duel.js): the score top centre (the match clock's place), you
+   blue and the robot pink as in the kill feed; the result card is the
+   multiplayer results card with REMATCH and MAIN MENU. */
+#game .duel-score{position:absolute;z-index:5;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:baseline;gap:10px;white-space:nowrap;font:800 16px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.08em;color:#eee9df;text-shadow:0 1px 3px #15201bc0;pointer-events:none;font-variant-numeric:tabular-nums}
+#game .duel-score b{font-size:22px}
+#game .duel-score .duel-you{color:var(--mp-you,#8fd0ff)}
+#game .duel-score .duel-robot{color:var(--mp-enemy,#e8afb9)}
+#game .duel-score i{font-style:normal;opacity:.6}
+#game .duel-score small{font-size:10px;letter-spacing:.14em;opacity:.7}
+body:not(.playing) #game .duel-score{display:none}
+body[data-controls=touch] #game .duel-score{top:10px;font-size:13px}
+body[data-controls=touch] #game .duel-score b{font-size:18px}
+#game .duel-results .duel-detail{margin:0 0 16px;color:#9fb0aa;font:700 11px/1.4 var(--hud-font,Arial),sans-serif;letter-spacing:.1em}
+#game .duel-results .duel-results-actions{display:grid;gap:10px}
+#game .duel-results .duel-results-actions button{margin:0;width:100%;height:52px;min-height:52px}

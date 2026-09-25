@@ -128,7 +128,7 @@ export class CropView {
       if (signature === bed.signature) continue;
       bed.signature = signature;
       // The dust sampler caches pixels off this canvas; a redraw invalidates it.
-      bed.sampled?.clear();
+      bed.sampled = null;
       const ctx = bed.canvas.getContext('2d'), f = bed.field, size = bed.canvas.width;
       ctx.clearRect(0,0,size,size);
       if(!bed.base){

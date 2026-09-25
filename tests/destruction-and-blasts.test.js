@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation, explosionFor, splashFalloff, SPLASH, segmentBox, RULES } from '../src/simulation.js';
 import { deadwater, mapColliders, PROP_TYPES } from '../src/maps.js';
-import { RULES as FULL_RULES } from '../src/config/gameplay.js';
+import { RULES as FULL_RULES, VOLLEY_BOOST } from '../src/config/gameplay.js';
 const FULL = FULL_RULES.targetHealth; // a practice target's full health
 
 const map = extra => ({ width: 100, depth: 100, spawn: { x: 0, z: 0 }, buildings: [], props: [], fences: [], targets: [], ...extra });
@@ -57,15 +57,15 @@ test('one orb has no explosion; two through twelve produce one increasingly size
   assert.equal(previousRadius, 2.7 * 1.12);
 });
 
-test('orb blasts increase strongly after three and reach 145 without changing radius',()=>{
+test('orb blasts increase strongly after three and reach 145 (x1.75, the volley boost) without changing radius',()=>{
  assert.equal(explosionFor(1),null);
  for(let count=2;count<=12;count++){
   const power=(count-2)/10,blast=explosionFor(count);
-  if(count<=3)assert.ok(Math.abs(blast.damage-(6+power*54)*1.15*(145/200))<1e-8);
+  if(count<=3)assert.ok(Math.abs(blast.damage-(6+power*54)*1.15*(145/200)*VOLLEY_BOOST)<1e-8);
   else assert.ok(blast.damage>(6+power*54)*1.15);
   assert.equal(blast.radius,(.55+power*2.15)*(count===12?1.12:1));
  }
- assert.equal(explosionFor(12).damage,145);
+ assert.ok(Math.abs(explosionFor(12).damage-145*VOLLEY_BOOST)<1e-9);
 });
 
 test('oversized developer volleys scale splash radius and damage with matching visual event',()=>{
@@ -79,7 +79,8 @@ test('oversized developer volleys scale splash radius and damage with matching v
 
 test('splash damage falls off and cannot reach outside its radius', () => {
   const sim = new Simulation(map({ targets: [
-    { id: 'near', x: 6, z: .85 }, { id: 'far', x: 6, z: 2.3 }, { id: 'outside', x: 6, z: 3.2 },
+    // (Measured to the edge of each body: 'outside' is clear of the rim.)
+    { id: 'near', x: 6, z: .85 }, { id: 'far', x: 6, z: 2.3 }, { id: 'outside', x: 6, z: 3.9 },
   ] }));
   volley(sim, 12);
   assert.ok(sim.targets[0].hp < sim.targets[1].hp && sim.targets[1].hp < FULL);

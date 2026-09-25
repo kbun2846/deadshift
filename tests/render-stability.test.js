@@ -16,10 +16,13 @@ test('shader warm-up runs after the tier is applied, and again on a tier change'
  // them the first time the player walked into a building.
  const r=src('renderer.js');
  const ctor=r.slice(r.indexOf('constructor('),r.indexOf('\n  setQuality('));
- const quality=ctor.indexOf("this.setQuality(GRAPHICS[qualityName]"),warm=ctor.indexOf('this.warmPrograms();');
- assert.ok(quality>0&&warm>0,'both calls are in the constructor');
- assert.ok(warm>quality,'the warm-up comes after setQuality');
- assert.equal(ctor.split('this.warmPrograms();').length-1,1,'and only once there');
+ // The load-time warm-up now runs from main.js once the view is built (so
+ // after setQuality), awaited behind the loading screen.
+ const quality=ctor.indexOf("this.setQuality(GRAPHICS[qualityName]");
+ assert.ok(quality>0,'the tier is applied in the constructor');
+ assert.ok(!ctor.includes('this.warmPrograms();'),'the constructor no longer warms by itself');
+ const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
+ assert.ok(main.indexOf('view.warmProgramsParallel()')>main.indexOf('new WorldView('),'main.js warms the built view');
  const setQuality=r.slice(r.indexOf('\n  setQuality('),r.indexOf('\n  reliefTexture('));
  assert.ok(/if \(this\.programsWarmed\) this\.warmPrograms\(\);/.test(setQuality),'a later preset change re-warms');
 });

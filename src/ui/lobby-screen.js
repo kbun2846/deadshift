@@ -22,7 +22,7 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
       <div class="lobby-column"><div class="lobby-heading">players <span class="lobby-count"></span></div><ul class="lobby-players"></ul></div>
       <div class="lobby-column">
         <div class="lobby-heading">mode</div><div class="lobby-modes" role="group" aria-label="Mode">${MODES.map(m => `<button type="button" class="plain-text" data-mode="${m.id}" aria-pressed="false"${m.ready ? '' : ' data-later="1"'}>${m.name}</button>`).join('')}</div>
-        <div class="lobby-heading">map</div><div class="lobby-maps" role="group" aria-label="Map">${maps.map(m => `<button type="button" class="plain-text" data-map="${m.id}" aria-pressed="false">${esc(m.name)}</button>`).join('')}</div>
+        <div class="lobby-heading">map</div><div class="lobby-maps" role="group" aria-label="Map">${maps.map(m => `<button type="button" class="plain-text" data-map="${m.id}" aria-pressed="false">${esc(m.name)}</button>`).join('')}<button type="button" class="plain-text lobby-map-soon" disabled aria-disabled="true">coming soon</button></div>
         <div class="lobby-heading lobby-settings-heading">settings</div><div class="lobby-settings"></div>
         <div class="lobby-heading lobby-robots-heading">robots</div><div class="lobby-robots"></div>
       </div>

@@ -51,6 +51,6 @@ export function installUiSounds({ muted = () => false, level = () => .6 } = {}) 
   if (!target || target.closest('#touch-controls') || target.disabled) return;
   play(target.matches(BACK) ? 'back' : 'press');
  }, true);
- document.addEventListener('keydown', e => { if (e.code === 'Escape' && !e.repeat) play('back'); }, true);
+ document.addEventListener('keydown', e => { if (e.code === 'Escape' && !e.repeat && !e.target?.closest?.('.dev-window-filter')) play('back'); }, true);
  return { play };
 }

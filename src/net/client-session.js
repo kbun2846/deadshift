@@ -16,7 +16,7 @@
 // two snapshots either side of that moment, so their movement stays smooth
 // even though snapshots arrive only 20 times a second and not evenly.
 import { NETWORK } from '../config/network.js';
-import { PROTOCOL_VERSION, movementInput, playerInput, applyPlayerState, applyLoadout, readMessage } from './protocol.js';
+import { PROTOCOL_VERSION, movementInput, playerInput, applyPlayerState, applyLoadout, readMessage, unpackEvent } from './protocol.js';
 import { blend } from './host-session.js';
 import { ProjectileMirror } from './projectiles.js';
 import { mapColliders } from '../maps.js';
@@ -27,7 +27,9 @@ const STALL = 1;
 export class ClientSession {
  constructor({ transport, map, local, createSim, config = NETWORK, now = () => performance.now() / 1000, name = 'Player' }) {
   Object.assign(this, { transport, map, local, config, now });
-  this.scratch = createSim(map); this.scratch.worldAuthority = false;
+  this.scratch = createSim(map); this.scratch.worldAuthority = false; this.scratch.predictOnly = true;
+  // Our own copy only predicts movement: the host runs the weapons and abilities.
+  if (local) local.predictOnly = true;
   // The map's practice targets as built, for mirroring the host's (practice mode).
   this.targetBase = new Map(this.scratch.targets.map(t => [t.id, t])); this.scratch.targets = []; this.targetKey = '';
   this.id = null; this.slot = null; this.name = name; this.seq = 0; this.pending = []; this.snapshots = []; this.lastTick = -1;
@@ -77,7 +79,7 @@ export class ClientSession {
   for (const p of snapshot.players) if (p.name) this.names.set(p.id, String(p.name).slice(0, 16));
   // Events, in order, each once, however many snapshots repeated them.
   for (const entry of (snapshot.ev || []).sort((a, b) => a.s - b.s)) if (entry.s > this.ack) {
-   this.inbox.push(entry); this.ack = entry.s;
+   entry.e = unpackEvent(entry.e); this.inbox.push(entry); this.ack = entry.s;
    // Broken and rebuilt props change what you can walk through: applied at once.
    if (entry.e.type === 'propBreak' || entry.e.type === 'propRestore') this.setProp(entry.e.id, entry.e.type === 'propRestore');
   }
@@ -146,7 +148,7 @@ export class ClientSession {
  reconcile(state) {
   this.pending = this.pending.filter(input => input.seq > (state.lastSeq || 0));
   const replay = this.scratch, p = this.local.player;
-  replay.weapon = this.local.weapon; replay.dev = { speed: 1 }; replay.otherPlayers = this.local.otherPlayers;
+  replay.weapon = this.local.weapon; replay.dev = { speed: 1 }; replay.surge = { ...this.local.surge }; replay.otherPlayers = this.local.otherPlayers;
   replay.props = this.local.props; replay.colliders = this.local.colliders; replay.crops = this.local.crops;
   applyPlayerState(replay.player, state); replay.player.hp = Math.max(1, state.hp || 1); replay.player.dead = false;
   for (const input of this.pending) { replay.step(movementInput(input)); replay.drainEvents(); }

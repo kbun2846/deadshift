@@ -16,6 +16,7 @@ async function boot(){
  await paint();await paint();
  try{
   const [app]=await Promise.all([import('./main.js'),minimumSplash]);
+  await app.ready;
   await document.fonts.ready;
   installButtonTypography(game);
   await paint();

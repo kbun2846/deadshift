@@ -2,12 +2,13 @@
 // around it, Ballast's shot cone and Nominal's spread brackets and zone.
 // Owns its own elements; main.js hands it the game state once a frame.
 import { RULES } from '../config/gameplay.js';
-import { shotgunRange, shotgunSpread } from '../weapons/shotgun.js';
+import { SHOTGUN, shotgunSpread } from '../weapons/shotgun.js';
+import { SCATTER } from '../config/gameplay.js';
 import { rifleSpread, rifleAim, RIFLE_MUZZLE } from '../weapons/rifle.js';
 import { viewWidth, viewHeight } from '../viewport.js';
 import { setStyle, setAttr } from './dom-writes.js';
 
-// Ballast's charge and Static's expanding hex fill a ring round the aim dot
+// Static's expanding hex fills a ring round the aim dot
 // that starts pink and runs to red. For the hex, red means the boundary is
 // close, so pulse now.
 export function chargeRingColor(t){
@@ -23,16 +24,16 @@ export function createAimOverlay(game){
  const spreadMarker=document.createElement('div');spreadMarker.id='rifle-spread';spreadMarker.className='rifle-spread';spreadMarker.innerHTML='<i></i><i></i>';game.append(spreadMarker);
  const secondarySpread=spreadMarker.cloneNode(true);secondarySpread.id='rifle-spread-secondary';secondarySpread.classList.add('secondary-spread');secondarySpread.hidden=true;game.append(secondarySpread);
  const reticleEl=game.querySelector('#reticle'),chargeRing=game.querySelector('#charge-ring'),chargeFill=chargeRing.querySelector('.charge-ring-fill');
- let chargeShown=-1,coneBox='';
+ let chargeShown=-1,coneBox='',spreadShown=null,lastSpreadAt=0;
 
  function updateChargeRing(sim,running){
   const expanding=sim.weapon==='static'?sim.hexOrbs[0]:null;
-  const value=!running||sim.player.dead?0:sim.weapon==='shotgun'?sim.shotgun.charge:expanding?Math.min(1,Math.hypot(expanding.x-expanding.originX,expanding.z-expanding.originZ)/RULES.hexRange):0;
-  const show=value>0.001||(sim.weapon==='shotgun'&&sim.shotgun.stored);
+  const value=!running||sim.player.dead?0:expanding?Math.min(1,Math.hypot(expanding.x-expanding.originX,expanding.z-expanding.originZ)/RULES.hexRange):0;
+  const show=value>0.001;
   // SVG elements have no .hidden property; the attribute is what hides them.
   chargeRing.toggleAttribute('hidden',!show);
   if(!show){chargeShown=-1;return;}
-  const stored=sim.weapon==='shotgun'&&sim.shotgun.stored,t=Math.round(value*200)/200,key=t+(stored?2:0);
+  const stored=false,t=Math.round(value*200)/200,key=t+(stored?2:0);
   if(key===chargeShown)return;chargeShown=key;
   chargeFill.style.strokeDasharray=`${t*100} 100`;
   chargeRing.style.setProperty('--charge-color',chargeRingColor(t));
@@ -60,11 +61,14 @@ export function createAimOverlay(game){
   // mid-reload breech has nothing to say. The guide edges stay up regardless.
   // Same rule for the rifle: no round chambered, or a magazine on the way in,
   // and the zone goes out.
+  // Scatter readied (Ballast X): the cone is its wide red one instead.
+  const scatter=sim.weapon==='shotgun'&&!!sim.scatter?.armed;
+  cone.classList.toggle('scatter',scatter);
   cone.classList.toggle('unloaded',sim.weapon==='shotgun'
-   ? !(sim.shotgun.ammo>0)
+   ? !(sim.shotgun.ammo>0)&&!scatter
    : !(sim.rifle.ammo>0&&sim.rifle.reload<=0));
   if(sim.weapon==='shotgun'){
-   const p=sim.player,range=shotgunRange(sim.shotgun.charge),angle=Math.atan2(p.aimZ,p.aimX),spread=shotgunSpread(aiming);
+   const p=sim.player,range=scatter?SCATTER.reach:SHOTGUN.range,angle=Math.atan2(p.aimZ,p.aimX),spread=scatter?SCATTER.spread:shotgunSpread(aiming);
    const muzzleX=view.player.position.x+p.aimX*.96-p.aimZ*.20,muzzleZ=view.player.position.z+p.aimZ*.96+p.aimX*.20;
    // Cosmetic cutout only; projectile origins and point-blank collisions are unchanged.
    const guideStart=.7;
@@ -73,15 +77,25 @@ export function createAimOverlay(game){
    const farLeft=view.screenPoint(muzzleX+Math.cos(angle-spread)*range,muzzleZ+Math.sin(angle-spread)*range,.77);
    const farRight=view.screenPoint(muzzleX+Math.cos(angle+spread)*range,muzzleZ+Math.sin(angle+spread)*range,.77);
    sizeCone();
-   setAttr(coneEdges,'d',`M${origin.x},${origin.y} L${farLeft.x},${farLeft.y} M${nearEnd.x},${nearEnd.y} L${farRight.x},${farRight.y}`);
+   // Readied Scatter also marks where the big shells split: an arc across the cone.
+   let splitArc='';
+   if(scatter){for(let i=0;i<=8;i++){const a=angle-spread+spread*2*i/8,q=view.screenPoint(muzzleX+Math.cos(a)*SCATTER.splitAt,muzzleZ+Math.sin(a)*SCATTER.splitAt,.77);splitArc+=`${i?'L':'M'}${q.x.toFixed(1)},${q.y.toFixed(1)} `;}}
+   setAttr(coneEdges,'d',`M${origin.x},${origin.y} L${farLeft.x},${farLeft.y} M${nearEnd.x},${nearEnd.y} L${farRight.x},${farRight.y} ${splitArc}`);
    // The same quad the edges bound, closed so it can carry a fill.
    setAttr(coneZone,'d',`M${origin.x},${origin.y} L${farLeft.x},${farLeft.y} L${farRight.x},${farRight.y} L${nearEnd.x},${nearEnd.y} Z`);
   }
 
   updateChargeRing(sim,running);
-  const p = sim.player;
+  // The guides are drawn from where the body is drawn (between ticks), not
+  // from the last fixed step: read off the step position, the brackets and
+  // the red band stepped against the smoothly moving player and camera and
+  // jittered while walking.
+  const s=sim.player,rp=view.player?.position,dx=rp?rp.x-s.x:0,dz=rp?rp.z-s.z:0;
+  const p=dx||dz?{...s,x:s.x+dx,z:s.z+dz,aimPointX:s.aimPointX!=null?s.aimPointX+dx:undefined,aimPointZ:s.aimPointZ!=null?s.aimPointZ+dz:undefined}:s;
   place(point.x, point.y);
   spreadMarker.hidden=secondarySpread.hidden=sim.weapon!=='rifle'||!running;
+  // Hidden (another weapon, a respawn): the band starts fresh next time.
+  if(spreadMarker.hidden){spreadShown=null;lastSpreadAt=0;}
   if(!spreadMarker.hidden){
    const ax=p.aimPointX??p.x+p.aimX*7,az=p.aimPointZ??p.z+p.aimZ*7;
    const distance=Math.hypot(ax-p.x,az-p.z),speed=Math.hypot(p.vx,p.vz);
@@ -90,7 +104,11 @@ export function createAimOverlay(game){
    // distances, so each shows the band bullets actually fall in there.
    // The convergence floor belongs to the barrel alone — applying it to the
    // bracket too is what dragged the near one out to arm's length.
-   const aim=rifleAim(p,distance),spread=rifleSpread(distance,speed,aiming);
+   const aim=rifleAim(p,distance),target=rifleSpread(distance,speed,aiming);
+   // Eased, so the band widens and narrows as you speed up and stop instead of stepping.
+   const now=performance.now(),step=Math.min(.1,(now-(lastSpreadAt||now))/1000);lastSpreadAt=now;
+   spreadShown=spreadShown==null?target:spreadShown+(target-spreadShown)*(1-Math.exp(-step*14));
+   const spread=spreadShown;
    // Hip-fire recoil knocks the whole cone off line (rifle.js kickRifle).
    const heading=aim.angle+(sim.rifle?.sway||0);
    const dirX=Math.cos(heading),dirZ=Math.sin(heading),perpX=-dirZ,perpZ=dirX;

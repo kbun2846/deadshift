@@ -36,9 +36,9 @@
 //    rather than chasing across the map, goes first for whoever is hurting
 //    you, and stands between you and them when you are nearly dead.
 // Nothing here touches the DOM or three.js.
-import { RULES, RIFLE, SHOTGUN, GRENADE } from '../config/gameplay.js';
+import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER } from '../config/gameplay.js';
 import { segmentBox } from '../simulation.js';
-import { makeProfile } from './robot-profile.js';
+import { makeProfile, stepMood } from './robot-profile.js';
 
 const TAU = Math.PI * 2;
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -47,11 +47,16 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // How each weapon likes to fight.
 export const STYLE = Object.freeze({
  rifle: { near: 6.5, far: 14, speed: RIFLE.bulletSpeed, reach: 30 },
- shotgun: { near: 2.2, far: 5.2, speed: 85, reach: 8.5 },
+ shotgun: { near: 2.2, far: 5.2, speed: 85, reach: 7.5 },
  static: { near: 3.5, far: 9, speed: 30, reach: 16 },
 });
-export const SIGHT = 26;       // metres: about what the camera shows
-const HEAR = 30;               // metres: gunfire and blasts
+// What it can see: about what a player's screen shows ahead of where it faces
+// (SIGHT), and only close by behind it (SIGHT_NEAR). Nobody tells it where you
+// are: it has to see you, hear you, or be hit.
+export const SIGHT = 22, SIGHT_NEAR = 12, SIGHT_CONE = 1.4;   // metres, radians either side
+// Gunfire and blasts: always heard within HEAR_SURE, less and less often
+// out to HEAR (like the sound falloff players get, audio.js HEARING).
+const HEAR_SURE = 11, HEAR = 33;
 
 // Is the straight line from a to b free of anything a shot would hit?
 export function shotClear(colliders, ax, az, bx, bz, pad = .04) {
@@ -96,7 +101,10 @@ export class RobotBrain {
   if (p.hp <= 0 || p.dead) return input;
   this.nav.refresh(sim.colliders);
   this.friends = world.friends || []; this.leader = this.friends.find(f => f.leader) || null;
+  this.lastWorld = world;
   this.sense(dt, world);
+  // A tempered robot's mood moves with the fight (robot-profile.js).
+  if (this.pf.temper) { const t = this.targetId != null ? this.memory.get(this.targetId) : null; stepMood(this.pf, dt, { own: p.hp / (p.maxHp || RULES.playerHealth), their: t ? (t.hp ?? RULES.playerHealth) / (t.maxHp || RULES.playerHealth) : null, random: this.random }); }
   this.thinkClock -= dt;
   if (this.thinkClock <= 0) { this.thinkClock = .1 + this.random() * .04; this.think(world); }
   const target = this.targetId != null ? this.memory.get(this.targetId) : null;
@@ -117,7 +125,9 @@ export class RobotBrain {
   }
   for (const e of world.enemies) {
    const d = Math.hypot(e.x - p.x, e.z - p.z);
-   const visible = e.hp > 0 && d < SIGHT && this.sim.canSeeEntity(e.x, e.z, .3);
+   const facing = this.aimAngle ?? Math.atan2(p.aimZ, p.aimX);
+   const inView = d < SIGHT_NEAR || (d < SIGHT && Math.abs(wrap(Math.atan2(e.z - p.z, e.x - p.x) - facing)) < SIGHT_CONE);
+   const visible = e.hp > 0 && inView && this.sim.canSeeEntity(e.x, e.z, .3);
    let m = this.memory.get(e.id);
    if (!m) { m = { x: e.x, z: e.z, vx: 0, vz: 0, seen: -99, visible: false, hp: e.hp }; this.memory.set(e.id, m); }
    if (e.hp <= 0) { this.memory.delete(e.id); if (this.targetId === e.id) this.targetId = null; continue; }
@@ -132,8 +142,11 @@ export class RobotBrain {
     // Velocity smoothed from what it sees.
     m.vx += ((e.vx || 0) - m.vx) * .35; m.vz += ((e.vz || 0) - m.vz) * .35;
     m.x = e.x; m.z = e.z; m.seen = this.time; m.hp = e.hp; m.maxHp = e.maxHp;
+    m.weapon = e.weapon || m.weapon; m.aimX = e.aimX ?? m.aimX; m.aimZ = e.aimZ ?? m.aimZ; m.loud = !!e.loud; m.reloading = !!e.reloading;
    }
-   m.visible = visible; m.id = e.id;
+   m.visible = visible; m.id = e.id; m.human = !!e.human;
+   // (Developer tools: "robots know where everyone is".)
+   if (world.seeAll && !visible && e.hp > 0) { m.x = e.x; m.z = e.z; m.vx = e.vx || 0; m.vz = e.vz || 0; m.seen = this.time - .3; m.hp = e.hp; m.maxHp = e.maxHp; }
   }
   // Callouts: what teammates (and, for an ally, you) can see right now.
   if (world.intel) {
@@ -145,7 +158,8 @@ export class RobotBrain {
   }
   // Heard: gunfire, blasts. Known roughly (a couple of metres off).
   for (const n of world.noises || []) {
-   if (Math.hypot(n.x - p.x, n.z - p.z) > HEAR) continue;
+   const nd = Math.hypot(n.x - p.x, n.z - p.z);
+   if (nd > HEAR || (nd > HEAR_SURE && this.random() > (HEAR - nd) / (HEAR - HEAR_SURE) * .6)) continue;
    if (!this.targetId || !this.memory.get(this.targetId)?.visible) this.investigate = { x: n.x + (this.random() - .5) * 3, z: n.z + (this.random() - .5) * 3, at: this.time };
   }
   // Hurt: from which way, and remember it.
@@ -165,11 +179,62 @@ export class RobotBrain {
  // further for a marksman).
  band() {
   const s = STYLE[this.sim.weapon] || STYLE.static, r = this.pf.range;
-  return { ...s, near: s.near * r, far: Math.min(s.reach, s.far * r) };
+  const b = { ...s, near: s.near * r, far: Math.min(s.reach, s.far * r) };
+  // The plan for this fight (tactic(), below) bends the band: pushing in,
+  // or keeping out of the reach of a shorter-ranged enemy.
+  const plan = this.fight;
+  if (plan?.kind === 'push') { b.near *= .75; b.far = Math.max(b.near + 1.5, b.far * .8); }
+  else if (plan?.kind === 'kite' && plan.keep) { b.near = Math.max(b.near, plan.keep); b.far = Math.min(s.reach, Math.max(b.far, b.near + 2.5)); }
+  return b;
+ }
+
+ // --- the plan for a fight ------------------------------------------------------------
+ // How it means to fight whoever it is facing, from the circumstances: health
+ // on both sides, whose weapon reaches further, whether it is loaded and its
+ // ability is ready, how many it faces. One of:
+ //  push    it has the edge: close in and press (abilities, grenades);
+ //  kite    it outranges them: hold them at the edge of their reach;
+ //  close   they outrange it: get in, round the side, through cover;
+ //  fall    it is losing: back to cover, reload, come out on its terms;
+ //  trade   even: the ordinary fight.
+ // Worked out again every couple of seconds, and only as well as the robot
+ // plays (`tech`: an easy robot often just fights, a hard one reads the fight
+ // every time), with a little mood of its own so no two fights go the same.
+ tactic(target, visibleCount) {
+  const sim = this.sim, p = sim.player, pf = this.pf;
+  if (!target) { this.fight = null; return; }
+  const seize = target.reloading && this.fight?.kind !== 'push' && this.random() < pf.tech * .3;
+  if (this.fight && this.time < this.fight.until && this.fight.id === target.id && !seize) return;
+  const until = this.time + 1.8 + this.random() * 1.4;
+  if (this.random() > pf.tech) { this.fight = { kind: 'trade', id: target.id, until }; return; }
+  const mine = STYLE[sim.weapon] || STYLE.static, theirs = STYLE[target.weapon] || STYLE.static;
+  const my = p.hp / (p.maxHp || RULES.playerHealth), their = (target.hp ?? 500) / (target.maxHp || RULES.playerHealth);
+  const loaded = !this.outOfAmmo(), ability = this.abilityReady();
+  let edge = (my - their) * 1.3 + (loaded ? .15 : -.5) + (ability ? .25 : 0) - Math.max(0, visibleCount - 1) * .45 + (pf.aggr - .5) * .6 + (this.random() - .5) * .3;
+  // An ally near you fights with you, not alone.
+  if (this.leader) edge += .15;
+  // They are reloading or empty: the moment to go at them.
+  if (target.reloading && target.visible) edge += .6;
+  const reach = mine.far - theirs.far;
+  let kind = 'trade', keep = 0;
+  if (edge < -.4) kind = 'fall';
+  else if (reach > 2.5 && edge < .6) { kind = 'kite'; keep = theirs.reach + 1.2; }
+  else if (reach < -2.5) kind = 'close';
+  else if (edge > .35) kind = 'push';
+  this.fight = { kind, keep, id: target.id, until, edge };
+ }
+
+ // Is its weapon's ability there to use (Static's hex, Nominal's Surge,
+ // Ballast's Scatter)?
+ abilityReady() {
+  const sim = this.sim;
+  if (sim.weapon === 'rifle') return sim.surge?.phase === 'idle' && sim.surge.cooldown <= 0;
+  if (sim.weapon === 'shotgun') return !!sim.scatter && sim.scatter.cooldown <= 0;
+  return sim.hexCooldown <= 0 && sim.ammo >= RULES.hexCost;
  }
 
  newError(d, scale) {
-  const a = this.random() * TAU, size = (.35 + d * .06) * scale * this.pf.aim * (.6 + this.random() * .8);
+  const a = this.random() * TAU, size = (.35 + d * .06) * scale * this.pf.aim * (this.aimScale || 1) * (.6 + this.random() * .8);
   return { x: Math.cos(a) * size, z: Math.sin(a) * size };
  }
 
@@ -185,6 +250,10 @@ export class RobotBrain {
    if (age > 12) continue;
    if (m.visible) visibleCount++;
    let score = d + (m.visible ? 0 : 12 + age * 2) + (m.hp / (m.maxHp || 500)) * 4 + (m.id === this.targetId ? -3 : 0);
+   // Someone others are already fighting is less tempting (more so you: a
+   // crowd rarely all comes for the one player), unless it is right here.
+   const on = world.targeting?.get(m.id) || 0;
+   if (on && d > 5) score += on * (m.human ? 9 : 6);
    if (lead) {
     score -= Math.max(0, 9 - Math.hypot(m.x - lead.x, m.z - lead.z)) * .5;
     if (lead.hurtBy === m.id) score -= 6;
@@ -192,6 +261,7 @@ export class RobotBrain {
    if (score < bestScore) { bestScore = score; best = m; }
   }
   this.targetId = best ? best.id : null;
+  this.tactic(best && this.time - best.seen < 3 ? best : null, visibleCount);
   const style = this.band(), pf = this.pf;
   const hpShare = p.hp / (p.maxHp || RULES.playerHealth);
   const empty = this.outOfAmmo();
@@ -209,7 +279,9 @@ export class RobotBrain {
   // (A bold robot reloads in the open when the enemy is far enough off.)
   const openReload = known && Math.hypot(known.x - p.x, known.z - p.z) > pf.openReload;
   const why = fresh && empty && !openReload ? 'reload'
-   : known && this.time - known.seen < 4 && hurt && (hpShare < pf.hurtAt || (visibleCount >= 2 && hpShare < pf.hurtAt + .25)) ? 'hurt' : null;
+   : known && this.time - known.seen < 4 && hurt && (hpShare < pf.hurtAt || (visibleCount >= 2 && hpShare < pf.hurtAt + .25)) ? 'hurt'
+   // Losing the fight (the plan says fall back): cover now, before it is too late.
+   : known && fresh && this.fight?.kind === 'fall' && hpShare < .75 ? 'hurt' : null;
   const inCover = !!known && prev === 'cover' && (this.coverWhy === 'reload' ? empty && this.time - this.coverFrom < 6 : this.time < this.coverUntil);
   const lowLead = lead && lead.hp / (lead.maxHp || RULES.playerHealth) < .35;
   // (Hurt cover is rarer: nobody heals, so hiding only buys a moment.)
@@ -275,7 +347,7 @@ export class RobotBrain {
    const keep = this.goal?.follow && from && Math.hypot(lead.x - from.x, lead.z - from.z) < 2.5 && fromLead < 6 && !this.inLine(lead, this.goal.x, this.goal.z);
    if (!keep) { this.goal = spot; this.followFrom = { x: lead.x, z: lead.z }; }
   } else {
-   if (!this.goal || this.goal.chase || this.goal.follow || Math.hypot(this.goal.x - p.x, this.goal.z - p.z) < 1.5 || this.time - this.pathAt > 20) this.goal = this.wanderSpot();
+   if (!this.goal || this.goal.chase || this.goal.follow || Math.hypot(this.goal.x - p.x, this.goal.z - p.z) < 1.5 || this.time - this.pathAt > 20) this.goal = this.wanderSpot(world);
   }
   this.watchGoal();
   // Re-plan when the goal moved or the route is old.
@@ -311,7 +383,7 @@ export class RobotBrain {
   else if (this.mode === 'investigate') this.investigate = null;
   else if (this.mode === 'cover') { this.coverEnded = this.time; this.coverUntil = 0; }
   else if (this.mode === 'follow') this.followNudge = (this.followNudge || 0) + 1;
-  this.goal = this.mode === 'patrol' ? this.wanderSpot() : null; this.path = null;
+  this.goal = this.mode === 'patrol' ? this.wanderSpot(this.lastWorld) : null; this.path = null;
  }
 
  // Shared per-tick allowance for the costly work (BotMatch refills
@@ -338,8 +410,28 @@ export class RobotBrain {
  }
 
  // Somewhere else worth walking to: an open spot 12-40 m away, in the map.
- wanderSpot() {
-  const p = this.sim.player;
+ // Now and then (a third of the time) it heads roughly toward someone it
+ // does not know about, a hunch rather than knowledge: somewhere within
+ // ~12 m of them, you a little more often than the other robots. (`hunch`:
+ // how often; a 1V1 raises it, two players looking for each other.)
+ wanderSpot(world = null) {
+  const p = this.sim.player, pool = (world?.enemies || []).filter(e => e.hp > 0);
+  if (pool.length && this.random() < (this.hunch ?? .34)) {
+   const weights = pool.map(e => e.human ? 1.6 : 1), total = weights.reduce((a, b) => a + b, 0);
+   let r = this.random() * total, pick = pool[0];
+   for (let i = 0; i < pool.length; i++) { r -= weights[i]; if (r <= 0) { pick = pool[i]; break; } }
+   for (let k = 0; k < 12; k++) {
+    const a = this.random() * TAU, d = 4 + this.random() * 12, x = pick.x + Math.cos(a) * d, z = pick.z + Math.sin(a) * d;
+    // No nearer than it already is would be pointless; only a step toward them.
+    if (this.nav.isOpen(x, z) && this.nav.clearance[this.nav.cellOf(x, z)] >= 2) {
+     const far = Math.hypot(x - p.x, z - p.z);
+     // Not the whole way in one go: part of the way there.
+     const t = far > 30 ? 30 / far : 1;
+     const gx = p.x + (x - p.x) * t, gz = p.z + (z - p.z) * t;
+     if (this.nav.isOpen(gx, gz) && this.nav.clearance[this.nav.cellOf(gx, gz)] >= 2) return { x: gx, z: gz };
+    }
+   }
+  }
   for (let k = 0; k < 24; k++) {
    const a = this.random() * TAU, d = 12 + this.random() * 28, x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
    // Drift back toward the middle of the map rather than the edges.
@@ -388,10 +480,11 @@ export class RobotBrain {
    if (lead && Math.hypot(c.x - lead.x, c.z - lead.z) > 12) continue;
    // A flanker wants an angle on them, not the same line it was on.
    let score = walk + Math.abs(d - mid) * .35;
-   if (this.pf.flank) {
+   const flank = this.fight?.kind === 'close' ? Math.max(this.pf.flank, .7) : this.pf.flank;
+   if (flank) {
     const ax = p.x - enemy.x, az = p.z - enemy.z, bx = c.x - enemy.x, bz = c.z - enemy.z;
     const sin = Math.abs(ax * bz - az * bx) / ((Math.hypot(ax, az) * d) || 1);
-    score -= this.pf.flank * sin * 3;
+    score -= flank * sin * 3;
    }
    if (score >= bestScore) continue;
    // An ally keeps out of your line of fire.
@@ -463,6 +556,10 @@ export class RobotBrain {
    }
    // Nominal aims in to hit at range, which slows it: stand steadier there.
    if (sim.weapon === 'rifle' && d > 9) { mx *= this.pf.steady; mz *= this.pf.steady; }
+   // A skilled rifleman plants its feet for a burst (moving widens the
+   // spread by up to 70%) and moves between bursts, unless it sees a gun
+   // lined up on it, when it keeps moving.
+   if (sim.weapon === 'rifle' && d > 6 && this.burstUntil && !this.threatened(target, world)) { const k = 1 - this.pf.tech * .85; mx *= k; mz *= k; }
   } else if (!follow()) {
    mx = 0; mz = 0;
    if (this.mode === 'patrol' || this.mode === 'investigate') this.thinkClock = 0;
@@ -496,7 +593,7 @@ export class RobotBrain {
    // round, then a dodge (which also breaks clutter).
    if (pr.stuck === 1 && !this.goal) { this.strafe *= -1; this.strafeUntil = this.time + .6; }
    if (pr.stuck === 2 && this.goal) this.plan(this.goal);
-   if (pr.stuck === 4) { this.strafe *= -1; this.path = null; this.goal = this.mode === 'patrol' ? this.wanderSpot() : this.goal; }
+   if (pr.stuck === 4) { this.strafe *= -1; this.path = null; this.goal = this.mode === 'patrol' ? this.wanderSpot(world) : this.goal; }
    if (pr.stuck >= 6) { this.wantDodge = { x: -mz || 1, z: mx }; pr.stuck = 0; }
    pr.x = p.x; pr.z = p.z; pr.at = this.time;
   }
@@ -520,10 +617,21 @@ export class RobotBrain {
    const jink = Math.hypot(target.vx - (this.lastVX ?? target.vx), target.vz - (this.lastVZ ?? target.vz));
    if (jink > 2.5) { const e = this.newError(d, .5); this.aimError.x += e.x; this.aimError.z += e.z; }
    this.lastVX = target.vx; this.lastVZ = target.vz;
+   // Now and then a shot goes wide: the hand pulls off to one side for a
+   // moment (settles like any aim error). Often for an easy robot, rarely
+   // for a hard one (profile `miss`: the chance each half-second or so).
+   this.missClock = (this.missClock ?? .5) - dt;
+   if (target.visible && this.missClock <= 0) {
+    this.missClock = .45 + this.random() * .35;
+    if (this.random() < this.pf.miss * Math.min(2, this.aimScale || 1)) {
+     const side = this.random() < .5 ? -1 : 1, ux = (target.x - p.x) / (d || 1), uz = (target.z - p.z) / (d || 1), size = (.75 + this.random() * .6) * (1 + d * .02);
+     this.aimError.x += -uz * side * size; this.aimError.z += ux * side * size;
+    }
+   }
    tx += this.aimError.x; tz += this.aimError.z;
    // The hand's own wobble (bigger on a worse robot), never settled out.
    this.wob = (this.wob || this.random() * 9) + dt * 2.3;
-   const shake = this.pf.shake * (.15 + d * .035);
+   const shake = this.pf.shake * (this.aimScale || 1) * (.15 + d * .035);
    tx += Math.sin(this.wob * 1.3) * shake; tz += Math.cos(this.wob * .9 + 1) * shake;
    this.aimPoint = { x: tx, z: tz, d };
   } else {
@@ -561,7 +669,11 @@ export class RobotBrain {
   // Dodge: a grenade at its feet, stuck, or just hit hard with stamina to spare.
   if (this.wantDodge) {
    input.dodge = true; input.moveX = this.wantDodge.x; input.moveZ = this.wantDodge.z; this.wantDodge = null;
-  } else if (t - this.hurtAt < .05 && (this.lastHurt || 0) > 18 && p.stamina >= RULES.dodgeStaminaCost + .5 && this.random() < this.pf.dodge && target) {
+  } else if (p.stamina >= RULES.dodgeStaminaCost && t - (this.dodgedAt ?? -9) > 1.2 && target && this.threatened(target, world) && this.random() < this.pf.tech * .5) {
+   // It saw them line up on it and fire: out of the way, across their line.
+   const dx = target.x - p.x, dz = target.z - p.z, dd = Math.hypot(dx, dz) || 1, side = this.nav.walkable(p.x, p.z, p.x - dz / dd * 2.5 * this.strafe, p.z + dx / dd * 2.5 * this.strafe) ? this.strafe : -this.strafe;
+   input.dodge = true; input.moveX = -dz / dd * side; input.moveZ = dx / dd * side; this.dodgedAt = t;
+  } else if (t - this.hurtAt < .05 && (this.lastHurt || 0) > 18 && p.stamina >= RULES.dodgeStaminaCost && this.random() < this.pf.dodge && target) {
    const dx = target.x - p.x, dz = target.z - p.z, dd = Math.hypot(dx, dz) || 1;
    input.dodge = true; input.moveX = -dz / dd * this.strafe; input.moveZ = dx / dd * this.strafe;
   }
@@ -570,11 +682,31 @@ export class RobotBrain {
   else this.staticGun(input, target, d, shoot, visible, lined);
  }
 
+ // Is `target` aiming at it and firing, within its weapon's reach?
+ threatened(target, world) {
+  if (!target.visible || target.aimX == null) return false;
+  const p = this.sim.player, dx = p.x - target.x, dz = p.z - target.z, d = Math.hypot(dx, dz) || 1;
+  if (d > (STYLE[target.weapon]?.reach || 16)) return false;
+  const off = Math.abs(wrap(Math.atan2(dz, dx) - Math.atan2(target.aimZ, target.aimX)));
+  return off < Math.atan2(.9, d) + .05 && (target.loud || (world.noises || []).some(n => Math.hypot(n.x - target.x, n.z - target.z) < 1.5));
+ }
+
  rifle(input, target, d, shoot, visible) {
   const sim = this.sim, r = sim.rifle, t = this.time;
-  // Aimed in at range, where the spread matters.
-  input.aiming = visible && d > 8;
-  if (r.reload <= 0 && r.ammo <= 0) { if (r.extendedCooldown <= 0) input.extendedReload = true; else input.reload = true; return; }
+  // Aimed in at range, where the spread matters (a skilled robot from 6 m).
+  input.aiming = visible && d > 8 - this.pf.tech * 2;
+  if (r.reload <= 0 && r.ammo <= 0 && !sim.surge?.active) { input.reload = true; return; }
+  // Surge when it will count: a fight it means to win (pushing, or two on
+  // it), in range, the enemy with plenty of health left to take. A skilled
+  // robot waits for that moment; an easy one fires it off whenever.
+  if (visible && d < 16 && sim.surge?.phase === 'idle' && sim.surge.cooldown <= 0) {
+   const worth = this.fight?.kind === 'push' || this.fight?.kind === 'fall' || (target.hp ?? 500) / (target.maxHp || 500) > .45;
+   if (this.random() < (worth ? .01 + this.pf.tech * .05 : .02 * (1 - this.pf.tech))) input.surge = true;
+  }
+  // Surging: a grenade now does +100 (a skilled robot knows it).
+  if (sim.surge?.active && visible && sim.grenadeCooldown <= 0 && d > 4 && d < GRENADE.range && this.random() < this.pf.tech * .04 && !this.friends.some(f => Math.hypot(f.x - target.x, f.z - target.z) < GRENADE.radius + 1.5)) {
+   input.grenade = true; input.aimPointX = target.x + target.vx * .6; input.aimPointZ = target.z + target.vz * .6;
+  }
   // A top-up between fights.
   if (!visible && r.reload <= 0 && r.ammo < r.capacity * .5 && (!target || t - target.seen > 2)) { input.reload = true; return; }
   // Short bursts at range (recoil), a steady stream up close.
@@ -597,19 +729,35 @@ export class RobotBrain {
  }
 
  shotgun(input, target, d, shoot, visible) {
-  const s = this.sim.shotgun;
+  const sim = this.sim, s = sim.shotgun, sc = sim.scatter;
+  // Scatter: readied when a fight is on at its range, fired once on target
+  // (a readied one is never wasted: out of the fight, it still goes off at
+  // the next sighting).
+  if (sc) {
+   if (sc.armed && shoot && d < SCATTER.reach) { input.scatter = true; return; }
+   // Best a few metres off, where a big shell bursts in the body (a skilled
+   // robot waits for that range; an easy one fires from anywhere).
+   const sweet = d > 3.5 && d < 8.5, anywhere = d > 2.5 && d < SCATTER.reach - 1;
+   if (!sc.armed && visible && sc.cooldown <= 0 && (sweet || (anywhere && this.random() > this.pf.tech)) && this.random() < .025 + this.pf.tech * .03) input.scatter = true;
+  }
+  // Riding the recoil: a skilled robot a bit out of reach turns its back
+  // and fires, and the launch throws it at them (when the way is clear).
+  const p = sim.player;
+  if (visible && s.ammo > 0 && s.reload <= 0 && d > SHOTGUN.range + .5 && d < SHOTGUN.range + 6 && this.time - (this.jumpedAt ?? -9) > 3 && this.fight?.kind !== 'fall' && this.random() < this.pf.tech * .05) {
+   const ux = (target.x - p.x) / d, uz = (target.z - p.z) / d;
+   if (this.nav.walkable(p.x, p.z, p.x + ux * 4, p.z + uz * 4)) {
+    input.aimX = -ux; input.aimZ = -uz; input.aimPointX = p.x - ux * 3; input.aimPointZ = p.z - uz * 3; input.tapFire = true; this.pressed = true; this.jumpedAt = this.time; this.aimAngle = Math.atan2(-uz, -ux); return;
+   }
+  }
   if (s.reload <= 0 && s.ammo <= 0) { input.reload = true; return; }
   if (!visible && s.reload <= 0 && s.ammo < 2 && (!target || this.time - target.seen > 2)) { input.reload = true; return; }
   // Both barrels up close.
   if (shoot && d < 3.2 && s.ammo === 2 && !s.pending) { input.doubleShot = true; return; }
-  // Charge for range: hold the trigger, let go once charged enough (and on target).
-  const range = SHOTGUN.chargedRange;
-  const want = clamp((d - 3) / 5, 0, 1);
+  // One press, one shell (no charging): aimed in past 4 m, fired inside the
+  // range when on target, a tick's release between presses.
   input.aiming = visible && d > 4;
-  if (visible && d < range * .9) {
-   if (s.charge < want || !shoot) input.fire = true; // keep holding
-   else input.fire = false;                           // release: fires
-  }
+  const press = shoot && d < SHOTGUN.range * .95 && !this.pressed;
+  input.fire = press; this.pressed = press;
  }
 
  staticGun(input, target, d, shoot, visible, lined) {
@@ -621,15 +769,29 @@ export class RobotBrain {
    if (o.age > RULES.hexFormationTime && (!target || Math.abs(ring - from) < .9 || ring > from + 1.5 || ring > RULES.hexRange - .5)) input.hex = true;
    return;
   }
-  if (visible && d > 2 && d < 7 && sim.hexCooldown <= 0 && sim.ammo >= RULES.hexCost && t - this.hexAt > 3 && this.random() < .04) { input.hex = true; this.hexAt = t; return; }
+  // The hex when they are close enough for its ring to reach them before
+  // they get out (a skilled robot waits for 3-7 m and for them to be coming
+  // on or cornered; an easy one throws it out at anything near).
+  const hexNow = sim.hexCooldown <= 0 && sim.ammo >= RULES.hexCost && t - this.hexAt > 3 && visible && d > 2 && d < 7;
+  if (hexNow) {
+   const closing = target && ((target.x - sim.player.x) * target.vx + (target.z - sim.player.z) * target.vz) < 0;
+   const good = closing || this.fight?.kind === 'push' || Math.hypot(target.vx, target.vz) < 1.5;
+   if (this.random() < (good ? .02 + this.pf.tech * .05 : .04 * (1 - this.pf.tech))) { input.hex = true; this.hexAt = t; return; }
+  }
   // The stream up close.
   if (visible && lined && d < RULES.sprayRange - 1.5 && sim.ammo >= 2 && this.aimOff < .35) { input.spray = true; return; }
-  // Orbs: a volley when there are enough of them, more when there are not.
-  if (shoot && seeds >= 3 && d < STYLE.static.reach) {
+  // Orbs: a skilled robot builds a bigger volley before letting go (more
+  // orbs hit much harder), and keeps enough in hand for the hex when it is
+  // nearly ready; an easy one fires off small ones.
+  const volley = Math.round(3 + this.pf.tech * 4 + (d > 9 ? 1 : 0));
+  const hurry = d < 5 || (target && t - this.hurtAt < 1);
+  // (Three orbs hit for barely a third of four: a skilled robot never lets go of fewer than four.)
+  if (shoot && d < STYLE.static.reach && (seeds >= volley || (hurry && seeds >= (this.pf.tech > .5 ? 4 : 3)))) {
    input.launch = true; input.launchPointX = this.aimPoint.x; input.launchPointZ = this.aimPoint.z; return;
   }
-  const wantSeeds = visible ? 4 : 7;
-  if (seeds < wantSeeds && sim.ammo > 0 && sim.seedCooldown <= 0) input.seed = true;
+  const saveForHex = this.pf.tech > .5 && sim.hexCooldown < 4 && sim.ammo <= RULES.hexCost;
+  const wantSeeds = visible ? Math.max(4, volley) : 7;
+  if (seeds < wantSeeds && sim.ammo > 0 && sim.seedCooldown <= 0 && !saveForHex) input.seed = true;
  }
 }
 

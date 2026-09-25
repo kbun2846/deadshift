@@ -1,0 +1,88 @@
+/* The X ability (Static's hex, Nominal's Surge): its dial beside the ammo and
+   its touch button take one colour per state (ui/x-ability-state.js):
+   cooldown subtle red, ready pink, charging yellow, in use blue. */
+#game{--x-cooldown:#b86a73;--x-ready:#e8afb9;--x-charging:#f2d37a;--x-active:#8fd0ff}
+
+/* Dial: thicker ring, tinted face, the key under the number easy to read. */
+#weapon .hex-recharge[data-x-state=cooldown]{--x:var(--x-cooldown);--x-face:#24171add;--x-glow:#0000}
+#weapon .hex-recharge[data-x-state=ready]{--x:var(--x-ready);--x-face:#2e1d22e6;--x-glow:#e8afb999}
+#weapon .hex-recharge[data-x-state=charging]{--x:var(--x-charging);--x-face:#2e2714e6;--x-glow:#f2d37aaa}
+#weapon .hex-recharge[data-x-state=active]{--x:var(--x-active);--x-face:#13283ae6;--x-glow:#8fd0ffaa}
+#weapon .hex-recharge:is([data-x-state=cooldown],[data-x-state=ready],[data-x-state=charging],[data-x-state=active]){color:var(--x);filter:drop-shadow(0 2px 4px #111e24aa) drop-shadow(0 0 7px var(--x-glow));transition:color .2s,filter .2s}
+#weapon .hex-recharge:is([data-x-state=cooldown],[data-x-state=ready],[data-x-state=charging],[data-x-state=active]) .hex-track{fill:var(--x-face);stroke:color-mix(in srgb,var(--x) 28%,#0000);stroke-width:6;transition:fill .2s,stroke .2s}
+#weapon .hex-recharge:is([data-x-state=cooldown],[data-x-state=ready],[data-x-state=charging],[data-x-state=active]) .hex-fill{stroke:var(--x);stroke-width:6;transition:stroke .2s}
+#weapon .hex-recharge[data-x-state=cooldown] .hex-fill{opacity:.75}
+#weapon .hex-recharge:is([data-x-state=cooldown],[data-x-state=ready],[data-x-state=charging],[data-x-state=active]) .hex-recharge-center span{color:var(--x)}
+#weapon .hex-recharge:is([data-x-state=cooldown],[data-x-state=ready],[data-x-state=charging],[data-x-state=active]) .hex-recharge-center kbd{color:var(--x);font-size:12px;font-weight:800;opacity:.9}
+#weapon .hex-recharge[data-x-state=ready]{animation:x-ready .45s ease-out}
+#weapon .hex-recharge[data-x-state=charging]{animation:x-charge .5s ease-in-out infinite alternate}
+#weapon .hex-recharge[data-x-state=active] .hex-fill{animation:x-live .7s ease-in-out infinite alternate}
+
+/* Touch button: the whole segment tinted, a little more solid than the rest
+   of the cluster, seconds left under the label. */
+body[data-controls=touch] #game #touch-controls .touch-right>button[data-x-state=cooldown]{--x:var(--x-cooldown);--pad-colour:#2c1a1e;color:var(--x)}
+body[data-controls=touch] #game #touch-controls .touch-right>button[data-x-state=ready]{--x:var(--x-ready);--pad-colour:#5c3540;color:#ffe3e8}
+body[data-controls=touch] #game #touch-controls .touch-right>button[data-x-state=charging]{--x:var(--x-charging);--pad-colour:#5e4f1f;color:#fff3c9}
+body[data-controls=touch] #game #touch-controls .touch-right>button[data-x-state=active]{--x:var(--x-active);--pad-colour:#1d4661;color:#e2f4ff}
+/* An ability button stays a little more solid than the rest (--pad-lift). */
+body[data-controls=touch] #game #touch-controls .touch-right>button:is([data-x-state=cooldown],[data-x-state=ready],[data-x-state=charging],[data-x-state=active]){--pad-lift:.22;box-shadow:inset 0 0 0 2px var(--x);transition:background .2s,color .2s}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped:is([data-x-state=cooldown],[data-x-state=ready],[data-x-state=charging],[data-x-state=active])>.button-label{font-size:12.5px!important;font-weight:800}
+body[data-controls=touch] #game #touch-controls .touch-right>button.touch-shaped[data-x-left]:not([data-x-left=""])::after{content:attr(data-x-left);position:absolute;left:var(--lx);top:calc(var(--ly) + 14px);translate:-50% -50%;font-size:10px;font-weight:700;opacity:.85;font-variant-numeric:tabular-nums}
+body[data-controls=touch] #game #touch-controls .touch-right>button[data-x-state=ready]{animation:x-ready-flash .5s ease-out}
+body[data-controls=touch] #game #touch-controls .touch-right>button[data-x-state=charging]{animation:x-charge-bg .5s ease-in-out infinite alternate}
+body[data-controls=touch] #game #touch-controls .touch-right>button:is([data-x-state]):active{background:#f4d2d9;color:#161c19}
+
+@keyframes x-ready{0%{scale:1}40%{scale:1.12}100%{scale:1}}
+@keyframes x-ready-flash{0%{--pad-colour:#e8afb9;color:#161c19}100%{--pad-colour:#5c3540}}
+@keyframes x-charge{from{scale:1}to{scale:1.06}}
+@keyframes x-charge-bg{from{--pad-colour:#5e4f1f}to{--pad-colour:#7a6628}}
+@keyframes x-live{from{opacity:1}to{opacity:.6}}
+@media (prefers-reduced-motion:reduce){#weapon .hex-recharge[data-x-state],#weapon .hex-recharge[data-x-state] .hex-fill,#game #touch-controls button[data-x-state]{animation:none!important}}
+
+/* Words (FORM, PULSE, CHARGE, LIVE) sit small like READY. */
+#weapon .hex-recharge.word .hex-recharge-center span{font-size:10px;letter-spacing:1px}
+body[data-controls=touch] #game #weapon .hex-recharge.word .hex-recharge-center span{font-size:9px;letter-spacing:0}
+
+/* Static: the orb count the hex (X) needs, a thin bar after that orb
+   (weapon-hud.js marks it), with a small X over it. Dim until you hold
+   enough orbs, pink once you do. */
+#weapon .seed-pips i.hex-mark{position:relative;overflow:visible}
+#weapon .seed-pips i.hex-mark::after{content:'';position:absolute;top:-4px;bottom:-4px;right:-3.5px;width:2px;border-radius:1px;background:#e8e2d066;pointer-events:none}
+#weapon .seed-pips i.hex-mark::before{content:'X';position:absolute;right:-6px;bottom:calc(100% + 4px);width:8px;text-align:center;font-size:8px;font-weight:800;line-height:1;color:#e8e2d088;pointer-events:none}
+#weapon .seed-pips[data-hex=ready] i.hex-mark::after{background:var(--x-ready);box-shadow:0 0 4px #e8afb999}
+#weapon .seed-pips[data-hex=ready] i.hex-mark::before{color:var(--x-ready)}
+body[data-controls=touch] #game #weapon .seed-pips i.hex-mark::after{right:-3px}
+
+/* Ballast's Scatter readied: the aim cone widens to the volley's spread, a
+   deeper red, with bright red edges and the split arc (aim-overlay.js). */
+.aim-cone.scatter .cone-zone{fill:#ff2e22;fill-opacity:.24;animation:scatter-cone .6s ease-in-out infinite alternate}
+.aim-cone.scatter .cone-edges{stroke:#ff5a48;stroke-opacity:.95;stroke-width:1.6}
+@keyframes scatter-cone{from{fill-opacity:.18}to{fill-opacity:.3}}
+@media (prefers-reduced-motion:reduce){.aim-cone.scatter .cone-zone{animation:none}}
+
+/* Developer tools: robots' thoughts over their heads (ui/robot-minds.js). */
+#game .robot-mind{position:absolute;left:0;top:0;z-index:6;pointer-events:none;white-space:pre;text-align:center;font:700 10px/1.25 var(--hud-font);color:#f3eee2;background:#141a18c9;border:1px solid #ffffff2a;border-radius:4px;padding:2px 5px;text-shadow:0 1px 1px #000}
+
+/* The developer window (ui/dev-window.js): quick bar, filter, and the large
+   layout (a wide window, bigger text, sections in columns). */
+#game .dev-window-actions{display:flex;gap:4px}
+#game .dev-window-bar button.dev-window-size{min-height:22px;height:22px;width:22px;padding:0;display:grid;place-items:center;background:none;border:0;color:#9fb0aa;font:700 14px/1 var(--hud-font);text-align:center}
+#game .dev-window-bar button.dev-window-size:is(:hover,:focus-visible,[aria-pressed=true]){color:var(--ui-accent);background:none}
+#game .dev-window-quick{display:flex;flex-wrap:wrap;gap:4px;padding:8px 10px 0}
+#game .dev-window button.dev-quick{flex:1 1 auto;min-height:26px;padding:5px 8px;font:700 10px/1.1 var(--hud-font);letter-spacing:.04em;text-align:center;background:#272e2c;color:#dfe4df;border:1px solid #444d4a;border-radius:4px}
+#game .dev-window button.dev-quick:is(:hover,:focus-visible){border-color:var(--ui-accent)}
+#game .dev-window button.dev-quick[aria-pressed=true]{background:var(--ui-accent);color:#151718;border-color:var(--ui-accent)}
+#game .dev-window-filter{display:block;box-sizing:border-box;width:calc(100% - 20px);margin:8px 10px 0;padding:6px 8px;font:600 11px var(--hud-font);background:#141917;color:#dfe4df;border:1px solid #444d4a;border-radius:4px;outline:none}
+#game .dev-window-filter:focus{border-color:var(--ui-accent)}
+#game .dev-window .dev-row[hidden],#game .dev-window .dev-section[hidden]{display:none}
+#game .dev-window.large{width:min(780px,94vw)}
+#game .dev-window.large .dev-window-bar{font-size:12px;padding:9px 10px 9px 14px}
+#game .dev-window.large .dev-window-body{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));align-items:start;gap:8px;max-height:min(74dvh,720px);padding:10px 12px 12px}
+#game .dev-window.large .dev-section{margin:0}
+#game .dev-window.large .dev-section>summary{font-size:12.5px;padding:10px 12px}
+#game .dev-window.large .dev-row{font-size:13px;padding:8px 12px;min-height:34px}
+#game .dev-window.large .dev-row select,#game .dev-window.large button.dev-row-button{font-size:12.5px;padding:5px 9px}
+#game .dev-window.large .dev-row input[type=checkbox]{width:17px;height:17px}
+#game .dev-window.large button.dev-quick{font-size:12px;min-height:32px;padding:7px 10px}
+#game .dev-window.large .dev-window-filter{font-size:13px;padding:8px 10px}
+@media(max-width:520px){#game .dev-window.large{width:94vw}#game .dev-window.large .dev-window-body{grid-template-columns:1fr}}

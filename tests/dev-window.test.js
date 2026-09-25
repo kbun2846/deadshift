@@ -34,12 +34,16 @@ test('corrupt or missing storage never breaks the window',()=>{
 });
 
 test('every toggle names a real override the simulation reads',()=>{
+ const SOURCE=['simulation.js','weapons/rifle.js','weapons/shotgun.js','weapons/grenade.js','weapons/surge.js','weapons/scatter.js','bots/bot-match.js','main.js','render/renderer.js'].map(f=>readFileSync(new URL('../src/'+f,import.meta.url),'utf8')).join('\n');
  const known=new Set(['ammo','orbs','cooldowns','stamina','invulnerable','teleport','speed',
-  'rifleInstantReload','shotgunInstantReload','grenadeCooldown','extendedCooldown',
-  'oneHit','ghost','freezeTargets','hideHud']);
+  'rifleInstantReload','shotgunInstantReload','grenadeCooldown',
+  'oneHit','ghost','freezeTargets','hideHud','noRecoil','endlessSurge',
+  'robotPassive','robotHoldFire','robotFreeze','robotStayDead','robotSeeAll',
+  'freeze','noKnockback','regen','fastSeeds','instantHex','rapidFire','noSpread','shotgunRapid','robotMinds']);
  for(const [key,label] of DEV_TOGGLES){
   assert.ok(known.has(key),`${key} is not an override the game honours`);
   assert.ok(label&&label===label.trim()&&label.length<32,`${key} needs a short plain label`);
+  if(key!=='teleport'&&key!=='hideHud')assert.ok(SOURCE.includes('dev.'+key),`nothing reads dev.${key}`);
  }
  assert.equal(new Set(DEV_TOGGLES.map(([key])=>key)).size,DEV_TOGGLES.length,'no duplicates');
 });
@@ -47,7 +51,7 @@ test('every toggle names a real override the simulation reads',()=>{
 test('restore fills health, ammo and every cooldown',()=>{
  const sim=new Simulation(maps.deadwater);
  sim.player.hp=12;sim.player.stamina=0;sim.ammo=0;
- sim.hexCooldown=30;sim.grenadeCooldown=25;sim.rifle.extendedCooldown=60;
+ sim.hexCooldown=30;sim.grenadeCooldown=25;sim.surge.cooldown=50;
  sim.rifle.ammo=0;sim.shotgun.ammo=0;
  refill(sim);
  assert.equal(sim.player.hp,sim.player.maxHp);
@@ -55,7 +59,7 @@ test('restore fills health, ammo and every cooldown',()=>{
  assert.ok(sim.ammo>0);
  assert.equal(sim.rifle.ammo,sim.rifle.capacity);
  assert.equal(sim.shotgun.ammo,2);
- for(const cooldown of [sim.hexCooldown,sim.grenadeCooldown,sim.rifle.extendedCooldown])assert.equal(cooldown,0);
+ for(const cooldown of [sim.hexCooldown,sim.grenadeCooldown,sim.surge.cooldown])assert.equal(cooldown,0);
 });
 
 test('O opens the window, and only once the tools are unlocked',()=>{
@@ -133,4 +137,16 @@ test('a host that denies storage access still yields a usable dev window',()=>{
  const source=readFileSync(new URL('../src/ui/dev-window.js',import.meta.url),'utf8');
  assert.ok(!/storage\s*=\s*globalThis\.localStorage/.test(source),
   'the default parameter must not read the property unguarded');
+});
+
+test('freeze game: the world holds still (shots in the air, timers) while you still walk',()=>{
+ const sim=new Simulation(maps.deadwater);sim.weapon='rifle';
+ sim.step({moveX:0,moveZ:0,aimX:1,aimZ:0,fire:true});
+ const bullets=sim.rifleBullets.map(b=>b.x),time=sim.time,x=sim.player.x;
+ sim.dev.freeze=true;sim.surge.cooldown=10;
+ for(let i=0;i<30;i++)sim.step({moveX:1,moveZ:0,aimX:1,aimZ:0,fire:true,surge:true});
+ assert.deepEqual(sim.rifleBullets.map(b=>b.x),bullets,'bullets hang in the air');
+ assert.equal(sim.time,time);assert.equal(sim.surge.cooldown,10,'timers hold');
+ assert.ok(sim.player.x>x+1,'you still walk');
+ sim.dev.freeze=false;sim.step({moveX:0,moveZ:0,aimX:1,aimZ:0});assert.ok(sim.time>time);
 });

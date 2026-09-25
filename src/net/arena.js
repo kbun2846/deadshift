@@ -48,6 +48,7 @@ export { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS };
 // Kept for older callers and tests: the defaults.
 export const MATCH = Object.freeze({ respawn: SETTINGS.respawn.default, health: SETTINGS.health.default, length: SETTINGS.roundLength.default, results: RESULTS });
 export const SPAWN_MODES = SETTINGS.spawnMode.values;
+export const SYPHON_SHARE = .5;
 const IDLE = Object.freeze({ moveX: 0, moveZ: 0, aimX: 0, aimZ: 0 });
 const newStats = () => ({ kills: 0, deaths: 0, dealt: 0, taken: 0, time: 0, weaponTime: {} });
 
@@ -278,6 +279,16 @@ export class Arena {
   }
  }
 
+ // Syphon (host setting, FFA): the killer, if still standing, gets back half
+ // the health they had lost. The `syphon` event draws their +N.
+ syphon(killer) {
+  if (this.settings.syphon !== 'on') return;
+  const p = killer.sim?.player; if (!p || p.dead || !(p.hp > 0)) return;
+  const amount = Math.floor((p.maxHp - p.hp) * SYPHON_SHARE);
+  if (amount < 1) return;
+  p.hp += amount; killer.sim.events.push({ type: 'syphon', amount, x: p.x, z: p.z });
+ }
+
  died(victim, killer, damageType = null, oneShot = false) {
   if (victim.dead) return;
   victim.dead = true;
@@ -287,6 +298,7 @@ export class Arena {
   victim.stats.deaths++;
   if (killer && killer !== victim) {
    killer.stats.kills++;
+   this.syphon(killer);
    // Everyone this attacker killed in this tick is one kill-feed line.
    // One-shots get a line of their own ("X one shot Y").
    const key = killer.id + (oneShot ? '|one' : ''), list = this.pendingKills.get(key) || [];
