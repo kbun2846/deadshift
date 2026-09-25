@@ -2,6 +2,13 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.94 (2026-09-25)
+
+- Performance: collisions only check nearby walls and props (a grid over the map's ~830 colliders), for bodies, orbs, bullets, pellets, blast shells and grenades. A solo 3V3 used about a third of the CPU it did.
+- iPad with a keyboard: a finger on the screen fired Nominal and never let go, even through reloads. The finger's lift now releases it; key releases are matched more reliably and switching apps releases everything.
+- The aim dot no longer jitters while moving (the smoothed cursor is drawn between steps; aim from the game is placed from the drawn body).
+- The death screen's red splash is centred behind the panel again (on iPad it drifted off to the lower right).
+
 ## alpha v0.93 (2026-09-25)
 
 ### Robots

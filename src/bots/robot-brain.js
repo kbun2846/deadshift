@@ -37,6 +37,7 @@
 //    you, and stands between you and them when you are nearly dead.
 // Nothing here touches the DOM or three.js.
 import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER } from '../config/gameplay.js';
+import { collidersAlong } from '../world/collider-grid.js';
 import { segmentBox } from '../simulation.js';
 import { makeProfile, stepMood } from './robot-profile.js';
 import { muzzleBearing, muzzleLateral } from '../aim-damping.js';
@@ -65,7 +66,7 @@ const HEAR_SURE = 11, HEAR = 33;
 // Is the straight line from a to b free of anything a shot would hit?
 export function shotClear(colliders, ax, az, bx, bz, pad = .04) {
  const x0 = Math.min(ax, bx) - 1, x1 = Math.max(ax, bx) + 1, z0 = Math.min(az, bz) - 1, z1 = Math.max(az, bz) + 1;
- for (const c of colliders) {
+ for (const c of collidersAlong(colliders, ax, az, bx, bz, 1)) {
   if (c.playerOnly) continue;
   if (c.x + c.w / 2 < x0 || c.x - c.w / 2 > x1 || c.z + c.d / 2 < z0 || c.z - c.d / 2 > z1) continue;
   if (segmentBox(ax, az, bx, bz, c, pad) !== null) return false;

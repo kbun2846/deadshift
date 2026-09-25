@@ -1,4 +1,5 @@
 import { cropCircle } from '../crops.js';
+import { collidersAlong } from '../world/collider-grid.js';
 import { GRENADE } from '../config/gameplay.js';
 export { GRENADE };
 export const grenadeDamage=distance=>distance>GRENADE.radius?0:Math.round(GRENADE.edgeDamage+(GRENADE.damage-GRENADE.edgeDamage)*Math.max(0,1-Math.max(0,distance-GRENADE.coreRadius)/(GRENADE.radius-GRENADE.coreRadius))**1.4);
@@ -30,7 +31,7 @@ export function stepGrenades(sim,input,dt,segmentBox){
    const t=Math.min(1,age/g.flight),nx=g.startX+(g.targetX-g.startX)*t,nz=g.startZ+(g.targetZ-g.startZ)*t;
    const ny=.24+.61*(1-t)+4*g.arc*t*(1-t);
    let first=1;
-   for(const box of sim.colliders){const hit=segmentBox(g.x,g.z,nx,nz,box,.11);if(hit!==null&&hit<first&&g.y+(ny-g.y)*hit<=(box.height??2)+.12)first=hit;}
+   for(const box of collidersAlong(sim.colliders,g.x,g.z,nx,nz,.2)){const hit=segmentBox(g.x,g.z,nx,nz,box,.11);if(hit!==null&&hit<first&&g.y+(ny-g.y)*hit<=(box.height??2)+.12)first=hit;}
    if(first<1){const safe=Math.max(0,first-.025);g.x+=(nx-g.x)*safe;g.z+=(nz-g.z)*safe;g.y+=(ny-g.y)*safe;g.blocked=true;g.fallY=g.y;g.blockAge=age;}
    else{g.x=nx;g.z=nz;g.y=ny;}
   }else g.y=Math.max(.24,g.fallY-4.9*(age-g.blockAge)**2);

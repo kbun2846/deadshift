@@ -3,6 +3,7 @@ import {isPlayable,confinePlayableMovement} from './playable-area.js';
 import {resetShotgun,stepShotgun,SHOTGUN} from './weapons/shotgun.js';
 import { mapColliders, mapProps, buildingContains, buildingWalls } from './maps.js';
 import { cropSegments, cropPoint, affectCrop, cropCircle, stepCrops } from './crops.js';
+import { nearColliders, collidersAlong } from './world/collider-grid.js';
 import { RIFLE, resetRifle, stepRifle } from './weapons/rifle.js';
 import { targetRadius } from './target-radius.js';
 export { targetRadius };
@@ -411,7 +412,7 @@ export class Simulation {
       // and stops it there. Nearest first, so the order is the order it meets them.
       const pierced = s.launched ? [] : null;
       const seen = s.launched ? new Set() : null;
-      for (const box of this.colliders) {
+      for (const box of collidersAlong(this.colliders, s.x, s.z, nx, nz, .2)) {
         if (box.playerOnly) continue;
         if (s.launched && box.destructible) {
           const t = segmentBox(s.x, s.z, nx, nz, box, .09);
@@ -494,7 +495,7 @@ export class Simulation {
   crushDodged(underfoot = false) {
     const p = this.player, r = RULES.radius;
     let hit = null;
-    for (const b of this.colliders) {
+    for (const b of nearColliders(this.colliders, p.x - r - .1, p.z - r - .1, p.x + r + .1, p.z + r + .1)) {
       if (!b.destructible) continue;
       if (underfoot && !b.walkOver) continue;
       if (Math.abs(p.x - b.x) > b.w / 2 + r || Math.abs(p.z - b.z) > b.d / 2 + r) continue;
@@ -545,12 +546,13 @@ export class Simulation {
       else if (p.hp > 0) this.crushDodged(true);
       // Resolve only the local circle/rectangle penetration. In particular,
       // touching a long horizontal fence must never snap x to its far end.
+      const near = nearColliders(this.colliders, p.x - r - .6, p.z - r - .6, p.x + r + .6, p.z + r + .6);
       for (let pass = 0; pass < 3; pass++) {
         // Round bodies: targets, then other players online. Pushed straight
         // out along the line between centres, and any speed into them removed.
         for(const target of this.targets) if(target.hp>0)this.pushOutOfCircle(target.x,target.z,r+targetRadius(target),previousX,previousZ);
         for(const other of this.otherPlayers) if(!(other.hp<=0))this.pushOutOfCircle(other.x,other.z,r*2,previousX,previousZ);
-        for (const b of this.colliders) {
+        for (const b of near) {
         // Floor clutter is stepped over, not walked into.
         if(b.walkOver)continue;
         if(Math.abs(p.x-b.x)>b.w/2+r || Math.abs(p.z-b.z)>b.d/2+r)continue;

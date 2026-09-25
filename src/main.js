@@ -104,7 +104,7 @@ const duel=createDuel($('game'),{sim,bots,hooks:{
 installUiSounds({muted:()=>!sound.enabled,level:()=>sound.volume.master*sound.volume.effects});
 const adaptiveResolution = new AdaptiveResolution();
 sim.weapon=weaponOrDefault(params.get('weapon'));
-let rifleFiring=false,rifleAiming=false,worldPress=false,pointerOnUI=false;
+let rifleFiring=false,rifleAiming=false,worldPress=false,pointerOnUI=false,firePointer=null,aimPointer=null;
 const updateWeaponHUD=createWeaponHUD($('weapon'));
 const updateHealthHUD=createHealthHUD($('game'));
 const perfReadout=createPerfReadout(document.querySelector('.masthead'));
@@ -206,10 +206,10 @@ const aimingNow=()=>weaponAiming(sim.weapon,rifleAiming,keys);
 const aimDamping=createAimDamping();
 let previousPlayer = { ...sim.player };
 const mouse = { x: viewWidth() * .7, y: viewHeight() * .5 };
-const cursorTarget={...mouse};
+const cursorTarget={...mouse},prevCursor={...mouse},drawnCursor={...mouse};
 // Smoothed weapons steer the rendered cursor; the rest snap straight to it.
 const smoothedCursor=()=>!!weaponInfo(sim.weapon)?.smoothCursor;
-function setCursorTarget(x,y){cursorTarget.x=x;cursorTarget.y=y;if(!smoothedCursor()){mouse.x=x;mouse.y=y;}}
+function setCursorTarget(x,y){cursorTarget.x=x;cursorTarget.y=y;if(!smoothedCursor()){mouse.x=x;mouse.y=y;prevCursor.x=x;prevCursor.y=y;}}
 const touch = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, seeding: false };
 let touchAimPointer=null;
 const touchMove={x:0,z:0};
@@ -294,7 +294,7 @@ function returnToMenu(){
 function releaseInput() {
   for(const reset of touchActionResets)reset();
   touchAimPointer=null;
-  rifleFiring=false;rifleAiming=false;sim.shotgun.trigger=false;sim.shotgun.suppress=false;
+  rifleFiring=false;rifleAiming=false;firePointer=aimPointer=null;sim.shotgun.trigger=false;sim.shotgun.suppress=false;
   keys.clear(); tappedKeys.clear(); pendingQuickShot=false; pendingSeed = false; pendingLaunch = false; pendingAimPoint = null;
   touch.moveX = touch.moveZ = touch.aimX = touch.aimZ = 0; touchMove.x = touchMove.z = 0; touch.seeding = false;
   for (const stick of sticks.values()) { stick.pointer = null; stick.knob.style.transform = ''; stick.element.classList.remove('engaged'); }
@@ -342,7 +342,20 @@ function aimDotPoint(){
   const p=sim.player;
   // A finger aims like a mouse, but while aim assist holds a target the dot
   // shows where the assisted shot is actually going.
-  return inputMode==='mouse'&&p.assistTargetId==null&&!(targetLock.id!==null&&lockMode())?(pointerOnUI?cursorTarget:mouse):view.screenPoint(p.aimPointX??p.x+p.aimX*RULES.focusDistance,p.aimPointZ??p.z+p.aimZ*RULES.focusDistance);
+  // (v148, owner: the dot jittered while moving.) Mouse: the smoothed cursor
+  // moves in fixed 60 Hz steps, so on a faster screen, or a frame with two
+  // steps, it stuttered; it is drawn between its last two steps like the
+  // body is. Aim from the simulation: measured from the drawn body, not the
+  // last step's (the camera follows the drawn one), as the cone already is.
+  if(inputMode==='mouse'&&p.assistTargetId==null&&!(targetLock.id!==null&&lockMode())){
+   if(pointerOnUI)return cursorTarget;
+   if(!smoothedCursor()||!running)return mouse;
+   const k=Math.max(0,Math.min(1,accumulator/RULES.step));
+   drawnCursor.x=prevCursor.x+(mouse.x-prevCursor.x)*k;drawnCursor.y=prevCursor.y+(mouse.y-prevCursor.y)*k;
+   return drawnCursor;
+  }
+  const rp=view.player?.position,ox=rp?rp.x-p.x:0,oz=rp?rp.z-p.z:0;
+  return view.screenPoint((p.aimPointX??p.x+p.aimX*RULES.focusDistance)+ox,(p.aimPointZ??p.z+p.aimZ*RULES.focusDistance)+oz);
 }
 // Aim assist level for this tick (aim-assist.js): the full version on touch
 // (a finger, walking, or the stick) unless turned off in Settings > Mobile, a
@@ -823,7 +836,7 @@ $('world').addEventListener('pointerdown', e => {
   }
   if(running&&usesTrigger(sim.weapon)&&(e.button===0||e.button===2)){
    if(e.pointerType!=='mouse')e.preventDefault();inputMode='mouse';setCursorTarget(e.clientX,e.clientY);
-   if(e.button===0){rifleFiring=true;pendingLaunch=true;}else rifleAiming=true;
+   if(e.button===0){rifleFiring=true;pendingLaunch=true;firePointer=e.pointerId;}else{rifleAiming=true;aimPointer=e.pointerId;}
    $('world').setPointerCapture(e.pointerId);$('world').focus();return;
   }
   if (!running || e.button !== 0) return;
@@ -869,15 +882,20 @@ bindRifleMouse($('world'),window,{
  enabled:()=>running&&usesTrigger(sim.weapon),state:(fire,aim)=>{rifleFiring=fire;rifleAiming=aim;},
  fire:()=>{pendingLaunch=true;},aim:(x,y)=>{setCursorTarget(x,y);inputMode='mouse';}
 });
-window.addEventListener('pointerup',e=>{if(e.pointerType==='mouse'){worldPress=false;if(e.button===0)rifleFiring=false;if(e.button===2)rifleAiming=false;}if(e.pointerId===touchAimPointer){
+// A finger or pen on the world with keyboard prompts (an iPad with a
+// keyboard) holds the trigger like a mouse button: its lift lets go (v148,
+// owner: the rifle kept firing, even after a reload, because only a mouse
+// release was listened for and the press had blocked the browser's mouse copy).
+window.addEventListener('pointerup',e=>{if(e.pointerId===firePointer){firePointer=null;rifleFiring=false;}if(e.pointerId===aimPointer){aimPointer=null;rifleAiming=false;}if(e.pointerType==='mouse'){worldPress=false;if(e.button===0)rifleFiring=false;if(e.button===2)rifleAiming=false;}if(e.pointerId===touchAimPointer){
   const tap=isTap(touchAimStart,e.clientX,e.clientY);
   touchAimPointer=null;touchAimStart=null;
   if(tap&&running)touchTapFire(e.clientX,e.clientY);
  }});
 // No finger left on the screen: nothing can still be aiming (a lost lift).
-for(const type of ['touchend','touchcancel'])window.addEventListener(type,e=>{if(e.touches.length)return;if(touchAimPointer!==null){touchAimPointer=null;touchAimStart=null;}for(const reset of touchActionResets)reset();},true);
+for(const type of ['touchend','touchcancel'])window.addEventListener(type,e=>{if(e.touches.length)return;if(touchAimPointer!==null){touchAimPointer=null;touchAimStart=null;}if(firePointer!==null){firePointer=null;rifleFiring=false;}if(aimPointer!==null){aimPointer=null;rifleAiming=false;}for(const reset of touchActionResets)reset();},true);
 for(const type of ['pointercancel','lostpointercapture'])$('world').addEventListener(type,e=>{if(e.pointerId===touchAimPointer&&(type==='pointercancel'||!touchAimStart)){touchAimPointer=null;touchAimStart=null;}});
-$('world').addEventListener('pointercancel',()=>{rifleFiring=false;rifleAiming=false;});
+$('world').addEventListener('pointercancel',()=>{rifleFiring=false;rifleAiming=false;firePointer=aimPointer=null;});
+window.addEventListener('pointercancel',e=>{if(e.pointerId===firePointer){firePointer=null;rifleFiring=false;}if(e.pointerId===aimPointer){aimPointer=null;rifleAiming=false;}},true);
 const navigateMenu=createMenuNavigation();
 window.addEventListener('keydown', e => {
   if(document.body.classList.contains('loading'))return;
@@ -955,8 +973,15 @@ window.addEventListener('keydown', e => {
   if (code === GAME_KEYS.shoot) { pendingLaunch = true; pendingQuickShot=true; pendingAimPoint = inputMode === 'mouse'&&!keyboardAim(keys,tappedKeys).active ? view.aim(mouse.x, mouse.y, sim.player) : null; }
   if (code === 'KeyR') e.preventDefault();
 });
-window.addEventListener('keyup', e => {const code=gameCode(e.code);if(code)keys.delete(code);keys.delete(e.code);if(e.code==='Tab'&&mpHud.boardOpen)mpHud.hideBoard();});
+// A key's release by the key it was pressed as too (some iPad keyboards send
+// a keyup with no code, which left Space held and the rifle firing).
+const downAs=new Map();
+window.addEventListener('keydown',e=>{if(e.key)downAs.set(e.key.toLowerCase(),e.code);},true);
+window.addEventListener('keyup', e => {const was=e.key&&downAs.get(e.key.toLowerCase());if(was){downAs.delete(e.key.toLowerCase());const c=gameCode(was);if(c)keys.delete(c);keys.delete(was);}const code=gameCode(e.code);if(code)keys.delete(code);keys.delete(e.code);if(e.code==='Tab'&&mpHud.boardOpen)mpHud.hideBoard();});
 window.addEventListener('blur', releaseInput);
+// Switching apps (an iPad's app switcher) can swallow key and pointer releases.
+document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseInput();});
+window.addEventListener('pagehide',releaseInput);
 // The movement keys are W A S D: Ctrl+D (bookmark this
 // page), Ctrl+S, Ctrl+A... would fire mid-fight. From the moment a game starts,
 // in every state (menus over it included, where a dodge key may still be
@@ -993,6 +1018,7 @@ function frame(time) {
     accumulator += dt * (online.active ? 1 : sim.dev.timeScale || 1);
     while (accumulator >= RULES.step && (running || (online.active && started))) {
       previousPlayer = { ...sim.player };
+      prevCursor.x=mouse.x;prevCursor.y=mouse.y;
       if(smoothedCursor()&&inputMode==='mouse')advanceAimCursor(mouse,cursorTarget,RULES.step,aimingNow(),sim.weapon);
       const held = key => keys.has(key) || tappedKeys.has(key);
       // The thumb's direction eases in over ~0.1 s, so a flick across the stick

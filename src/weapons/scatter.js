@@ -21,6 +21,7 @@
 // shells in `sim.scatterShells`. Events for the screen and sound:
 // scatterArm, scatterPrimed, scatterFire, scatterSplit, scatterHit, scatterBurst.
 import { SCATTER } from '../config/gameplay.js';
+import { collidersAlong } from '../world/collider-grid.js';
 import { targetRadius } from '../target-radius.js';
 import { cropCircle } from '../crops.js';
 export { SCATTER };
@@ -122,7 +123,7 @@ export function stepScatter(sim, input, dt, { segmentBox, segmentCircle }) {
   // fired into a wall at point blank still meets it).
   const step = Math.min(b.speed * dt, b.limit - b.travel), ex = b.x + b.dx * step, ez = b.z + b.dz * step;
   let first = 1, target = null, prop = null, blocked = false;
-  for (const c of sim.colliders) { if (c.playerOnly) continue; const t = segmentBox(b.x, b.z, ex, ez, c, .04); if (t !== null && t <= first) { first = t; target = null; prop = sim.props.find(v => v.id === c.propId); blocked = true; } }
+  for (const c of collidersAlong(sim.colliders, b.x, b.z, ex, ez, .1)) { if (c.playerOnly) continue; const t = segmentBox(b.x, b.z, ex, ez, c, .04); if (t !== null && t <= first) { first = t; target = null; prop = sim.props.find(v => v.id === c.propId); blocked = true; } }
   for (const t of sim.targets) {
    if (t.hp <= 0 || t.id === b.skip || t.id === p.id) continue;
    const f = segmentCircle(b.x, b.z, ex, ez, t.x, t.z, targetRadius(t) + (b.big ? .12 : .05));

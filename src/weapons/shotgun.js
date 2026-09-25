@@ -1,4 +1,5 @@
 import { SHOTGUN } from '../config/gameplay.js';
+import { collidersAlong } from '../world/collider-grid.js';
 import { targetRadius } from '../target-radius.js';
 export { SHOTGUN };
 // Ballast: two shells, one press fires one (no charging since v0.83), E fires
@@ -42,7 +43,7 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
  for(const b of sim.shotgunPellets){
   const travel=Math.min(85*dt,b.range-b.travel),ex=b.x+b.dx*travel,ez=b.z+b.dz*travel;
   let first=1,target=null,prop=null,blocked=false;
-  for(const c of sim.colliders){if(c.playerOnly)continue;const t=segmentBox(b.x,b.z,ex,ez,c,.025);if(t!==null&&t<=first){first=t;target=null;prop=sim.props.find(v=>v.id===c.propId);blocked=true;}}
+  for(const c of collidersAlong(sim.colliders,b.x,b.z,ex,ez,.1)){if(c.playerOnly)continue;const t=segmentBox(b.x,b.z,ex,ez,c,.025);if(t!==null&&t<=first){first=t;target=null;prop=sim.props.find(v=>v.id===c.propId);blocked=true;}}
   for(const t of sim.targets){if(t.hp<=0)continue;const f=segmentCircle(b.x,b.z,ex,ez,t.x,t.z,targetRadius(t));if(f!==null&&f<first){first=f;target=t;prop=null;blocked=true;}}
   b.x+=(ex-b.x)*first;b.z+=(ez-b.z)*first;b.travel+=travel*first;
   if(blocked){
