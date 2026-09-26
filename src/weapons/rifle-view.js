@@ -4,6 +4,8 @@ import { makeRifle } from './rifle-model.js';
 import { RiflePose } from './rifle-pose.js';
 import { RIFLE_QUALITY, CASING_CAPACITY, casingPose } from './rifle-quality.js';
 import { NO_FX } from '../effects/effects-detail.js';
+import { RIFLE_MUZZLE } from '../config/gameplay.js';
+import { groundY, hilly, roundGlide } from '../render/ground-lift.js';
 const UP=new THREE.Vector3(0,1,0);
 const BULLET_GLOW=new THREE.Color('#ffd98a'),SURGE_GLOW=new THREE.Color('#f2f8ff'),PORT_SMOKE=new THREE.Color('#bdb5a2');
 function disposeObject(root){const materials=new Set();root.traverse(o=>{o.geometry?.dispose();if(o.material)materials.add(o.material);});materials.forEach(m=>m.dispose());}
@@ -13,7 +15,7 @@ export class RifleView{
   this.view=view;this.gun=view.player.userData.gun;this.staticParts=[...this.gun.children];
   this.pose=new RiflePose(view.player);
   this.effects=[];this.lastTime=0;this.flashTime=0;this.particles=[];this.aimBlend=0;this.wasAiming=false;this.aimStarted=-10;
-  this.dummy=new THREE.Object3D();this.direction=new THREE.Vector3();this.origin=new THREE.Vector3();
+  this.dummy=new THREE.Object3D();this.direction=new THREE.Vector3();this.origin=new THREE.Vector3();this.glides=new WeakMap();
   this.brass=new THREE.MeshLambertMaterial({color:'#b49a58',flatShading:true});this.steel=new THREE.MeshLambertMaterial({color:'#39403c'});
   this.bulletMat=new THREE.MeshBasicMaterial({color:'#ffffff',toneMapped:false});
   this.outlineMat=new THREE.MeshBasicMaterial({color:'#10201d',side:THREE.BackSide});
@@ -76,21 +78,23 @@ export class RifleView{
   this.flashTime=sim.time+.075;this.flash.rotation.z=Math.random()*Math.PI*2;this.flash.scale.setScalar(.85+Math.random()*.3);
   this.origin.set(.1,.01,.02);this.gun.localToWorld(this.origin);
   const backward=1+Math.random()*.8,sideways=.9+Math.random()*.9;
-  this.effects.push({born:sim.time,x:this.origin.x,y:this.origin.y,z:this.origin.z,
+  // (Hills: a casing's y is kept above the ground, like every other effect.)
+  const ground=groundY(this.view, this.origin.x,this.origin.z);
+  this.effects.push({born:sim.time,x:this.origin.x,y:this.origin.y-ground,z:this.origin.z,
    rx:Math.random()*Math.PI,ry:Math.random()*Math.PI*2,rz:Math.random()*Math.PI,
    vx:-p.aimX*backward-p.aimZ*sideways,vz:-p.aimZ*backward+p.aimX*sideways,vy:1.2+Math.random()*.9,
    spinX:(Math.random()-.5)*28,spinZ:(Math.random()-.5)*28,landingAngle:Math.random()*Math.PI*2});
   if(this.effects.length>CASING_CAPACITY)this.effects.shift();
   // The ejection port breathes a curl of smoke after the brass.
   const fx=this.view.fx||NO_FX;
-  if(fx.on)for(let i=0,n=fx.n(2);i<n;i++)fx.puff({x:this.origin.x,y:this.origin.y,z:this.origin.z,vx:(-p.aimZ+Math.random()*.4-.2)*.6,vz:(p.aimX+Math.random()*.4-.2)*.6,vy:.35,size:.03,grow:3,life:.6+Math.random()*.4,alpha:.26,color:PORT_SMOKE});
+  if(fx.on)for(let i=0,n=fx.n(2);i<n;i++)fx.puff({x:this.origin.x,y:this.origin.y-ground,z:this.origin.z,vx:(-p.aimZ+Math.random()*.4-.2)*.6,vz:(p.aimX+Math.random()*.4-.2)*.6,vy:.35,size:.03,grow:3,life:.6+Math.random()*.4,alpha:.26,color:PORT_SMOKE});
   const x=p.x+p.aimX*.975-p.aimZ*.27,z=p.z+p.aimZ*.975+p.aimX*.27;
   for(let i=0;i<this.quality.sparks+this.quality.smoke;i++){
    const smoke=i>=this.quality.sparks,speed=smoke?.4:2+Math.random()*2,side=(Math.random()-.5)*2;
    this.particles.push({smoke,born:sim.time,x,y:.74,z,vx:p.aimX*speed-p.aimZ*side,vz:p.aimZ*speed+p.aimX*side,vy:smoke?.55:Math.random()*1.5,life:smoke?.48+Math.random()*.16:.10+Math.random()*.09,phase:Math.random()*Math.PI*2});
   }
  }
- clear(){this.effects=[];this.particles=[];this.flashTime=0;this.aimBlend=0;this.wasAiming=false;this.aimStarted=-10;for(const b of this.batches)b.count=0;}
+ clear(){this.effects=[];this.particles=[];this.flashTime=0;this.aimBlend=0;this.wasAiming=false;this.aimStarted=-10;this.glides=new WeakMap();for(const b of this.batches)b.count=0;}
  visible(sim,x,z){
   const radius=Math.max(20,(this.view.cameraHeight||29)*Math.max(1,this.view.camera?.aspect||1));
   return Math.abs(x-sim.player.x)<radius&&Math.abs(z-sim.player.z)<radius&&sim.canSeeEntity(x,z,.05);
@@ -113,15 +117,26 @@ export class RifleView{
   this.active=active;this.staticParts.forEach(p=>p.visible=sim.weapon==='static');
   this.flash.visible=active&&sim.time<this.flashTime;
   let count=0,beams=0;const fx=this.view.fx||NO_FX;
+  const view=this.view,hills=hilly(view);
   for(const b of sim.rifleBullets){
    if(count>=8||!this.visible(sim,b.x,b.z))continue;
-   this.dummy.position.set(b.x,.74,b.z);this.direction.set(b.dx,0,b.dz);this.dummy.quaternion.setFromUnitVectors(UP,this.direction);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();
+   // Hills: a round is drawn at the muzzle's height over the ground under it
+   // (so a round that hits a body is drawn at that body), gliding over a
+   // wall's edge (ground-lift.js glide) from the ground its shooter stood on,
+   // and into the ground over its last metre where the ground takes it (`stop`).
+   let y=.74,rise=0;
+   if(hills){
+    const sx=b.x-b.dx*b.travel,sz=b.z-b.dz*b.travel,from=b.ox!==undefined?groundY(view,b.ox,b.oz):groundY(view,sx-b.dx*RIFLE_MUZZLE.forward,sz-b.dz*RIFLE_MUZZLE.forward);
+    const s=roundGlide(view,this.glides,b,sx,sz,from);y=.74+s.h;rise=s.rise;
+    if(b.stop!==undefined&&b.stop-b.travel<1)y-=.74*(1-Math.max(0,b.stop-b.travel));
+   }
+   this.dummy.position.set(b.x,y,b.z);this.direction.set(b.dx,rise,b.dz);if(hills)this.direction.normalize();this.dummy.quaternion.setFromUnitVectors(UP,this.direction);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();
    this.bullets.setMatrixAt(count,this.dummy.matrix);this.outlines.setMatrixAt(count,this.dummy.matrix);this.bands.setMatrixAt(count,this.dummy.matrix);
    // A soft hot glow riding each round, drawn by the detail layer.
-   if(fx.on)fx.glow({x:b.x,y:.74,z:b.z,size:b.surge?.55:.32,life:.03,color:b.surge?SURGE_GLOW:BULLET_GLOW,glow:b.surge?1.4:.9});
+   if(fx.on)fx.glow({x:b.x,y:y-groundY(view, b.x,b.z),z:b.z,size:b.surge?.55:.32,life:.03,color:b.surge?SURGE_GLOW:BULLET_GLOW,glow:b.surge?1.4:.9});
    if(b.surge){
     // A white beam trailing the round, up to 2.4 m long.
-    const beam=Math.min(2.4,b.travel+.2);this.dummy.position.set(b.x-b.dx*beam/2,.74,b.z-b.dz*beam/2);this.dummy.scale.set(1,beam,1);this.dummy.updateMatrix();this.beams.setMatrixAt(beams++,this.dummy.matrix);this.dummy.position.set(b.x,.74,b.z);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();
+    const beam=Math.min(2.4,b.travel+.2);this.dummy.position.set(b.x-b.dx*beam/2,y-rise*beam/2,b.z-b.dz*beam/2);this.dummy.scale.set(1,beam,1);this.dummy.updateMatrix();this.beams.setMatrixAt(beams++,this.dummy.matrix);this.dummy.position.set(b.x,y,b.z);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();
    }
    const length=Math.min(this.quality.trailLength??.3,b.travel);this.dummy.position.addScaledVector(this.direction,-length/2-.08);this.dummy.scale.set(1,length/.3,1);this.dummy.updateMatrix();this.trails.setMatrixAt(count,this.dummy.matrix);count++;
   }
@@ -133,10 +148,10 @@ export class RifleView{
    if(e.seenX!==sim.player.x||e.seenZ!==sim.player.z||sim.time>=(e.checkAt||0)){
     e.visible=this.visible(sim,pose.x,pose.z);e.seenX=sim.player.x;e.seenZ=sim.player.z;e.checkAt=sim.time+.15;
    }
-   if(e.visible)this.place(this.casings,count++,pose.x,pose.y,pose.z,pose.rx,pose.ry,pose.rz);
+   if(e.visible)this.place(this.casings,count++,pose.x,pose.y+groundY(view, pose.x,pose.z),pose.z,pose.rx,pose.ry,pose.rz);
   }
   this.effects.length=kept;this.casings.count=count;count=0;
-  for(const m of sim.magazines){if(count>=24||!this.visible(sim,m.x,m.z))continue;this.place(this.magazines,count++,m.x,.025+Math.max(0,.6-4.9*m.age*m.age),m.z,0,m.angle,0,1);}
+  for(const m of sim.magazines){if(count>=24||!this.visible(sim,m.x,m.z))continue;this.place(this.magazines,count++,m.x,.025+Math.max(0,.6-4.9*m.age*m.age)+groundY(view, m.x,m.z),m.z,0,m.angle,0,1);}
   this.magazines.count=count;
   let sparks=0,smoke=0;kept=0;
   for(const p of this.particles){
@@ -144,9 +159,9 @@ export class RifleView{
    const x=p.x+p.vx*age,z=p.z+p.vz*age;if(!this.visible(sim,x,z))continue;
    if(p.smoke&&smoke<24){
     this.smoke.geometry.attributes.instanceFade.setX(smoke,(1-age/p.life)**2);
-    this.place(this.smoke,smoke++,x+Math.sin(p.phase+age*5)*age*.1,p.y+p.vy*age,z,age,p.phase,age*3,1+age*6);
+    this.place(this.smoke,smoke++,x+Math.sin(p.phase+age*5)*age*.1,p.y+p.vy*age+groundY(view, x,z),z,age,p.phase,age*3,1+age*6);
    }
-   else if(!p.smoke&&sparks<32)this.place(this.sparks,sparks++,x,p.y+p.vy*age-3*age*age,z,age*3,age*5,0,1-age/p.life);
+   else if(!p.smoke&&sparks<32)this.place(this.sparks,sparks++,x,p.y+p.vy*age-3*age*age+groundY(view, x,z),z,age*3,age*5,0,1-age/p.life);
   }
   this.particles.length=kept;this.sparks.count=sparks;this.smoke.count=smoke;
   if(smoke)this.smoke.geometry.attributes.instanceFade.needsUpdate=true;

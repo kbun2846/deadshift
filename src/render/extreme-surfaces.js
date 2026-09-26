@@ -113,11 +113,51 @@ function install(material, fragment, kind) {
  };
 }
 
+// Hills: the ground's heights as a texture (x, z -> height), so the dust
+// settles on the lowest half-metre above the ground wherever that is, not
+// above zero. Set by the view on a map with terrain (setExtremeGround), and
+// only then hooked into the surfaces (installGround): a flat map's shaders
+// and program keys are exactly what they were.
+// (The texture itself is made the first time Extreme is switched on: no
+// other preset reads it.)
+const GROUND_TEX = { value: null }, GROUND_BOX = { value: new THREE.Vector4() };
+let groundSource = null;
+const LOW = 'float low = 1.0 - smoothstep(.0, .55, vExWorld.y);';
+export function setExtremeGround(ground) {
+ GROUND_TEX.value?.dispose?.(); GROUND_TEX.value = null;
+ groundSource = ground && !ground.flat ? ground : null;
+}
+function groundTexture() {
+ if (GROUND_TEX.value || !groundSource) return;
+ const ground = groundSource, { cols, rows } = ground, data = new Uint16Array(cols * rows);
+ for (let i = 0; i < data.length; i++) data[i] = THREE.DataUtils.toHalfFloat(ground.grid[i] * .001);
+ const texture = new THREE.DataTexture(data, cols, rows, THREE.RedFormat, THREE.HalfFloatType);
+ texture.minFilter = texture.magFilter = THREE.LinearFilter; texture.needsUpdate = true;
+ GROUND_TEX.value = texture;
+ // uv = (world - (the grid's first point - half a cell)) / (the grid's size in metres)
+ GROUND_BOX.value.set(ground.minX - .25, ground.minZ - .25, 1 / (cols * .5), 1 / (rows * .5));
+}
+function installGround(material) {
+ if (material.userData.extremeGround) return;
+ material.userData.extremeGround = true;
+ const before = material.onBeforeCompile, key = material.customProgramCacheKey.bind(material);
+ material.customProgramCacheKey = () => key() + '|extreme-ground';
+ material.onBeforeCompile = (shader, renderer) => {
+  before.call(material, shader, renderer);
+  if (!('EXTREME_SURFACE' in (material.defines || {}))) return;
+  shader.uniforms.exGround = GROUND_TEX; shader.uniforms.exGroundBox = GROUND_BOX;
+  shader.fragmentShader = 'uniform sampler2D exGround; uniform vec4 exGroundBox;\n' + shader.fragmentShader.replace(LOW,
+   'float low = 1.0 - smoothstep(.0, .55, vExWorld.y - texture2D(exGround, (vExWorld.xz - exGroundBox.xy) * exGroundBox.zw).r);');
+ };
+}
+
 // `ground` and `surfaces` are materials; `on` switches the detail in or out.
 export function setExtremeSurfaces({ ground, surfaces }, on) {
+ if (on) groundTexture();
  const apply = (material, fragment, kind) => {
   if (!material || material.isShaderMaterial) return;
   install(material, fragment, kind);
+  if (kind === 'surface' && groundSource) installGround(material);
   material.defines ||= {};
   const has = 'EXTREME_SURFACE' in material.defines;
   if (on === has) return;

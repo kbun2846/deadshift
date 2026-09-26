@@ -36,6 +36,26 @@ export function kickRifle(r,sample,scale=1){
  r.kick=Math.min(1,(r.kick||0)+RIFLE.recoilBuild);
  r.sway=Math.max(-RIFLE.recoilMax,Math.min(RIFLE.recoilMax,(r.sway||0)+(sample*2-1)*RIFLE.recoilKick*scale*(.5+r.kick)));
 }
+// ---- Rounds on hills (shared by the rifle, Ballast's pellets and Scatter) ----
+// Nothing here runs on a flat map: a round there never gets `ox`, so every
+// test below passes straight through and Deadwater is untouched.
+// At fire time a round remembers where its shooter stood (`ox`, `oz`) and,
+// when the ground hides the end of its path from them, where it goes into
+// the ground (`stop`, metres along its path; world/heightfield.js roundStop).
+export function roundOnGround(sim,round,range,ox=sim.player.x,oz=sim.player.z){
+ if(sim.ground.flat)return round;
+ round.ox=ox;round.oz=oz;
+ const stop=sim.ground.roundStop(ox,oz,round.x,round.z,round.dx,round.dz,range);
+ if(stop<range)round.stop=stop;
+ return round;
+}
+// A body is hit only if the shooter could see it from where they fired
+// (sight is mutual, so they could see the shooter too).
+export const roundSees=(sim,round,t)=>round.ox===undefined||sim.ground.sightClear(round.ox,round.oz,t.x,t.z);
+// Cover meets the round unless it is low and lies in ground the shooter
+// could not see (a hollow the round flies over). Walls and buildings always do.
+export const roundMeets=(sim,round,box,x,z)=>round.ox===undefined||(box.height??2)>1.5||sim.ground.sightClear(round.ox,round.oz,x,z);
+
 export function resetRifle(sim){sim.rifle={ammo:RIFLE.magazine,capacity:RIFLE.magazine,reloadCapacity:RIFLE.magazine,cooldown:0,reload:0,aiming:false,triggerHeld:false,burst:0,sway:0,kick:0};sim.magazines=[];sim.rifleBullets=[];}
 export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
  const r=sim.rifle,p=sim.player;
@@ -45,12 +65,15 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
  const firePressed=input.fire&&!r.triggerHeld;
  if(firePressed)r.burst=0;r.triggerHeld=!!input.fire;
  // Swept collision runs for each travelled segment, even while reloading.
+ // Hills (roundOnGround, below): a round only meets what its shooter could
+ // see, and ends in the ground where the rest of its path is hidden (`stop`).
  for(const bullet of sim.rifleBullets){
-  const travel=Math.min(RIFLE.bulletSpeed*dt,RIFLE.maxRange-bullet.travel);
+  const end=bullet.stop??RIFLE.maxRange;
+  const travel=Math.min(RIFLE.bulletSpeed*dt,end-bullet.travel);
   const ex=bullet.x+bullet.dx*travel,ez=bullet.z+bullet.dz*travel;
   let first=1,target=null,prop=null;
-  for(const b of collidersAlong(sim.colliders,bullet.x,bullet.z,ex,ez,.1)){if(b.playerOnly)continue;const t=segmentBox(bullet.x,bullet.z,ex,ez,b,.025);if(t!==null&&t<=first){first=t;target=null;prop=sim.props.find(v=>v.id===b.propId);}}
-  for(const t of sim.targets){if(t.hp<=0)continue;const hit=segmentCircle(bullet.x,bullet.z,ex,ez,t.x,t.z,targetRadius(t)+.025);if(hit!==null&&hit<first){first=hit;target=t;prop=null;}}
+  for(const b of collidersAlong(sim.colliders,bullet.x,bullet.z,ex,ez,.1)){if(b.playerOnly)continue;const t=segmentBox(bullet.x,bullet.z,ex,ez,b,.025);if(t!==null&&t<=first&&roundMeets(sim,bullet,b,bullet.x+(ex-bullet.x)*t,bullet.z+(ez-bullet.z)*t)){first=t;target=null;prop=sim.props.find(v=>v.id===b.propId);}}
+  for(const t of sim.targets){if(t.hp<=0)continue;const hit=segmentCircle(bullet.x,bullet.z,ex,ez,t.x,t.z,targetRadius(t)+.025);if(hit!==null&&hit<first&&roundSees(sim,bullet,t)){first=hit;target=t;prop=null;}}
   bullet.x+=(ex-bullet.x)*first;bullet.z+=(ez-bullet.z)*first;bullet.travel+=travel*first;
   if(first<1||target||prop){
    const shot={bullet:true,damage:rifleDamage(bullet.travel)*(bullet.surge?SURGE.damage:1),owner:p.id,volley:bullet.id,x:bullet.x,z:bullet.z,vx:bullet.dx,vz:bullet.dz};
@@ -58,8 +81,12 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
    sim.volleyKills.delete(shot.volley);
    sim.events.push({type:'impactMark',x:bullet.x,z:bullet.z,vx:bullet.dx,vz:bullet.dz});
    sim.events.push({type:'rifleImpact',x:bullet.x,z:bullet.z});bullet.dead=true;
+  }else if(bullet.stop!==undefined&&bullet.travel>=end-1e-8){
+   // Into the ground (a crest, or the rise of a slope it could not see past).
+   sim.events.push({type:'impactMark',x:bullet.x,z:bullet.z,vx:bullet.dx,vz:bullet.dz,ground:true});
+   sim.events.push({type:'rifleImpact',x:bullet.x,z:bullet.z,ground:true});
   }
-  if(bullet.travel>=RIFLE.maxRange-1e-8)bullet.dead=true;
+  if(bullet.travel>=end-1e-8)bullet.dead=true;
  }
  sim.rifleBullets=sim.rifleBullets.filter(b=>!b.dead);
  if(sim.dev.ammo&&!r.reload)r.ammo=r.capacity;
@@ -99,6 +126,8 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
  // Include the player-to-muzzle segment so the barrel cannot shoot through cover.
  const blocked=sim.colliders.some(b=>!b.playerOnly&&segmentBox(p.x,p.z,x,z,b)!==null);
  const id=++sim.volley;
- sim.rifleBullets.push({id,x:blocked?p.x:x,z:blocked?p.z:z,dx,dz,travel:0,aimed:r.aiming,surge:surging});
+ const bullet={id,x:blocked?p.x:x,z:blocked?p.z:z,dx,dz,travel:0,aimed:r.aiming,surge:surging};
+ roundOnGround(sim,bullet,RIFLE.maxRange);
+ sim.rifleBullets.push(bullet);
  sim.events.push({type:'rifleShot',x,z,id,burstIndex:++r.burst,surge:surging||undefined});
 }

@@ -13,6 +13,7 @@ import { NETWORK } from '../config/network.js';
 import { PROTOCOL_VERSION, playerInput, playerState, readMessage, loadout, packEvent } from './protocol.js';
 import { Arena, SPAWN_MODES, SETTINGS } from './arena.js';
 import { pack } from './projectiles.js';
+import { mapHash } from '../maps.js';
 
 // Seconds between our own ticks that count as us being frozen, not them.
 const STALL = 1;
@@ -63,6 +64,8 @@ export class HostSession {
  }
 
  get role() { return 'host'; }
+ // The host's own screen shape (main.js, every frame), for the robots.
+ setAspect(aspect) { this.hostSeat.aspect = aspect; }
  get playerCount() { return 1 + this.remotes.size; }
  get id() { return 'host'; }
  get me() { return this.hostSeat; }
@@ -84,6 +87,8 @@ export class HostSession {
   remote.silent = 0; remote.heard = this.now(); remote.loaded = true;
   if (message.t === 'input') {
    remote.ack = Math.max(remote.ack, message.ack || 0);
+   // The shape of their screen: no robot fires on them from off it.
+   if (message.aspect) remote.seat.aspect = message.aspect;
    // Inputs repeat across messages for safety; keep only the new ones, in order.
    for (const input of message.inputs) if (input.seq > remote.queuedSeq) { remote.queue.push(input); remote.queuedSeq = input.seq; }
    remote.queue.sort((a, b) => a.seq - b.seq);
@@ -114,7 +119,7 @@ export class HostSession {
   seat.slot = slot;
   const remote = { id, seat, sim: seat.sim, slot, name, ping: null, pingAt: 0, queue: [], queuedSeq: 0, lastSeq: 0, last: IDLE, silent: 0, heard: this.now(), ack: this.eventSeq, previous: { ...seat.sim.player } };
   this.remotes.set(id, remote);
-  this.transport.send(id, { t: 'welcome', id, slot, name, tick: this.tick, map: this.map.id, players: this.states(), world: this.worldState() });
+  this.transport.send(id, { t: 'welcome', id, slot, name, tick: this.tick, map: this.map.id, mapHash: mapHash(this.map), players: this.states(), world: this.worldState() });
   this.notices.push(name + ' joined');
  }
 

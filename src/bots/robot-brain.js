@@ -41,6 +41,7 @@ import { collidersAlong } from '../world/collider-grid.js';
 import { segmentBox } from '../simulation.js';
 import { makeProfile, stepMood } from './robot-profile.js';
 import { muzzleBearing, muzzleLateral } from '../aim-damping.js';
+import { onScreenOf } from '../render/camera-framing.js';
 
 const TAU = Math.PI * 2;
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -59,19 +60,47 @@ export const SIGHT = 22, SIGHT_NEAR = 12, SIGHT_CONE = 1.4;   // metres, radians
 // A player's screen reaches about this far each way from them (the camera
 // shows ~38 x 26 m): no robot fires on a player from beyond it (v146).
 export const OFFSCREEN_X = 17.5, OFFSCREEN_Z = 11.5;
+// The camera sits south of the player looking north, so a screen shows much
+// less ground to the south (10.5 m on 16:9, 8.8 m on a wide phone) than to the
+// north (13.6 m). The box used to be symmetric, so a robot could open fire from
+// 10.5-11.5 m south, just below the bottom edge. South now keeps the same ~2 m
+// margin inside the screen as the other sides (owner, 2026-09-25).
+export const OFFSCREEN_SOUTH = 8.5;
+// Is a robot at (x, z) off the screen of someone standing at (tx, tz)?
+// `dy` (hills): how much higher the robot's ground is than theirs. The
+// camera looks down from the south at about 70 degrees, so higher ground
+// leaves the top of the screen sooner (0.82 m sooner per metre up, 16:9) and
+// the sides a little sooner (it is nearer the camera); the bottom barely
+// changes. On flat ground (dy 0) the box is exactly as it was.
+// `aspect` (owner, 2026-09-25): the shape of that player's screen, when it is
+// known (you in solo; online, each joiner sends theirs with its inputs). A
+// phone, a tablet or an ultrawide shows less than the box (a 19.5:9 phone
+// 10.8 m north, portrait under 10 m to the sides), so the robot also checks
+// the real screen (camera-framing.js onScreenOf): half a metre inside its
+// sides and 2 m inside its top and bottom, the box's own margins on 16:9,
+// where on flat ground it never tightens the box (on hills, with the robot
+// higher, it trims a sliver off the box's south corners). Robots fighting robots, and every test,
+// pass no aspect: the box alone, exactly as before.
+export const OFFSCREEN_SIDE_MARGIN = .5, OFFSCREEN_END_MARGIN = 2;
+export const offScreen = (x, z, tx, tz, margin = 0, dy = 0, aspect = 0) => (dy === 0
+  ? Math.abs(x - tx) > OFFSCREEN_X - margin || z - tz > OFFSCREEN_SOUTH - margin || tz - z > OFFSCREEN_Z - margin
+  : Math.abs(x - tx) > (OFFSCREEN_X - margin) * (1 - .03 * dy) || z - tz > OFFSCREEN_SOUTH - margin || tz - z > OFFSCREEN_Z - margin - .82 * dy)
+  || (aspect > 0 && !onScreenOf(aspect, x - tx, z - tz, dy, OFFSCREEN_SIDE_MARGIN + margin, OFFSCREEN_END_MARGIN + margin));
 // Gunfire and blasts: always heard within HEAR_SURE, less and less often
 // out to HEAR (like the sound falloff players get, audio.js HEARING).
 const HEAR_SURE = 11, HEAR = 33;
 
-// Is the straight line from a to b free of anything a shot would hit?
-export function shotClear(colliders, ax, az, bx, bz, pad = .04) {
+// Is the straight line from a to b free of anything a shot would hit? On
+// hills (`ground`, the sim's), also not over a crest: a shot at someone the
+// ground hides ends in the ground, so a reverse slope is cover.
+export function shotClear(colliders, ax, az, bx, bz, pad = .04, ground = null) {
  const x0 = Math.min(ax, bx) - 1, x1 = Math.max(ax, bx) + 1, z0 = Math.min(az, bz) - 1, z1 = Math.max(az, bz) + 1;
  for (const c of collidersAlong(colliders, ax, az, bx, bz, 1)) {
   if (c.playerOnly) continue;
   if (c.x + c.w / 2 < x0 || c.x - c.w / 2 > x1 || c.z + c.d / 2 < z0 || c.z - c.d / 2 > z1) continue;
   if (segmentBox(ax, az, bx, bz, c, pad) !== null) return false;
  }
- return true;
+ return !ground || ground.flat || ground.sightClear(ax, az, bx, bz);
 }
 
 export class RobotBrain {
@@ -132,7 +161,7 @@ export class RobotBrain {
    const d = Math.hypot(e.x - p.x, e.z - p.z);
    const facing = this.aimAngle ?? Math.atan2(p.aimZ, p.aimX);
    const inView = d < SIGHT_NEAR || (d < SIGHT && Math.abs(wrap(Math.atan2(e.z - p.z, e.x - p.x) - facing)) < SIGHT_CONE);
-   const visible = e.hp > 0 && inView && this.sim.canSeeEntity(e.x, e.z, .3);
+   const visible = e.hp > 0 && inView && this.sim.sees(e.x, e.z, .3);
    let m = this.memory.get(e.id);
    if (!m) { m = { x: e.x, z: e.z, vx: 0, vz: 0, seen: -99, visible: false, hp: e.hp }; this.memory.set(e.id, m); }
    if (e.hp <= 0) { this.memory.delete(e.id); if (this.targetId === e.id) this.targetId = null; continue; }
@@ -149,7 +178,7 @@ export class RobotBrain {
     m.x = e.x; m.z = e.z; m.seen = this.time; m.hp = e.hp; m.maxHp = e.maxHp;
     m.weapon = e.weapon || m.weapon; m.aimX = e.aimX ?? m.aimX; m.aimZ = e.aimZ ?? m.aimZ; m.loud = !!e.loud; m.reloading = !!e.reloading;
    }
-   m.visible = visible; m.id = e.id; m.human = !!e.human;
+   m.visible = visible; m.id = e.id; m.human = !!e.human; m.aspect = e.aspect || 0;
    // (Developer tools: "robots know where everyone is".)
    if (world.seeAll && !visible && e.hp > 0) { m.x = e.x; m.z = e.z; m.vx = e.vx || 0; m.vz = e.vz || 0; m.seen = this.time - .3; m.hp = e.hp; m.maxHp = e.maxHp; }
   }
@@ -322,7 +351,7 @@ export class RobotBrain {
    this.goal = Math.hypot(spot.x - p.x, spot.z - p.z) > 1 ? spot : null;
   } else if (this.mode === 'engage') {
    const d = Math.hypot(known.x - p.x, known.z - p.z);
-   if (!shotClear(sim.colliders, p.x, p.z, known.x, known.z)) {
+   if (!shotClear(sim.colliders, p.x, p.z, known.x, known.z, .04, sim.ground)) {
     // No clear shot from here: the nearest place that has one, at a range
     // the weapon likes (round the side of their cover), else toward them.
     const s = this.shotSpot;
@@ -344,7 +373,7 @@ export class RobotBrain {
    this.goal = { x: known.x + known.vx * age, z: known.z + known.vz * age };
    // There, or can see there and they are not: search round about.
    const gd = Math.hypot(this.goal.x - p.x, this.goal.z - p.z);
-   if (gd < 1.2 || (gd < 7 && this.time - known.seen > 1 && sim.canSeeEntity(this.goal.x, this.goal.z, .3))) this.lose(known);
+   if (gd < 1.2 || (gd < 7 && this.time - known.seen > 1 && sim.sees(this.goal.x, this.goal.z, .3))) this.lose(known);
   } else if (this.mode === 'investigate') {
    this.goal = this.investigate;
    if (Math.hypot(this.goal.x - p.x, this.goal.z - p.z) < 1.5) this.investigate = null;
@@ -467,7 +496,7 @@ export class RobotBrain {
    if (this.leader && Math.hypot(c.x - this.leader.x, c.z - this.leader.z) > 12) continue;
    const score = walk + Math.max(0, 9 - fromEnemy) * 1.5 - Math.min(3, nav.clearance[i]) * .3;
    if (score >= bestScore) continue;
-   if (shotClear(this.sim.colliders, enemy.x, enemy.z, c.x, c.z, .3)) continue;
+   if (shotClear(this.sim.colliders, enemy.x, enemy.z, c.x, c.z, .3, this.sim.ground)) continue;
    bestScore = score; best = c;
   }
   return best;
@@ -497,7 +526,7 @@ export class RobotBrain {
    if (score >= bestScore) continue;
    // An ally keeps out of your line of fire.
    if (lead && this.inLine(lead, c.x, c.z)) continue;
-   if (!shotClear(this.sim.colliders, c.x, c.z, enemy.x, enemy.z, .1)) continue;
+   if (!shotClear(this.sim.colliders, c.x, c.z, enemy.x, enemy.z, .1, this.sim.ground)) continue;
    bestScore = score; best = c;
   }
   return best;
@@ -547,7 +576,7 @@ export class RobotBrain {
    const dx = target.x - p.x, dz = target.z - p.z, d = Math.hypot(dx, dz) || 1, ux = dx / d, uz = dz / d;
    let radial = d > style.far ? 1 : d < style.near ? -1 : (d - (style.near + style.far) / 2) / (style.far - style.near) * .6;
    // Off a player's screen it may not shoot (openFire), so it closes in.
-   if (Math.abs(dx) > OFFSCREEN_X - 1 || Math.abs(dz) > OFFSCREEN_Z - 1) radial = 1;
+   if (offScreen(p.x, p.z, target.x, target.z, 1, this.rise(target), target.aspect)) radial = 1;
    mx = ux * radial - uz * this.strafe * weave; mz = uz * radial + ux * this.strafe * weave;
    // Would that step leave open ground? Try the other side, then just the radial.
    // (A walk check, not just the end square: thin walls sit between squares.)
@@ -679,7 +708,7 @@ export class RobotBrain {
   const sim = this.sim, p = sim.player, t = this.time;
   const visible = target?.visible;
   const d = target ? Math.hypot(target.x - p.x, target.z - p.z) : Infinity;
-  const lined = visible && this.aimPoint && shotClear(sim.colliders, p.x, p.z, this.aimPoint.x, this.aimPoint.z) && !(this.friends.length && this.friendInWay(this.aimPoint.x, this.aimPoint.z));
+  const lined = visible && this.aimPoint && shotClear(sim.colliders, p.x, p.z, this.aimPoint.x, this.aimPoint.z, .04, sim.ground) && !(this.friends.length && this.friendInWay(this.aimPoint.x, this.aimPoint.z));
   const ready = t - this.acquiredAt > (this.reaction ??= this.pf.reaction[0] + this.random() * (this.pf.reaction[1] - this.pf.reaction[0]));
   const onTarget = this.aimOff < (Math.atan2(.5, Math.max(1, d)) + .03) * this.pf.trigger;
   const open = this.openFire(target, d);
@@ -708,6 +737,12 @@ export class RobotBrain {
   else this.staticGun(input, target, d, shoot, visible, lined);
  }
 
+ // How much higher its ground is than `who`'s (0 on flat maps).
+ rise(who) {
+  const g = this.sim.ground, p = this.sim.player;
+  return g.flat ? 0 : g.heightAt(p.x, p.z) - g.heightAt(who.x, who.z);
+ }
+
  // May it open fire on `target` (owner, v146)? Never on a player from off
  // their screen (they cannot see it). An easier robot (pf.patience) mostly
  // waits to be noticed: their aim swings its way, they hurt it, or they come
@@ -718,7 +753,7 @@ export class RobotBrain {
   if (!target) return true;
   const p = this.sim.player, t = this.time;
   // (Robots on robots too, so no side wins fights from beyond a screen.)
-  if (Math.abs(p.x - target.x) > OFFSCREEN_X || Math.abs(p.z - target.z) > OFFSCREEN_Z) return false;
+  if (offScreen(p.x, p.z, target.x, target.z, 0, this.rise(target), target.aspect)) return false;
   if (!target.human) return true;
   const k = this.pf.patience || 0;
   if (!k) return true;
@@ -821,7 +856,7 @@ export class RobotBrain {
  }
 
  staticGun(input, target, d, shoot, visible, lined) {
-  const sim = this.sim, t = this.time, seeds = sim.seeds.length;
+  const sim = this.sim, t = this.time, seeds = sim.launchableSeeds ? sim.launchableSeeds().length : sim.seeds.length;
   // The hex: out when they are close, pulsed as its ring reaches them.
   if (sim.hexOrbs.length) {
    const o = sim.hexOrbs[0], ring = Math.hypot(o.x - o.originX, o.z - o.originZ);

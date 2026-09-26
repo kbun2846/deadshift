@@ -139,7 +139,7 @@ export class RobotWrecks {
   this.view.scene.add(avatar.root);
   // Falls away from the shot.
   const dir = Math.atan2(event.directionZ || 0, event.directionX || 1);
-  this.list.set(slot, { avatar, age: 0, spark: 0, dir, x: event.x, z: event.z });
+  this.list.set(slot, { avatar, age: 0, spark: 0, dir, x: event.x, z: event.z, y: avatar.root.position.y });
  }
 
  update(dt) {
@@ -150,7 +150,7 @@ export class RobotWrecks {
    // Tipped over along the push, a little bounce on landing.
    const tilt = ease * 1.45 - (fall >= 1 ? Math.sin(Math.min(1, (w.age - .45) / .25) * Math.PI) * .06 : 0);
    w.avatar.root.rotation.set(Math.sin(w.dir) * tilt, 0, -Math.cos(w.dir) * tilt);
-   w.avatar.root.position.y = -ease * .08;
+   w.avatar.root.position.y = w.y - ease * .08;
    // Sparks and smoke for a few seconds.
    w.spark -= dt;
    if (w.age < 4.5 && w.spark <= 0 && fx?.on) {

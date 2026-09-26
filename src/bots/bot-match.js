@@ -74,6 +74,9 @@ export class BotMatch {
   // beside each other, each side far from the other.
   this.teamSpawn = false;
   this.intel = new Map(); this.clock = 0; this.youHurtBy = null; this.loud = new Set(); this.loudNext = new Set();
+  // The shape of your screen (width / height; main.js keeps it current): no
+  // robot fires on you from off it (robot-brain.js offScreen). 0: unknown.
+  this.viewAspect = 0;
  }
 
  get active() { return this.bots.length > 0; }
@@ -266,7 +269,7 @@ export class BotMatch {
     if (hostile(bot.team, YOU_TEAM) && !passive) {
      const proxy = { id: you.id, kind: 'player', team: main.player.team, x: you.x, z: you.z, baseX: you.x, spawnX: you.x, spawnZ: you.z, hp: you.hp, maxHp: you.maxHp, respawn: 0, flash: 0, moving: false };
      proxies.set(you.id, { proxy, before: you.hp, you: true });
-     enemies.push({ id: you.id, human: true, x: you.x, z: you.z, vx: you.vx, vz: you.vz, hp: you.hp, maxHp: you.maxHp, weapon: main.weapon, aimX: you.aimX, aimZ: you.aimZ, loud: this.loud.has(you.id), reloading: reloading(main) });
+     enemies.push({ id: you.id, human: true, aspect: this.viewAspect || 0, x: you.x, z: you.z, vx: you.vx, vz: you.vz, hp: you.hp, maxHp: you.maxHp, weapon: main.weapon, aimX: you.aimX, aimZ: you.aimZ, loud: this.loud.has(you.id), reloading: reloading(main) });
     } else if (!hostile(bot.team, YOU_TEAM)) {
      friends.push({ id: you.id, leader: lead === 'human', busy: (this.youHurtBy && this.clock - this.youHurtBy.at < 3) || this.loud.has(you.id), x: you.x, z: you.z, vx: you.vx, vz: you.vz, aimX: you.aimX, aimZ: you.aimZ, hp: you.hp, maxHp: you.maxHp, hurtBy: this.youHurtBy });
      if (this.friendlyFire) proxies.set(you.id, { proxy: { id: you.id, kind: 'player', team: YOU_TEAM, friendly: true, share: this.friendlyFire, x: you.x, z: you.z, baseX: you.x, spawnX: you.x, spawnZ: you.z, hp: you.hp, maxHp: you.maxHp, respawn: 0, flash: 0, moving: false }, before: you.hp, you: true, scale: 1 });
@@ -353,7 +356,7 @@ export class BotMatch {
    if (team === YOU_TEAM && youHere && this.bots.some(b => b.team === YOU_TEAM)) {
     for (const f of this.foes()) {
      const o = f.sim.player;
-     if (!seen.has(f.id) && Math.hypot(o.x - you.x, o.z - you.z) < 26 && main.canSeeEntity(o.x, o.z, .3)) seen.set(f.id, { id: f.id, x: o.x, z: o.z, vx: o.vx, vz: o.vz, by: you.id });
+     if (!seen.has(f.id) && Math.hypot(o.x - you.x, o.z - you.z) < 26 && main.sees(o.x, o.z, .3)) seen.set(f.id, { id: f.id, x: o.x, z: o.z, vx: o.vx, vz: o.vz, by: you.id });
     }
    }
    this.intel.set(team, seen);

@@ -21,6 +21,7 @@
 import * as THREE from 'three';
 import { SURGE } from '../config/gameplay.js';
 import { isDemanding } from '../settings.js';
+import { groundY, hilly } from '../render/ground-lift.js';
 
 export const SURGE_VIEW = Object.freeze({ slots: 6, beams: 14, radius: 6.8, light: 9 });
 const YELLOW = new THREE.Color('#ffd23f'), GOLD = new THREE.Color('#ffb21f'), WHITE = new THREE.Color('#ffffff');
@@ -150,7 +151,8 @@ export class SurgeView {
  nova(x, z) {
   const n = this.novas.reduce((a, b) => (b.t > a.t ? b : a));
   n.t = 0; n.x = x; n.z = z; n.spin = (Math.random() < .5 ? -1 : 1) * (.9 + Math.random() * .5); n.turn = Math.random() * 6.28;
-  for (const mesh of [n.crown, n.under, n.shock]) { mesh.visible = true; mesh.position.set(x, .06, z); }
+  n.y = groundY(this.view, x, z); // (hills: at the ground it lands on)
+  for (const mesh of [n.crown, n.under, n.shock]) { mesh.visible = true; mesh.position.set(x, .06 + n.y, z); }
  }
  stepNovas(dt) {
   for (const n of this.novas) {
@@ -161,14 +163,14 @@ export class SurgeView {
    // Crown: flares out fast, turns, fades after a bright moment.
    n.crown.scale.setScalar(NOVA.crown * (.25 + out * .9)); n.crown.rotation.y = n.turn + n.spin * n.t * 1.6;
    n.crown.material.opacity = Math.min(1, k * 10) * (1 - k) ** 1.4;
-   n.crown.position.y = .08;
+   n.crown.position.y = .08 + (n.y || 0);
    // Under-crown: smaller, counter-turning, a little late.
    const k2 = Math.max(0, (n.t - .06) / NOVA.life);
    n.under.scale.setScalar(NOVA.crown * .7 * (.3 + (1 - (1 - k2) ** 2) * .8)); n.under.rotation.y = n.turn + 1.1 - n.spin * n.t * 2.4;
-   n.under.material.opacity = Math.min(1, k2 * 8) * (1 - k2) ** 2 * .8; n.under.position.y = .07;
+   n.under.material.opacity = Math.min(1, k2 * 8) * (1 - k2) ** 2 * .8; n.under.position.y = .07 + (n.y || 0);
    // Shock front: races out past the crown and tears as it thins.
    n.shock.scale.setScalar(NOVA.shock * (.15 + out * 1.05)); n.shock.rotation.y = n.turn * .5 + n.spin * n.t * .6;
-   n.shock.material.opacity = Math.min(1, k * 14) * (1 - k) ** 1.1; n.shock.position.y = .05;
+   n.shock.material.opacity = Math.min(1, k * 14) * (1 - k) ** 1.1; n.shock.position.y = .05 + (n.y || 0);
   }
  }
 
@@ -243,7 +245,7 @@ export class SurgeView {
      if (k >= 1 || length <= .02) continue;
      const a = b.angle + k * .9, cx = Math.cos(a), cz = Math.sin(a);
      const hx = p.x + cx * head, hz = p.z + cz * head, tx = p.x + cx * (head + length), tz = p.z + cz * (head + length);
-     dummy.position.set(tx, .045 + (n % 3) * .002, tz); dummy.rotation.set(0, Math.atan2(tx - hx, tz - hz), 0); dummy.scale.set(b.width * (1 + k * .8), 1, length);
+     dummy.position.set(tx, .045 + (n % 3) * .002 + groundY(this.view, tx, tz), tz); dummy.rotation.set(0, Math.atan2(tx - hx, tz - hz), 0); dummy.scale.set(b.width * (1 + k * .8), 1, length);
      dummy.updateMatrix(); this.beams.setMatrixAt(n, dummy.matrix);
      this.beams.setColorAt(n, tmp.copy(YELLOW).lerp(GOLD, .3 * Math.sin(this.time * 20 + n) ** 2).lerp(WHITE, k * k).multiplyScalar(1.4));
      n++;
@@ -287,6 +289,6 @@ export class SurgeView {
   if (n) { this.beams.instanceMatrix.needsUpdate = true; if (this.beams.instanceColor) this.beams.instanceColor.needsUpdate = true; }
   // The shared effects light, Quality and Extreme only.
   const v = this.view;
-  if (lightAt && demanding && v.fxLight) { v.fxLight.color.set('#fff4cc'); v.fxLight.position.set(lightAt.x, 1.4, lightAt.z); v.fxLightLevel = Math.max(v.fxLightLevel || 0, SURGE_VIEW.light * 2.2 * lightLevel * (.85 + Math.random() * .3)); }
+  if (lightAt && demanding && v.fxLight) { v.fxLight.color.set('#fff4cc'); v.fxLight.position.set(lightAt.x, 1.4 + groundY(v, lightAt.x, lightAt.z), lightAt.z); v.fxLightLevel = Math.max(v.fxLightLevel || 0, SURGE_VIEW.light * 2.2 * lightLevel * (.85 + Math.random() * .3)); }
  }
 }

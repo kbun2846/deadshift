@@ -16,6 +16,7 @@
 // hidden when there is none. Nothing here allocates per frame.
 import * as THREE from 'three';
 import { mergeTransformed } from '../render/merge-transformed.js';
+import { groundY, hilly } from '../render/ground-lift.js';
 
 // Where each plate sits on the body (the body's own space; front is -z), its
 // size, which of the make's colours it is, and the share of health it comes
@@ -89,7 +90,7 @@ function shed(view, avatar, plate, dx = 0, dz = 0, force = 1) {
  const cx = at.x - avatar.root.position.x, cz = at.z - avatar.root.position.z, cl = Math.hypot(cx, cz) || 1;
  const out = 1.4 * force;
  view.robotScrap?.throw(at.x, at.y, at.z, cx / cl * out + dx * 1.6 * force + (Math.random() - .5), 2.2 + Math.random() * 1.6 * force, cz / cl * out + dz * 1.6 * force + (Math.random() - .5), plate.size, plate.hex);
- if (view.fx?.on) view.fx.electric(at.x, at.y, at.z, .55 * Math.min(1.6, force), { ring: false });
+ if (view.fx?.on) view.fx.electric(at.x, at.y - groundY(view, at.x, at.z), at.z, .55 * Math.min(1.6, force), { ring: false });
 }
 
 // Every frame for a living robot: plates off as its health falls, and sparks
@@ -106,7 +107,7 @@ export function wear(view, avatar, share, dt) {
   avatar.body.updateMatrixWorld(true);
   if (p) at.set(p.at[0] + (Math.random() - .5) * .1, p.at[1] + (Math.random() - .5) * .1, p.at[2]); else at.set((Math.random() - .5) * .3, .5 + Math.random() * .4, 0);
   at.applyMatrix4(avatar.body.matrixWorld);
-  fx.electric(at.x, at.y, at.z, .22 + (1 - share) * .3, { ring: false });
+  fx.electric(at.x, at.y - groundY(view, at.x, at.z), at.z, .22 + (1 - share) * .3, { ring: false });
  }
  if (share < WEAR.smokeBelow) {
   armour.smokeIn -= dt;
@@ -146,7 +147,8 @@ export class RobotScrap {
  }
 
  throw(x, y, z, vx, vy, vz, size, hex) {
-  const piece = { x, y, z, vx, vy, vz, rx: 0, ry: Math.random() * 6, rz: 0, wx: (Math.random() - .5) * 14, wy: (Math.random() - .5) * 8, wz: (Math.random() - .5) * 14, w: size[0], h: size[1], d: size[2], age: 0, rest: false };
+  // (Hills: kept above the ground under it, like the other effects.)
+  const piece = { x, y: y - groundY(this.view, x, z), z, vx, vy, vz, rx: 0, ry: Math.random() * 6, rz: 0, wx: (Math.random() - .5) * 14, wy: (Math.random() - .5) * 8, wz: (Math.random() - .5) * 14, w: size[0], h: size[1], d: size[2], age: 0, rest: false };
   if (this.pieces.length < WEAR.maxScrap) this.pieces.push(piece);
   else { this.pieces[this.next] = piece; this.next = (this.next + 1) % WEAR.maxScrap; }
   const i = this.pieces.indexOf(piece);
@@ -175,7 +177,7 @@ export class RobotScrap {
    // Old scrap sinks away.
    const fade = Math.max(0, Math.min(1, WEAR.scrapLife + 1 - p.age));
    this.e.set(p.rx, p.ry, p.rz); this.q.setFromEuler(this.e);
-   this.s.set(p.w * fade, p.h * fade, p.d * fade); this.p.set(p.x, p.y, p.z);
+   this.s.set(p.w * fade, p.h * fade, p.d * fade); this.p.set(p.x, p.y + groundY(this.view, p.x, p.z), p.z);
    this.mesh.setMatrixAt(i, this.m.compose(this.p, this.q, this.s));
    if (fade > 0) alive++;
   }

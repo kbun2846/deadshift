@@ -24,6 +24,7 @@
 // reset every tick); freeze and game speed are solo only (main.js).
 
 import { WEAPONS } from '../items.js';
+import { workMaps } from '../maps.js';
 import { weaponChoices, weaponGridHTML, watchWeaponGrid } from './weapon-grid.js';
 
 
@@ -93,6 +94,9 @@ export const DEV_OPTIONS = Object.freeze([
   { section: 'world', kind: 'action', key: 'killTargets', label: 'Knock down every target', button: 'Knock' },
   { section: 'world', kind: 'select', key: 'blastOrbs', label: 'Blast preview size', options: orbCounts, fallback: 6 },
   { section: 'world', kind: 'action', key: 'previewBlast', label: 'Show blast at aim', button: 'Blast' },
+  // Maps still being built (maps.js workMaps): pick one, then Load.
+  { section: 'world', kind: 'select', key: 'workMap', label: 'Map in progress', options: workMaps().map((m, i) => [String(i), m.name]), fallback: 0 },
+  { section: 'world', kind: 'action', key: 'loadWorkMap', label: 'Load that map', button: 'Load' },
 
   { section: 'robots', kind: 'select', key: 'robotWeapon', label: 'Robot weapon', options: weaponChoices().map(([value, name]) => [value, name]), grid: 'weapons', fallback: 0 },
   { section: 'robots', kind: 'select', key: 'robotSide', label: 'Robot side', options: [['0', 'Enemy (free for all)'], ['1', 'Enemy team'], ['2', 'Ally (your team)']], fallback: 0 },

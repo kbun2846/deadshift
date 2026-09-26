@@ -33,7 +33,7 @@ export const GRAPHICS = Object.freeze({
 export const DEMANDING_TIERS = Object.freeze(['quality', 'extreme']);
 export const isDemanding = name => DEMANDING_TIERS.includes(name);
 
-export const DEFAULT_SETTINGS = { quality: 'balanced', fps: 60, motion: true, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, keyLock: true, vibration: true,
+export const DEFAULT_SETTINGS = { quality: 'balanced', fps: 60, motion: true, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, keyLock: true, screen: 'fullscreen', vibration: true,
   volume: { master: .6, ambient: .8, weapons: 1, effects: 1 } };
 // Every channel is a plain 0..1 multiplier so the mixer stays predictable:
 // master scales the bus, the rest scale within it.
@@ -133,6 +133,10 @@ export function validateSettings(value = {}, {mobile=false} = {}) {
     fullscreen: typeof value.fullscreen === 'boolean' ? value.fullscreen : true,
     // Keyboard: full screen with the browser's shortcuts held (ui/key-lock.js).
     keyLock: typeof value.keyLock === 'boolean' ? value.keyLock : true,
+    // PC (owner, 2026-09-25): Settings > Graphics > SCREEN, Fullscreen or
+    // Windowed. Saved settings from before it: the shortcut lock turned off
+    // was the only way to stay in the window, so that means Windowed.
+    screen: value.screen === 'fullscreen' || value.screen === 'windowed' ? value.screen : value.keyLock === false ? 'windowed' : 'fullscreen',
     mobileOpacity: [1,.7,.4].includes(Number(value.mobileOpacity)) ? Number(value.mobileOpacity) : DEFAULT_SETTINGS.mobileOpacity,
     volume: validateVolume(value.volume) };
 }

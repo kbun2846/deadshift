@@ -19,7 +19,7 @@ import { NETWORK } from '../config/network.js';
 import { PROTOCOL_VERSION, movementInput, playerInput, applyPlayerState, applyLoadout, readMessage, unpackEvent } from './protocol.js';
 import { blend } from './host-session.js';
 import { ProjectileMirror } from './projectiles.js';
-import { mapColliders } from '../maps.js';
+import { mapColliders, mapHash } from '../maps.js';
 
 // Seconds between our own ticks that count as us being frozen, not them.
 const STALL = 1;
@@ -54,6 +54,8 @@ export class ClientSession {
   this.heard = this.now();
   if (message.t === 'full' || message.t === 'removed') { this.ended = String(message.reason || 'Could not join.'); return; }
   if (message.t === 'welcome') {
+   // A different map, or another build of it: every wall and slope would disagree.
+   if (message.mapHash !== undefined && message.mapHash !== mapHash(this.map)) { this.ended = 'The host is on a different map or version. Reload the page on both devices.'; return; }
    this.id = String(message.id); this.slot = message.slot; if (message.name) this.name = String(message.name);
    // The host burns the crops; this sim only mirrors them (applyWorld).
    this.local.dev = { speed: 1 }; this.local.targets = []; this.local.player.id = this.id; this.local.worldAuthority = false;
@@ -175,9 +177,14 @@ export class ClientSession {
   const input = { seq: ++this.seq, ...(alive ? playerInput(raw) : playerInput({})) };
   this.pending.push(input);
   if (this.pending.length > 120) this.pending.shift();
-  this.transport.send('host', { t: 'input', inputs: this.pending.slice(-this.config.inputRedundancy), ack: this.ack });
+  // (With the shape of this screen, so the host's robots never fire from off it.)
+  this.transport.send('host', { t: 'input', inputs: this.pending.slice(-this.config.inputRedundancy), ack: this.ack, ...(this.aspect ? { aspect: this.aspect } : {}) });
   return alive ? movementInput(input) : movementInput({});
  }
+
+ // This screen's width / height (main.js, every frame: it changes when a
+ // phone turns). Sent with the inputs.
+ setAspect(aspect) { this.aspect = Math.round(aspect * 1000) / 1000; }
 
  // The weapon pick: picked (go false) or picked and in (go true).
  choose(weapon, go = true) { this.transport.send('host', { t: 'choose', weapon, go }); }

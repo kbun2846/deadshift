@@ -14,6 +14,7 @@ import { makeShotgun } from './weapons/shotgun-model.js';
 import { Wading, makeBloodStains } from './effects/blood-wading.js';
 import { buildRobotBody, isRobotSlot, isAllySlot, skinOf, ALLY_COLOURS } from './bots/robot-model.js';
 import { wear } from './bots/robot-wear.js';
+import { groundY, hilly } from './render/ground-lift.js';
 
 // Where the gun sits in the hand, as on your own player (renderer makePlayer).
 const GUN_AT = [.27, .74, -.46];
@@ -123,9 +124,11 @@ export class RemotePlayers {
    if (avatar.ring && avatar.shownRing !== ringColour) { avatar.shownRing = ringColour; avatar.ring.material.color.set(ringColour); avatar.ring.material.opacity = p.ring ? .95 : avatar.ringOpacity; if (p.ring) { avatar.ownRing ??= avatar.ring.geometry; avatar.ring.geometry = TEAM_RING(); } else if (avatar.ownRing) avatar.ring.geometry = avatar.ownRing; }
    const weapon = p.weapon || 'static';
    if (avatar.weapon !== weapon) { avatar.hand.clear(); avatar.hand.add(gunModel(this.view, weapon)); avatar.weapon = weapon; }
-   avatar.root.position.set(p.x, 0, p.z);
+   avatar.root.position.set(p.x, groundY(this.view, p.x, p.z), p.z);
    avatar.root.visible = !sees || sees(p);
    avatar.group.rotation.y = Math.atan2(-p.aimX, -p.aimZ);
+   // Hills: the base ring lies on the slope (renderer layFlat).
+   if (avatar.ring && hilly(this.view)) this.view.layFlat(avatar.ring, p.x, p.z, avatar.group.rotation.y);
    const speed = Math.hypot(p.vx, p.vz);
    const dodge = p.dodgeRemaining > 0 ? Math.sin(Math.PI * (1 - p.dodgeRemaining / RULES.dodgeDuration)) : 0;
    avatar.body.scale.set(1 + dodge * .12, 1 - dodge * .3, 1 + dodge * .12);
@@ -145,7 +148,7 @@ export class RemotePlayers {
  looseBody(slot, weapon, x, z, aimX, aimZ, side = [...this.avatars.values()].find(a => a.slot === slot)?.side || null) {
   const avatar = this.build(null, slot, true, side);
   avatar.hand.add(gunModel(this.view, weapon || 'static'));
-  avatar.root.position.set(x, 0, z); avatar.group.rotation.y = Math.atan2(-aimX, -aimZ);
+  avatar.root.position.set(x, groundY(this.view, x, z), z); avatar.group.rotation.y = Math.atan2(-aimX, -aimZ);
   avatar.root.updateMatrixWorld(true);
   avatar.dispose = () => avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun && !o.userData.surgeShell) { if (!o.geometry.userData.shared) o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });
   return avatar;

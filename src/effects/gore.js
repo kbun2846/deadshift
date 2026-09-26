@@ -17,6 +17,7 @@
 // `detail`: 0 potato, 1 performance, 2 balanced, 3 quality and extreme.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { groundY, hilly } from '../render/ground-lift.js';
 
 export const GORE_DETAIL = Object.freeze({ potato: 0, performance: 1, balanced: 2, quality: 3, extreme: 3 });
 
@@ -213,6 +214,8 @@ export class GoreBurst {
  constructor(view, event, colours, detail = 2) {
   const m = materials(), geo = geometries();
   this.event = event; this.group = new THREE.Group(); view.scene.add(this.group); this.own = [];
+  // Hills: every piece lands on the ground under it (0 on a flat map).
+  this.gy = (x, z) => groundY(view, x, z);
   const mat = color => { const x = new THREE.MeshLambertMaterial({ color, flatShading: true }); this.own.push(x); return x; };
   const coat = mat(colours.coat), arm = mat(colours.arm), legs = mat(colours.legs), skin = mat(colours.skin || '#d6b58a');
   let dx = event.directionX || 0, dz = event.directionZ || 0; const directed = Math.hypot(dx, dz) > .001;
@@ -266,13 +269,15 @@ export class GoreBurst {
   const e = this.event, d = this.dummy;
   for (const p of this.pieces) {
    const flight = (p.vy + Math.sqrt(p.vy * p.vy + 19.6 * (p.y - p.floor))) / 9.8, age = Math.min(t, flight), landed = t >= flight;
-   p.model.position.set(e.x + p.vx * age, Math.max(p.floor, p.y + p.vy * age - 4.9 * age * age), e.z + p.vz * age);
+   const px = e.x + p.vx * age, pz = e.z + p.vz * age;
+   p.model.position.set(px, Math.max(p.floor, p.y + p.vy * age - 4.9 * age * age) + this.gy(px, pz), pz);
    const flat = Math.min(1, age / flight);
    p.model.rotation.set(landed ? 0 : age * p.spin * (1 - flat), p.angle + age * p.spin * .3 * (1 - flat), landed ? 0 : age * p.spin * .4 * (1 - flat));
   }
   this.bits.forEach((b, i) => {
    const flight = (b.vy + Math.sqrt(b.vy * b.vy + 19.6 * (b.y - .02))) / 9.8, age = Math.min(t, flight), landed = t >= flight;
-   d.position.set(e.x + b.vx * age, Math.max(.02, b.y + b.vy * age - 4.9 * age * age), e.z + b.vz * age);
+   const bx = e.x + b.vx * age, bz = e.z + b.vz * age;
+   d.position.set(bx, Math.max(.02, b.y + b.vy * age - 4.9 * age * age) + this.gy(bx, bz), bz);
    d.rotation.set(landed ? 0 : age * b.spin, i, 0);
    d.scale.set(b.size * (landed ? 1.5 : 1), b.size * (landed ? .45 : 1), b.size * (landed ? 1.3 : 1)); d.updateMatrix();
    (i % 2 ? this.darkChunks : this.chunks).setMatrixAt(i >> 1, d.matrix);

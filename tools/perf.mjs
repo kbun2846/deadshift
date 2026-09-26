@@ -3,15 +3,18 @@
 // phase, with p50/p95/max. SwiftShader draws on the CPU in another process,
 // so this measures JavaScript and command submission, not GPU time; use it
 // to compare before/after on the same machine. Dev server up, then:
-//   node tools/perf.mjs [quality=extreme] [weapon=static]
+//   node tools/perf.mjs [quality=extreme] [weapon=static] [map=deadwater] [x z]
+// With x z the run starts there (a map's widest or densest view: on a map
+// with hills, a summit looking into the hollow).
 import { chromium } from 'playwright';
-const [q = 'extreme', w = 'static'] = process.argv.slice(2);
+const [q = 'extreme', w = 'static', mapId = 'deadwater', sx, sz] = process.argv.slice(2);
 const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await b.newPage({ viewport: { width: +(process.env.W || 400), height: +(process.env.H || 250) } });
 const errs = []; p.on('pageerror', e => errs.push(e.message));
 await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q })), q);
-await p.goto(`http://127.0.0.1:5173/?play=1&weapon=${w}&map=deadwater&capture=thumbnail`);
+await p.goto(`http://127.0.0.1:5173/?play=1&weapon=${w}&map=${mapId}&capture=thumbnail`);
 await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: 90000 });
+if (sx !== undefined) await p.evaluate(([x, z]) => { const { sim, view } = window.__capture; Object.assign(sim.player, { x, z, vx: 0, vz: 0 }); view.cameraCut = true; }, [+sx, +sz]);
 console.error('ready');
 await p.evaluate(() => {
   const { view } = window.__capture, rec = window.__rec = { phase: 'idle', rows: [] };

@@ -7,10 +7,11 @@
 //
 // Messages are plain JSON objects with a `t` (type) field:
 //   hello     client -> host   { t, version, name }
-//   welcome   host -> client   { t, id, slot, name, tick, map, players }
+//   welcome   host -> client   { t, id, slot, name, tick, map, mapHash, players }
 //   full      host -> client   { t, reason }            (full / wrong version)
 //   removed   host -> client   { t, reason }            (the host took this player out)
-//   input     client -> host   { t, inputs: [ {seq, ...playerInput}, ... ], ack }
+//   input     client -> host   { t, inputs: [ {seq, ...playerInput}, ... ], ack, aspect? }
+//             (aspect: the joiner's screen, width / height, for the robots' off-screen rule)
 //   choose    client -> host   { t, weapon, go }        (weapon picked; go: into the world now)
 //   pick      client -> host   { t }                    (dead: pick a weapon again)
 //   respawn   client -> host   { t }                    (practice: back in now)
@@ -24,7 +25,10 @@
 // events are numbered and resent until the client acknowledges them, so
 // shots, deaths and kill-feed lines are never lost.
 import { weaponOrDefault } from '../items.js';
-export const PROTOCOL_VERSION = 9;
+// 10: hills (terrain maps: slopes, retaining walls, rounds ending in the
+// ground with `stop` in snapshots, grenade heights above the ground, the map
+// fingerprint in welcome).
+export const PROTOCOL_VERSION = 10;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);
@@ -104,7 +108,9 @@ export function readMessage(data) {
   if (!Array.isArray(data.inputs)) return null;
   const inputs = data.inputs.slice(0, 16).filter(i => i && Number.isInteger(i.seq) && i.seq > 0)
    .map(i => ({ seq: i.seq, ...playerInput(i) }));
-  return { t: 'input', inputs, ack: Number.isInteger(data.ack) ? data.ack : 0 };
+  // (Real screens only, 9:21 upright to 32:9: a claimed shape cannot push the robots' fire in closer than that.)
+  const aspect = Number.isFinite(data.aspect) && data.aspect > 0 ? Math.min(3.6, Math.max(.42, data.aspect)) : 0;
+  return { t: 'input', inputs, ack: Number.isInteger(data.ack) ? data.ack : 0, ...(aspect ? { aspect } : {}) };
  }
  if (data.t === 'choose') return { t: 'choose', weapon: weaponOrDefault(data.weapon), go: data.go !== false };
  // A side picked in the lobby (team modes): a known team id, or null.

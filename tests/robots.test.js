@@ -171,3 +171,54 @@ test('robots have their own skill and style: as asked, or at random, and never t
  const bot = bots.spawn(you, 'rifle', { skill: 'easy', style: 'marksman' });
  assert.equal(bot.profile.label, 'easy marksman'); assert.equal(bot.brain.pf, bot.profile);
 });
+
+test('robots use the real shape of your screen: a phone or tablet tightens the box, 16:9 never changes it (owner, 2026-09-25)', async () => {
+ const { offScreen } = await import('../src/bots/robot-brain.js');
+ const { onScreenOf } = await import('../src/render/camera-framing.js');
+ // The screen's own reach (the camera as drawn): 16:9 13.6 m north, 10.5 south.
+ assert.ok(onScreenOf(16 / 9, 0, -13.4) && !onScreenOf(16 / 9, 0, -13.7));
+ assert.ok(onScreenOf(16 / 9, 0, 10.4) && !onScreenOf(16 / 9, 0, 10.6));
+ // 16:9 on flat ground (Deadwater): exactly the box, everywhere (margins 0
+ // and 1, as robots use them). (On hills the real screen decides at the edges.)
+ for (let x = -20; x <= 20; x += .25) for (let z = -14; z <= 12; z += .25) for (const m of [0, 1]) {
+  assert.equal(offScreen(x, z, 0, 0, m, 0, 16 / 9), offScreen(x, z, 0, 0, m, 0), `${x} ${z} ${m}`);
+ }
+ // A 19.5:9 phone shows only ~10.8 m north: 11 m north is off it (the box says on).
+ assert.equal(offScreen(0, -11, 0, 0), false);
+ assert.equal(offScreen(0, -11, 0, 0, 0, 0, 19.5 / 9), true);
+ assert.equal(offScreen(0, -8, 0, 0, 0, 0, 19.5 / 9), false);
+ // A phone held upright is narrow: 10 m to the side is off it.
+ assert.equal(offScreen(10, 0, 0, 0, 0, 0, 9 / 19.5), true);
+ assert.equal(offScreen(6, 0, 0, 0, 0, 0, 9 / 19.5), false);
+ // You in solo, and joiners online (their inputs carry it), reach the robots' eyes.
+ const { readMessage } = await import('../src/net/protocol.js');
+ assert.equal(readMessage({ t: 'input', inputs: [], ack: 0, aspect: 2.1667 }).aspect, 2.1667);
+ assert.equal(readMessage({ t: 'input', inputs: [], ack: 0, aspect: 99 }).aspect, 3.6);
+ assert.equal(readMessage({ t: 'input', inputs: [], ack: 0, aspect: 'x' }).aspect, undefined);
+ const you = new Simulation(map); you.weapon = 'rifle'; you.reset(); you.targets = []; you.player.id = 'you';
+ const bots = new BotMatch(map, { createSim: m => new Simulation(m), random });
+ const bot = bots.spawn(you, 'rifle');
+ bots.viewAspect = 19.5 / 9;
+ Object.assign(bot.sim.player, { x: you.player.x, z: you.player.z - 11 });
+ bots.before(you); you.step({ moveX: 0, moveZ: 0, aimX: 1, aimZ: 0 }); bots.after(you); bots.step(you);
+ const seen = bot.brain.memory.get('you');
+ assert.ok(seen && seen.aspect === 19.5 / 9, 'your screen travels with you');
+ assert.equal(bot.brain.openFire({ ...seen, x: you.player.x, z: you.player.z }, 11), false, 'no fire from 11 m north of a phone');
+});
+
+test('robots never open fire from off your screen, including just below its bottom edge (owner, 2026-09-25)', async () => {
+ const { offScreen, OFFSCREEN_SOUTH, OFFSCREEN_Z, OFFSCREEN_X } = await import('../src/bots/robot-brain.js');
+ // The camera looks north from the south: a screen shows ~10.5 m south (8.8 m on a wide phone) but ~13.6 m north.
+ assert.ok(OFFSCREEN_SOUTH < 8.8 && OFFSCREEN_Z < 13.6 && OFFSCREEN_X < 19.9, 'every limit sits inside the screen');
+ assert.equal(offScreen(0, 9.5, 0, 0), true, 'a robot 9.5 m south of you is below the bottom edge');
+ assert.equal(offScreen(0, 8, 0, 0), false);
+ assert.equal(offScreen(0, -9.5, 0, 0), false, 'the same distance north is on screen');
+ assert.equal(offScreen(0, -12, 0, 0), true);
+ assert.equal(offScreen(18, 0, 0, 0), true);
+ const sim = new Simulation(map), nav = new NavGrid(map, sim.colliders);
+ const brain = new RobotBrain({ sim, nav, random });
+ sim.player.x = 0; sim.player.z = 10;
+ assert.equal(brain.openFire({ id: 't', x: 0, z: 0, human: false, visible: true }, 10), false, 'from 10 m south it holds fire');
+ sim.player.z = -10;
+ assert.equal(brain.openFire({ id: 't', x: 0, z: 0, human: false, visible: true }, 10), true, 'from 10 m north it may fire');
+});

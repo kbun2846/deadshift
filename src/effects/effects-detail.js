@@ -152,6 +152,11 @@ class Pool {
 export class DetailFX {
  constructor(scene) {
   this.scene = scene; this.level = 1; this.time = 0;
+  // Hills: every item's y is its height above the ground under it, and the
+  // ground's height is added where it is drawn (so floors, bounces and
+  // landings need no change). Callers holding a world height (a gun's muzzle)
+  // take the ground off first. `ground` is set by the view; null: flat.
+  this.ground = null;
   this.clearZone = { value: new THREE.Vector2(1e5, 1e5) }; // set each frame to the player's position
   const glowMap = softTexture(128);
   const hex = new THREE.RingGeometry(.9, 1, 6); hex.rotateX(-Math.PI / 2);
@@ -348,6 +353,7 @@ export class DetailFX {
   if (!this.on) return;
   const t = this.time, damp = k => Math.exp(-k * dt);
   const { spark, ember, puff, glow, ring, hexRing, pillar, chunk, streak } = this.pools;
+  const ground = this.ground && !this.ground.flat ? this.ground : null, base = ground ? (x, z) => ground.heightAt(x, z) : () => 0;
 
   let n = 0;
   for (const p of spark.items) {
@@ -356,7 +362,7 @@ export class DetailFX {
    p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
    if (p.y < .02 && p.vy < 0) { p.y = .02; p.vy *= -p.bounce; p.vx *= .55; p.vz *= .55; }
    const k = age / p.life, speed = Math.hypot(p.vx, p.vy, p.vz);
-   spark.along(n, p.x, p.y, p.z, p.vx, p.vy, p.vz, p.length * (.5 + Math.min(2.5, speed * .12)), p.width);
+   spark.along(n, p.x, p.y + base(p.x, p.z), p.z, p.vx, p.vy, p.vz, p.length * (.5 + Math.min(2.5, speed * .12)), p.width);
    spark.color(n, ramp(p.stops, k), p.glow * (1 - k * k));
    n++;
   }
@@ -368,7 +374,7 @@ export class DetailFX {
    p.vx *= damp(1.6); p.vz *= damp(1.6); p.vy += (p.rise - p.vy) * (1 - damp(1.2));
    p.x += (p.vx + Math.sin(t * 3 + p.born * 7) * .3 * p.wobble) * dt; p.y = Math.max(.03, p.y + p.vy * dt); p.z += (p.vz + Math.cos(t * 2.6 + p.born * 5) * .3 * p.wobble) * dt;
    const k = age / p.life, flicker = .75 + .25 * Math.sin(t * 31 + p.born * 91);
-   ember.flat(n, p.x, p.y, p.z, p.size, p.size, p.size, 0);
+   ember.flat(n, p.x, p.y + base(p.x, p.z), p.z, p.size, p.size, p.size, 0);
    ember.color(n, ramp(p.stops, .25 + k * .7), p.glow * flicker * (1 - k) * Math.min(1, age / .05));
    n++;
   }
@@ -388,7 +394,7 @@ export class DetailFX {
     p.x += p.vx * dt; p.y += (p.vy + p.rise * .3) * dt; p.z += p.vz * dt;
    }
    const k = age / p.life, ease = 1 - (1 - k) ** 2, size = p.size * (1 + p.grow * ease);
-   puff.flat(n, p.x, p.y, p.z, size, size * .72, size, p.yaw + p.spin * age);
+   puff.flat(n, p.x, p.y + base(p.x, p.z), p.z, size, size * .72, size, p.yaw + p.spin * age);
    puff.color(n, p.color);
    puff.alphas[n] = p.alpha * Math.min(1, age / p.fadeIn) * (1 - k) ** 1.5;
    n++;
@@ -399,7 +405,7 @@ export class DetailFX {
   for (const p of glow.items) {
    const age = t - p.born; if (age >= p.life) continue; glow.items[n] = p;
    const k = age / p.life, size = p.size * (1 + p.grow * k), flick = p.flicker ? .7 + .3 * Math.sin(t * 90 + p.born * 50) : 1;
-   glow.flat(n, p.x, p.y, p.z, size, 1, size, p.born * 13);
+   glow.flat(n, p.x, p.y + base(p.x, p.z), p.z, size, 1, size, p.born * 13);
    glow.color(n, p.color, p.glow * flick * (1 - k) ** 1.4);
    n++;
   }
@@ -410,7 +416,7 @@ export class DetailFX {
    for (const p of pool.items) {
     const age = t - p.born; if (age >= p.life) continue; pool.items[n] = p;
     const k = age / p.life, reach = p.radius * (p.from + (1 - p.from) * (1 - (1 - k) ** 3));
-    pool.flat(n, p.x, p.y, p.z, reach, 1, reach, p.yaw + k * (pool === hexRing ? .6 : 0));
+    pool.flat(n, p.x, p.y + base(p.x, p.z), p.z, reach, 1, reach, p.yaw + k * (pool === hexRing ? .6 : 0));
     pool.color(n, p.color, p.glow * (1 - k) ** 1.3);
     n++;
    }
@@ -421,7 +427,7 @@ export class DetailFX {
   for (const p of pillar.items) {
    const age = t - p.born; if (age >= p.life) continue; pillar.items[n] = p;
    const k = age / p.life, width = p.radius * (1 + k * .8);
-   pillar.flat(n, p.x, 0, p.z, width, p.height * (.4 + .6 * Math.min(1, age / .06)), width, t * 4);
+   pillar.flat(n, p.x, base(p.x, p.z), p.z, width, p.height * (.4 + .6 * Math.min(1, age / .06)), width, t * 4);
    pillar.color(n, p.color, p.glow * (1 - k) ** 1.6);
    n++;
   }
@@ -441,7 +447,7 @@ export class DetailFX {
     if (p.y < p.size) { p.y = p.size; p.vy *= -p.bounce; p.vx *= .5; p.vz *= .5; p.spin *= .5; }
    }
    const k = age / p.life, shrink = k > .75 ? 1 - (k - .75) / .25 : 1, s = p.size * shrink;
-   chunk.flat(n, p.x, p.y, p.z, s, s * .8, s, p.yaw + (grounded ? 0 : p.spin * age));
+   chunk.flat(n, p.x, p.y + base(p.x, p.z), p.z, s, s * .8, s, p.yaw + (grounded ? 0 : p.spin * age));
    chunk.color(n, p.color);
    n++;
   }
@@ -451,7 +457,7 @@ export class DetailFX {
   for (const p of streak.items) {
    const age = t - p.born; if (age >= p.life) continue; streak.items[n] = p;
    const k = age / p.life, dx = p.x - p.fromX, dz = p.z - p.fromZ, length = Math.hypot(dx, dz);
-   streak.along(n, (p.x + p.fromX) / 2, p.y, (p.z + p.fromZ) / 2, dx, 0, dz, Math.max(.01, length), p.width * (1 - k * .5));
+   streak.along(n, (p.x + p.fromX) / 2, p.y + base((p.x + p.fromX) / 2, (p.z + p.fromZ) / 2), (p.z + p.fromZ) / 2, dx, 0, dz, Math.max(.01, length), p.width * (1 - k * .5));
    streak.color(n, p.color, p.glow * (1 - k));
    n++;
   }

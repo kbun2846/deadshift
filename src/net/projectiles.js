@@ -13,7 +13,7 @@
 // counts its own from 1 and the renderer keys orbs by id.
 import { RIFLE } from '../config/gameplay.js';
 
-const PELLET_SPEED = 85;
+const PELLET_SPEED = 85, STALE = Object.freeze({ stop: undefined, surge: undefined });
 const r2 = v => Math.round(v * 100) / 100;
 
 export function pack(sim) {
@@ -22,8 +22,9 @@ export function pack(sim) {
  return {
   orbs: sim.shots.filter(s => !s.dead).map(orb),
   hex: sim.hexOrbs.filter(s => !s.dead).map(orb),
-  bullets: sim.rifleBullets.filter(b => !b.dead).map(b => ({ x: r2(b.x), z: r2(b.z), dx: r2(b.dx), dz: r2(b.dz), travel: r2(b.travel), ...(b.surge ? { surge: 1 } : {}) })),
-  pellets: sim.shotgunPellets.filter(b => !b.dead).map(b => ({ x: r2(b.x), z: r2(b.z), dx: r2(b.dx), dz: r2(b.dz), travel: r2(b.travel), range: b.range })),
+  // (Hills: `stop`, where the ground takes a round; only ever set there.)
+  bullets: sim.rifleBullets.filter(b => !b.dead).map(b => ({ x: r2(b.x), z: r2(b.z), dx: r2(b.dx), dz: r2(b.dz), travel: r2(b.travel), ...(b.surge ? { surge: 1 } : {}), ...(b.stop !== undefined ? { stop: r2(b.stop) } : {}) })),
+  pellets: sim.shotgunPellets.filter(b => !b.dead).map(b => ({ x: r2(b.x), z: r2(b.z), dx: r2(b.dx), dz: r2(b.dz), travel: r2(b.travel), range: b.range, ...(b.stop !== undefined ? { stop: r2(b.stop) } : {}) })),
   scatter: (sim.scatterShells || []).map(b => ({ id: b.id, big: b.big, x: r2(b.x), z: r2(b.z), dx: r2(b.dx), dz: r2(b.dz), speed: b.speed, travel: r2(b.travel), limit: r2(b.limit) })),
   grenades: sim.grenades.filter(g => g.released).map(g => ({ id: g.id, x: r2(g.x), y: r2(g.y), z: r2(g.z), age: r2(g.age), flight: g.flight, released: true })),
  };
@@ -46,7 +47,9 @@ export class ProjectileMirror {
    }
    // Bullets and pellets carry no id: matched by order, which is stable
    // because each list only ever loses its oldest rounds and gains new ones.
-   const keep = (previous, list) => list.map((b, i) => Object.assign(previous[i] || {}, b, { stamp: now }));
+   // (An object a new round takes over drops the old one's ground `stop` and
+   // Surge glow: only what the new round's own packet says.)
+   const keep = (previous, list) => list.map((b, i) => Object.assign(previous[i] || {}, STALE, b, { stamp: now }));
    const grenades = new Map();
    for (const g of lists.grenades || []) { const id = base + g.id; grenades.set(id, Object.assign(old.grenades.get(id) || {}, g, { id, stamp: now })); }
    // Scatter shells by id (new small ones appear mid-list when a big one splits).
@@ -72,11 +75,11 @@ export class ProjectileMirror {
     (s.hex ? out.hexOrbs : out.shots).push(view);
    }
    for (const b of player.bullets) {
-    const ahead = Math.min(.1, Math.max(0, now - b.stamp)) * RIFLE.bulletSpeed;
+    const ahead = Math.min(.1 * RIFLE.bulletSpeed, Math.max(0, now - b.stamp) * RIFLE.bulletSpeed, b.stop === undefined ? Infinity : Math.max(0, b.stop - b.travel));
     out.rifleBullets.push(Object.assign(b.view ||= {}, b, { x: b.x + b.dx * ahead, z: b.z + b.dz * ahead, travel: b.travel + ahead }));
    }
    for (const b of player.pellets) {
-    const ahead = Math.min(.1, Math.max(0, now - b.stamp), Math.max(0, (b.range - b.travel) / PELLET_SPEED)) * PELLET_SPEED;
+    const ahead = Math.min(.1, Math.max(0, now - b.stamp), Math.max(0, ((b.stop ?? b.range) - b.travel) / PELLET_SPEED)) * PELLET_SPEED;
     out.shotgunPellets.push(Object.assign(b.view ||= {}, b, { x: b.x + b.dx * ahead, z: b.z + b.dz * ahead, travel: b.travel + ahead }));
    }
    for (const g of player.grenades.values()) out.grenades.push(g);

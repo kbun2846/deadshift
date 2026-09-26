@@ -126,7 +126,7 @@ export class ArenaRobots {
   for (const other of living) {
    const o = other.sim.player; bodies.push(o);
    if (!arena.hostile(seat, other)) { friends.push({ id: other.id, leader: other === leader, busy: this.loud.has(other.id) || (other.robot && other.robot.brain.mode === 'engage') || (other.sim.player.hp < (this.hpSeen.get(other.id) ?? o.hp)), x: o.x, z: o.z, vx: o.vx, vz: o.vz, aimX: o.aimX, aimZ: o.aimZ, hp: o.hp, maxHp: o.maxHp }); continue; }
-   enemies.push({ id: other.id, human: !other.robot, x: o.x, z: o.z, vx: o.vx, vz: o.vz, hp: o.hp, maxHp: o.maxHp, weapon: other.sim.weapon, aimX: o.aimX, aimZ: o.aimZ, loud: this.loud.has(other.id), reloading: reloading(other.sim) });
+   enemies.push({ id: other.id, human: !other.robot, aspect: other.aspect || 0, x: o.x, z: o.z, vx: o.vx, vz: o.vz, hp: o.hp, maxHp: o.maxHp, weapon: other.sim.weapon, aimX: o.aimX, aimZ: o.aimZ, loud: this.loud.has(other.id), reloading: reloading(other.sim) });
   }
   // Who is already after whom: a target others are on is less tempting.
   const targeting = new Map();

@@ -104,7 +104,7 @@ test('render caps produce the requested frame count independently of simulation 
 
 test('graphics tiers change resolution, shadow work, texture detail and effect budgets', () => {
   assert.equal(validateSettings({controlHints:false}).controlHints,false);
-  assert.deepEqual(validateSettings({quality:'potato',fps:1}),{quality:'potato',fps:1,motion:true,controlHints:true,mobileOpacity:.4,aimAssist:true,fullscreen:true,keyLock:true,vibration:true,volume:{...DEFAULT_SETTINGS.volume}});
+  assert.deepEqual(validateSettings({quality:'potato',fps:1}),{quality:'potato',fps:1,motion:true,controlHints:true,mobileOpacity:.4,aimAssist:true,fullscreen:true,keyLock:true,screen:'fullscreen',vibration:true,volume:{...DEFAULT_SETTINGS.volume}});
   assert.equal(validateSettings({aimAssist:false}).aimAssist,false,'aim assist can be turned off');
   assert.ok(GRAPHICS.potato.scale < GRAPHICS.performance.scale);
   assert.equal(GRAPHICS.potato.motes, 0);
@@ -120,7 +120,7 @@ test('graphics tiers change resolution, shadow work, texture detail and effect b
   assert.ok(GRAPHICS.balanced.antialias && GRAPHICS.quality.antialias);
   assert.ok(GRAPHICS.performance.texture < GRAPHICS.balanced.texture && GRAPHICS.balanced.texture < GRAPHICS.quality.texture);
   assert.ok(GRAPHICS.performance.particleCap < GRAPHICS.quality.particleCap);
-  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', fps: 60, motion: false, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, keyLock: true, vibration: true, volume: {...DEFAULT_SETTINGS.volume} });
+  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', fps: 60, motion: false, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, keyLock: true, screen: 'fullscreen', vibration: true, volume: {...DEFAULT_SETTINGS.volume} });
 });
 
 test('mobile opacity accepts saved presets and rejects invalid values',()=>{
@@ -140,6 +140,12 @@ test('first launch defaults to Performance on mobile and Balanced on PC, preserv
 
 test('full screen while playing is a saved choice, on unless turned off', () => {
  assert.equal(validateSettings({}).fullscreen, true);
+ // PC: Fullscreen or Windowed (owner, 2026-09-25); the shortcut lock turned off used to mean windowed.
+ assert.equal(validateSettings({}).screen, 'fullscreen');
+ assert.equal(validateSettings({ screen: 'windowed' }).screen, 'windowed');
+ assert.equal(validateSettings({ screen: 'sideways' }).screen, 'fullscreen');
+ assert.equal(validateSettings({ keyLock: false }).screen, 'windowed');
+ assert.equal(validateSettings({ keyLock: false, screen: 'fullscreen' }).screen, 'fullscreen');
  assert.equal(validateSettings({ fullscreen: false }).fullscreen, false);
  assert.equal(validateSettings({ fullscreen: 'yes' }).fullscreen, true);
 });

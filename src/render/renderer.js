@@ -12,7 +12,8 @@ import { SurgeView } from '../effects/surge-view.js';
 import { PropInstances } from './prop-instances.js';
 import { makeRailways } from '../world/rail-depot.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { mapProps } from '../maps.js';
+import { mapProps, groundFor } from '../maps.js';
+import { groundY, hilly } from './ground-lift.js';
 import { inside, RULES } from '../simulation.js';
 import { GRAPHICS, renderPixelRatio, isDemanding } from '../settings.js';
 import { ElectricEffects } from '../effects/electric-effects.js';
@@ -72,7 +73,7 @@ import { RIFLE_MUZZLE } from '../config/gameplay.js';
 // Drawn after every other see-through thing: a faded roof's depth, then its colour.
 export const ROOF_PREPASS_ORDER = 50;
 const FENCE_PATIENCE = 120;
-import { setExtremeSurfaces, tickExtremeSurfaces } from './extreme-surfaces.js';
+import { setExtremeSurfaces, tickExtremeSurfaces, setExtremeGround } from './extreme-surfaces.js';
 
 import { viewWidth, viewHeight } from '../viewport.js';
 import { WorldBuild } from './world-build.js';
@@ -80,6 +81,8 @@ import { WarmUp } from './warm-up.js';
 import { Vision } from './vision.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
+// A flat marker lying down (layFlat): a quarter turn about x.
+const LYING = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
 // Reused every frame by the beam pass rather than allocated per beam.
 const BEAM_DELTA = new THREE.Vector3(), BEAM_DIR = new THREE.Vector3();
 // walkingDustColor's return value is immediately cloned or lerped by its
@@ -162,7 +165,10 @@ export class WorldView {
     // phones hand out, 0.1 left roughly 24cm of separation at forty units.
     // Raising it to 2 buys twenty times the precision for nothing.
     this.camera = new THREE.PerspectiveCamera(40, 1, CAMERA_NEAR, 180);
-    this.focus = new THREE.Vector3(map.spawn.x, 0, map.spawn.z);
+    // The ground (world/heightfield.js). FLAT on a map without hills: gy()
+    // is then 0 everywhere and every height below is exactly as it was.
+    this.ground = groundFor(map); setExtremeGround(this.ground);
+    this.focus = new THREE.Vector3(map.spawn.x, this.gy(map.spawn.x, map.spawn.z), map.spawn.z);
     this.cameraHeight = OUTDOOR_CAMERA_HEIGHT;
     this.scene.add(new THREE.HemisphereLight(this.look.sky, this.look.bounce, this.look.skyIntensity));
     const sun = new THREE.DirectionalLight(this.look.sun, this.look.sunIntensity);
@@ -218,7 +224,7 @@ export class WorldView {
       const group = this.makeTarget(target.moving, target.kind); group.rotation.y = targetYaw(target.id); this.interiorVisibility.applyEntity(group); this.targets.set(target.id, group); this.scene.add(group);
     }
     this.robotGlow = glowMaterials(this); // robots' visor and bulb (bots/), for the warm-up
-    this.electric = new ElectricEffects(this.scene); this.shots = new Map(); this.particles = []; this.rings = []; this.beams = new Map(); this.blasts = [];
+    this.electric = new ElectricEffects(this.scene); this.electric.ground = this.ground; this.shots = new Map(); this.particles = []; this.rings = []; this.beams = new Map(); this.blasts = [];
     this.smokeGeo = new THREE.IcosahedronGeometry(1, 0);
     this.beamGeo = new THREE.CylinderGeometry(1, 1, 1, 6);
     this.fxLight = new THREE.PointLight('#9bffe1', 0, 7, 2); this.scene.add(this.fxLight); this.fxLightLevel = 0;
@@ -254,10 +260,10 @@ export class WorldView {
       mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
       this.scene.add(mesh); return mesh;
     });
-    this.dustTrail = new DustTrail(this.scene);
+    this.dustTrail = new DustTrail(this.scene); this.dustTrail.ground = this.ground;
     // Sparks, embers, smoke, flashes, shock rings and grit over every weapon,
     // blast, fire and footstep (effects-detail.js). Counts scale per preset.
-    this.fx = new DetailFX(this.scene);
+    this.fx = new DetailFX(this.scene); this.fx.ground = this.ground;
     // Where two floating orbs arc to each other, both ends flash and spit.
     this.electric.onContact = (a, b) => { for (const end of [a, b]) this.fx.electric(end.x, .72, end.z, .45, { ring: false }); };
     this.birds = new Birds(this.scene);
@@ -357,6 +363,34 @@ export class WorldView {
     this.camera.position.set(this.focus.x, this.cameraHeight, this.focus.z + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(this.focus); this.camera.updateMatrixWorld();
   }
 
+  // The ground's height at (x, z): 0 on a flat map.
+  gy(x, z) { return groundY(this, x, z); }
+  // Hills: lay `object` on the ground's slope at (x, z), turned `yaw` about
+  // the ground's normal (a print, a mark, a pool of blood).
+  tiltToGround(object, x, z, yaw = 0) {
+    const g = this.ground.gradientAt(x, z, this.tiltSlope ||= { x: 0, z: 0 });
+    const normal = (this.tiltNormal ||= new THREE.Vector3()).set(-g.x, 1, -g.z).normalize();
+    object.quaternion.setFromUnitVectors(UP, normal).multiply((this.tiltYaw ||= new THREE.Quaternion()).setFromAxisAngle(UP, yaw));
+    return object;
+  }
+  // Hills: the same for a flat marker built lying down (a quarter turn about
+  // x: a base ring, the aim chevron, a kill ring) that rides a figure turned
+  // `yaw`, so it lies on the slope instead of half buried on the uphill side.
+  // Hills: can `from` see `to` over the ground? Kept in `memo` until either
+  // moves (they move only on simulation ticks, not every frame).
+  seenFrom(memo, from, to) {
+    if (memo.sx !== from.x || memo.sz !== from.z || memo.tx !== to.x || memo.tz !== to.z) {
+      memo.sx = from.x; memo.sz = from.z; memo.tx = to.x; memo.tz = to.z; memo.seen = this.ground.sightClear(from.x, from.z, to.x, to.z);
+    }
+    return memo.seen;
+  }
+  layFlat(object, x, z, yaw = 0) {
+    const g = this.ground.gradientAt(x, z, this.tiltSlope ||= { x: 0, z: 0 });
+    const normal = (this.tiltNormal ||= new THREE.Vector3()).set(-g.x, 1, -g.z).normalize().applyAxisAngle(UP, -yaw);
+    object.quaternion.setFromUnitVectors(UP, normal).multiply(LYING);
+    return object;
+  }
+
   material(color) {
     if (!this.materials.has(color)) { const m = new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0 }); this.materials.set(color, m); (this.materialColors ||= new WeakMap()).set(m, color); }
     return this.materials.get(color);
@@ -441,6 +475,7 @@ export class WorldView {
   setQuality(name) {
     this.rifleView?.setQuality(name);
     this.qualityName = name; this.quality = GRAPHICS[name] || GRAPHICS.balanced;
+    this.refineTerrain?.(name); // (hills: a finer preset, a finer ground mesh)
     this.resolutionScale=1;this.shadowClock=0;
     this.cropView?.setQuality(name);
     const q = this.quality;
@@ -762,6 +797,16 @@ export class WorldView {
     const rect = this.canvasRect();
     this.aimNDC ||= new THREE.Vector2();
     this.raycaster.setFromCamera(this.aimNDC.set((clientX - rect.left) / rect.width * 2 - 1, -(clientY - rect.top) / rect.height * 2 + 1), this.camera);
+    if (hilly(this)) {
+      // Hills: where the ray meets the ground (lifted by the same .7 as the
+      // flat plane), marched in quarter metres across the ground's height
+      // band and then halved down to a centimetre.
+      if (this.aimOnGround(this.raycaster.ray, this.aimHit)) {
+        this.cursorWorld.copy(this.aimHit);
+        return { aimX: this.aimHit.x - player.x, aimZ: this.aimHit.z - player.z, aimPointX: this.aimHit.x, aimPointZ: this.aimHit.z };
+      }
+      return { aimX: player.aimX, aimZ: player.aimZ };
+    }
     if (this.raycaster.ray.intersectPlane(this.aimPlane, this.aimHit)) {
       this.cursorWorld.copy(this.aimHit);
       return { aimX: this.aimHit.x - player.x, aimZ: this.aimHit.z - player.z, aimPointX: this.aimHit.x, aimPointZ: this.aimHit.z };
@@ -769,9 +814,29 @@ export class WorldView {
     return { aimX: player.aimX, aimZ: player.aimZ };
   }
 
+  aimOnGround(ray, out) {
+    const o = ray.origin, d = ray.direction, g = this.ground, lift = .7;
+    if (d.y > -1e-4) return false;
+    const above = (t) => o.y + d.y * t - (g.heightAt(o.x + d.x * t, o.z + d.z * t) + lift);
+    // From where the ray drops to the ground's highest point to its lowest.
+    let t0 = Math.max(0, (o.y - g.maxY - lift) / -d.y), t1 = (o.y - g.minY - lift) / -d.y;
+    const flat = Math.hypot(d.x, d.z), step = flat > 1e-6 ? Math.min(.25 / flat, (t1 - t0) / 4 || 1) : t1 - t0;
+    let a = t0, hit = -1;
+    for (let t = t0 + step; ; t += step) {
+      if (t > t1) t = t1;
+      if (above(t) <= 0) { hit = t; break; }
+      a = t; if (t >= t1) break;
+    }
+    if (hit < 0) hit = t1;
+    for (let i = 0; i < 12; i++) { const m = (a + hit) / 2; if (above(m) > 0) a = m; else hit = m; }
+    out.set(o.x + d.x * hit, o.y + d.y * hit, o.z + d.z * hit);
+    return true;
+  }
+
+  // (y is above the ground there; on hills the ground's height is added.)
   screenPoint(x, z, y = .72) {
     this.screenVector ||= new THREE.Vector3();
-    const p = this.screenVector.set(x, y, z).project(this.camera);
+    const p = this.screenVector.set(x, y + this.gy(x, z), z).project(this.camera);
     return { x: (p.x * .5 + .5) * viewWidth(), y: (-p.y * .5 + .5) * viewHeight() };
   }
 
@@ -876,12 +941,12 @@ export class WorldView {
     this.fx.electric(e.x, .8, e.z, kill ? 1.4 : .7, { ring: kill });
     this.burst(e.x, e.z, kill ? 18 : 5, 'hit', ROBOT_CHIP);
     if (kill) this.fx.electric(e.x, .5, e.z, 1, { ring: false });
-    this.fxLight.color.set('#b8ecff'); this.fxLight.position.set(e.x, 1.1, e.z); this.fxLightLevel = Math.max(this.fxLightLevel, kill ? 20 : 6);
+    this.fxLight.color.set('#b8ecff'); this.fxLight.position.set(e.x, 1.1 + this.gy(e.x, e.z), e.z); this.fxLightLevel = Math.max(this.fxLightLevel, kill ? 20 : 6);
   }
 
   muzzleLight(reach, level, shooter = this.lastSim?.player) {
     const p = shooter; if (!p) return;
-    this.fxLight.color.set('#ffb766'); this.fxLight.position.set(p.x + p.aimX * reach, 1.05, p.z + p.aimZ * reach);
+    { const lx = p.x + p.aimX * reach, lz = p.z + p.aimZ * reach; this.fxLight.color.set('#ffb766'); this.fxLight.position.set(lx, 1.05 + this.gy(lx, lz), lz); }
     this.fxLightLevel = Math.max(this.fxLightLevel, level);
   }
 
@@ -939,7 +1004,8 @@ export class WorldView {
     // (or hex, or shot) was. Their own point is refreshed by each event, and
     // the stream reports every tick, so their arcs follow their gun.
     const muzzle = (this.netMuzzles ||= new Map()).get(slot) || new THREE.Vector3();
-    this.netMuzzles.set(slot, muzzle.set(shooter.x + shooter.aimX * .95 + shooter.aimZ * .25, .76, shooter.z + shooter.aimZ * .95 - shooter.aimX * .25));
+    { const mx = shooter.x + shooter.aimX * .95 + shooter.aimZ * .25, mz = shooter.z + shooter.aimZ * .95 - shooter.aimX * .25;
+      this.netMuzzles.set(slot, muzzle.set(mx, .76 + this.gy(mx, mz), mz)); }
     const savedSim = this.lastSim;
     this.lastSim = Object.assign(Object.create(savedSim || {}), { player: { ...shooter, dodgeX: shooter.vx || 0, dodgeZ: shooter.vz || 0 } });
     this.eventMuzzle = muzzle;
@@ -990,7 +1056,7 @@ export class WorldView {
           const path = e.paths[Math.floor(Math.random() * e.paths.length)];
           this.fx.electric(path.b.x, path.b.y ?? .76, path.b.z, .55 + Math.random() * .4, { ring: Math.random() < .3 });
         }
-        this.fx.glow({ x: muzzle.x, y: muzzle.y, z: muzzle.z, size: .7, life: .06, color: STREAM_GLOW, glow: 1.3, flicker: 1 });
+        this.fx.glow({ x: muzzle.x, y: muzzle.y - this.gy(muzzle.x, muzzle.z), z: muzzle.z, size: .7, life: .06, color: STREAM_GLOW, glow: 1.3, flicker: 1 });
       }
       // The arcs keep this point and follow it while they are drawn: this
       // player's live gun, or the other player's own point (netEvent).
@@ -1003,7 +1069,7 @@ export class WorldView {
     if (e.type === 'hexFizzle') this.fx.electric(e.x, .75, e.z, .7);
     // A shot stopped by a hex shield: a small crackle where it would have landed.
     if (e.type === 'hexBlock') this.fx.electric(e.x, .8, e.z, .45);
-    if (e.type.startsWith('hex')) { this.electric.event(e); if (e.type === 'hexPulse') { this.shake = Math.max(this.shake, .2); this.fxLight.color.set('#b8ecff'); this.fxLight.position.set(e.nodes[0].originX, 1.3, e.nodes[0].originZ); this.fxLightLevel = 35; } }
+    if (e.type.startsWith('hex')) { this.electric.event(e); if (e.type === 'hexPulse') { this.shake = Math.max(this.shake, .2); this.fxLight.color.set('#b8ecff'); this.fxLight.position.set(e.nodes[0].originX, 1.3 + this.gy(e.nodes[0].originX, e.nodes[0].originZ), e.nodes[0].originZ); this.fxLightLevel = 35; } }
     if (e.type === 'dodge') {
       this.burst(e.x, e.z, 12 * (FOOTFALL_PARTICLES[this.qualityName] ?? 1), 'dust', this.kickedDustColor(e.x, e.z));
       const p = this.lastSim?.player;
@@ -1021,8 +1087,8 @@ export class WorldView {
       // out of the player's chest; orbs parked out in the world keep theirs.
       const atGun = path => Math.hypot(path.x - e.x, path.z - e.z) <= 1.15 && muzzle.lengthSq() > 0;
       for (const path of e.paths) this.addBeam(atGun(path) ? { ...path, x: muzzle.x, z: muzzle.z } : path, .016 + e.count * .0007);
-      if (muzzle.lengthSq() > 0) this.fx.electric(muzzle.x, muzzle.y, muzzle.z, .6 + Math.min(1, e.count / 12), { ring: false });
-      this.fxLight.color.set('#9bffe1'); this.fxLight.position.set(e.x, 1.2, e.z); this.fxLightLevel = 8 + e.count * 1.5;
+      if (muzzle.lengthSq() > 0) this.fx.electric(muzzle.x, muzzle.y - this.gy(muzzle.x, muzzle.z), muzzle.z, .6 + Math.min(1, e.count / 12), { ring: false });
+      this.fxLight.color.set('#9bffe1'); this.fxLight.position.set(e.x, 1.2 + this.gy(e.x, e.z), e.z); this.fxLightLevel = 8 + e.count * 1.5;
     }
     if (e.type === 'pointImpact') { this.burst(e.x, e.z, 6 * this.impactDetail, 'hit'); this.fx.electric(e.x, .72, e.z, .8); }
     if (e.type === 'explosion') this.electric.event({ type: 'convergence', x: e.x, z: e.z, radius: e.radius * .6 });
@@ -1087,7 +1153,7 @@ export class WorldView {
         // fade on independent clocks.
         this.killRingGeo ||= new THREE.RingGeometry(.45, .49, 32);
         const m = new THREE.Mesh(this.killRingGeo, new THREE.MeshBasicMaterial({ color: '#fae8be', transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false }));
-        m.rotation.x = -Math.PI / 2; m.position.set(e.x, .12, e.z); this.scene.add(m); this.rings.push({ mesh: m, age: 0 });
+        m.rotation.x = -Math.PI / 2; m.position.set(e.x, .12 + this.gy(e.x, e.z), e.z); if (hilly(this)) this.layFlat(m, e.x, e.z); this.scene.add(m); this.rings.push({ mesh: m, age: 0 });
       }
     }
     if (e.type === 'wall') this.burst(e.x, e.z, (e.launched ? 5 : 2) * this.impactDetail, 'dust');
@@ -1178,10 +1244,10 @@ export class WorldView {
     // (takeBlastKit): an orb volley used to build a hundred meshes and six
     // materials on the frame it landed, each material a fresh program lookup
     // and interior patch, and throw them all away 1.8 s later.
-    const kit = this.takeBlastKit(), { ring, core } = kit;
-    ring.material.opacity = .9; ring.rotation.x = -Math.PI / 2; ring.position.set(e.x, .09, e.z); ring.scale.setScalar(.1); this.scene.add(ring);
+    const kit = this.takeBlastKit(), { ring, core } = kit, by = this.gy(e.x, e.z);
+    ring.material.opacity = .9; ring.rotation.x = -Math.PI / 2; ring.position.set(e.x, .09 + by, e.z); ring.scale.setScalar(.1); this.scene.add(ring);
     core.material.opacity = 1; core.visible = true;
-    core.position.set(e.x, .7, e.z); core.scale.setScalar(e.radius * .4); core.renderOrder = 1; this.scene.add(core);
+    core.position.set(e.x, .7 + by, e.z); core.scale.setScalar(e.radius * .4); core.renderOrder = 1; this.scene.add(core);
     // Keep the readable fireball on every preset; quality adds extra rolling lobes.
     const count = Math.min(this.qualityName==='extreme'?48:isDemanding(this.qualityName)?36:20,Math.max(4, Math.round(4 + e.count * .55 * this.quality.effects)));
     // Every puff in a blast fades on the same curve (only position and scale
@@ -1192,16 +1258,16 @@ export class WorldView {
       const puff = kit.puffs[i] ||= { mesh: new THREE.Mesh(this.smokeGeo, kit.materials[lane]), flame: new THREE.Mesh(this.smokeGeo, kit.materials[lane + 2]) };
       const angle = i / count * Math.PI * 2 + Math.random() * .4;
       for (const part of [puff.mesh, puff.flame]) {
-        part.position.set(e.x, .3, e.z); part.scale.setScalar(.08); part.visible = true;
+        part.position.set(e.x, .3 + by, e.z); part.scale.setScalar(.08); part.visible = true;
         part.rotation.set(Math.random() * 3, Math.random() * 6, Math.random() * 3); this.scene.add(part);
       }
       puff.dx = Math.cos(angle); puff.dz = Math.sin(angle); puff.size = .3 + Math.random() * .16;
       smoke.push(puff);
     }
-    this.blasts.push({ x: e.x, z: e.z, radius: e.radius, ring, core, smoke, kit, materials: kit.materials, age: 0 });
+    this.blasts.push({ x: e.x, y: by, z: e.z, radius: e.radius, ring, core, smoke, kit, materials: kit.materials, age: 0 });
     this.burst(e.x, e.z, Math.max(3, Math.round((isDemanding(this.qualityName) ? 25 + e.count * 7 : 5 + e.count * 2) * Math.min(1, look))), 'hit');
     this.shake = Math.max(this.shake, Math.min(1.1,.15 + e.count * .045)); this.shakeDecay = 8;
-    this.fxLight.color.set('#ff9e42'); this.fxLight.position.set(e.x, 1.5, e.z); this.fxLightLevel = Math.min(120,(15 + e.count * 4) * Math.min(1, .5 + .5 * look));
+    this.fxLight.color.set('#ff9e42'); this.fxLight.position.set(e.x, 1.5 + by, e.z); this.fxLightLevel = Math.min(120,(15 + e.count * 4) * Math.min(1, .5 + .5 * look));
   }
 
   updateBlasts(dt) {
@@ -1219,9 +1285,9 @@ export class WorldView {
       for (let i = 0; i < 2; i++) { b.materials[i].opacity = haze; b.materials[i + 2].opacity = fade; }
       for (const puff of b.smoke) {
         const spread = b.radius * (.16 + Math.min(b.age, 1) * .38);
-        puff.mesh.position.set(b.x + puff.dx * spread + b.age * .23, .45 + b.age * .8, b.z + puff.dz * spread);
+        puff.mesh.position.set(b.x + puff.dx * spread + b.age * .23, .45 + b.age * .8 + b.y, b.z + puff.dz * spread);
         puff.mesh.scale.setScalar(b.radius * puff.size * (.8 + b.age * .55));
-        puff.flame.position.set(b.x + puff.dx * b.radius * fire * .4, .5 + b.age * 1.8, b.z + puff.dz * b.radius * fire * .4);
+        puff.flame.position.set(b.x + puff.dx * b.radius * fire * .4, .5 + b.age * 1.8 + b.y, b.z + puff.dz * b.radius * fire * .4);
         puff.flame.scale.setScalar(b.radius * puff.size * (1 + fire * .65) * Math.sqrt(fade));
         puff.flame.visible = fade > 0;
       }
@@ -1272,7 +1338,9 @@ export class WorldView {
         b.arc.removeFromParent(); b.arc.geometry.dispose(); b.arc.material.dispose(); this.beams.delete(id); continue;
       }
       // Scratch vectors: one per beam per frame otherwise.
-      const delta = BEAM_DELTA.set(b.endX - b.startX, 0, b.endZ - b.startZ), length = delta.length();
+      // (Hills: from the ground under one end to the ground under the other.)
+      const y0 = this.gy(b.startX, b.startZ), y1 = this.gy(b.endX, b.endZ);
+      const delta = BEAM_DELTA.set(b.endX - b.startX, y1 - y0, b.endZ - b.startZ), length = delta.length();
       const opacity = 1 - Math.max(0, b.age - .1) / .52;
       const arcPoints = b.arc.geometry.attributes.position;
       const px = length ? -delta.z / length : 0, pz = length ? delta.x / length : 0;
@@ -1280,11 +1348,12 @@ export class WorldView {
         const t = i / 16, envelope = Math.sin(t * Math.PI);
         const jitter = Math.sin(i * 37.1 + b.seed * 11 + Math.floor(this.effectTime * 24) * 7.3);
         const offset = jitter * envelope * Math.min(.12, length * .04);
-        arcPoints.setXYZ(i, lerp(b.startX, b.endX, t) + px * offset, .74 + offset * .45, lerp(b.startZ, b.endZ, t) + pz * offset);
+        const ax = lerp(b.startX, b.endX, t) + px * offset, az = lerp(b.startZ, b.endZ, t) + pz * offset;
+        arcPoints.setXYZ(i, ax, .74 + offset * .45 + this.gy(ax, az), az);
       }
       arcPoints.needsUpdate = true; b.arc.material.opacity = Math.max(0, opacity * .8); b.arc.visible = length > .05;
       for (const [mesh, scale] of [[b.core, 1], [b.halo, this.qualityName === 'extreme' ? 11 : isDemanding(this.qualityName) ? 9 : 5]]) {
-        mesh.position.set((b.startX + b.endX) / 2, .72, (b.startZ + b.endZ) / 2);
+        mesh.position.set((b.startX + b.endX) / 2, .72 + (y0 + y1) / 2, (b.startZ + b.endZ) / 2);
         if (length > .0001) mesh.quaternion.setFromUnitVectors(UP, BEAM_DIR.copy(delta).normalize());
         mesh.scale.set(b.width * scale, Math.max(.001, length), b.width * scale);
         mesh.material.opacity = Math.max(0, opacity * (scale === 1 ? .98 : .12));
@@ -1301,7 +1370,7 @@ export class WorldView {
     if (this.qualityName === 'extreme') tickExtremeSurfaces(elapsed);
     const p = sim.player, speed = Math.hypot(p.vx, p.vz);
     const renderX = lerp(previousPlayer.x, p.x, alpha), renderZ = lerp(previousPlayer.z, p.z, alpha);
-    this.player.position.set(renderX, 0, renderZ);
+    this.player.position.set(renderX, this.gy(renderX, renderZ), renderZ);
     // Dev "remove my player" hides the body (the death view hides it too, so
     // only give it back when no death is playing).
     // Online, a player on the weapon menu (or down after their death has
@@ -1326,6 +1395,13 @@ export class WorldView {
       }
     }
     this.player.rotation.y = Math.atan2(-p.aimX, -p.aimZ);
+    if (hilly(this)) {
+      // Hills: the base ring and the aim chevron lie on the slope under them.
+      const ud = this.player.userData, yaw = this.player.rotation.y, al = Math.hypot(p.aimX, p.aimZ) || 1;
+      const tipX = renderX + p.aimX / al * .95, tipZ = renderZ + p.aimZ / al * .95;
+      this.layFlat(ud.ring, renderX, renderZ, yaw);
+      if (ud.pointer) { this.layFlat(ud.pointer, tipX, tipZ, yaw); ud.pointer.position.y = .08 + this.gy(tipX, tipZ) - this.player.position.y; }
+    }
     const body = this.player.userData.body;
     const dodge = p.dodgeRemaining > 0 ? Math.sin(Math.PI * (1 - p.dodgeRemaining / RULES.dodgeDuration)) : 0;
     body.rotation.x = sim.spray.active ? -.12 : 0;
@@ -1359,6 +1435,12 @@ export class WorldView {
     this.focus.z = deathCamera?deathCamera.z:lerp(this.focus.z, cameraRoom && !cameraRoom.followCamera ? cameraRoom.z : renderZ, blend);
     this.cameraHeight = deathCamera?deathCamera.height:lerp(this.cameraHeight, cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT, cut ? 1 : 1 - Math.exp(-5.7 * dt));
     }
+    // Hills: the camera rides the ground under what it follows, smoothed
+    // (about 4/s) so it glides over bumps instead of bobbing on them.
+    if (hilly(this)) {
+      const want = cameraRoom && !cameraRoom.followCamera && !pick && !deathCamera ? cameraRoom.baseY || 0 : this.gy(this.focus.x, this.focus.z);
+      this.focus.y = cut ? want : lerp(this.focus.y, want, 1 - Math.exp(-4 * dt));
+    }
     this.kick.multiplyScalar(Math.exp(-15 * dt)); this.shake *= Math.exp(-this.shakeDecay * dt);
     const pressureShake=this.shotgunView?.pressure.shake||0;
     const shakeX = this.motion ? Math.sin(elapsed * 91) * (this.shake+pressureShake) * .65 : 0;
@@ -1372,15 +1454,15 @@ export class WorldView {
       // world; otherwise every update lands edges on a slightly different grid
       // and they crawl. See shadow-snap.js.
       const cam = this.sun.shadow.camera, size = this.sun.shadow.mapSize;
-      const at = snapShadowFocus({ x: fx, y: 0, z: fz }, this.sunBasis,
+      const at = snapShadowFocus({ x: fx, y: this.focus.y, z: fz }, this.sunBasis,
         (cam.right - cam.left) / size.x, (cam.top - cam.bottom) / size.y);
       this.sun.position.set(at.x + this.sunOffset.x, at.y + this.sunOffset.y, at.z + this.sunOffset.z);
       this.sun.target.position.set(at.x, at.y, at.z);
       this.sun.shadow.needsUpdate=true;
       this.shadowClock=shadowRate?this.shadowClock%(1/shadowRate):0;
     }
-    const snapped = snapCameraFocus(fx, fz, this.cameraHeight, this.camera.fov, this.crisp ? this.crisp.height : this.renderer.getDrawingBufferSize(this.bufferSize).y);
-    this.camera.position.set(snapped.x, this.cameraHeight, snapped.z + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(snapped.x, 0, snapped.z); this.camera.updateMatrixWorld();
+    const fy = this.focus.y, snapped = snapCameraFocus(fx, fz, this.cameraHeight, this.camera.fov, this.crisp ? this.crisp.height : this.renderer.getDrawingBufferSize(this.bufferSize).y, fy);
+    this.camera.position.set(snapped.x, fy + this.cameraHeight, snapped.z + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(snapped.x, fy, snapped.z); this.camera.updateMatrixWorld();
     for (const roof of this.roofs) {
       // Inside, the roof fades right out and is then not drawn at all. It used
       // to stay at 9.5% (a faint roof overhead), but on some GPUs that faint
@@ -1429,12 +1511,12 @@ export class WorldView {
     // Practice targets not in the sim's list (multiplayer has none) stay hidden.
     if (sim.targets.length !== this.targets.size) for (const g of this.targets.values()) g.visible = false;
     for (const t of sim.targets) {
-      const g = this.targets.get(t.id); if (!g) continue; g.position.set(t.x, 0, t.z);
+      const g = this.targets.get(t.id); if (!g) continue; g.position.set(t.x, this.gy(t.x, t.z), t.z);
       // Portal shaders clip body, health bar and shadows indoors. Outdoors,
       // normal camera depth handles cover; ground-level sight rays must not hide
       // an entity that is exposed in the overhead view.
       // Never toggle the entire entity because its center crosses one sightline.
-      g.visible = cropEntityVisible(sim.crops, sim.player, t);
+      g.visible = cropEntityVisible(sim.crops, sim.player, t) && (!hilly(this) || t.friendly || this.seenFrom(g.userData.sight ||= {}, sim.player, t));
       g.userData.board.visible = t.hp > 0;
       // Damage shows as it breaks, Balanced and up (target-damage.js); built
       // the first time a target is hurt, again if the preset changes.
@@ -1488,7 +1570,8 @@ export class WorldView {
       }
       // Match player interpolation without changing collision simulation authority.
       const behind = Math.min(s.age, (1 - alpha) / 60);
-      g.position.set(s.x - s.vx * behind, .72 + (s.launched ? 0 : Math.sin(elapsed * 4 + s.id) * .055), s.z - s.vz * behind);
+      const ox = s.x - s.vx * behind, oz = s.z - s.vz * behind;
+      g.position.set(ox, .72 + (s.launched ? 0 : Math.sin(elapsed * 4 + s.id) * .055) + this.gy(ox, oz), oz);
       g.rotation.y = Math.atan2(s.vx, s.vz); g.scale.setScalar(s.hex ? 2 : 1);
       if(s.hex){
         const t=Math.min(1,s.age/.18),arrival=1-(1-t)**3;
@@ -1553,16 +1636,21 @@ export class WorldView {
     // Online: other players, already placed by the network session (main.js sets the list).
     // From indoors you only see out through doors and windows (the grey
     // shroud): anyone out there is hidden with it, not drawn over it.
-    const inside = sim.interior, sees = inside ? p => {
+    const inside = sim.interior, indoors = inside ? p => {
       const dx = p.x - sim.player.x, dz = p.z - sim.player.z, l = Math.hypot(dx, dz) || 1;
       return [0, -.4, .4].some(o => sim.canAimAt(p.x - dz / l * o, p.z + dx / l * o));
     } : null;
+    // Hills: anyone the ground hides from you (sim.sees' rule) is not drawn,
+    // on every preset (it is gameplay); your own side always is.
+    const ground = this.ground, sees = !hilly(this) ? indoors : p => (!indoors || indoors(p)) &&
+      (p.ally || (this.teamRing && p.ring === this.teamRing) || ground.sightClear(sim.player.x, sim.player.z, p.x, p.z));
     if (this.remotePlayers?.length || this.remote) (this.remote ||= new RemotePlayers(this)).update(this.remotePlayers || [], elapsed, fdt, this.bloodSources || [], sees);
     if (this.blobShadows?.enabled) {
       const movers = [];
       if (this.player.visible) movers.push({ x: renderX, z: renderZ, size: .95 });
-      for (const t of sim.targets) if (t.hp > 0) movers.push({ x: t.x, z: t.z, size: t.kind === 'dummy' ? .8 : 1.1, height: t.kind === 'dummy' ? 1.7 : 1.2 });
-      for (const p of this.remotePlayers || []) if (!sees || sees(p)) movers.push({ x: p.x, z: p.z, size: .95 });
+      for (const t of sim.targets) if (t.hp > 0 && (!hilly(this) || this.targets.get(t.id)?.visible !== false)) movers.push({ x: t.x, z: t.z, size: t.kind === 'dummy' ? .8 : 1.1, height: t.kind === 'dummy' ? 1.7 : 1.2 });
+      // (Hills: whether each is drawn was just worked out, for the bodies.)
+      for (const p of this.remotePlayers || []) if (!sees || (hilly(this) ? this.remote?.avatars.get(p.id)?.root.visible !== false : sees(p))) movers.push({ x: p.x, z: p.z, size: .95 });
       this.blobShadows.update(i => sim.props[i]?.hp > 0, movers);
     }
     this.cropView.update(sim, dt);
@@ -1576,6 +1664,8 @@ export class WorldView {
     const drawn = Math.min(this.quality.motes * 3, positions.length);
     for (let i = 0; i < drawn; i += 3) { positions[i] += dt * .42; positions[i + 2] += dt * .12; if (positions[i] > 38) positions[i] = -38; }
     if(this.quality.motes)this.motes.geometry.attributes.position.needsUpdate = true;
+    // (Hills: the motes ride with the camera's height.)
+    if (hilly(this) && this.motes.position.y !== this.focus.y) { this.motes.position.y = this.focus.y; this.motes.updateMatrix(); }
     this.updateAmbient(sim, dt, elapsed);
     if(active)this.surfaceMarks.flush(2);
     this.render();
@@ -1728,7 +1818,8 @@ export class WorldView {
     }
     const fade = this.footMesh.geometry.attributes.fade;
     for (const [i, foot] of this.footprints.entries()) {
-      this.dummy.position.set(foot.x, .041, foot.z); this.dummy.rotation.set(0, foot.angle, 0);
+      this.dummy.position.set(foot.x, .041 + this.gy(foot.x, foot.z), foot.z);
+      if (!hilly(this)) this.dummy.rotation.set(0, foot.angle, 0); else this.tiltToGround(this.dummy, foot.x, foot.z, foot.angle);
       this.dummy.scale.set(.095, 1, .18); this.dummy.updateMatrix();
       this.footMesh.setMatrixAt(i, this.dummy.matrix); fade.setX(i, Math.max(0, 1 - foot.age / footLife) * Math.min(1, foot.age / .08 + .4));
     }
@@ -1792,7 +1883,8 @@ export class WorldView {
       p.vx *= Math.exp(-dt * drag); p.vz *= Math.exp(-dt * drag);
       if (p.debris) p.angle += p.spin * dt;
       const index = counts[p.material]++; if (index >= PARTICLE_POOL) continue;
-      this.dummy.position.set(p.x, p.y, p.z); this.dummy.rotation.set(p.angle + p.life * 2, p.angle, p.life);
+      // (y is above the ground under it: DetailFX's rule.)
+      this.dummy.position.set(p.x, p.y + this.gy(p.x, p.z), p.z); this.dummy.rotation.set(p.angle + p.life * 2, p.angle, p.life);
       const scale = p.size * Math.max(0, p.debris ? Math.min(1, p.life / .6) : p.life / p.maxLife);
       this.dummy.scale.set(scale * (p.stretch || 1), scale * (p.debris ? .55 : 1), scale); this.dummy.updateMatrix();
       this.particlePool[p.material].setMatrixAt(index, this.dummy.matrix);
@@ -1834,7 +1926,7 @@ export class WorldView {
     this.cropView.reset();
     this.electric.clear(); this.surfaceMarks.clear(); this.dustTrail.clear(); this.birds.clear();
     this.footprints.length = 0; this.footMesh.count = 0; this.footDistance = 0; this.lastFootPosition = { ...sim.player };
-    this.focus.set(sim.player.x, 0, sim.player.z); this.kick.set(0, 0, 0); this.shake = 0; this.particles.length = 0;
+    this.focus.set(sim.player.x, this.gy(sim.player.x, sim.player.z), sim.player.z); this.kick.set(0, 0, 0); this.shake = 0; this.particles.length = 0;
     for (const g of this.shots.values()) { this.scene.remove(g); g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); } this.shots.clear();
     for (const r of this.rings) { r.mesh.removeFromParent(); r.mesh.geometry.dispose(); r.mesh.material.dispose(); } this.rings.length = 0;
     for (const b of this.beams.values()) { b.core.removeFromParent(); b.halo.removeFromParent(); b.core.material.dispose(); b.halo.material.dispose(); b.arc.removeFromParent(); b.arc.geometry.dispose(); b.arc.material.dispose(); } this.beams.clear();

@@ -12,6 +12,7 @@ import { installDevTools } from './dev-tools.js';
 import { createDevWindow } from './dev-window.js';
 import { createDevUnlockDialog } from './dev-unlock-dialog.js';
 import { weaponFromChoice } from './weapon-grid.js';
+import { workMaps } from '../maps.js';
 
 export function installDevWiring(ctx) {
  const { $, sim, view, bots, toast } = ctx;
@@ -41,6 +42,15 @@ export function installDevWiring(ctx) {
   kill: () => sim.damagePlayer(sim.player.hp, 'dev', false, false, null, 'gunshot'),
   respawnTargets: () => toast(sim.respawnTargets() + ' TARGETS BACK'),
   restoreProps: () => toast(sim.restoreAllProps() + ' PROPS REBUILT'),
+  // A map still being built (Test Hill and the like), with the weapon in hand.
+  loadWorkMap: () => {
+   const map = workMaps()[sim.dev.workMap || 0]; if (!map) return;
+   if (ctx.online().active) { toast('MAPS ARE SOLO ONLY'); return; }
+   // (The note says this load was asked for, so it starts the game: menu.js markLaunch.)
+   const query = 'play=1&map=' + encodeURIComponent(map.id) + '&weapon=' + encodeURIComponent(sim.weapon || 'static');
+   try { sessionStorage.setItem('deadshift.launch', '?' + query); } catch {}
+   location.href = '?' + query;
+  },
   // Robots (bots/): a solo game only. Weapon, side, skill and style as set
   // in the tools (or at random), as many as "Robots per spawn".
   spawnRobot: () => {

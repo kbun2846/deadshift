@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { DeathCorpse } from './death-corpse.js';
 import { deathReaction } from './death-reactions.js';
 import { GoreBurst, darkenWeapon, GORE_DETAIL } from './gore.js';
+import { groundY, hilly } from '../render/ground-lift.js';
 
 const SETTLE = 6; // seconds: every body has come to rest by then
 
@@ -26,7 +27,7 @@ export class RemoteCorpses {
   const gun = avatar.hand.clone(true); gun.position.set(0, 0, 0); gun.rotation.set(0, 0, 0);
   const dropped = new THREE.Group(); dropped.add(gun);
   const side = Math.atan2(event.aimZ ?? 0, event.aimX ?? 1) + Math.PI / 2;
-  dropped.position.set(event.x + Math.cos(side) * .55, .1, event.z + Math.sin(side) * .55);
+  { const gx = event.x + Math.cos(side) * .55, gz = event.z + Math.sin(side) * .55; dropped.position.set(gx, .1 + groundY(view, gx, gz), gz); }
   dropped.rotation.set(0, -side, Math.PI * .47); view.scene.add(dropped);
   entry.dropped = dropped; entry.releaseGun = darkenWeapon(dropped);
   if (reaction.mode === 'scatter') {

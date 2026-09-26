@@ -41,6 +41,16 @@ export const RULES = Object.freeze({
   rechargeDelay: .8, rechargeInterval: .65, stationaryRecharge: 1.25 * 1.18, focusDistance: 7,
 });
 
+// ---- Hills (the "2.5D" ground, world/heightfield.js) ----
+// Sight over the ground is symmetric. A line from one body's eye (`eye` m
+// above its ground) to the other's body (`body` m) is cut only by ground that
+// rises `crest` m or more above it, and either way round will do. Walking is
+// up to `uphill` slower straight up a `fullGrade` (30%) slope and up to
+// `downhill` faster straight down one; dodges, knockback and launches are not
+// changed by slopes. Orbs float `orbHeight` above the ground and stop against a
+// rise steeper than `orbRise` (m of rise per m of travel).
+export const TERRAIN = Object.freeze({ eye: 1.35, body: .9, crest: .5, uphill: .07, downhill: .04, fullGrade: .3, orbHeight: .72, orbRise: .8 });
+
 // Static's orb volleys (its main fire, 1 to 12 orbs: impacts and blast) hit
 // 1.75x as hard as they used to (owner's call, v0.83); the hex and the stream
 // are not part of it.

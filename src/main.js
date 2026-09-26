@@ -1,7 +1,7 @@
 // deadshift, by killerbunny2846.
 import {bindTouchAction} from './ui/touch-action.js';
 import { installMobileBrowser, enterFullscreen } from './ui/mobile-browser.js';
-import { lockGameKeys, unlockGameKeys, keyLockSupported } from './ui/key-lock.js';
+import { playFullscreen, leaveFullscreen, unlockGameKeys } from './ui/key-lock.js';
 import {migrateGameStorage} from './storage-migration.js';
 import {isPlayable} from './playable-area.js';
 import {detectedControls,createInputPreference} from './ui/input-preference.js';
@@ -252,10 +252,12 @@ async function start(weapon=sim.weapon,course) {
   applyInputPreference();
   // On a touchscreen a game goes full screen (hides the address bar and
   // toolbars) when the browser allows it and the setting is on.
-  if(settings.fullscreen&&(touchPrompts||matchMedia('(pointer: coarse)').matches))enterFullscreen();
-  // Keyboard: full screen with Ctrl+W and co. held (ui/key-lock.js); a start
-  // with no click behind it (a page load) tries again on the first press.
-  else if(settings.keyLock&&keyLockSupported()){keyLockWanted=true;tryKeyLock();}
+  if(touchPlay()){if(settings.fullscreen)enterFullscreen();}
+  // PC: Settings > Graphics > SCREEN (owner, 2026-09-25). Fullscreen: full
+  // screen, with Ctrl+W and co. held where the browser can (ui/key-lock.js);
+  // a start with no click behind it (a page load) tries again on the first
+  // press. Windowed: the browser window.
+  else if(settings.screen==='fullscreen'){screenWanted=true;tryScreen();}
   started = true; running = true; document.body.classList.add('playing');
   $('intro').classList.add('hidden'); ['weapon', 'reticle'].forEach(id => $(id).classList.remove('hidden'));
   $('world').focus();
@@ -266,18 +268,35 @@ async function start(weapon=sim.weapon,course) {
   catch (error) { console.warn('Audio unavailable:', error); }
 }
 
-// Key lock: one try per game from a user gesture (start, or the first click
-// or key in the game); leaving the game lets go (and leaves full screen).
-let keyLockWanted=false,keyLocked=false;
-function tryKeyLock(){if(!keyLockWanted||keyLocked||navigator.userActivation&&!navigator.userActivation.isActive)return;lockGameKeys().then(ok=>{if(!ok)return;
- // Back at the menu by the time it took (a click on MAIN MENU): let go.
- if(!started){unlockGameKeys();if(document.fullscreenElement)document.exitFullscreen?.().catch?.(()=>{});return;}
- keyLocked=true;keyLockWanted=false;});}
-window.addEventListener('pointerdown',()=>{if(started&&keyLockWanted&&!keyLocked)tryKeyLock();},true);
-window.addEventListener('keydown',e=>{if(started&&keyLockWanted&&!keyLocked&&!e.repeat)tryKeyLock();},true);
-document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&keyLocked){keyLocked=false;keyLockWanted=false;}});
+// PC full screen (settings.screen 'fullscreen'): tried from a user gesture
+// (a game starting, the first click or key on the menus, the setting chosen),
+// then kept through the menus. Someone who leaves it (holding Esc, F11) is
+// left out until the next game starts.
+// (A phone or tablet with no mouse or trackpad: its own full-screen toggle,
+// Settings > Mobile; everything else is a PC here, as the settings panel sees it.)
+const touchPlay=()=>matchMedia('(pointer: coarse)').matches&&!matchMedia('(any-pointer: fine)').matches;
+let screenWanted=false,screenHeld=false,screenAsked=false,appliedScreen,appliedLock;
+function tryScreen(){if(screenHeld){screenWanted=false;return;}if(!screenWanted||navigator.userActivation&&!navigator.userActivation.isActive)return;playFullscreen(settings.keyLock).then(ok=>{if(!ok)return;
+ // Windowed chosen (or a touch game) in the meantime: back out.
+ if(settings.screen!=='fullscreen'||touchPlay()){leaveFullscreen();return;}
+ screenHeld=true;screenWanted=false;});}
+// Fullscreen chosen: the first click or key on the menus goes full screen too, once a visit.
+function askScreen(){if(!screenAsked&&!started&&settings.screen==='fullscreen'&&!touchPlay()){screenAsked=true;screenWanted=true;}tryScreen();}
+window.addEventListener('pointerdown',askScreen,true);
+window.addEventListener('keydown',e=>{if(!e.repeat)askScreen();},true);
+// Left full screen themselves: out until the next game starts (or the setting is chosen again).
+document.addEventListener('fullscreenchange',()=>{if(document.fullscreenElement)screenHeld=true;else{screenHeld=false;screenWanted=false;}});
+// The setting changed (Settings > Graphics > SCREEN, or the shortcut lock).
+function applyScreen(mode,lockKeys){
+ const first=appliedScreen===undefined,changed=mode!==appliedScreen||lockKeys!==appliedLock;appliedScreen=mode;appliedLock=lockKeys;
+ if(first||!changed||touchPlay())return;
+ if(mode==='windowed'){screenWanted=false;screenHeld=false;leaveFullscreen();return;}
+ if(!lockKeys)unlockGameKeys();
+ screenHeld=false;screenWanted=true;tryScreen();
+}
 function returnToMenu(){
-  keyLockWanted=false;if(keyLocked){keyLocked=false;unlockGameKeys();if(document.fullscreenElement)document.exitFullscreen?.().catch?.(()=>{});}
+  // (Fullscreen stays through the menus; Windowed never went in.)
+  screenWanted=false;
   online.close();perfReadout.reset();devWindow.hide();bots.clear();if(deathPick){deathPick=false;weaponPick.hide();}nextWeapon=null;if(duel.active){duel.stop();modeLabel.textContent='PRACTICE';}
   if(choosing)menuFlow.cancelOnlinePick();choosing=false;lastKiller=null;lastOneShot=false;onlineMenus(false);view.deathView?.clear();
   running=false;started=false;paused=false;mapOpen=false;mapWasPaused=false;settingsOpen=false;
@@ -764,7 +783,7 @@ $('overhead-image').addEventListener('click',e=>{
   sim.player.z=Math.max(-map.depth/2+RULES.radius,Math.min(map.depth/2-RULES.radius,point.y));
   sim.player.vx=sim.player.vz=sim.player.dodgeRemaining=0;
   sim.movePlayer(0,0);previousPlayer={...sim.player};accumulator=0;
-  view.focus.set(sim.player.x,0,sim.player.z);dirty=true;
+  view.focus.set(sim.player.x,view.gy(sim.player.x,sim.player.z),sim.player.z);dirty=true;
   $('overhead-image').innerHTML=overheadMapSVG(map,view,sim.player);
 });
 
@@ -778,6 +797,7 @@ const settingsPanel=installSettingsPanel(settings,{
  setQuality:name=>{if(view.qualityName!==name)view.setQuality(name);},
  setMotion:on=>{view.motion=on;},setFps:fps=>{budget.fps=fps;},
  setVolumes:volume=>sound.setVolumes(volume),
+ setScreen:applyScreen,
  changed:()=>{dirty=true;updateHUD();},
 });
 const selectMenus=installSelectMenus($('settings-panel'));
@@ -1012,6 +1032,8 @@ function frame(time) {
   // Online the world does not stop for your pause menu: everyone else is
   // still playing, so the simulation keeps running with your hands off.
   const stepping = running || (online.active && started);
+  // The shape of this screen, for the robots' off-screen rule (a phone turns).
+  const aspect = view.camera.aspect; bots.viewAspect = aspect; online.session?.setAspect?.(aspect);
   if (stepping) {
     // Dev game speed stretches or squeezes time; online sim.dev is reset so it is always 1 there.
     // (Game speed is a solo tool: online it would change everyone's clock.)

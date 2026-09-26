@@ -24,7 +24,33 @@ import { SCATTER } from '../config/gameplay.js';
 import { collidersAlong } from '../world/collider-grid.js';
 import { targetRadius } from '../target-radius.js';
 import { cropCircle } from '../crops.js';
+import { roundSees, roundMeets } from './rifle.js';
 export { SCATTER };
+
+// Hills: a shell flies no further than its shooter can see (plus the same
+// metre of grace as a rifle round), and bursts in the ground there; it meets
+// only bodies its shooter can see (rifle.js). A small shell keeps the big
+// one's shooter: split over a lip, it still cannot hit a body hidden from the
+// Ballast player (its burst is a blast, with the blast rule). Flat maps:
+// nothing changes.
+function shellOnGround(sim, b, ox, oz) {
+ if (sim.ground.flat) return b;
+ b.ox = ox; b.oz = oz;
+ b.limit = Math.min(b.limit, sim.ground.roundStop(ox, oz, b.x, b.z, b.dx, b.dz, b.limit));
+ return b;
+}
+// Blasts reach over the ground: distance in 3D, and no burst behind a crest.
+// `reach` (the victim's radius or half size) and `radius` (the blast's): a
+// victim already out of reach on the flat is out of reach in 3D too (never
+// shorter), so it skips the sight walk: every blast asks this of every prop
+// on the map. Infinity: out of reach.
+export function blastReach(sim, x, z, victim, flatDistance, reach = 0, radius = Infinity) {
+ if (sim.ground.flat) return flatDistance;
+ if (Math.max(0, flatDistance - reach) > radius) return Infinity;
+ if (!sim.ground.sightClear(x, z, victim.x, victim.z)) return Infinity;
+ const dy = sim.ground.heightAt(victim.x, victim.z) - sim.ground.heightAt(x, z);
+ return dy === 0 ? flatDistance : Math.hypot(flatDistance, dy);
+}
 
 export function resetScatter(sim, keepCooldown = false) {
  const cooldown = keepCooldown ? sim.scatter?.cooldown || 0 : 0;
@@ -53,7 +79,7 @@ function launch(sim) {
  const x = p.x + p.aimX * .96 - p.aimZ * .2, z = p.z + p.aimZ * .96 + p.aimX * .2;
  for (let i = 0; i < SCATTER.shells; i++) {
   const a = heading + ((i + .5) / SCATTER.shells * 2 - 1) * SCATTER.spread + (Math.random() - .5) * .06;
-  sim.scatterShells.push({ id: ++sim.serial, big: true, volley, x: p.x, z: p.z, fromX: x, fromZ: z, dx: Math.cos(a), dz: Math.sin(a), travel: 0, limit: SCATTER.splitAt, speed: SCATTER.speed, skip: null });
+  sim.scatterShells.push(shellOnGround(sim, { id: ++sim.serial, big: true, volley, x: p.x, z: p.z, fromX: x, fromZ: z, dx: Math.cos(a), dz: Math.sin(a), travel: 0, limit: SCATTER.splitAt, speed: SCATTER.speed, skip: null }, p.x, p.z));
  }
  s.armed = false; s.cooldown = sim.dev.cooldowns ? 0 : SCATTER.cooldown;
  // Old tallies go (a Scatter's shells are all gone within a couple of seconds).
@@ -72,7 +98,7 @@ function split(sim, shell, x, z, into = false) {
   const a = heading + ((i + .5) / SCATTER.split * 2 - 1) * SCATTER.childSpread + (Math.random() - .5) * .34;
   const far = SCATTER.childNear + Math.random() * (SCATTER.childFar - SCATTER.childNear);
   // Into a body: a short way, so each meets it at once.
-  sim.scatterShells.push({ id: ++sim.serial, big: false, volley: shell.volley, x, z, dx: Math.cos(a), dz: Math.sin(a), travel: 0, limit: into ? .9 : Math.max(.3, (SCATTER.reach - SCATTER.splitAt) * far), speed: SCATTER.childSpeed, skip: null });
+  sim.scatterShells.push(shellOnGround(sim, { id: ++sim.serial, big: false, volley: shell.volley, x, z, dx: Math.cos(a), dz: Math.sin(a), travel: 0, limit: into ? .9 : Math.max(.3, (SCATTER.reach - SCATTER.splitAt) * far), speed: SCATTER.childSpeed, skip: null }, shell.ox ?? x, shell.oz ?? z));
  }
  sim.events.push({ type: 'scatterSplit', x, z, dx: shell.dx, dz: shell.dz });
 }
@@ -85,13 +111,13 @@ function burst(sim, volley, x, z, segmentBox) {
  const power = d => SCATTER.burstDamage * (1 - (1 - SCATTER.burstEdge) * Math.min(1, d / r));
  for (const t of sim.targets) {
   if (t.hp <= 0 || t.id === sim.player.id) continue;
-  const centre = Math.hypot(t.x - x, t.z - z), d = Math.max(0, centre - targetRadius(t));
+  const reach = targetRadius(t), centre = blastReach(sim, x, z, t, Math.hypot(t.x - x, t.z - z), reach, r), d = Math.max(0, centre - reach);
   if (d > r || (centre > .3 && shut(t.x, t.z))) continue;
   deal(sim, t, volley, Math.max(1, Math.round(power(d))), { blast: true, vx: t.x - x, vz: t.z - z });
  }
  for (const prop of sim.props) {
   if (prop.hp === null || !(prop.hp > 0)) continue;
-  const d = Math.max(0, Math.hypot(prop.x - x, prop.z - z) - Math.min(prop.w || 0, prop.d || 0) / 2);
+  const half = Math.min(prop.w || 0, prop.d || 0) / 2, d = Math.max(0, blastReach(sim, x, z, prop, Math.hypot(prop.x - x, prop.z - z), half, r) - half);
   if (d <= r) sim.hitProp(prop, { damage: Math.round(power(d)), x: prop.x, z: prop.z, vx: prop.x - x, vz: prop.z - z });
  }
  // Crops in reach catch fire (owner, v144), behind no wall, like a grenade's.
@@ -123,11 +149,11 @@ export function stepScatter(sim, input, dt, { segmentBox, segmentCircle }) {
   // fired into a wall at point blank still meets it).
   const step = Math.min(b.speed * dt, b.limit - b.travel), ex = b.x + b.dx * step, ez = b.z + b.dz * step;
   let first = 1, target = null, prop = null, blocked = false;
-  for (const c of collidersAlong(sim.colliders, b.x, b.z, ex, ez, .1)) { if (c.playerOnly) continue; const t = segmentBox(b.x, b.z, ex, ez, c, .04); if (t !== null && t <= first) { first = t; target = null; prop = sim.props.find(v => v.id === c.propId); blocked = true; } }
+  for (const c of collidersAlong(sim.colliders, b.x, b.z, ex, ez, .1)) { if (c.playerOnly) continue; const t = segmentBox(b.x, b.z, ex, ez, c, .04); if (t !== null && t <= first && roundMeets(sim, b, c, b.x + (ex - b.x) * t, b.z + (ez - b.z) * t)) { first = t; target = null; prop = sim.props.find(v => v.id === c.propId); blocked = true; } }
   for (const t of sim.targets) {
    if (t.hp <= 0 || t.id === b.skip || t.id === p.id) continue;
    const f = segmentCircle(b.x, b.z, ex, ez, t.x, t.z, targetRadius(t) + (b.big ? .12 : .05));
-   if (f !== null && f < first) { first = f; target = t; prop = null; blocked = true; }
+   if (f !== null && f < first && roundSees(sim, b, t)) { first = f; target = t; prop = null; blocked = true; }
   }
   // Stop a hair short of what it hit.
   const back = blocked ? Math.max(0, first - .04 / Math.max(step, 1e-6)) : 1;

@@ -37,6 +37,9 @@ const BOLT_COLORS = Object.freeze({ mesh: '#d7f3ff', forks: '#75caff', glow: '#6
 export class ElectricEffects {
   constructor(scene) {
     this.scene = scene; this.effects = []; this.spinEffects = new Map();
+    // Hills: an arc end with no height of its own sits .76 over the ground
+    // there (set by the view; null: flat).
+    this.ground = null;
     this.arcs = new ArcBatch(scene); this.detail = ARC_DETAIL.balanced;
     const points = Array.from({ length: 6 }, (_, i) => new THREE.Vector3(Math.cos(i * Math.PI / 3) * RULES.hexRange, .08, Math.sin(i * Math.PI / 3) * RULES.hexRange));
     this.limit = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: '#d45c50', transparent: true, opacity: .8, depthWrite: false, toneMapped: false }));
@@ -44,7 +47,18 @@ export class ElectricEffects {
   }
   boundary(orbs) {
     this.limit.visible = orbs.length > 0;
-    if (orbs.length) {this.limit.position.set(orbs[0].originX, 0, orbs[0].originZ);this.limit.rotation.y=orbs[0].age*Math.PI*2;}
+    if (!orbs.length) return;
+    const g = this.ground;
+    if (!g || g.flat) {this.limit.position.set(orbs[0].originX, 0, orbs[0].originZ);this.limit.rotation.y=orbs[0].age*Math.PI*2;return;}
+    // Hills: the hexagon laid over the ground, a dozen points a side.
+    if (!this.draped) { this.draped = new THREE.BufferGeometry(); this.draped.setAttribute('position', new THREE.BufferAttribute(new Float32Array(72 * 3), 3)); this.limit.geometry.dispose(); this.limit.geometry = this.draped; }
+    const turn = -orbs[0].age * Math.PI * 2, ox = orbs[0].originX, oz = orbs[0].originZ, r = RULES.hexRange, pos = this.draped.attributes.position;
+    for (let i = 0; i < 72; i++) {
+      const side = Math.floor(i / 12), t = (i % 12) / 12, a0 = side * Math.PI / 3 + turn, a1 = (side + 1) * Math.PI / 3 + turn;
+      const x = ox + (Math.cos(a0) + (Math.cos(a1) - Math.cos(a0)) * t) * r, z = oz + (Math.sin(a0) + (Math.sin(a1) - Math.sin(a0)) * t) * r;
+      pos.setXYZ(i, x, g.heightAt(x, z) + .08, z);
+    }
+    pos.needsUpdate = true; this.draped.computeBoundingSphere(); this.limit.position.set(0, 0, 0); this.limit.rotation.y = 0;
   }
   setQuality(name) { this.quality = isDemanding(name); this.performance = name === 'performance' || name === 'potato'; this.detail = ARC_DETAIL[name] || ARC_DETAIL.balanced; }
   aftershock(e){
@@ -207,7 +221,7 @@ export class ElectricEffects {
   }
   pulse(n, radius, life = .55, scatter = false) {
     const part = this.takePulse(), { mesh, core } = part;
-    mesh.position.set(n.x, .72, n.z); mesh.scale.setScalar(.12); this.scene.add(mesh);
+    mesh.position.set(n.x, .72 + (this.ground && !this.ground.flat ? this.ground.heightAt(n.x, n.z) : 0), n.z); mesh.scale.setScalar(.12); this.scene.add(mesh);
     core.position.copy(mesh.position); core.scale.setScalar(.06); this.scene.add(core);
     const rings = part.rings.slice(0, this.detail.rings).map((ring, i) => {
       ring.geometry = PULSE_RINGS[this.quality ? 64 : 40]; ring.scale.setScalar(radius * .15);
@@ -278,7 +292,8 @@ export class ElectricEffects {
           effect.a={x:o.x+o.dx*tail,z:o.z+o.dz*tail};effect.b={x:o.x+o.dx*tip,z:o.z+o.dz*tip};
         }
         const { a, b } = effect, dx = b.x - a.x, dz = b.z - a.z, length = Math.hypot(dx, dz) || 1;
-        const ay = a.y ?? .76, by = b.y ?? .76, intensity = effect.intensity || 1;
+        const lift = this.ground && !this.ground.flat ? this.ground : null;
+        const ay = a.y ?? (lift ? .76 + lift.heightAt(a.x, a.z) : .76), by = b.y ?? (lift ? .76 + lift.heightAt(b.x, b.z) : .76), intensity = effect.intensity || 1;
         for (let i = 0; i < LINE_POINTS; i++) {
           const f = i / (LINE_POINTS - 1), jitter = Math.sin(i * 41 + effect.seed + Math.floor(effect.motion * 42) * 5) * Math.sin(Math.PI * f) * .23 * intensity;
           POINTS[i * 3] = a.x + dx * f - dz / length * jitter;

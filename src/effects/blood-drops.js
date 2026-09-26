@@ -10,6 +10,7 @@
 // lot at once.
 import * as THREE from 'three';
 import { castToWall, floorHeight } from './blood-surfaces.js';
+import { groundY, hilly } from '../render/ground-lift.js';
 
 export const DROP_CAP = Object.freeze({ potato: 90, performance: 180, balanced: 420, quality: 700, extreme: 1000 });
 // Per victim: each hit within `window` seconds of the last adds `step` to the
@@ -93,11 +94,11 @@ export class BloodDrops {
   for (let i = 0; i < count; i++) {
    const a = base + (Math.random() - .5) * (length > 1e-6 ? .9 : Math.PI * 2), distance = .25 + Math.random() * reach;
    const ux = Math.cos(a), uz = Math.sin(a), size = (.05 + Math.random() * .08) * (.8 + Math.min(1, amount) * .4);
-   const wall = castToWall(colliders, x, z, ux, uz, distance);
+   const wall = castToWall(colliders, x, z, ux, uz, distance, 0, hilly(this.view) ? this.view.ground : null);
    // Hits a wall or a crate on its way: a drop on that face, lower the
    // further it flew; otherwise it falls to the floor where it ends.
    if (wall) {
-    this.stain(wall.x, Math.max(.12, Math.min(wall.height - .05, .95 - wall.distance * .25 + (Math.random() - .5) * .3)), wall.z, size, wall.nx, wall.nz, wall.propId);
+    this.stain(wall.x, Math.max(.12, Math.min(wall.height - .05, .95 - wall.distance * .25 + (Math.random() - .5) * .3)) + groundY(this.view, wall.x, wall.z), wall.z, size, wall.nx, wall.nz, wall.propId);
     // Some runs down to the floor at its foot (a wall's face is often turned
     // away from the camera; the floor beside it never is).
     if (Math.random() < .55) { const fx = wall.x + wall.nx * (.05 + Math.random() * .12), fz = wall.z + wall.nz * (.05 + Math.random() * .12); this.stain(fx, floorHeight(map, fx, fz) + .004, fz, size * .8, null, 0, wall.propId); }

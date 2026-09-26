@@ -3,6 +3,7 @@ import {makeGrenade} from './grenade-model.js';
 import {GRENADE} from './grenade.js';
 import { isDemanding } from '../settings.js';
 import { NO_FX } from '../effects/effects-detail.js';
+import { groundY, hilly } from '../render/ground-lift.js';
 const SMOKE=new THREE.Color('#bdb4a3'),BLINK=new THREE.Color('#ff3020');
 export class GrenadeView{
  constructor(view){
@@ -27,7 +28,7 @@ export class GrenadeView{
  update(sim){
   const p=sim.player;
   this.rangeMarker.visible=sim.weapon==='rifle'&&!sim.player.dead;
-  this.rangeMarker.position.set(this.view.player.position.x+p.aimX*GRENADE.range,.08,this.view.player.position.z+p.aimZ*GRENADE.range);
+  {const mx=this.view.player.position.x+p.aimX*GRENADE.range,mz=this.view.player.position.z+p.aimZ*GRENADE.range;this.rangeMarker.position.set(mx,.08+groundY(this.view, mx,mz),mz);}
   this.rangeMarker.rotation.y=Math.atan2(p.aimX,p.aimZ);
   const detail=this.view.qualityName==='extreme'?3:isDemanding(this.view.qualityName)?2:this.view.qualityName==='balanced'?1:0;
   if(detail!==this.detail){this.clear();if(this.held){this.arm.remove(this.held);this.dispose(this.held);}this.held=makeGrenade(detail);this.held.position.set(0,-.035,-.04);this.arm.add(this.held);this.detail=detail;}
@@ -37,7 +38,8 @@ export class GrenadeView{
   for(const g of sim.grenades){
    if(!g.released)continue;alive.add(g.id);let model=this.items.get(g.id);
    if(!model){model=makeGrenade(detail);this.view.scene.add(model);this.items.set(g.id,model);}
-   const landed=g.y<=.241;
+   // (Hills: g.y is a world height; the ground under it is its floor.)
+   const floor=groundY(this.view, g.x,g.z),landed=g.y<=.241+floor;
    model.position.set(g.x,g.y,g.z);const spin=Math.min(g.age-GRENADE.windup,g.flight)*7;model.rotation.set(landed?.15:spin,spin*.4,.3);
    const blink=landed&&Math.floor((g.age-GRENADE.windup)*10)%2===0;
    model.userData.indicator.material.color.set(blink?'#ff3020':'#611c16');model.userData.indicator.scale.setScalar(blink?1.5:1);
@@ -49,7 +51,7 @@ export class GrenadeView{
     g.fxClock=(g.fxClock??0)-(sim.time-(g.fxTime??sim.time));g.fxTime=sim.time;
     if(g.fxClock<=0){
      g.fxClock=landed?.05:.025;
-     const top=g.y+.28;
+     const top=g.y+.28-floor;
      for(let i=0,n=fx.n(landed?1:2);i<n;i++){const a=Math.random()*6.3,s=.6+Math.random()*1.4;fx.spark({x:g.x,y:top,z:g.z,vx:Math.cos(a)*s,vy:1+Math.random()*1.5,vz:Math.sin(a)*s,life:.12+Math.random()*.15,length:.05,width:.009});}
      if(!landed)fx.puff({x:g.x,y:top,z:g.z,vx:0,vz:0,vy:.2,size:.03,grow:3,life:.7,alpha:.3,color:SMOKE});
      if(blink)fx.glow({x:g.x,y:.06,z:g.z,size:.9,life:.08,color:BLINK,glow:.9});

@@ -5,7 +5,7 @@ export function makeQualityDetails(view) {
   const all = new THREE.Group(); view.scene.add(all);
   if(view.map.training)return all;
   for (const b of view.map.buildings) {
-    const g = new THREE.Group(); g.position.set(b.x, 0, b.z); g.rotation.y = b.angle || 0; all.add(g);
+    const g = new THREE.Group(); g.position.set(b.x, b.baseY || 0, b.z); g.rotation.y = b.angle || 0; all.add(g);
     // Thin chips, nail heads and broken grain; sparse enough to preserve clean silhouettes.
     for (let side = 0; side < 4; side++) {
       const wall = new THREE.Group(); wall.rotation.y = side * Math.PI / 2; g.add(wall);

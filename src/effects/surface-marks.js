@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { groundY, hilly } from '../render/ground-lift.js';
 
 // Surface-clipped soot, capped per surface. Every mark is a blended,
 // ground-coplanar draw with depthWrite off, and in a top-down camera the
@@ -10,6 +11,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // surface is full the oldest batch is retired, so the marks are a rolling
 // window rather than a permanent record.
 export const MARK_BATCHES = Object.freeze({ potato: 1, performance: 1, balanced: 2, quality: 4, extreme: 4 });
+const DOWN = new THREE.Vector3(0, -1, 0);
 export class SurfaceMarks {
   constructor(view) {
     this.jobs=[]; this.currentJob=null; this.receiverCache=null;
@@ -53,7 +55,8 @@ export class SurfaceMarks {
     if(this.receiverCache)return this.receiverCache;
     const v = this.view;
     const targets = [...v.targets.entries()].filter(([id]) => !v.lastSim || v.lastSim.targets.find(t => t.id === id)?.hp > 0).map(([, g]) => g);
-    return this.receiverCache=[v.static, ...v.props.values(), ...targets, ...v.roofs.map(r => r.group)];
+    // (Hills: the ground's own mesh takes marks too.)
+    return this.receiverCache=[v.static, ...v.props.values(), ...targets, ...v.roofs.map(r => r.group), ...(v.terrainMesh ? [v.terrainMesh] : [])];
   }
 
   hit(origin, direction, distance) {
@@ -103,15 +106,21 @@ export class SurfaceMarks {
 
   bullet(e) {
     if (!Number.isFinite(e.vx) || Math.hypot(e.vx, e.vz) < .001) return;
+    // Hills: a round that went into the ground marks the ground there.
+    if (e.ground && this.view.terrainMesh) { this.stamp(this.hit(new THREE.Vector3(e.x, groundY(this.view, e.x, e.z) + 1, e.z), DOWN, 2), .26 + Math.random() * .08); return; }
 
     const direction = new THREE.Vector3(e.vx, 0, e.vz).normalize();
-    const origin = new THREE.Vector3(e.x, .72, e.z).addScaledVector(direction, -.7);
+    const origin = new THREE.Vector3(e.x, .72 + groundY(this.view, e.x, e.z), e.z).addScaledVector(direction, -.7);
     this.stamp(this.hit(origin, direction, 1.5), .22 + Math.random() * .08);
   }
 
   *explosion(e) {
 
-    const center = new THREE.Vector3(e.x, .72, e.z);
+    const center = new THREE.Vector3(e.x, .72 + groundY(this.view, e.x, e.z), e.z);
+    // Hills: the burn is laid on the ground's own mesh (or a floor over it).
+    if (this.view.terrainMesh) {
+      this.stamp(this.hit(center, DOWN, 1.5), e.radius * 2);
+    } else {
     // The ground/floor gets a broad burn; surrounding surfaces get radial soot.
     this.ray.set(center, new THREE.Vector3(0, -1, 0)); this.ray.far = 1;
     const floors = this.ray.intersectObjects(this.surfaces(), true).filter(h => !h.object.userData.surfaceMark && !h.object.userData.maskedGround && h.face && h.face.normal.clone().transformDirection(h.object.matrixWorld).y > .7);
@@ -124,6 +133,7 @@ export class SurfaceMarks {
       if(floor.point.y<.05)continue;
       if (floorObjects.has(floor.object)) continue; floorObjects.add(floor.object);
       this.stamp(floor, e.radius * 2, new THREE.Vector3(e.x, floors[0].point.y, e.z), new THREE.Vector3(0, 1, 0));
+    }
     }
     yield;
     const seen = new Set();

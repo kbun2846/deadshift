@@ -111,7 +111,7 @@ export const Vision = {
     this.visionMaskClock = this.effectTime + (VISION_REPAINT[this.qualityName] || VISION_REPAINT.balanced);
     this.visionMaskKey = maskKey;
     this.paintVision(interiorPolygons(room, sim.player)
-      .map(points => projectVisionPolygon(points, this.camera, viewWidth(), viewHeight())));
+      .map(points => projectVisionPolygon(points, this.camera, viewWidth(), viewHeight(), .7 + (room.baseY || 0))));
   },
 
   // Paints the shroud: a flat wash over the viewport with the clear regions

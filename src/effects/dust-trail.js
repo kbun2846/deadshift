@@ -71,6 +71,8 @@ const GUST = Object.freeze({ life: 2.4, rise: .3, spread: 1.5, start: .5, grow: 
 export class DustTrail {
   constructor(scene, capacity = 192) {
     this.capacity = capacity; this.time = 0; this.puffs = []; this.richness = 1; this.dashClock = 0;
+    // Hills: a puff's y is above the ground under it (set by the view; null: flat).
+    this.ground = null;
     // Rounder than it used to be, shaded lighter on top than underneath and
     // thinning out towards its outline, so a puff reads as a soft cloud of
     // sand with some volume rather than a flat faceted pebble.
@@ -158,13 +160,13 @@ export class DustTrail {
     if (!this.richness) { this.mesh.count = 0; return; }
     this.time += Math.max(0, dt);
     this.puffs = this.puffs.filter(p => this.time - p.born < p.shape.life);
-    const fade = this.mesh.geometry.attributes.instanceFade;
+    const fade = this.mesh.geometry.attributes.instanceFade, ground = this.ground && !this.ground.flat ? this.ground : null;
     let i = 0;
     for (const p of this.puffs) {
       if (i >= this.capacity) break;
       const age = this.time - p.born, progress = age / p.shape.life;
-      const ease = 1 - (1 - progress) ** 2;
-      this.dummy.position.set(p.x + p.vx * age, p.y + p.shape.rise * ease * .35, p.z + p.vz * age);
+      const ease = 1 - (1 - progress) ** 2, x = p.x + p.vx * age, z = p.z + p.vz * age;
+      this.dummy.position.set(x, p.y + p.shape.rise * ease * .35 + (ground ? ground.heightAt(x, z) : 0), z);
       this.dummy.rotation.set(0, p.spin * age + p.born, 0);
       const size = p.size * (1 + p.shape.grow * ease);
       this.dummy.scale.set(size, size * .45, size);

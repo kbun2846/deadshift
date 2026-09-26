@@ -1,6 +1,7 @@
 import { SHOTGUN } from '../config/gameplay.js';
 import { collidersAlong } from '../world/collider-grid.js';
 import { targetRadius } from '../target-radius.js';
+import { roundOnGround, roundSees, roundMeets } from './rifle.js';
 export { SHOTGUN };
 // Ballast: two shells, one press fires one (no charging since v0.83), E fires
 // both. The range and the pellets' fall-off are the same for every shot.
@@ -41,10 +42,12 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
  // Pellets travel visibly; one damage result per shell/target per step.
  const hits=new Map();
  for(const b of sim.shotgunPellets){
-  const travel=Math.min(85*dt,b.range-b.travel),ex=b.x+b.dx*travel,ez=b.z+b.dz*travel;
+  // Hills: `stop` is where the ground takes it (rifle.js roundOnGround).
+  const end=b.stop??b.range;
+  const travel=Math.min(85*dt,end-b.travel),ex=b.x+b.dx*travel,ez=b.z+b.dz*travel;
   let first=1,target=null,prop=null,blocked=false;
-  for(const c of collidersAlong(sim.colliders,b.x,b.z,ex,ez,.1)){if(c.playerOnly)continue;const t=segmentBox(b.x,b.z,ex,ez,c,.025);if(t!==null&&t<=first){first=t;target=null;prop=sim.props.find(v=>v.id===c.propId);blocked=true;}}
-  for(const t of sim.targets){if(t.hp<=0)continue;const f=segmentCircle(b.x,b.z,ex,ez,t.x,t.z,targetRadius(t));if(f!==null&&f<first){first=f;target=t;prop=null;blocked=true;}}
+  for(const c of collidersAlong(sim.colliders,b.x,b.z,ex,ez,.1)){if(c.playerOnly)continue;const t=segmentBox(b.x,b.z,ex,ez,c,.025);if(t!==null&&t<=first&&roundMeets(sim,b,c,b.x+(ex-b.x)*t,b.z+(ez-b.z)*t)){first=t;target=null;prop=sim.props.find(v=>v.id===c.propId);blocked=true;}}
+  for(const t of sim.targets){if(t.hp<=0)continue;const f=segmentCircle(b.x,b.z,ex,ez,t.x,t.z,targetRadius(t));if(f!==null&&f<first&&roundSees(sim,b,t)){first=f;target=t;prop=null;blocked=true;}}
   b.x+=(ex-b.x)*first;b.z+=(ez-b.z)*first;b.travel+=travel*first;
   if(blocked){
    // Aimed in, point blank (owner, v142): about 20 more a shell.
@@ -52,8 +55,8 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
    if(target){const contact=shotgunPelletContact(b,target);if(contact>0){const key=b.volley+':'+target.id,hit=hits.get(key)||{target,damage:0,vx:b.forwardX,vz:b.forwardZ,volley:b.volley};hit.damage+=damage*contact;hits.set(key,hit);}}
    else if(prop)sim.hitProp(prop,{damage,owner:p.id,volley:b.volley,x:b.x,z:b.z,vx:b.dx,vz:b.dz});
    sim.events.push({type:'rifleImpact',x:b.x,z:b.z});b.dead=true;
-  }
-  if(b.travel>=b.range-1e-8)b.dead=true;
+  }else if(b.stop!==undefined&&b.travel>=end-1e-8)sim.events.push({type:'rifleImpact',x:b.x,z:b.z,ground:true});
+  if(b.travel>=end-1e-8)b.dead=true;
  }
  for(const h of hits.values()){
   sim.hit(h.target,{...h,owner:p.id,damageType:'ballast',bullet:true});
@@ -73,7 +76,7 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
   const blocked=sim.colliders.some(c=>!c.playerOnly&&segmentBox(p.x,p.z,x,z,c)!==null);
   for(let i=0;i<SHOTGUN.pellets;i++){
    const angle=Math.atan2(p.aimZ,p.aimX)+((i+Math.random())/SHOTGUN.pellets*2-1)*spread;
-   sim.shotgunPellets.push({x:blocked?p.x:x,z:blocked?p.z:z,dx:Math.cos(angle),dz:Math.sin(angle),forwardX:p.aimX,forwardZ:p.aimZ,travel:0,range,damage:shellDamage/SHOTGUN.pellets,damageType:'ballast',contactSample:Math.random(),volley,aimed:!!s.aiming});
+   sim.shotgunPellets.push(roundOnGround(sim,{x:blocked?p.x:x,z:blocked?p.z:z,dx:Math.cos(angle),dz:Math.sin(angle),forwardX:p.aimX,forwardZ:p.aimZ,travel:0,range,damage:shellDamage/SHOTGUN.pellets,damageType:'ballast',contactSample:Math.random(),volley,aimed:!!s.aiming},range));
   }
   const kick=sim.dev.noKnockback?0:SHOTGUN.recoil*recoilScale;p.blastVX=-p.aimX*kick*SHOTGUN.launchScale;p.blastVZ=-p.aimZ*kick*SHOTGUN.launchScale;p.ballastLaunch=true;
   // `charge`: how big the flash, smoke, sound and shake are (one size now).

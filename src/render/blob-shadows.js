@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mapProps } from '../maps.js';
+import { mapProps, groundFor } from '../maps.js';
 
 // Potato has no shadow map, which left everything looking pasted onto the
 // ground. These are the cheap stand-in: a soft dark patch under each prop and
@@ -8,6 +8,7 @@ import { mapProps } from '../maps.js';
 // movers), no shadow pass, and the props' patches are only rewritten when one
 // breaks or comes back.
 const SUN_LEAN = { x: .6, z: .45 }; // ground offset per metre of height, from the sun at (-24, 40, -18)
+const UP = new THREE.Vector3(0, 1, 0), NORMAL = new THREE.Vector3(), YAW = new THREE.Quaternion();
 const COLOR = '#3a2a18';
 
 function softTexture() {
@@ -33,15 +34,23 @@ export class BlobShadows {
   for (const mesh of [this.propMesh, this.moverMesh]) { mesh.frustumCulled = false; mesh.renderOrder = 2; mesh.visible = false; scene.add(mesh); }
   this.dummy = new THREE.Object3D(); this.shown = new Map();
   this.maxMovers = maxMovers;
+  // Hills: each patch lies on the ground where it falls.
+  this.ground = groundFor(map);
  }
 
  set enabled(value) { this.propMesh.visible = this.moverMesh.visible = value; if (value) this.shown.clear(); }
  get enabled() { return this.propMesh.visible; }
 
  place(mesh, i, x, z, w, d, angle, height) {
-  const o = this.dummy;
-  o.position.set(x + SUN_LEAN.x * height * .5, .05, z + SUN_LEAN.z * height * .5);
-  o.rotation.set(0, angle, 0); o.scale.set(w, 1, d); o.updateMatrix();
+  const o = this.dummy, px = x + SUN_LEAN.x * height * .5, pz = z + SUN_LEAN.z * height * .5;
+  o.position.set(px, .05 + this.ground.heightAt(px, pz), pz);
+  if (this.ground.flat) o.rotation.set(0, angle, 0);
+  else {
+   // Hills: laid on the slope where it falls.
+   const g = this.ground.gradientAt(px, pz, this.slope ||= { x: 0, z: 0 });
+   o.quaternion.setFromUnitVectors(UP, NORMAL.set(-g.x, 1, -g.z).normalize()).multiply(YAW.setFromAxisAngle(UP, angle));
+  }
+  o.scale.set(w, 1, d); o.updateMatrix();
   mesh.setMatrixAt(i, o.matrix);
  }
 

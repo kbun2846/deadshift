@@ -19,6 +19,11 @@ import { ROADSIDE_TYPES, makeRoadside } from '../world/roadside.js';
 import { freezeTransforms } from './frozen-transforms.js';
 import { DustDevils } from '../effects/dust-devils.js';
 import { ROOF_PREPASS_ORDER, CLUTTER_CLAY, CLUTTER_DARK, CLUTTER_SEAT, lerp, randomGenerator } from './renderer.js';
+import { buildTerrainMesh, buildRetainingWalls } from './terrain-mesh.js';
+
+// The drawn ground's allowed error from the height grid, per preset (m):
+// RTIN keeps it within this everywhere (terrain-mesh.js).
+const TERRAIN_ERROR = { potato: .04, performance: .035, balanced: .02, quality: .01, extreme: .01 };
 
 export const WorldBuild = {
   makePlayableEdge(){
@@ -43,6 +48,7 @@ export const WorldBuild = {
 
   makeTerrain() {
     const { map } = this;
+    if (map.terrain) return this.makeHillTerrain();
     // The ground casts onto nothing, and its bounding sphere covers the map, so
     // it can never be culled out of a shadow update.
     this.terrainUV(this.noShadows(this.box(0, -.28, 0, map.width + 60, .5, map.depth + 60, map.palette.ground)));
@@ -89,6 +95,33 @@ export const WorldBuild = {
     this.makeGroundDetails();
     this.makeSandMarks();
     this.makeWornTerrain();
+  },
+
+  // A map with hills (world/heightfield.js): the ground is its own mesh
+  // (terrain-mesh.js) with the retaining walls on its edges. Deadwater's
+  // street, sand and scrub are not built; empty stand-ins take their place
+  // for what the rest of the view reads (a road nowhere, no ground detail).
+  makeHillTerrain() {
+    const { map } = this;
+    this.terrainError = TERRAIN_ERROR[this.initialQuality] ?? .02;
+    this.terrainMesh = buildTerrainMesh(this, this.ground, map, this.terrainError);
+    this.scene.add(this.terrainMesh);
+    buildRetainingWalls(this, this.ground, map.terrainLook);
+    this.roadProfile = [{ z: -1e4, left: 1e5, right: 1e5 }, { z: 1e4, left: 1e5, right: 1e5 }];
+    this.sandMarks = [];
+    for (const key of ['groundDetails', 'extraGroundDetails', 'performanceDetails']) { this[key] = new THREE.Group(); this.scene.add(this[key]); }
+  },
+
+  // A switch to a finer preset than the map loaded with rebuilds the ground's
+  // tiles at its finer error, into the same group (same material, so no new
+  // shader programs; marks already made keep their own copies).
+  refineTerrain(name) {
+    const error = TERRAIN_ERROR[name] ?? .02;
+    if (!this.terrainMesh || !(error < this.terrainError)) return;
+    const fresh = buildTerrainMesh(this, this.ground, this.map, error);
+    for (const tile of [...this.terrainMesh.children]) { tile.geometry.dispose(); this.terrainMesh.remove(tile); }
+    for (const tile of [...fresh.children]) this.terrainMesh.add(tile);
+    this.terrainMesh.userData.triangles = fresh.userData.triangles; this.terrainError = error;
   },
 
   roadEdges(z) {
@@ -297,7 +330,9 @@ export const WorldBuild = {
   },
 
   makeBuilding(b) {
-    const angle = b.angle || 0, oldStatic = new Set(this.static.children);
+    // Hills: a building stands on its pad at baseY (heightfield.js pads);
+    // everything below is built at 0 and lifted with it at the end.
+    const angle = b.angle || 0, baseY = b.baseY || 0, oldStatic = new Set(this.static.children);
     b = { ...b, ...BUILDING_FINISHES[b.id], angle: 0 };
     this.flat(b.x, b.z, b.w, b.d, '#9b8161', b.cargo ? .245 : .065);
     if(b.cargo) {
@@ -462,15 +497,15 @@ export const WorldBuild = {
         for(const z of [-b.d/2+.2,b.d/2-.2])this.box(b.x+side*(b.w/2+.21),1.2,b.z+z,.08,2.4,.1,'#596157');
       }
     }
-    if (angle) {
-      const pivot = new THREE.Group(); pivot.position.set(b.x, 0, b.z); pivot.rotation.y = angle;
+    if (angle || baseY) {
+      const pivot = new THREE.Group(); pivot.position.set(b.x, baseY, b.z); pivot.rotation.y = angle;
       for (const mesh of [...this.static.children].filter(m => !oldStatic.has(m))) {
         mesh.position.x -= b.x; mesh.position.z -= b.z; pivot.add(mesh);
       }
       this.static.add(pivot);
       // Roof geometry uses the same pivot, while its fade footprint stays in map space.
       for (const mesh of roof.children) { mesh.position.x -= b.x; mesh.position.z -= b.z; }
-      roof.position.set(b.x, 0, b.z); roof.rotation.y = angle;
+      roof.position.set(b.x, baseY, b.z); roof.rotation.y = angle;
     }
   },
 
@@ -478,17 +513,22 @@ export const WorldBuild = {
     const isX = f.axis === 'x';
     const panels = Math.ceil(f.length / 2.5), span = f.length / panels;
     for (let i = 0; i <= panels; i++) {
-      const t = -f.length / 2 + i * span;
-      this.box(f.x + (isX ? t : 0), .56, f.z + (isX ? 0 : t), .22, 1.12, .22, '#897357');
+      const t = -f.length / 2 + i * span, x = f.x + (isX ? t : 0), z = f.z + (isX ? 0 : t);
+      this.box(x, .56 + this.gy(x, z), z, .22, 1.12, .22, '#897357');
     }
     for (let i = 0; i < panels; i++) {
-      const t = -f.length / 2 + (i + .5) * span;
-      for (const h of [.4, .84]) this.box(f.x + (isX ? t : 0), h, f.z + (isX ? 0 : t), isX ? span - .15 : .12, .13, isX ? .12 : span - .15, '#a08a66');
+      const t = -f.length / 2 + (i + .5) * span, x = f.x + (isX ? t : 0), z = f.z + (isX ? 0 : t);
+      // (Hills: each rail runs post to post over the ground.)
+      const rise = !this.map.terrain ? 0 : this.gy(isX ? x + span / 2 : x, isX ? z : z + span / 2) - this.gy(isX ? x - span / 2 : x, isX ? z : z - span / 2);
+      for (const h of [.4, .84]) {
+        const rail = this.box(x, h + this.gy(x, z), z, isX ? span - .15 : .12, .13, isX ? .12 : span - .15, '#a08a66');
+        if (rise) { if (isX) rail.rotation.z = Math.atan2(rise, span); else rail.rotation.x = -Math.atan2(rise, span); }
+      }
     }
   },
 
   makeProp(p) {
-    const g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = p.angle || 0;
+    const g = new THREE.Group(); g.position.set(p.x, this.gy(p.x, p.z), p.z); g.rotation.y = p.angle || 0;
     if (p.health !== null) { this.scene.add(g); this.props.set(p.id, g); } else this.static.add(g);
     if (['brokenWagon', 'windmill', 'trough', 'cistern', 'ruinedArch', 'telegraph', 'deadTree', 'stump', 'boulder'].includes(p.type)) makeLandmark(this, p, g);
     if (RAIL_TYPES[p.type]) makeRailProp(this,p,g);
@@ -641,7 +681,7 @@ export const WorldBuild = {
     ring.rotation.x = -Math.PI / 2; ring.position.y = .065; g.add(ring); g.userData.ring = ring;
     const chevron = new THREE.Shape(); chevron.moveTo(0, 0); chevron.lineTo(-.11, .2); chevron.lineTo(.11, .2); chevron.closePath();
     const pointer = new THREE.Mesh(new THREE.ShapeGeometry(chevron), new THREE.MeshBasicMaterial({ color: '#f3e7c5', side: THREE.DoubleSide }));
-    pointer.rotation.x = -Math.PI / 2; pointer.position.set(0, .08, -.95); g.add(pointer);
+    pointer.rotation.x = -Math.PI / 2; pointer.position.set(0, .08, -.95); g.add(pointer); g.userData.pointer = pointer;
     // Merge the body into a few draws: legs, head and the rest each become one
     // mesh (death reactions still find them by deathPart). The gun and the
     // Static arm move and hide on their own, so they sit out the body merge;
@@ -732,7 +772,9 @@ export const WorldBuild = {
       const wisp=new THREE.Mesh(wispGeometry,material);wisp.renderOrder=5;
       wisp.scale.set(15+(i%3)*3,1,7+(i%3));this.resetDustWisp(wisp,i%3);this.scene.add(wisp);return wisp;
     });
-    for (const [x, z] of [[-4, -9], [20, 18], [-22, 12]]) this.spawnTumbleweed(x, z);
+    // (Tumbleweeds and dust devils are Deadwater's desert; a map with hills
+    // brings its own ambient life.)
+    if (!this.map.terrain) for (const [x, z] of [[-4, -9], [20, 18], [-22, 12]]) this.spawnTumbleweed(x, z);
   },
 
   resetDustWisp(wisp, initial = -1) {
@@ -776,7 +818,7 @@ export const WorldBuild = {
       let drift=wisp.userData.drift;drift.age+=dt;
       if(drift.age>=drift.life){this.resetDustWisp(wisp);drift=wisp.userData.drift;}
       const phase=drift.age/drift.life;
-      wisp.position.set(this.focus.x+(drift.x+drift.dx*phase)*halfWidth,drift.height,
+      wisp.position.set(this.focus.x+(drift.x+drift.dx*phase)*halfWidth,drift.height+this.focus.y,
         this.focus.z+(drift.z+drift.dz*phase)*halfHeight*1.25+Math.sin(elapsed*.07+drift.phase)*.7);
       wisp.material.opacity=.27*Math.sin(phase*Math.PI)**2;
       wisp.visible=!sim.interior;
@@ -795,7 +837,7 @@ export const WorldBuild = {
     }
     // Extreme: a dust devil now and then, crossing the open ground downwind.
     this.dustDevils ||= new DustDevils(this.fx);
-    this.dustDevils.update(dt, this.qualityName === 'extreme' && !sim.interior,
+    this.dustDevils.update(dt, this.qualityName === 'extreme' && !sim.interior && !this.map.terrain,
       { x: this.focus.x, z: this.focus.z, halfWidth, halfDepth: halfHeight },
       (x, z) => sim.colliders.some(b => inside({ x, z }, b, .8)), (x, z) => this.kickedDustColor(x, z));
     // Purely cosmetic overflights, hidden while a roof is between them and the
@@ -805,7 +847,7 @@ export const WorldBuild = {
     const cap = this.qualityName === 'performance' ? 4 : 7;
     if (this.ambientClock <= 0) {
       this.ambientClock = 4 + Math.random() * 5;
-      if (this.tumbleweeds.length < cap) {
+      if (this.tumbleweeds.length < cap && !this.map.terrain) {
         const width = Math.tan(this.camera.fov * Math.PI / 360) * 35 * this.camera.aspect;
         const x = this.focus.x - width - 2, z = this.focus.z + (Math.random() - .5) * 25;
         if (!sim.colliders.some(b => inside({ x, z }, b, .6))) this.spawnTumbleweed(x, z);

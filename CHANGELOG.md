@@ -2,6 +2,26 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.95 (2026-09-26)
+
+### Hills (the ground can rise and fall)
+- A map can now have hills: slopes, plateaus, hollows and dry-stone retaining walls, from one shared height grid every player and the host read exactly alike. Deadwater stays exactly flat and plays byte for byte as before (a recorded replay of every weapon, a robot fight and a hosted match checks it).
+- Sight follows the ground and is always mutual: a crest or a retaining wall hides you both ways. Rounds (Nominal's bullets, Ballast's pellets, Scatter's shells) only hit what their shooter could see and end in the ground where the rest of their path is hidden; they are drawn over the ground and glide down a wall's edge.
+- Static: a volley launches only the orbs you can see; orbs stop against a steep rise and do not drift off a ledge; orbs are not placed up a wall. Blasts (orbs, grenades, Scatter) are measured in 3D and stop at a crest; grenades arc over the lip they are thrown over.
+- Walking is a little slower uphill and quicker downhill. Robots take cover behind slopes, see by the ground and prefer gentler routes.
+- Effects, blood, marks, rings and shadows lie on the slopes. The ground is drawn in fine detail on every preset, finer as the preset rises.
+- Test Hill (developer tools) is the proving ground; the first real hilly map, Hollow Wick, is next.
+
+### PC
+- Settings > Graphics > SCREEN: Fullscreen or Windowed. Fullscreen works in any browser that allows it and now stays on through the menus; Windowed never goes full screen. (A saved "lock browser shortcuts: off" becomes Windowed.)
+
+### Robots
+- On a phone or tablet held upright, robots never shoot from off your real screen (they used a landscape box before). Multiplayer joiners send their screen shape to the host for this.
+
+### Multiplayer
+- Protocol 10 (hills). The host now sends a fingerprint of the map; a joiner with a different build of it is turned away. Every number in it is rounded first, so browsers whose maths differ in the last digit (Firefox's) always agree.
+- A mirrored Nominal round no longer keeps a previous round's Surge glow or ground stop.
+
 ## alpha v0.94 (2026-09-25)
 
 - Performance: collisions only check nearby walls and props (a grid over the map's ~830 colliders), for bodies, orbs, bullets, pellets, blast shells and grenades. A solo 3V3 used about a third of the CPU it did.

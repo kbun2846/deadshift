@@ -1,7 +1,7 @@
 import {recordBallastDamage} from './weapons/ballast-damage.js';
 import {isPlayable,confinePlayableMovement} from './playable-area.js';
 import {resetShotgun,stepShotgun,SHOTGUN} from './weapons/shotgun.js';
-import { mapColliders, mapProps, buildingContains, buildingWalls } from './maps.js';
+import { mapColliders, mapProps, buildingContains, buildingWalls, groundFor } from './maps.js';
 import { cropSegments, cropPoint, affectCrop, cropCircle, stepCrops } from './crops.js';
 import { nearColliders, collidersAlong } from './world/collider-grid.js';
 import { RIFLE, resetRifle, stepRifle } from './weapons/rifle.js';
@@ -9,13 +9,13 @@ import { targetRadius } from './target-radius.js';
 export { targetRadius };
 import { resetGrenades, stepGrenades } from './weapons/grenade.js';
 import { resetSurge, stepSurge, endSurge, SURGE } from './weapons/surge.js';
-import { resetScatter, stepScatter } from './weapons/scatter.js';
+import { resetScatter, stepScatter, blastReach } from './weapons/scatter.js';
 import { autoRangeDistance, AUTO_RANGE } from './auto-range.js';
 import { assistAim, clearAssist } from './aim-assist.js';
 import { AIM_ASSIST } from './config/gameplay.js';
 const AIM_ASSIST_RANGE = Math.max(...Object.values(AIM_ASSIST).map(l => l.maxRange));
 // Tunable numbers live in config/gameplay.js; re-exported so existing imports keep working.
-import { ORB_LAUNCH, RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, VOLLEY_BOOST, MOUSE_VOLLEY_ASSIST, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_ZAP_BONUS, HEX_DAMAGE_MULTIPLIER, boostedHexDamage } from './config/gameplay.js';
+import { ORB_LAUNCH, RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, VOLLEY_BOOST, MOUSE_VOLLEY_ASSIST, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_ZAP_BONUS, HEX_DAMAGE_MULTIPLIER, boostedHexDamage, TERRAIN } from './config/gameplay.js';
 import { usesTrigger } from './items.js';
 
 // Each trigger weapon's own tick (fire, reload, its extras). Static's orbs,
@@ -124,6 +124,10 @@ export function insideShield(sh, x, z) {
 export class Simulation {
   constructor(map) {
     this.dev = {}; this.map = map; this.colliders = mapColliders(map);
+    // The ground (world/heightfield.js): FLAT on a map without terrain, and
+    // then every height rule below is skipped (Deadwater plays exactly as it
+    // always has; tests/golden-flat.test.js). Shared per map, never changed.
+    this.ground = groundFor(map);
     // Online only: where the other players stand ({x, z}, optional hp), as
     // this simulation should see them this tick. The host fills it from its
     // own sims, a joiner from the latest snapshot. Offline it stays empty.
@@ -185,6 +189,9 @@ export class Simulation {
   }
 
   get seeds() { return this.shots.filter(s => !s.launched); }
+  // The parked orbs a launch commands: on hills only those the caster can see
+  // (a retaining wall hides the ledge above them); every one on a flat map.
+  launchableSeeds() { const p = this.player; return this.ground.flat ? this.seeds : this.seeds.filter(s => this.ground.sightClear(p.x, p.z, s.x, s.z)); }
   // One dodge per weapon; Ballast gets two (owner's call, v0.83).
   get maxStamina(){return this.weapon==='shotgun'?SHOTGUN.dodges:RULES.maxStamina;}
   // Nominal has no self-movement of its own, so holding a position is the one
@@ -203,9 +210,26 @@ export class Simulation {
       if (c.playerOnly || c.propId !== undefined || c.walkOver) continue;
       if (segmentBox(ax, az, bx, bz, c, .05) !== null) return true;
     }
-    return false;
+    // Hills: a crest between is as solid as a wall.
+    return !this.ground.flat && !this.ground.sightClear(ax, az, bx, bz);
   }
   get roofId() { return this.interior?.id ?? null; }
+  // Hills: a flat distance `d` from `a` to `b` in 3D, with the height between
+  // their grounds (exactly `d` on flat ground).
+  reach3(a, b, d) {
+    if (this.ground.flat) return d;
+    const dy = this.ground.heightAt(b.x, b.z) - this.ground.heightAt(a.x, a.z);
+    return dy === 0 ? d : Math.hypot(d, dy);
+  }
+  // Walking speed on a slope, for a step in direction (dx, dz): up to
+  // TERRAIN.uphill slower straight up a TERRAIN.fullGrade slope, up to
+  // TERRAIN.downhill quicker straight down one (across a slope: no change).
+  slopeFactor(dx, dz) {
+    const g = this.ground.gradientAt(this.player.x, this.player.z, this.slope ||= { x: 0, z: 0 });
+    const length = Math.hypot(dx, dz); if (length < 1e-9) return 1;
+    const grade = (g.x * dx + g.z * dz) / length, share = Math.min(1, Math.abs(grade) / TERRAIN.fullGrade);
+    return grade > 0 ? 1 - TERRAIN.uphill * share : 1 + TERRAIN.downhill * share;
+  }
   get playerHitRadius() { return this.player.dodgeRemaining > 0 ? RULES.dodgeHitRadius : RULES.radius; }
 
   canAimAt(x, z) {
@@ -230,7 +254,15 @@ export class Simulation {
   canSeeTarget(x, z, radius = .2) {
     const room = this.map.buildings.find(b => buildingContains(b, { x, z }));
     if (room && room !== this.interior) return false;
-    return this.canSeeEntity(x, z, radius);
+    return this.sees(x, z, radius);
+  }
+
+  // Gameplay sight (target lock, aim assist, robots' eyes, team callouts):
+  // what canSeeEntity allows (walls, interiors, cover that blocks sight) and,
+  // on hills, not hidden by the ground (TERRAIN: mutual, eye to body).
+  // canSeeEntity alone stays what the views use for walls and rooms.
+  sees(x, z, radius = .5, includeInterior = true) {
+    return this.canSeeEntity(x, z, radius, includeInterior) && (this.ground.flat || this.ground.sightClear(this.player.x, this.player.z, x, z));
   }
 
   canSeeEntity(x, z, radius=.5, includeInterior=true) {
@@ -294,7 +326,9 @@ export class Simulation {
     const length = Math.hypot(input.moveX || 0, input.moveZ || 0);
     const ix = length ? (input.moveX || 0) / Math.max(1, length) : 0;
     const iz = length ? (input.moveZ || 0) / Math.max(1, length) : 0;
-    const moveSpeed=RULES.speed*(input.aiming?RIFLE.aimMoveMultiplier:1)*(this.surge?.active?SURGE.speed:1);
+    let moveSpeed=RULES.speed*(input.aiming?RIFLE.aimMoveMultiplier:1)*(this.surge?.active?SURGE.speed:1);
+    // Hills: walking up a slope is slower, down one a little quicker.
+    if (!this.ground.flat && length) moveSpeed *= this.slopeFactor(ix, iz);
     if (wasDodging && !p.dodgeRemaining) { p.vx = ix * moveSpeed; p.vz = iz * moveSpeed; }
     // A dodge pressed a moment too early (still mid-dodge, or a charge just
     // short) is held for RULES.dodgeBuffer and happens the instant it can,
@@ -405,6 +439,17 @@ export class Simulation {
         s.vx=(s.targetX-s.launchX)*speed;s.vz=(s.targetZ-s.launchZ)*speed;
       }
       let first = 2, target = null, prop = null, aimedTarget = false;
+      // Hills: orbs float over the ground and stop against a rise steeper
+      // than TERRAIN.orbRise (a retaining wall's face, a cutting's side).
+      // (It ends where it is, as against a wall: nothing along the way can
+      // come nearer than 0.)
+      if (!this.ground.flat) {
+        const run = Math.hypot(nx - s.x, nz - s.z), rise = this.ground.heightAt(nx, nz) - this.ground.heightAt(s.x, s.z);
+        if (run > 1e-6 && rise > TERRAIN.orbRise * run) first = 0;
+        // A parked orb drifting out stops at a ledge's lip (as steep down as a
+        // wall is up) rather than dropping out of its caster's sight.
+        else if (!s.launched && run > 1e-6 && -rise > TERRAIN.orbRise * run) { s.vx = s.vz = 0; nx = s.x; nz = s.z; }
+      }
       // Breakable scenery does not stop a launched orb outright: the orb pays
       // for it out of a pierce budget worth one orb. Clearing something costs
       // its remaining health, so a barrel is punched through and the orb carries
@@ -653,8 +698,11 @@ export class Simulation {
     const seeds = this.shots.filter(s => !s.launched && !s.dead), diameter = RULES.orbRadius * 2;
     const push = (orb, dx, dz) => {
       const x = orb.x + dx, z = orb.z + dz;
+      // (Hills: a rise steeper than an orb climbs is a wall too: pushing
+      // never lifts a parked orb over a retaining wall's face.)
       const blocked = this.colliders.some(b => !b.playerOnly && segmentBox(orb.x, orb.z, x, z, b, .09) !== null) ||
-        this.targets.some(t => t.hp > 0 && segmentCircle(orb.x, orb.z, x, z, t.x, t.z, .66) !== null);
+        this.targets.some(t => t.hp > 0 && segmentCircle(orb.x, orb.z, x, z, t.x, t.z, .66) !== null) ||
+        (!this.ground.flat && this.ground.heightAt(x, z) - this.ground.heightAt(orb.x, orb.z) > TERRAIN.orbRise * Math.hypot(dx, dz));
       if (blocked || Math.abs(x) > this.map.width / 2 || Math.abs(z) > this.map.depth / 2) {
         orb.dead = true; this.events.push({ type: 'wall', x: orb.x, z: orb.z, launched: false });
       } else { orb.x = x; orb.z = z; }
@@ -674,16 +722,20 @@ export class Simulation {
     if (this.ammo <= 0 || (!this.dev.orbs && this.seeds.length >= RULES.maxSeeds)) return;
     const p = this.player;
     let x = p.x + p.aimX * .8, z = p.z + p.aimZ * .8;
+    // Hills: a spot up a rise steeper than an orb climbs (a retaining wall's
+    // face) is behind a wall, as far as an orb is concerned.
+    const rises = (sx, sz) => !this.ground.flat && this.ground.heightAt(sx, sz) - this.ground.heightAt(p.x, p.z) > TERRAIN.orbRise * Math.hypot(sx - p.x, sz - p.z);
     // Alternate muzzle lanes when rapid placement would overlap a drifting orb.
     const seeds = this.seeds;
     for (const side of [0, .32, -.32, .64, -.64, .96, -.96]) {
       const sx = p.x + p.aimX * .8 - p.aimZ * side, sz = p.z + p.aimZ * .8 + p.aimX * side;
       if (seeds.some(s => Math.hypot(s.x - sx, s.z - sz) < RULES.orbRadius * 2)) continue;
       if (this.colliders.some(b => !b.playerOnly && segmentBox(p.x, p.z, sx, sz, b, .1) !== null)) continue;
+      if (rises(sx, sz)) continue;
       x = sx; z = sz; break;
     }
     this.seedCooldown = this.dev.fastSeeds ? 0 : RULES.seedInterval;
-    if (this.colliders.some(b => !b.playerOnly && segmentBox(p.x, p.z, x, z, b, .1) !== null)) {
+    if (this.colliders.some(b => !b.playerOnly && segmentBox(p.x, p.z, x, z, b, .1) !== null) || rises(x, z)) {
       this.events.push({ type: 'wall', x, z, launched: false }); return;
     }
     this.shots.push({ id: ++this.serial, owner: p.id, team: p.team, x, z,
@@ -693,14 +745,16 @@ export class Simulation {
   }
 
   launch(pointX, pointZ, quickShot=false, mouseAssist=false) {
-    const isQuickShot=quickShot&&!this.seeds.length;
-    if(quickShot&&!this.seeds.length&&this.ammo>0){
+    const isQuickShot=quickShot&&!this.launchableSeeds().length;
+    if(isQuickShot&&this.ammo>0){
       if(this.seedCooldown>0)return;
       this.seed();
     }
-    const seeds = this.seeds;
-    if (!seeds.length) { this.events.push({ type: 'cock' }); return; }
     const p = this.player;
+    // Hills: a launch commands only the orbs you can see (launchableSeeds);
+    // any others stay parked where they are.
+    const seeds = this.launchableSeeds();
+    if (!seeds.length) { this.events.push({ type: 'cock' }); return; }
     // Freeze the cursor/tap point at trigger time. Orbs may approach from any
     // side, each on its own straight path. They stop here and never fuse.
     let x = Number.isFinite(pointX) ? pointX : p.aimPointX ?? p.x + p.aimX * RULES.focusDistance;
@@ -774,6 +828,8 @@ export class Simulation {
         if (along <= 0 || along >= aimDistance || along < aimDistance - RULES.interceptReach) continue;
         if (Math.abs(toX * dirZ - toZ * dirX) > RULES.interceptCorridor) continue;
         if (this.colliders.some(b => !b.playerOnly && !b.destructible && segmentBox(p.x, p.z, candidate.x, candidate.z, b) !== null)) continue;
+        // (Hills: nor over a crest; the refocus is only for a body the caster can see.)
+        if (!this.ground.flat && !this.ground.sightClear(p.x, p.z, candidate.x, candidate.z)) continue;
         let earliest = Infinity, crossing = 0;
         for (const seed of seeds) {
           const t = segmentCircle(seed.x, seed.z, travel.x, travel.z, candidate.x, candidate.z, .66);
@@ -861,9 +917,12 @@ export class Simulation {
     const origin = { x: p.x + p.aimX * .65, z: p.z + p.aimZ * .65 };
     const cover = [...this.colliders];
     const blocked = (a, b, propId) => cover.some(c => !c.playerOnly && (propId === undefined || c.propId !== propId) && segmentBox(a.x, a.z, b.x, b.z, c) !== null);
+    const ground = this.ground;
     const damageAt = (victim, propId) => {
       const dx = victim.x - origin.x, dz = victim.z - origin.z, distance = Math.hypot(dx, dz);
       if (distance > RULES.sprayRange || blocked(p, origin) || blocked(origin, victim, propId)) return 0;
+      // Hills: the stream reaches only what its caster can see.
+      if (!ground.flat && !ground.sightClear(p.x, p.z, victim.x, victim.z)) return 0;
       const dot = distance > 1e-6 ? (dx * p.aimX + dz * p.aimZ) / distance : 1;
       if (dot < Math.cos(RULES.sprayOuterAngle)) return 0;
       const dps = dot >= Math.cos(RULES.sprayInnerAngle) ? RULES.sprayInnerDPS : RULES.sprayOuterDPS;
@@ -908,6 +967,8 @@ export class Simulation {
           const hit = segmentBox(origin.x, origin.z, end.x, end.z, box);
           if (hit !== null) t = Math.min(t, hit);
         }
+        // Hills: a lane runs into the ground where its caster stops seeing.
+        if (!ground.flat && range > 1e-6 && t > 0) t = Math.min(t, ground.roundStop(p.x, p.z, origin.x, origin.z, (end.x - origin.x) / range, (end.z - origin.z) / range, range) / range);
         paths.push({ energy: Math.abs(lanes[i]) < .25 ? 1 : .25, a: origin, b: { x: origin.x + (end.x - origin.x) * t, z: origin.z + (end.z - origin.z) * t } });
       }
       this.events.push({ type: 'sprayArc', paths, firing: firing > 0, x: origin.x, z: origin.z });
@@ -943,7 +1004,7 @@ export class Simulation {
     const damageAt = (victim, propId) => {
       let damage = 0, source = null;
       for (const n of nodes) {
-        const d = Math.hypot(n.x - victim.x, n.z - victim.z);
+        const d = this.reach3(n, victim, Math.hypot(n.x - victim.x, n.z - victim.z));
         if (d <= n.power.radius + 1e-8 && clear(n, victim, propId)) {
           const value = hexPulseDamageAt(n.power, d);
           if (value > damage) { damage = value; source = n; }
@@ -1011,7 +1072,7 @@ export class Simulation {
         const dx = b.x - a.x, dz = b.z - a.z;
         const t = Math.max(0, Math.min(1, ((victim.x - a.x) * dx + (victim.z - a.z) * dz) / (dx * dx + dz * dz || 1)));
         const point = { x: a.x + dx * t, z: a.z + dz * t };
-        if (Math.hypot(victim.x - point.x, victim.z - point.z) > reach || blocked(point, victim)) continue;
+        if (this.reach3(point, victim, Math.hypot(victim.x - point.x, victim.z - point.z)) > reach || blocked(point, victim)) continue;
         hits.add(victim.id);
         this.hit(victim, { electric:true, damage: RULES.hexEdgeDamage, volley: spin.volley, owner: this.player.id });
         this.events.push({ type: 'hexZap', a: point, b: { x: victim.x, z: victim.z }, side: a.index, targetId: victim.id });
@@ -1227,10 +1288,12 @@ export class Simulation {
     const walls = this.colliders.filter(box => !box.playerOnly && box.propId === undefined);
     const shut = (bx, bz) => walls.some(box => segmentBox(x, z, bx, bz, box) !== null);
     const damageAt = (victim, propId, reach = 0) => {
-      const centre = Math.hypot(victim.x - x, victim.z - z), distance = Math.max(0, centre - reach);
+      // (Hills: measured in 3D, and nothing behind a crest from the blast.)
+      const centre = blastReach(this, x, z, victim, Math.hypot(victim.x - x, victim.z - z), reach, blast.radius), distance = Math.max(0, centre - reach);
       if (distance > blast.radius) return 0;
       if (shut(victim.x, victim.z)) {
-        const ux = centre > 1e-6 ? (victim.x - x) / centre : 1, uz = centre > 1e-6 ? (victim.z - z) / centre : 0, side = reach * .8;
+        const flatCentre = Math.hypot(victim.x - x, victim.z - z);
+        const ux = flatCentre > 1e-6 ? (victim.x - x) / flatCentre : 1, uz = flatCentre > 1e-6 ? (victim.z - z) / flatCentre : 0, side = reach * .8;
         if (!side || (shut(victim.x - uz * side, victim.z + ux * side) && shut(victim.x + uz * side, victim.z - ux * side))) return 0;
       }
       return Math.max(1, Math.round(blast.damage * splashFalloff(distance, blast.radius, volley.arrived)));
@@ -1258,7 +1321,7 @@ export class Simulation {
     for (const prop of this.props) {
       if (prop.hp === null || !(prop.hp > 0)) continue;
       const dx = prop.x - x, dz = prop.z - z, d = Math.hypot(dx, dz);
-      if (d > radius) continue;
+      if (this.reach3({ x, z }, prop, d) > radius) continue;
       this.hitProp(prop, { damage: prop.hp, owner: this.player.id, damageType: 'impact', x: prop.x, z: prop.z, vx: dx / (d || 1), vz: dz / (d || 1) });
     }
   }

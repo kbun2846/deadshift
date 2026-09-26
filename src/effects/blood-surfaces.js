@@ -2,21 +2,24 @@
 // from the simulation's collider boxes (2D, cheap) instead of raycasting the
 // merged world meshes (every triangle of the map, a visible hitch per death).
 // Also the floor height at a point: a building's floorboards or the ground.
-import { buildingContains } from '../map-kit.js';
+import { buildingContains, groundFor } from '../map-kit.js';
 import { segmentBox } from '../simulation.js';
 
 // First collider face crossed from (x, z) along (dx, dz) within `reach`
 // metres. Windows (playerOnly) let blood through. Returns { distance, x, z,
 // nx, nz, height, propId } (n: the face's outward normal), or null.
-export function castToWall(colliders, x, z, dx, dz, reach, minHeight = 0) {
+// Hills (`ground`): a retaining wall (terrainEdge) takes blood thrown at it
+// from its foot; thrown from the top, it flies over the edge and falls below.
+export function castToWall(colliders, x, z, dx, dz, reach, minHeight = 0, ground = null) {
  const length = Math.hypot(dx, dz); if (!colliders || length < 1e-6) return null;
  const ux = dx / length, uz = dz / length, ex = x + ux * reach, ez = z + uz * reach;
  let best = null, bestT = Infinity;
  for (const box of colliders) {
-  if (box.playerOnly || (box.height ?? 3) < minHeight) continue;
+  if (box.terrainEdge ? !ground || box.height < minHeight : box.playerOnly || (box.height ?? 3) < minHeight) continue;
   // Skip boxes the start point is inside (standing against or in a doorway).
   const t = segmentBox(x, z, ex, ez, box);
   if (t === null || t <= 1e-4 || t >= bestT) continue;
+  if (box.terrainEdge) { const past = t * reach + .6; if (ground.heightAt(x + ux * past, z + uz * past) < ground.heightAt(x, z) + .5) continue; }
   bestT = t; best = box;
  }
  if (!best) return null;
@@ -31,8 +34,9 @@ export function castToWall(colliders, x, z, dx, dz, reach, minHeight = 0) {
 }
 
 // The floor under a point: floorboards (.065 up, the freight shed's deck
-// higher) inside a building, else the ground.
+// higher) inside a building, else the ground. (Hills: on the building's pad
+// at baseY, or on the ground's own height.)
 export function floorHeight(map, x, z) {
- for (const b of map?.buildings || []) if (buildingContains(b, { x, z })) return b.cargo ? .3 : .07;
- return .02;
+ for (const b of map?.buildings || []) if (buildingContains(b, { x, z })) return (b.cargo ? .3 : .07) + (b.baseY || 0);
+ return .02 + (map?.terrain ? groundFor(map).heightAt(x, z) : 0);
 }

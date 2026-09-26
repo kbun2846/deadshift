@@ -5,6 +5,23 @@
 import { ROADSIDE_TYPES } from './world/roadside.js';
 import { RAIL_TYPES } from './world/rail-depot.js';
 import { interiorCover } from './world/detailed-interiors.js';
+import { FLAT, groundFromBaked, edgeCollider } from './world/heightfield.js';
+import { BAKED_TERRAIN } from './maps/terrain/index.js';
+
+// The ground under a map (world/heightfield.js): FLAT for a map without a
+// `terrain` spec, otherwise its prebaked grid, built once per map id and
+// shared by every simulation, robot and view of it.
+const grounds = new Map();
+export function groundFor(map) {
+  if (!map?.terrain) return FLAT;
+  let ground = grounds.get(map.id);
+  if (!ground) {
+    const baked = BAKED_TERRAIN[map.id];
+    if (!baked) throw new Error(`Map ${map.id} has no baked terrain: run node tools/bake-terrain.mjs`);
+    grounds.set(map.id, ground = groundFromBaked(baked, map.terrain));
+  }
+  return ground;
+}
 
 // A building's roof footprint is independent of its physical wall colliders.
 export const building = (id, x, z, w, d, height, label, color, roofColor) => ({
@@ -139,5 +156,8 @@ export function mapColliders(map) {
     for (const [x,z,w,d] of pieces) colliders.push({ x: p.x+x*c+z*s, z:p.z-x*s+z*c, w:Math.abs(w*c)+Math.abs(d*s),d:Math.abs(w*s)+Math.abs(d*c),angle:p.angle||0,localW:w,localD:d,height: p.walkOver ? .5 : 1.2, blocksSight: !!p.blocksSight, walkOver: !!p.walkOver, propId: p.id, destructible: p.health !== null });
   }
   for (const f of map.fences) colliders.push({ x: f.x, z: f.z, w: f.axis === 'x' ? f.length : .24, d: f.axis === 'z' ? f.length : .24, height: 1.1 });
+  // Hills: every authored steep edge is a retaining wall bodies cannot cross
+  // (playerOnly: shots, sight and blasts go by the ground, not by the box).
+  if (map.terrain) for (const edge of groundFor(map).edges) colliders.push(edgeCollider(edge));
   return colliders;
 }

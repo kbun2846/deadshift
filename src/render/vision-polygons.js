@@ -17,9 +17,9 @@ export function interiorPolygons(room, player) {
 
 // Clip BEFORE perspective division: points behind the camera otherwise mirror
 // across the screen and turn a doorway cone into a large false clear region.
-export function projectVisionPolygon(points,camera,width,height) {
+export function projectVisionPolygon(points,camera,width,height,y=.7) {
   const matrix = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
-  let vertices = points.map(p=>new THREE.Vector4(p.x,.7,p.z,1).applyMatrix4(matrix));
+  let vertices = points.map(p=>new THREE.Vector4(p.x,y,p.z,1).applyMatrix4(matrix));
   for (const axis of ['x','y','z']) for (const sign of [-1,1]) {
     const output=[];
     for(let i=0;i<vertices.length;i++) {

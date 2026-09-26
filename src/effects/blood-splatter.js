@@ -14,6 +14,8 @@
 // pile up blended quads on a phone (the oldest goes first).
 import * as THREE from 'three';
 import { castToWall, floorHeight } from './blood-surfaces.js';
+import { buildingContains } from '../map-kit.js';
+import { groundY, hilly } from '../render/ground-lift.js';
 
 export const SPLAT_CAP = Object.freeze({ potato: 6, performance: 8, balanced: 12, quality: 16, extreme: 20 });
 const LIFE = 60, FADE = 4, GROW = .35, REPLACE = .6, REACH = 2.4;
@@ -106,7 +108,7 @@ export class BloodSplatters {
 
  // The floor under a point: floorboards indoors, else the ground. From the
  // map's building outlines (blood-surfaces.js), not a raycast into the world.
- floorAt(x, z) { return Math.max(.05, floorHeight(this.view.map, x, z)); }
+ floorAt(x, z) { const floor = floorHeight(this.view.map, x, z), ground = groundY(this.view, x, z); return Math.max(.05 + ground, floor); }
 
  // A death at (x, z). The hit came from direction (dx, dz): blood flies that way.
  add(x, z, dx = 0, dz = 0, owner = null) {
@@ -121,8 +123,11 @@ export class BloodSplatters {
    polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
   const mesh = new THREE.Mesh(this.geometry, material);
   const size = 2.6 + Math.random() * .7;
-  mesh.position.set(x + Math.cos(angle) * .35, this.floorAt(x, z) + .004, z + Math.sin(angle) * .35);
-  mesh.rotation.y = -angle; mesh.renderOrder = 2; mesh.scale.setScalar(size * .25);
+  const px = x + Math.cos(angle) * .35, pz = z + Math.sin(angle) * .35;
+  mesh.position.set(px, this.floorAt(x, z) + .004, pz);
+  // (Hills, outdoors: laid on the slope; a building's floor is flat.)
+  if (!hilly(this.view) || this.view.map.buildings.some(b => buildingContains(b, { x, z }))) mesh.rotation.y = -angle; else { mesh.position.y = this.floorAt(px, pz) + .004; this.view.tiltToGround(mesh, px, pz, -angle); }
+  mesh.renderOrder = 2; mesh.scale.setScalar(size * .25);
   mesh.userData.size = size;
   this.view.scene.add(mesh);
   this.splats.push({ mesh, age: 0, owner, leaving: false, leaveAge: 0 });
@@ -142,18 +147,18 @@ export class BloodSplatters {
   // Found from the collider boxes (blood-surfaces.js), not by raycasting the
   // world's merged meshes: that tested every triangle of the map per ray.
   for (const turn of tries) {
-   const a = base + turn, hit = castToWall(colliders, x, z, Math.cos(a), Math.sin(a), REACH, 1.5);
+   const a = base + turn, hit = castToWall(colliders, x, z, Math.cos(a), Math.sin(a), REACH, 1.5, hilly(this.view) ? this.view.ground : null);
    if (hit && hit.propId === null && (!best || hit.distance < best.distance)) best = hit;
   }
   if (!best) return;
-  const hit = { distance: best.distance, point: new THREE.Vector3(best.x, .85, best.z) }, normal = new THREE.Vector3(best.nx, 0, best.nz);
+  const lift = groundY(this.view, best.x, best.z), hit = { distance: best.distance, point: new THREE.Vector3(best.x, .85 + lift, best.z) }, normal = new THREE.Vector3(best.nx, 0, best.nz);
   this.walls ||= [4, 5].map(seed => wallTexture(seed, this.fine));
   const material = new THREE.MeshBasicMaterial({ map: this.walls[Math.floor(Math.random() * 2)], transparent: true, depthWrite: false,
    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
   const mesh = new THREE.Mesh(this.wallGeometry, material);
   // Closer walls take more of it.
   const size = (1.5 - hit.distance / REACH * .6) * (.9 + Math.random() * .25);
-  mesh.position.copy(hit.point).addScaledVector(normal, .012); mesh.position.y = Math.max(size * .32, hit.point.y + .05);
+  mesh.position.copy(hit.point).addScaledVector(normal, .012); mesh.position.y = Math.max(size * .32 + lift, hit.point.y + .05);
   mesh.lookAt(mesh.position.x + normal.x, mesh.position.y, mesh.position.z + normal.z);
   mesh.renderOrder = 2; mesh.scale.setScalar(size * .25); mesh.userData.size = size;
   this.view.scene.add(mesh);

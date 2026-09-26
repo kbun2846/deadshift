@@ -23,6 +23,7 @@
 // No DOM, no three.js.
 import { RULES } from '../config/gameplay.js';
 import { isPlayable } from '../playable-area.js';
+import { groundFor } from '../map-kit.js';
 
 export const CELL = .5;
 const ROOM = .08; // extra clearance round the body, metres
@@ -62,6 +63,14 @@ export class NavGrid {
   const n = this.cols * this.rows;
   this.open = new Uint8Array(n); this.clearance = new Uint8Array(n);
   this.g = new Float64Array(n); this.f = new Float64Array(n); this.from = new Int32Array(n); this.stamp = new Uint32Array(n); this.closed = new Uint32Array(n); this.search = 0;
+  // Hills: a steep square costs a little more to cross (up to +50% at a 30%
+  // slope), so robots take the easier way round when it is not much longer.
+  // None on a flat map (so its paths are exactly as they were).
+  const ground = groundFor(map);
+  if (!ground.flat) {
+   const slope = this.slope = new Float32Array(n), out = { x: 0, z: 0 };
+   for (let i = 0; i < n; i++) { const c = this.centre(i); ground.gradientAt(c.x, c.z, out); slope[i] = .5 * Math.min(1.5, Math.hypot(out.x, out.z) / .3); }
+  }
   this.build(colliders);
  }
 
@@ -241,7 +250,7 @@ export class NavGrid {
     const j = r * cols + c; if (!this.open[j] || closed[j] === run) continue;
     // No squeezing diagonally between two blocked squares.
     if (dc && dr && (!this.open[row * cols + c] || !this.open[r * cols + col])) continue;
-    const next = g[i] + cost * (1 + this.wallCost(j));
+    const next = g[i] + cost * (1 + this.wallCost(j) + (this.slope ? this.slope[j] : 0));
     if (stamp[j] !== run || next < g[j]) { stamp[j] = run; g[j] = next; f[j] = next + h(j); from[j] = i; heap.push(j); }
    }
   }
