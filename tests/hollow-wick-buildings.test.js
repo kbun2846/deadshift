@@ -143,6 +143,57 @@ test('the colonial buildings build: finite geometry, one fading roof each, merge
   assert.ok(triangles < 160000, `${triangles} triangles`);
 });
 
+test('the colonial roofs fade by whole sections (s6-roofs): every piece in one, room in the table, the right ones fade', async () => {
+  const THREE = await import('three');
+  const { WorldView } = await import('../src/render/renderer.js');
+  const { roofFade, updateSections, SECTION_FADE } = await import('../src/world/roof-fade.js');
+  const view = Object.create(WorldView.prototype);
+  Object.assign(view, { materials: new Map(), static: new THREE.Group(), scene: new THREE.Scene(), roofs: [], map, ground, props: new Map(), propDetails: [] });
+  view.scene.add(view.static);
+  for (const b of map.buildings) view.makeBuilding(b);
+  const S = view.roofSections;
+  assert.equal(S.roofs.length, map.buildings.length);
+  assert.ok(S.next - 1 <= SECTION_FADE.slots / 2, `${S.next - 1} sections: room to spare in the table`);
+  for (const r of view.roofs) {
+    const R = S.roofs.find(x => x.id === r.id), names = R.sections.map(s => s.name), used = new Set();
+    assert.ok(R.entry === r && R.box, r.id);
+    // Every vertex of the baked roof carries a section of its own roof, and every section has vertices and shapes.
+    for (const m of r.colour) {
+      const a = m.geometry.attributes.roofSection;
+      assert.ok(a, `${r.id}: sections baked in`);
+      for (let i = 0; i < a.count; i++) used.add(a.getX(i));
+    }
+    for (const s of R.sections) { assert.ok(used.has(s.index), `${r.id} ${s.name} drawn`); assert.ok(s.shapes.length, `${r.id} ${s.name} has a shape`); }
+    assert.ok([...used].every(i => i >= R.start && i < R.start + R.sections.length), `${r.id}: only its own sections`);
+    assert.ok(!names.includes('rest'), `${r.id}: every piece tagged (${names})`);
+    const b = map.buildings.find(b => b.id === r.id);
+    if (b.roof.kind === 'mound') { assert.deepEqual(names, ['mound']); continue; }
+    assert.ok(names.includes('gable+') && names.includes('gable-'), `${r.id}: both gable ends`);
+    assert.ok(b.roof.kind === 'shed' ? names.includes('slope') : names.includes('slope+') && names.includes('slope-'), `${r.id}: its slopes`);
+    // A door's hood takes the roof's face on its side along.
+    for (const s of R.sections.filter(s => s.name.startsWith('hood'))) assert.match(R.sections[s.pull]?.name || '', /^(slope|gable)/, `${r.id} ${s.name}`);
+  }
+  const meeting = S.roofs.find(R => R.id === 'meetinghouse').sections, portico = meeting.find(s => s.name === 'portico');
+  assert.ok(meeting.some(s => s.name === 'belfry') && meeting[portico.pull].name === 'slope+', 'the belfry; the portico takes the front slope along');
+  // Standing in the game's places, the camera over you (29 m up, 10 south):
+  // which sections fade, all over the map.
+  Object.assign(view, { player: new THREE.Group(), remote: { avatars: new Map() }, renderer: { info: { render: { frame: 1 } } }, camera: { position: new THREE.Vector3() } });
+  const list = roofFade(view);
+  const fades = (x, z) => {
+    const y = ground.heightAt(x, z);
+    view.player.position.set(x, y, z); view.camera.position.set(x, y + 29, z + 29 * 11.5 / 33);
+    list.refresh(); updateSections(view, 0);
+    return S.roofs.flatMap(R => R.sections.filter(s => s.target).map(s => `${R.id} ${s.name}`)).sort();
+  };
+  assert.deepEqual(fades(30, -4.5), [], 'in the street: nothing');
+  assert.deepEqual(fades(38.75, -15.27), ['saltbox hood0', 'saltbox slope+'], 'the saltbox\'s front stoop: its hood and the whole front slope');
+  assert.deepEqual(fades(35.26, -23.36), ['saltbox slope-'], 'under the saltbox\'s long back eave: that slope only');
+  assert.deepEqual(fades(50.67, -22.74), ['cape hood1', 'cape slope-'], 'the cape\'s back stoop');
+  assert.deepEqual(fades(-42.8, -17.2), ['meetinghouse portico', 'meetinghouse slope+'], 'under the portico');
+  assert.deepEqual(fades(17.26, -19), ['tavern gable-', 'tavern hood2'], 'the tavern\'s side door: its hood and that gable end, not the whole roof');
+  assert.deepEqual(fades(-33.2, -39.9), ['horse-sheds slope'], 'in an open shed (outdoors): its roof over you');
+});
+
 test('an eave facing north runs on less (the camera looks from the south: its strip hid whoever stood there)', async () => {
   const { eaveRun, EAVE } = await import('../src/world/colonial-buildings.js');
   let north = 0;

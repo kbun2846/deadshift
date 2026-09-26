@@ -29,6 +29,9 @@ export function castersOnlyInShadow(mesh, castCount, total) {
 // `options.castersFirst`: bake the casting and the non-casting parts into
 // one mesh, the casters first, drawn whole by the camera and only the
 // casters' part in the shadow pass (a roof: its shingles never cast).
+// `options.stamp`: also a per-vertex float attribute of that name, each part's
+// `userData[stamp]` (0 without one): a colonial roof's sections (s6-roofs,
+// world/roof-fade.js).
 export function bakeColors(group, options = {}) {
   const parts = group.children.filter(child => child.isMesh && !child.children.length && !Array.isArray(child.material) && (!options.pick || options.pick(child)));
   if (parts.length < (options.material ? 1 : 2)) return null;
@@ -46,6 +49,7 @@ export function bakeColors(group, options = {}) {
     const colors = new Float32Array(g.attributes.position.count * 3);
     for (let i = 0; i < colors.length; i += 3) { colors[i] = color.r; colors[i + 1] = color.g; colors[i + 2] = color.b; }
     g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    if (options.stamp) g.setAttribute(options.stamp, new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(mesh.userData[options.stamp] ?? 0), 1));
     total += g.attributes.position.count; if (mesh.castShadow) castCount += g.attributes.position.count;
     geometries.push(g);
     group.remove(mesh);

@@ -28,6 +28,25 @@
 // TREE_FADE.from over its foot, so the branches fade into the trunk and the
 // trunk stays solid cover. Each vertex (limbs) or clump (leaves) carries its
 // tree: `treeAt` (trunk x, z, crown radius, ground y at the trunk).
+//
+// Colonial roofs fade by SECTION, whole (s6-roofs, owner: "make it bigger and
+// make it make the whole front section of the roof transparent"; the patch
+// above is the walls' now). Each roof is cut into sections as it is built
+// (world/colonial-buildings.js): each slope of the main roof, each gable end,
+// each door's hood, the portico, the belfry, the tomb's mound; chimneys and
+// the ridge go with the slope they stand on. Every vertex of the baked roof
+// carries its section (`roofSection`: an index into ONE table of fades shared
+// by every roof, `SECTION_FADE.slots`, index 0 never fades). Once a frame
+// (prepareFades) each section's target is decided here, on the CPU, from its
+// shapes (a slope or gable as a slab whose top follows the roof line, the
+// rest as boxes, in the building's frame): a section fades when a character
+// in the list stands under it or it hides them from the camera (the line
+// from their waist or head toward the camera passes under its top, within
+// `reach` of it). A door's hood takes the face of the roof behind it along,
+// so standing at a door fades the whole front. Each section eases to its
+// target (smoothstep over `fadeIn` s in, `fadeOut` s out). The roof's opaque
+// draw drops a faded section's vertices (no fragments, no discard) and its
+// blended copy draws only those, at 1 - fade x strength.
 import * as THREE from 'three';
 import { buildingContains } from '../map-kit.js';
 
@@ -36,8 +55,17 @@ export const ROOF_FADE = Object.freeze({ slots: 8, head: 1.6, inner: .5, outer: 
 // the same patch, but only from the waist up and only on the camera's side of
 // the body (owner, stage 5 review: someone against a north wall was hidden
 // by the wall itself, a head shorter than it; the wall behind someone
-// standing in front of it stays whole). Renderer 'wall' batches.
-export const WALL_FADE = Object.freeze({ above: .9, ahead: true });
+// standing in front of it stays whole). Renderer 'wall' batches. A little
+// bigger than the old roof patch (s6-roofs: inner .5, outer 1.05 before).
+export const WALL_FADE = Object.freeze({ above: .9, ahead: true, inner: .65, outer: 1.3 });
+// The roofs' sections (s6-roofs): the table's size (Hollow Wick uses about a
+// third), how see-through a faded section goes, its ease in and out (s), how
+// near a character's line must pass to fade it (m: a little under the body's
+// .38 radius, so a hat brim grazing a gable's overhang from a side door does
+// not fade the whole roof), the waist (m over the feet: lower down the walls
+// hide a body anyway), and how far over the roof line a slope's shingles,
+// rake boards and ridge reach.
+export const SECTION_FADE = Object.freeze({ slots: 256, strength: .85, fadeIn: .16, fadeOut: .24, reach: .3, waist: .9, thick: .3 });
 // Whole trees (owner, v0.985a): how see-through the leaves and the limbs go,
 // and where a limb eases back to solid (m over the ground at the trunk); the
 // crown's edge is soft over `edge` m inside it to `out` m outside it.
@@ -74,22 +102,28 @@ export function roofFade(view) {
  return (view.roofFade = { fade, count, update, refresh, overlays: [] });
 }
 
-// Before each render (renderer.js drawFrame): the list as it stands, and each
-// blended copy shown only if a patch can fall on its mesh. For a roof or a
-// building's shell (`near: 'line'`): the line from someone's head toward the
-// camera, as high as the mesh reaches, passes within the patch's reach of the
-// mesh's bounds. For the trees' copies (`near: 'sphere'`): someone within
-// `reach` m of the mesh's bounding sphere (a crown fades whole).
+// Before each render (renderer.js drawFrame): the list as it stands, the
+// roofs' sections decided and eased, and each blended copy shown only if a
+// patch can fall on its mesh. For a building's shell (`near: 'line'`): the
+// line from someone's head toward the camera, as high as the mesh reaches,
+// passes within the patch's reach (`pad`) of the mesh's bounds. For a roof
+// (`near: 'sections'`): any of its sections (`start` to `end` in the table)
+// is faded, or still fading out. For the trees' copies (`near: 'trees'`):
+// one of its trees is faded.
 export function prepareFades(view) {
  const r = view.roofFade; if (!r) return;
  r.refresh();
+ const S = view.roofSections;
+ if (S) updateSections(view, sectionStep(S));
  const n = r.count.value, eye = view.camera?.position;
  for (let k = 0; k < r.overlays.length; k++) {
   const e = r.overlays[k];
   let show = false;
-  if (n > 0 && !(e.skip && e.skip())) {
+  if (e.skip && e.skip()) show = false;
+  else if (e.near === 'sections') { for (let i = e.start; i < e.end && !show; i++) show = S.values[i] > ROOF_FADE.cut; }
+  else if (n > 0) {
    if (e.near === 'line' && eye) {
-    const box = e.box || (e.box = worldBox(e.base)), pad = ROOF_FADE.outer + .1;
+    const box = e.box || (e.box = worldBox(e.base)), pad = e.pad;
     for (let i = 0; i < n && !show; i++) {
      const c = r.fade[i], headY = c.z + ROOF_FADE.head, rise = Math.max(0, box.max.y - headY), down = Math.max(1, eye.y - headY);
      const bx = c.x + (eye.x - c.x) / down * rise, bz = c.y + (eye.z - c.y) / down * rise;
@@ -148,37 +182,186 @@ function worldBox(mesh) {
 // Does the segment (ax, az)-(bx, bz) pass within `pad` of the box (x and z)?
 // (Liang-Barsky against the grown box; no closures: it runs every frame.)
 export function segmentNearBox(ax, az, bx, bz, box, pad) {
- const dx = bx - ax, dz = bz - az, x0 = box.min.x - pad, x1 = box.max.x + pad, z0 = box.min.z - pad, z1 = box.max.z + pad;
+ CLIP.ax = ax; CLIP.az = az; CLIP.bx = bx; CLIP.bz = bz;
+ CLIP.x0 = box.min.x - pad; CLIP.x1 = box.max.x + pad; CLIP.z0 = box.min.z - pad; CLIP.z1 = box.max.z + pad;
+ return clipSegment();
+}
+// The numbers the tests below work on live on these two long-lived objects,
+// not in arguments (s6-roofs): a number handed to or returned from a call the
+// engine does not inline is boxed, a small allocation, and these run for
+// everyone by every roof, every frame. CLIP: the segment (a to b) and the
+// grown rectangle; clipSegment leaves the part inside as t0 to t1 (fractions
+// of the segment). LINE: the character and the line being tested.
+const CLIP = { ax: .5, az: .5, bx: .5, bz: .5, x0: .5, x1: .5, z0: .5, z1: .5, t0: .5, t1: .5 };
+const LINE = { px: .5, pz: .5, feet: .5, hx: .5, hz: .5, wx: .5, wz: .5, reach: .5, h: .5, vx: .5, vz: .5, a0: .5, a1: .5, e0: .5, e1: .5, lo: .5, top: .5, u: .5 };
+function clipSegment() {
+ const ax = CLIP.ax, az = CLIP.az, dx = CLIP.bx - ax, dz = CLIP.bz - az;
  let t0 = 0, t1 = 1;
  for (let side = 0; side < 4; side++) {
   const p = side === 0 ? -dx : side === 1 ? dx : side === 2 ? -dz : dz;
-  const q = side === 0 ? ax - x0 : side === 1 ? x1 - ax : side === 2 ? az - z0 : z1 - az;
+  const q = side === 0 ? ax - CLIP.x0 : side === 1 ? CLIP.x1 - ax : side === 2 ? az - CLIP.z0 : CLIP.z1 - az;
   if (p === 0) { if (q < 0) return false; continue; }
   const t = q / p;
   if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; }
  }
+ CLIP.t0 = t0; CLIP.t1 = t1;
  return t0 <= t1;
+}
+
+// --- Roof sections (s6-roofs) -----------------------------------------------
+// A section's shapes are slabs in its building's frame (x across the width, z
+// along the depth, y up from the floor): { x0, x1, z0, z1, y0 (bottom), t0,
+// t1 (top), along }. A box (`along` 0) has one top (t0). A slope or a gable
+// end (`along` 1: its top runs from t0 at x0 to t1 at x1; 2: the same along
+// z) follows the roof line; a slope's bottom is -Infinity (anything under it
+// is under the roof).
+//
+// Does the slab hide the body point LINE.h m up (the building's frame) at
+// (LINE.px, LINE.pz), whose line toward the camera runs (LINE.vx, LINE.vz)
+// per metre of rise? The line, from its own height (or the slab's bottom) to
+// the slab's top, comes within LINE.reach of the slab, and there it is under
+// the slab's top.
+function slabHides(s) {
+ const h = LINE.h, top = s.t0 > s.t1 ? s.t0 : s.t1, lo = h > s.y0 ? h : s.y0;
+ if (lo > top) return false;
+ const px = LINE.px, pz = LINE.pz, vx = LINE.vx, vz = LINE.vz, reach = LINE.reach;
+ CLIP.ax = px + vx * (lo - h); CLIP.az = pz + vz * (lo - h); CLIP.bx = px + vx * (top - h); CLIP.bz = pz + vz * (top - h);
+ CLIP.x0 = s.x0 - reach; CLIP.x1 = s.x1 + reach; CLIP.z0 = s.z0 - reach; CLIP.z1 = s.z1 + reach;
+ if (!clipSegment()) return false;
+ if (!s.along) return true; // (a box: the line is within its height all the way)
+ // A slope: its top is linear along its axis (held level past the ends), the
+ // line rises straight; the gap is widest at an end of the part inside or
+ // where the top's line bends.
+ const u0 = CLIP.t0, u1 = CLIP.t1, a0 = s.along === 1 ? CLIP.ax : CLIP.az, a1 = s.along === 1 ? CLIP.bx : CLIP.bz, e0 = s.along === 1 ? s.x0 : s.z0, e1 = s.along === 1 ? s.x1 : s.z1;
+ LINE.a0 = a0; LINE.a1 = a1; LINE.e0 = e0; LINE.e1 = e1; LINE.lo = lo; LINE.top = top;
+ LINE.u = u0; if (slabOver(s)) return true;
+ LINE.u = u1; if (slabOver(s)) return true;
+ if (a1 !== a0) {
+  const k0 = (e0 - a0) / (a1 - a0), k1 = (e1 - a0) / (a1 - a0);
+  if (k0 > u0 && k0 < u1) { LINE.u = k0; if (slabOver(s)) return true; }
+  if (k1 > u0 && k1 < u1) { LINE.u = k1; if (slabOver(s)) return true; }
+ }
+ return false;
+}
+// Is the slab's top over the line at fraction LINE.u of it?
+function slabOver(s) {
+ const u = LINE.u, a = LINE.a0 + (LINE.a1 - LINE.a0) * u, e0 = LINE.e0, e1 = LINE.e1, k = e1 > e0 ? Math.max(0, Math.min(1, (a - e0) / (e1 - e0))) : 0;
+ return s.t0 + (s.t1 - s.t0) * k >= LINE.lo + (LINE.top - LINE.lo) * u;
+}
+// Does a section fade for the character LINE holds: at (px, pz), feet `feet`
+// (the building's frame), their head's and waist's lines toward the camera
+// running (hx, hz) and (wx, wz) per metre of rise? Standing under one of its
+// boxes (a hood, the portico, the mound's edge), or hidden by any of its shapes.
+function hidesLine(section) {
+ const shapes = section.shapes, px = LINE.px, pz = LINE.pz, reach = LINE.reach, head = LINE.feet + ROOF_FADE.head, waist = LINE.feet + SECTION_FADE.waist;
+ for (let k = 0; k < shapes.length; k++) {
+  const s = shapes[k];
+  if (!s.along && s.y0 > waist && px > s.x0 - reach && px < s.x1 + reach && pz > s.z0 - reach && pz < s.z1 + reach) return true;
+  LINE.h = waist; LINE.vx = LINE.wx; LINE.vz = LINE.wz; if (slabHides(s)) return true;
+  LINE.h = head; LINE.vx = LINE.hx; LINE.vz = LINE.hz; if (slabHides(s)) return true;
+ }
+ return false;
+}
+
+// The table every colonial roof reads (one per view): `values` (the uniform:
+// each section's fade, 0..1, eased), the roofs and their sections.
+export function roofSections(view) {
+ return view.roofSections ||= { values: new Float32Array(SECTION_FADE.slots), next: 1, roofs: [], clock: -1 };
+}
+// A building's roof sections, numbered from the table's next free index:
+// `sections` [{ name, shapes, pull }] (pull: the index in this list of the
+// section a hood takes along, or -1). Returns its record (`start`: the first index);
+// its `entry` (the view's roof: its whole fade, renderer.js) and `box` (the
+// roof's world bounds) are set once the roof is baked; until then it is left
+// alone. Null (the roof never fades by section) if the table is full.
+export function registerSections(view, building, sections) {
+ const S = roofSections(view), n = sections.length;
+ if (!n || S.next + n > SECTION_FADE.slots) { if (n) console.warn(`roof sections: the table is full (${building.id})`); return null; }
+ const start = S.next, a = building.angle || 0; S.next += n;
+ const record = { id: building.id, building, entry: null, box: null, x: building.x, z: building.z, y: building.baseY || 0, cos: Math.cos(a), sin: Math.sin(a), start,
+  sections: sections.map((s, i) => ({ index: start + i, name: s.name, shapes: s.shapes, pull: s.pull ?? -1, target: 0, value: 0 })) };
+ S.roofs.push(record);
+ return record;
+}
+// Real seconds since the last frame (at most a tenth: a paused game or a
+// stalled tab eases on from where it was; none before the first).
+function sectionStep(S) {
+ const now = performance.now(), dt = S.clock < 0 ? 0 : Math.min(.1, Math.max(0, (now - S.clock) / 1000));
+ S.clock = now;
+ return dt;
+}
+// Once a frame (prepareFades): each section's target from the list, then its
+// ease. Nothing here allocates.
+export function updateSections(view, dt) {
+ const S = view.roofSections; if (!S) return;
+ const r = view.roofFade, n = r ? r.count.value : 0, eye = view.camera?.position, reach = SECTION_FADE.reach;
+ for (let i = 0; i < S.roofs.length; i++) {
+  const R = S.roofs[i], list = R.sections;
+  if (!R.box) continue;
+  for (let k = 0; k < list.length; k++) list[k].target = 0;
+  if (eye) for (let c = 0; c < n; c++) {
+   const f = r.fade[c], waistY = f.z + SECTION_FADE.waist, headY = f.z + ROOF_FADE.head;
+   const ex = eye.x - f.x, ez = eye.z - f.y, kw = 1 / Math.max(eye.y - waistY, 1), kh = 1 / Math.max(eye.y - headY, 1);
+   // (First the roof's own bounds: the waist's line, as high as the roof reaches.)
+   const rise = Math.max(0, R.box.max.y - waistY), box = R.box;
+   CLIP.ax = f.x; CLIP.az = f.y; CLIP.bx = f.x + ex * kw * rise; CLIP.bz = f.y + ez * kw * rise;
+   CLIP.x0 = box.min.x - reach; CLIP.x1 = box.max.x + reach; CLIP.z0 = box.min.z - reach; CLIP.z1 = box.max.z + reach;
+   if (!clipSegment()) continue;
+   // Into the building's frame (as buildingContains turns a point).
+   const dx = f.x - R.x, dz = f.y - R.z, rx = ex * R.cos - ez * R.sin, rz = ex * R.sin + ez * R.cos;
+   LINE.px = dx * R.cos - dz * R.sin; LINE.pz = dx * R.sin + dz * R.cos; LINE.feet = f.z - R.y; LINE.reach = reach;
+   LINE.hx = rx * kh; LINE.hz = rz * kh; LINE.wx = rx * kw; LINE.wz = rz * kw;
+   for (let k = 0; k < list.length; k++) { const s = list[k]; if (!s.target && hidesLine(s)) s.target = 1; }
+  }
+  // A door's hood takes the roof's face behind it along: at a door the
+  // whole front fades, not the hood alone.
+  for (let k = 0; k < list.length; k++) { const s = list[k]; if (s.target && s.pull >= 0) list[s.pull].target = 1; }
+  for (let k = 0; k < list.length; k++) {
+   const s = list[k];
+   s.value = s.target ? Math.min(1, s.value + dt / SECTION_FADE.fadeIn) : Math.max(0, s.value - dt / SECTION_FADE.fadeOut);
+   S.values[s.index] = s.value * s.value * (3 - 2 * s.value);
+  }
+ }
+}
+
+// The gameplay guard (s6-roofs): a faded section shows the room under it from
+// outside (its furniture is fine), but never who is in it. May this view draw
+// a remote player or robot at `p`? Not while they stand inside a closed
+// building with a sectioned roof, unless you are inside it too (`sim.roofId`)
+// or its roof is lifting for you (you in its doorway: renderer.js fades it
+// as a whole). An open shed is outdoors, as for the fade list.
+export function shownInside(view, sim, p) {
+ const roofs = view.roofSections?.roofs; if (!roofs) return true;
+ for (let i = 0; i < roofs.length; i++) {
+  const R = roofs[i], b = R.building, dx = p.x - R.x, dz = p.z - R.z;
+  // (Inside: as buildingContains, with the turn the record keeps.)
+  if (!R.entry || b.open || !(Math.abs(dx * R.cos - dz * R.sin) < b.w / 2 && Math.abs(dx * R.sin + dz * R.cos) < b.d / 2)) continue;
+  return sim?.roofId === R.id || R.entry.opacity < .995;
+ }
+ return true;
 }
 
 // A blended copy for the patch, as a child of `base`: the same geometry (and,
 // for an instanced mesh, the same instances), `material` (made transparent
 // here), hidden until prepareFades shows it. `skip()`: true while the copy
 // must stay hidden anyway (a roof fading as a whole, you inside it). `near`:
-// how prepareFades judges it ('line': roofs and shells; 'sphere': trees).
-export function fadeOverlay(view, base, material, skip = null, near = 'sphere') {
+// how prepareFades judges it ('sections': roofs, with `start`/`end`; 'line':
+// shells; 'trees'; 'sphere').
+export function fadeOverlay(view, base, material, skip = null, near = 'sphere', more = {}) {
  const mesh = base.isInstancedMesh ? new THREE.InstancedMesh(base.geometry, material, base.count) : new THREE.Mesh(base.geometry, material);
  if (base.isInstancedMesh) { mesh.instanceMatrix = base.instanceMatrix; mesh.instanceColor = base.instanceColor; mesh.boundingSphere = base.boundingSphere; }
  mesh.castShadow = false; mesh.receiveShadow = base.receiveShadow; mesh.frustumCulled = base.frustumCulled;
  mesh.matrixAutoUpdate = false;
  base.add(mesh);
- return registerOverlay(view, mesh, { base, skip, near });
+ return registerOverlay(view, mesh, { ...more, base, skip, near });
 }
 // A mesh that is itself a blended copy (a building's shell, merged on its own:
-// world/colonial-buildings.js), hidden until prepareFades shows it.
-export function registerOverlay(view, mesh, { base = mesh, skip = null, near = 'line' } = {}) {
+// world/colonial-buildings.js), hidden until prepareFades shows it. `pad`: how
+// near the line must pass ('line'; the patch's outer edge and a little).
+export function registerOverlay(view, mesh, { base = mesh, skip = null, near = 'line', pad = ROOF_FADE.outer + .1, start = 0, end = 0 } = {}) {
  overlayMaterial(mesh.material);
  mesh.castShadow = false; mesh.visible = false; mesh.userData.fadeOverlay = true;
- roofFade(view).overlays.push({ mesh, base, skip, near, sphere: null, box: null });
+ roofFade(view).overlays.push({ mesh, base, skip, near, pad, start, end, sphere: null, box: null });
  return mesh;
 }
 // The copy's material: transparent, writing no depth (what is under it is
@@ -242,23 +425,52 @@ export function ditherFade(view, material, { key, inner = ROOF_FADE.inner, outer
 }
 
 // A colonial roof's material (one program for every colonial roof), and the
-// one blended material all their copies share.
-export function fadeRoofMaterial(view, material) { ditherFade(view, material, { key: 'colonial-roof-fade' }); }
+// one blended material all their copies share (s6-roofs: whole sections, see
+// the top). Each vertex reads its section's fade from the table (four to a
+// vec4); the opaque draw drops a faded section's vertices (placed outside the
+// view: no fragments and no discard, so the early depth test stays, as the
+// trees' clumps), the blended copy draws only those, at 1 - fade x strength.
+// Both variants of the roof's own material (opaque, and blended while it
+// fades as a whole) drop them; the copy stays hidden during a whole fade.
+export function fadeRoofMaterial(view, material) { sectionFade(view, material, { key: 'colonial-roof-sections' }); }
 export function roofOverlayMaterial(view) {
  if (view.roofOverlay) return view.roofOverlay;
  const material = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 1 });
- ditherFade(view, material, { key: 'colonial-roof-fade', overlay: true });
+ sectionFade(view, material, { key: 'colonial-roof-sections', overlay: true });
  return (view.roofOverlay = material);
+}
+function sectionFade(view, material, { key, overlay = false }) {
+ const { values } = roofSections(view), cut = f(ROOF_FADE.cut), gone = 'gl_Position = vec4(2.0, 2.0, 2.0, 1.0);';
+ if (overlay) overlayMaterial(material);
+ const before = material.onBeforeCompile, beforeKey = material.customProgramCacheKey?.bind(material);
+ material.onBeforeCompile = (shader, renderer) => {
+  before?.call(material, shader, renderer);
+  shader.uniforms.roofSections = { value: values };
+  shader.vertexShader = shader.vertexShader
+   .replace('#include <common>', `#include <common>\nattribute float roofSection;\nuniform vec4 roofSections[${SECTION_FADE.slots / 4}];${overlay ? '\nvarying float vSectionFade;' : ''}`)
+   .replace('#include <project_vertex>', `#include <project_vertex>
+ int sectionIndex = int(roofSection + 0.5), sectionRow = sectionIndex / 4, sectionColumn = sectionIndex - sectionRow * 4;
+ vec4 sectionFour = roofSections[sectionRow];
+ float sectionGone = sectionColumn == 0 ? sectionFour.x : sectionColumn == 1 ? sectionFour.y : sectionColumn == 2 ? sectionFour.z : sectionFour.w;
+ ${overlay ? `vSectionFade = sectionGone;\n if (sectionGone <= ${cut}) ${gone}` : `if (sectionGone > ${cut}) ${gone}`}`);
+  if (overlay) shader.fragmentShader = shader.fragmentShader
+   .replace('#include <common>', '#include <common>\nvarying float vSectionFade;')
+   .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n diffuseColor.a *= 1.0 - vSectionFade * ${f(SECTION_FADE.strength)};`);
+ };
+ material.customProgramCacheKey = () => (beforeKey ? beforeKey() + '|' : '') + key + (overlay ? '|overlay' : '');
 }
 
 // Each faded mesh brings the list up to date before it is drawn (once a
 // frame), and gets its blended copy (`overlay`: the copies' material; `skip`
-// as fadeOverlay's). `meshes`: a root to walk or a list.
-export function fadeRoofMeshes(view, meshes, overlay = null, skip = null) {
+// as fadeOverlay's). `meshes`: a root to walk or a list. With `sections`
+// ({ start, end }: a colonial roof's, in the table) the copy shows while any
+// of them is faded, and no hook is needed (prepareFades decides them).
+export function fadeRoofMeshes(view, meshes, overlay = null, skip = null, sections = null) {
  const { update } = roofFade(view), list = [];
  if (Array.isArray(meshes)) list.push(...meshes); else meshes.traverse(m => list.push(m));
  for (const m of list) {
   if (!m.isMesh || m.userData.roofPrepass || m.userData.fadeOverlay) continue;
+  if (sections) { if (overlay) fadeOverlay(view, m, overlay, skip, 'sections', sections); continue; }
   // (No wrapper unless the mesh has a hook of its own: the wrapper's rest
   // arguments were an array a mesh a frame.)
   const before = m.onBeforeRender;

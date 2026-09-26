@@ -27,7 +27,7 @@ import { cropEntityVisible } from '../crops.js';
 import { InteriorVisibility } from './interior-visibility.js';
 import { lightBasis, snapShadowFocus, shadowFrame, shadowBoxOver, settleShadowBox, SHADOW_FIT } from './shadow-snap.js';
 import { castersOnlyInShadow } from './bake-colors.js';
-import { ditherFade, roofFade, prepareFades, WALL_FADE } from '../world/roof-fade.js';
+import { ditherFade, roofFade, prepareFades, shownInside, WALL_FADE } from '../world/roof-fade.js';
 
 import { mergeTransformed } from './merge-transformed.js';
 
@@ -692,7 +692,9 @@ export class WorldView {
       const part = o.userData.deathPart || '';
       // (Casting or not is part of the key only without mergeCasters: v0.980a, see below.)
       // (A mesh stamped with its tree, world/trees.js `treeAt`, merges only with stamped ones.)
-      const key = `${cell}-${part}-${baked ? 'baked-' + baked : o.material.uuid}-${mergeCasters || o.castShadow}-${!!o.geometry.index}-${Object.keys(o.geometry.attributes).sort().join(',')}${o.userData.treeAt ? '-tree' : ''}`;
+      // (A colonial roof's piece merges only within its section, s6-roofs: world/roof-fade.js.)
+      const section = o.userData.roofSection;
+      const key = `${cell}-${part}-${baked ? 'baked-' + baked : o.material.uuid}-${mergeCasters || o.castShadow}-${!!o.geometry.index}-${Object.keys(o.geometry.attributes).sort().join(',')}${o.userData.treeAt ? '-tree' : ''}${section !== undefined ? '-s' + section : ''}`;
       if (!buckets.has(key)) buckets.set(key, { material: baked ? this.bakedMaterial(baked) : o.material, baked: !!baked, part, meshes: [] });
       buckets.get(key).meshes.push(o);
     });
@@ -727,6 +729,7 @@ export class WorldView {
       combined.computeBoundingSphere();
       const m = castersOnlyInShadow(new THREE.Mesh(combined, material), castCount, allCount); m.receiveShadow = true;
       if (part) m.userData.deathPart = part;
+      if (meshes[0].userData.roofSection !== undefined) m.userData.roofSection = meshes[0].userData.roofSection;
       // (The walls' hole list is brought up to date before they are drawn, as the roofs': roof-fade.js.)
       // (Its blended copies are each building's own: colonial-buildings.js shellOverlay.)
       if (material === this.bakedMaterials?.get('wall')) m.onBeforeRender = roofFade(this).update;
@@ -1813,7 +1816,13 @@ export class WorldView {
     } : null;
     // Hills: anyone the ground hides from you (sim.sees' rule) is not drawn,
     // on every preset (it is gameplay); your own side always is.
-    const ground = this.ground, sees = !hilly(this) ? indoors : p => (!indoors || indoors(p)) &&
+    // Colonial roofs (s6-roofs): anyone inside a closed building is drawn only
+    // for you inside it too or in its doorway (its roof lifting): someone
+    // outside under its eaves fades a whole section of it, which shows the
+    // room, never who is in it (world/roof-fade.js shownInside). One function,
+    // made once; no roofs of that kind, nothing changes.
+    const rooms = this.roofSections?.roofs.length ? (this.roomGuard ||= p => shownInside(this, this.lastSim, p)) : null;
+    const ground = this.ground, sees = !hilly(this) ? (rooms && indoors ? p => rooms(p) && indoors(p) : rooms || indoors) : p => (!indoors || indoors(p)) && (!rooms || rooms(p)) &&
       (p.ally || (this.teamRing && p.ring === this.teamRing) || ground.sightClear(sim.player.x, sim.player.z, p.x, p.z, sim.player.below ? ground.drawnHeightAt(sim.player.x, sim.player.z) : undefined, p.below ? ground.drawnHeightAt(p.x, p.z) : undefined));
     if (this.remotePlayers?.length || this.remote) (this.remote ||= new RemotePlayers(this)).update(this.remotePlayers || [], elapsed, fdt, this.bloodSources || [], sees);
     if (this.blobShadows?.enabled) {
@@ -1858,8 +1867,10 @@ export class WorldView {
     // Nothing that moves or flashes: the player, targets, drifting dust and any
     // idle effect pool (which would sit at the origin as a stray shape).
     const hidden=[this.player,this.motes,...this.targets.values(),...this.tumbleweeds,...(this.fx?.meshes||[]),...(this.particlePool||[])].filter(Boolean).map(o=>[o,o.visible]);
+    // (Colonial roofs whole: no section faded round where you stood, s6-roofs.)
+    const sections=this.roofSections?.values,faded=sections?.slice();
     try {
-      hidden.forEach(([o])=>o.visible=false);
+      hidden.forEach(([o])=>o.visible=false);sections?.fill(0);
       this.sun.shadow.needsUpdate=true;
       this.renderer.setRenderTarget(target);this.renderer.render(this.scene,camera);
       const pixels=new Uint8Array(width*height*4);this.renderer.readRenderTargetPixels(target,0,0,width,height,pixels);
@@ -1871,7 +1882,7 @@ export class WorldView {
       const ctx=canvas.getContext('2d');ctx.imageSmoothingQuality='high';ctx.drawImage(full,0,0,outW,outH);
       return canvas.toDataURL('image/jpeg',.9);
     } finally {
-      hidden.forEach(([o,visible])=>o.visible=visible);this.sun.shadow.needsUpdate=true;
+      hidden.forEach(([o,visible])=>o.visible=visible);this.sun.shadow.needsUpdate=true;if(faded)sections.set(faded);
       this.renderer.setRenderTarget(previous);target.dispose();
     }
   }

@@ -19,7 +19,9 @@
 // Walls, trim and dressing join the static group (merged by colour with the
 // rest of the map); everything above the eaves (roof, gables, chimneys, the
 // tower, hoods) is the roof group, which fades out when you go in, exactly
-// like Deadwater's roofs (renderer.js update: roof.doors, roof.reach).
+// like Deadwater's roofs (renderer.js update: roof.doors, roof.reach), and a
+// whole section at a time over anyone outside under or behind it (s6-roofs:
+// world/roof-fade.js).
 import * as THREE from 'three';
 import { buildingOpenings, localOpenings } from '../map-kit.js';
 import { bakeColors } from '../render/bake-colors.js';
@@ -27,7 +29,7 @@ import { ROOF_PREPASS_ORDER } from '../render/renderer.js';
 import { makeDetailedInterior } from './detailed-interiors.js';
 import { COLONIAL_TYPES } from './colonial-parts.js';
 import { takeLifeParts } from './hollow-life.js'; // s5-life: loose shutters, the tavern's sign, chimney smoke
-import { fadeRoofMaterial, fadeRoofMeshes, roofOverlayMaterial, registerOverlay } from './roof-fade.js';
+import { fadeRoofMaterial, fadeRoofMeshes, roofOverlayMaterial, registerOverlay, registerSections, SECTION_FADE, WALL_FADE } from './roof-fade.js';
 import { mergeTransformed } from '../render/merge-transformed.js';
 
 export const isColonialPart = type => !!COLONIAL_TYPES[type];
@@ -102,6 +104,19 @@ export function makeColonialBuilding(view, b) {
     return box(parent, x, y, z, w, h, d, color, rx, TURN[side], rz);
   };
   const doorTop = b.open ? e - .3 : Math.min(2.15, e - .3);
+  // s6-roofs: every piece above the eaves belongs to a section of the roof,
+  // which fades whole when someone outside stands under it or behind it
+  // (world/roof-fade.js): each slope of the main roof, each gable end, each
+  // door's hood, the portico, the belfry, the mound; chimneys and the ridge
+  // go with the slope they stand on. `tag` marks what the roof group gained
+  // since its last call; `shape` 'plane': parts on a slope or a gable, whose
+  // shape for the fade's test is its `plane` (in the building's frame);
+  // any other name: a box round those parts (registerRoof). A hood takes
+  // the face of the roof over its side along (`pulls`).
+  const planes = [], pulls = new Map(), alongX = b.roof?.axis !== 'z';
+  const tag = (section, shape = section) => { for (const o of roof.children) if (o.userData.roofSection === undefined) { o.userData.roofSection = section; o.userData.roofShape = shape; } };
+  const faceOf = side => (side === 'front' || side === 'back') === alongX ? (side === 'front' || side === 'right' ? 'slope+' : 'slope-') : (alongX ? side === 'right' : side === 'back') ? 'gable+' : 'gable-';
+  let hoods = 0;
 
   // The floor: wide old boards.
   const floor = view.mesh(new THREE.PlaneGeometry(b.w - .1, b.d - .1).rotateX(-Math.PI / 2), FLOOR, 0, .06, 0, g); floor.castShadow = false;
@@ -157,6 +172,8 @@ export function makeColonialBuilding(view, b) {
       } else {
         wallRun(side, piece.from, piece.to, doorTop, e);
         doorway(view, b, g, roof, side, piece, rand, onSide, trim, doorTop);
+        // (Its hood, if it has one: a section, taking its side's face along.)
+        if (roof.children.some(o => o.userData.roofSection === undefined)) { const key = 'hood' + hoods++; tag(key); pulls.set(key, faceOf(side)); }
       }
     }
     // A door shut and barred from within (`shutDoors`, s5-interiors: the
@@ -195,7 +212,21 @@ export function makeColonialBuilding(view, b) {
   const profile = roofProfile(r, H, e);
   const heightAt = z => profileHeight(profile, z);
   const tones = [b.roofColor, shade(b.roofColor, 1.1), shade(b.roofColor, .9)];
-  if (r.kind === 'mound') moundRoof(b, rb, L, H, e, r, rand);
+  // (s6-roofs: the sections of the main roof. A slope is 'slope+' (the roof's
+  // +Z side of the ridge) or 'slope-', a lean-to's one 'slope'; the ridge and
+  // a chimney on it go with the slope turned from the camera, the one facing
+  // more to the north, since that is the side they hide. `plane`: a slope's
+  // or a gable's shape, from roof-frame X (along the ridge) and Z (across).)
+  const ridgeZ = profile.reduce((top, p) => p[1] > top[1] ? p : top)[0], lean = profile.length === 2;
+  const slopeOf = z => lean ? 'slope' : z > ridgeZ ? 'slope+' : 'slope-';
+  const away = lean ? 'slope' : eaveFacing(b, 1) < eaveFacing(b, -1) ? 'slope+' : 'slope-';
+  const onSlope = (across, depth) => Math.abs(across - ridgeZ) < depth / 2 ? away : slopeOf(across);
+  const gableAt = (x, z) => (alongX ? x : -z) > 0 ? 'gable+' : 'gable-';
+  const plane = (section, x0, x1, za, ya, zb, yb, y0 = -Infinity) => {
+    if (za > zb) [za, ya, zb, yb] = [zb, yb, za, ya];
+    planes.push({ section, slab: alongX ? { x0, x1, z0: za, z1: zb, y0, t0: ya, t1: yb, along: 2 } : { x0: za, x1: zb, z0: -x1, z1: -x0, y0, t0: ya, t1: yb, along: 1 } });
+  };
+  if (r.kind === 'mound') { moundRoof(b, rb, L, H, e, r, rand); tag('mound'); }
   else {
     const gOver = .3, len = L + 2 * gOver;
     // The eaves run on past the walls, down the slope (less on a side facing
@@ -231,20 +262,33 @@ export function makeColonialBuilding(view, b) {
       }
       // Rake boards up each gable edge.
       for (const sx of [-1, 1]) view.noShadows(rb(sx * (len / 2 + .02), (ya + yb) / 2 + nY * .12, (za + zb) / 2 + nZ * .12, .09, .24, seg, trim, th));
+      // (s6-roofs: this run of the roof is its slope's; its shape reaches the
+      // rake boards and a little past the eave, `thick` over the roof line.)
+      const key = slopeOf((za + zb) / 2), thick = SECTION_FADE.thick;
+      tag(key, 'plane'); plane(key, -(len / 2 + .07), len / 2 + .07, za - .15, ya + thick, zb + .15, yb + thick);
     }
     // Fascia along the eaves, the ridge cap (and the gambrel's knuckles).
-    for (const i of [0, pts.length - 1]) view.noShadows(rb(0, pts[i][1] - .02, pts[i][0], len, .2, .07, trim));
-    for (let i = 1; i < profile.length - 1; i++) view.noShadows(rb(0, profile[i][1] + .2, profile[i][0], len + .04, .12, .3, shade(b.roofColor, .75)));
+    for (const i of [0, pts.length - 1]) { view.noShadows(rb(0, pts[i][1] - .02, pts[i][0], len, .2, .07, trim)); tag(slopeOf(pts[i][0]), 'plane'); }
+    for (let i = 1; i < profile.length - 1; i++) { view.noShadows(rb(0, profile[i][1] + .2, profile[i][0], len + .04, .12, .3, shade(b.roofColor, .75))); tag(profile[i][0] === ridgeZ ? away : slopeOf(profile[i][0]), 'plane'); }
     // The gable ends: the wall carried up under the roof, clapboarded.
-    for (const sx of [-1, 1]) gable(view, b, roof, rb, profile, sx * L / 2, e, sx, board);
+    // (s6-roofs: each its own section, the wall's thickness under the roof line, from the eave up.)
+    for (const sx of [-1, 1]) {
+      gable(view, b, roof, rb, profile, sx * L / 2, e, sx, board);
+      const key = sx > 0 ? 'gable+' : 'gable-', x = sx * L / 2;
+      tag(key, 'plane');
+      for (let i = 1; i < profile.length; i++) plane(key, x - T / 2 - .05, x + T / 2 + .05, profile[i - 1][0], profile[i - 1][1] + .05, profile[i][0], profile[i][1] + .05, e);
+    }
   }
   const smoke = []; // s5-life: the tops of flues that smoke (a chimney's `smoke`), in the building's frame
-  for (const c of b.chimneys || []) { const [x, y, z] = chimney(b, rb, c, heightAt, e, rand); if (c.smoke) smoke.push(new THREE.Vector3(x * cy + z * sy, y, -x * sy + z * cy)); }
+  for (const [k, c] of (b.chimneys || []).entries()) { const [x, y, z] = chimney(b, rb, c, heightAt, e, rand); if (c.smoke) smoke.push(new THREE.Vector3(x * cy + z * sy, y, -x * sy + z * cy)); tag(onSlope(c.across || 0, c.d), 'chimney' + k); }
 
   // --- Special pieces ----------------------------------------------------
+  // (s6-roofs: the belfry and the portico are sections of their own, the
+  // portico taking the front slope along as a hood does; the forge's stack
+  // goes with its slope, the hay and loft doors with their gable.)
   const features = b.features || [];
-  if (features.includes('belfry')) belfry(view, b, g, roof, box, e, heightAt(0), trim);
-  if (features.includes('portico')) portico(view, b, g, roof, box, e, trim);
+  if (features.includes('belfry')) { belfry(view, b, g, roof, box, e, heightAt(0), trim); tag('belfry'); }
+  if (features.includes('portico')) { portico(view, b, g, roof, box, e, trim); tag('portico'); pulls.set('portico', faceOf('front')); }
   if (features.includes('tavern-sign')) tavernSign(view, b, g, box);
   if (features.includes('forge-stack')) {
     // The hood over the hearth (forge-hearth prop at local (-1.3, -.35)) and its stack up through the roof.
@@ -252,22 +296,25 @@ export function makeColonialBuilding(view, b) {
     box(g, -1.3, 2.3, -.35, .8, .5, .7, STONES[2]);
     box(roof, -1.3, (e - .3 + heightAt(-.35) + .9) / 2, -.35, .7, heightAt(-.35) + 1.2 - e, .6, STONES[0]);
     box(roof, -1.3, heightAt(-.35) + .95, -.35, .84, .12, .74, STONES[2]);
+    tag(onSlope(alongX ? -.35 : -1.3, .6), 'stack');
   }
   if (features.includes('hay-door')) { // high in the north gable, hanging open
     box(roof, 0, e + 1.15, -b.d / 2 - T / 2 - .02, 1.5, 1.3, .04, '#16140f');
     box(roof, -1.15, e + 1.15, -b.d / 2 - .45, .75, 1.3, .06, shade(b.color, .8), 0, 1.2);
     box(roof, 0, heightAt(0) - .45, -b.d / 2 - .6, .16, .16, 1.3, PLANK_DARK);
+    tag(gableAt(0, -b.d / 2), 'hay');
   }
   if (features.includes('loft-door')) { // the mill's east gable: a loft door and the hoist beam over it
     box(roof, b.w / 2 + T / 2 + .02, e + .75, 0, .04, 1.2, 1.1, '#16140f');
     box(roof, b.w / 2 + .6, e + 1.55, 0, 1.2, .16, .16, PLANK_DARK);
     box(roof, b.w / 2 + 1.1, e + 1.1, 0, .03, .9, .03, '#5c5446');
+    tag(gableAt(b.w / 2, 0), 'loft');
   }
   if (features.includes('granite-face')) graniteFace(b, g, onSide, e, rand);
 
   // The shell (walls, clapboard, trim, sashes, doors) opens round anyone
-  // standing behind it, as the roof does (renderer.js bakeKind 'wall',
-  // world/roof-fade.js WALL_FADE).
+  // standing behind it (renderer.js bakeKind 'wall', world/roof-fade.js
+  // WALL_FADE; the roof fades by whole sections, s6-roofs).
   g.traverse(o => { if (o.isMesh) o.userData.wallFade = true; });
 
   // --- The roof's fade (as world-build.js makeBuilding) --------------------
@@ -278,7 +325,7 @@ export function makeColonialBuilding(view, b) {
   // (world/hollow-life.js).
   takeLifeParts(view, g, smoke.map(v => g.localToWorld(v)), b.id);
   shellOverlay(view, g);
-  registerRoof(view, b, roof);
+  registerRoof(view, b, roof, { planes, pulls });
 
   // The interior (the interiors builder's styles; detailed-interiors.js):
   // built at angle 0 round (b.x, b.z), then stood on the pad and turned.
@@ -307,6 +354,12 @@ export function eaveRun(b, side) {
   const lx = r.axis === 'z' ? side : 0, lz = r.axis === 'z' ? 0 : side, north = -lx * Math.sin(a) + lz * Math.cos(a) < -.5;
   const back = r.kind === 'saltbox' && side < 0 ? (north ? EAVE.saltboxNorth : EAVE.saltbox) : 0;
   return (north ? EAVE.north : EAVE.run) + back;
+}
+// (s6-roofs) The world z of an eave's outward way (`side` as eaveRun's): the
+// lower, the more it faces north, turned from the camera.
+function eaveFacing(b, side) {
+  const r = b.roof || {}, a = b.angle || 0, lx = r.axis === 'z' ? side : 0, lz = r.axis === 'z' ? 0 : side;
+  return -lx * Math.sin(a) + lz * Math.cos(a);
 }
 function roofProfile(r, H, e) {
   const R = r.rise;
@@ -595,21 +648,47 @@ function shellOverlay(view, g) {
     geometry.computeBoundingSphere(); geometry.computeBoundingBox();
     const mesh = new THREE.Mesh(geometry, material); mesh.matrixAutoUpdate = false; mesh.receiveShadow = true;
     view.scene.add(mesh);
-    registerOverlay(view, mesh);
+    registerOverlay(view, mesh, { pad: WALL_FADE.outer + .1 });
   }
 }
 
 // As world-build.js makeBuilding: batch the roof, bake its shades into one
 // material, keep depth-only copies for the fade, and register it with its
 // reach and doorways.
-function registerRoof(view, b, roof) {
+function registerRoof(view, b, roof, { planes = [], pulls = new Map() } = {}) {
   roof.updateMatrixWorld(true);
+  // s6-roofs: the roof's sections (world/roof-fade.js), numbered in the view's
+  // table, with their shapes for the fade's test: the slopes' and gables'
+  // planes, and a box round each other group of parts (in the building's
+  // frame: the pieces' own matrices, under the placed group). Anything not
+  // tagged is one more box section. Each piece carries its number into the
+  // merge and the bake (a vertex attribute, `roofSection`).
+  const keys = [], boxes = new Map(), part = new THREE.Box3();
+  for (const o of roof.children) {
+    if (!o.isMesh) continue;
+    const key = o.userData.roofSection ??= 'rest', shape = o.userData.roofShape ??= 'rest';
+    if (!keys.includes(key)) keys.push(key);
+    if (shape === 'plane') continue;
+    o.updateMatrix(); if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    part.copy(o.geometry.boundingBox).applyMatrix4(o.matrix);
+    const id = key + '|' + shape;
+    if (boxes.has(id)) boxes.get(id).box.union(part); else boxes.set(id, { key, box: part.clone() });
+  }
+  const pullOf = key => { const face = pulls.get(key), to = keys.includes(face) ? face : face?.startsWith('slope') && keys.includes('slope') ? 'slope' : null; return to ? keys.indexOf(to) : -1; };
+  const sections = keys.map(key => ({
+    name: key,
+    shapes: [...planes.filter(p => p.section === key).map(p => p.slab),
+      ...[...boxes.values()].filter(x => x.key === key).map(({ box }) => ({ x0: box.min.x, x1: box.max.x, z0: box.min.z, z1: box.max.z, y0: box.min.y, t0: box.max.y, t1: box.max.y, along: 0 }))],
+    pull: pullOf(key),
+  }));
+  const record = registerSections(view, b, sections);
+  for (const o of roof.children) if (o.isMesh) o.userData.roofSection = record ? record.start + keys.indexOf(o.userData.roofSection) : 0;
   view.batch(roof, false);
   const roofMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 1, transparent: true });
-  fadeRoofMaterial(view, roofMaterial); // (stage 4: never hides a character standing outside under it: world/roof-fade.js)
+  fadeRoofMaterial(view, roofMaterial); // (stage 4: never hides a character standing outside under it; s6-roofs: by whole sections: world/roof-fade.js)
   // (One mesh, one draw: its shingles, which never cast, after the parts that
   // do; the shadow pass draws only those: bake-colors.js castersFirst.)
-  bakeColors(roof, { material: roofMaterial, castersFirst: true });
+  bakeColors(roof, { material: roofMaterial, castersFirst: true, stamp: 'roofSection' });
   roof.traverse(m => { if (m.isMesh) m.receiveShadow = false; });
   const casters = []; roof.traverse(m => { if (m.isMesh && m.castShadow) casters.push(m); });
   const depthOnly = view.roofDepthMaterial ||= new THREE.MeshBasicMaterial({ colorWrite: false, transparent: true, depthWrite: true });
@@ -624,12 +703,14 @@ function registerRoof(view, b, roof) {
   const doors = buildingOpenings(b).filter(o => o.type !== 'window').map(o => { const len = Math.hypot(o.b.x - o.a.x, o.b.z - o.a.z) || 1; return { x: (o.a.x + o.b.x) / 2, z: (o.a.z + o.b.z) / 2, ux: (o.b.x - o.a.x) / len, uz: (o.b.z - o.a.z) / len, half: len / 2 + .15 }; });
   const entry = { ...b, group: roof, casters, materials: [roofMaterial], colour, prepass, opacity: 1, reach, doors };
   view.roofs.push(entry);
-  // The fade: each roof mesh keeps the list current before it draws, and has
-  // a blended copy for the see-through patch, hidden while the roof fades as
-  // a whole (you inside, or in a doorway: world/roof-fade.js; near a door the
-  // roof is already on its blended shader at full opacity, and the patch
-  // still draws then).
-  fadeRoofMeshes(view, colour, roofOverlayMaterial(view), () => entry.opacity < .995);
+  // The fade: each roof mesh has a blended copy for its faded sections, shown
+  // while any of them is faded and hidden while the roof fades as a whole
+  // (you inside, or in a doorway: world/roof-fade.js; near a door the roof is
+  // already on its blended shader at full opacity, and the copy still draws
+  // then). The sections are decided once a frame from the roof's bounds and
+  // its whole fade (the gameplay guard: shownInside).
+  if (record) { record.entry = entry; record.box = reach; }
+  fadeRoofMeshes(view, colour, roofOverlayMaterial(view), () => entry.opacity < .995, record ? { start: record.start, end: record.start + sections.length } : { start: 0, end: 0 });
 }
 
 // The forge's parts (props: world/colonial-parts.js), built from y 0 on the
