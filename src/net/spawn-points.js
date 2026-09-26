@@ -8,6 +8,8 @@
 import { buildingContains } from '../maps.js';
 import { isPlayable } from '../playable-area.js';
 import { RULES } from '../config/gameplay.js';
+import { groundFor } from '../map-kit.js';
+import { spawnProblem } from './map-spawns.js';
 
 const MIN_ROOM = 6;       // metres: anything narrower is a shelter, not a room
 const GRID = 1.4;         // metres between sampled spots
@@ -60,6 +62,8 @@ export function pickSpawn(rooms, others = [], random = Math.random, space = 6, s
  return room.points[Math.floor(random() * room.points.length)];
 }
 
+const checked = map => !groundFor(map).flat || !!map.noSpawn;
+
 // A random open spot anywhere in the map (solo practice spawns, the dev
 // tools' "move to a random spot"): inside the playable area with room round
 // it, clear of every collider, and (when `others` are given) at least
@@ -72,6 +76,9 @@ export function openSpot(map, colliders, { random = Math.random, others = [], sp
   // Not wedged into a tiny shell (rail cars, sheds): open ground or a room.
   if (map.buildings?.some(b => (b.w < MIN_ROOM || b.d < MIN_ROOM) && buildingContains(b, { x, z }))) continue;
   if (space && others.some(o => Math.hypot(o.x - x, o.z - z) < space)) continue;
+  // Hills (s2-spawns): never in the water, on a deck, on steep ground or in a
+  // no-spawn area (net/map-spawns.js). A flat map never asks (Deadwater).
+  if (checked(map) && spawnProblem(map, colliders, x, z)) continue;
   return { x, z };
  }
  return null;

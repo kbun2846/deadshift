@@ -3,6 +3,9 @@
 // ground at all (the tests' stand-in views), so every effect can add it
 // without asking which kind of map it is on.
 export const groundY = (view, x, z) => view?.ground && !view.ground.flat ? view.ground.heightAt(x, z) : 0;
+// The floor under something that may lie under a deck (a body that died
+// wading under a bridge: `below`): the drawn ground there, not the deck's top.
+export const floorY = (view, x, z, below) => view?.ground && !view.ground.flat ? (below ? view.ground.drawnHeightAt(x, z) : view.ground.heightAt(x, z)) : 0;
 // Does this view stand on hills (else every height is exactly as it was)?
 export const hilly = view => !!view?.ground && !view.ground.flat;
 // Hills: a height that follows the ground under something flying on (a

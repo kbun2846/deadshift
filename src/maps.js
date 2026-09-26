@@ -24,7 +24,8 @@ const MAP_LIST = [
   // The hills system's proving ground (stage 0 of Hollow Wick).
   { map: hillTest, modes: ['practice'], menu: false },
   // Being built (AGENTS.md > Adding a map, the staged process).
-  { map: hollowWick, modes: ['practice'], menu: false },
+  // s2-spawns: every mode (bases, FFA points, robots), still dev-only.
+  { map: hollowWick, modes: ['practice', 'multiplayer'], menu: false },
 ];
 
 for (const entry of MAP_LIST) Object.assign(entry.map, { modes: entry.modes, menu: entry.menu });
@@ -60,4 +61,10 @@ export const menuMaps = () => MAP_LIST.filter(e => e.menu && e.modes.includes('p
 export const workMaps = () => MAP_LIST.filter(e => !e.menu).map(e => e.map);
 // Where multiplayer rooms are played (the first multiplayer map for now; a
 // map vote or host pick would choose among these).
-export const multiplayerMaps = () => MAP_LIST.filter(e => e.modes.includes('multiplayer')).map(e => e.map);
+// A map in progress (menu: false) is only offered where it is already
+// loaded (reached through Developer tools > World), never to everyone
+// (s2-spawns): pass the loaded map as `current`.
+export const multiplayerMaps = (current = null) => MAP_LIST.filter(e => e.modes.includes('multiplayer') && (e.menu || e.map === current)).map(e => e.map);
+// The SOLO page's maps: the menu's, plus the loaded map when it is a map in
+// progress that is playable in every mode (s2-spawns).
+export const soloMaps = (current = null) => MAP_LIST.filter(e => (e.menu && e.modes.includes('practice')) || (!e.menu && e.map === current && e.modes.includes('multiplayer'))).map(e => e.map);

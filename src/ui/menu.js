@@ -4,7 +4,7 @@ import {shotgunPreview} from '../weapons/shotgun-model.js';
 import { staticPreview } from './weapon-preview.js';
 import { riflePreview } from '../weapons/rifle-model.js';
 import { WEAPONS, DEFAULT_WEAPON } from '../items.js';
-import { DEFAULT_MAP, menuMaps } from '../maps.js';
+import { DEFAULT_MAP, menuMaps, soloMaps } from '../maps.js';
 import { NETWORK } from '../config/network.js';
 import { savedName } from '../online-play.js';
 import { createSettingsRows } from './lobby-settings.js';
@@ -27,7 +27,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  $('gamemodes').onclick=()=>show('modes');$('practice-mode').onclick=()=>show('maps');
  // 1V1: you against a robot (duel-menu.js picks, duel.js runs it). The
  // choices ride in the URL; a map already loaded starts at once.
- const duelMenu=buildDuelMenu($('duel-options'),{maps:menuMaps(),start:picks=>{
+ const duelMenu=buildDuelMenu($('duel-options'),{maps:soloMaps(map)/* s2-spawns */,start:picks=>{
   const query=new URLSearchParams({map:picks.map||DEFAULT_MAP,weapon:picks.weapon,play:'1',mode:'duel',duel:duelParam(picks)});
   if(map.id===query.get('map')){try{history.replaceState(null,'',"?"+query);}catch{}start(picks.weapon);}
   else{markLaunch(query);location.href='?'+query;}

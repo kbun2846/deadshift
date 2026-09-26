@@ -11,6 +11,9 @@
 //   - robots and hosted: re-recorded after the owner-approved fix that stops
 //     robots firing from just below the bottom edge of the screen (2026-09-25;
 //     the hosted run has a robot in it). static, rifle and shotgun unchanged.
+//   - all five: furniture made solid (owner, 2026-09-26): Deadwater's room
+//     furniture became colliders (world/room-furniture.js), so the collider
+//     list and every path through a room changed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation } from '../src/simulation.js';
@@ -22,7 +25,7 @@ import { ClientSession } from '../src/net/client-session.js';
 
 // Recorded with Node 22.22 (V8 12.4.254). Math is deterministic within one engine build;
 // a different Node major may need a re-record on untouched code, never on new code.
-export const GOLDEN = { static: '879383fe', rifle: '8432f5c1', shotgun: '11dafae', robots: '920a7170', hosted: 'dccd8ec1' };
+export const GOLDEN = { static: '8500a3fd', rifle: '5c57348a', shotgun: 'dc6257e4', robots: 'a370e78a', hosted: 'bb4e727d' };
 
 const map = maps.deadwater;
 function seeded(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }

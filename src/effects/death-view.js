@@ -6,7 +6,7 @@ import { makeBoneBank } from './death-bones.js';
 import { DeathCorpse } from './death-corpse.js';
 import { deathReaction } from './death-reactions.js';
 import { GoreBurst, darkenWeapon, compact, disposeMerged, GORE_DETAIL } from './gore.js';
-import { groundY, hilly } from '../render/ground-lift.js';
+import { groundY, floorY, hilly } from '../render/ground-lift.js';
 
 export function bloodPoolPattern(index){
  const profiles=[[.85,.68,11,.11],[.7,.9,13,.23],[.96,.6,10,.37],[.76,.79,14,.52],[.88,.74,12,.71]];
@@ -35,7 +35,7 @@ export class DeathView{
   view.player.visible=false;
   this.reaction=deathReaction(event.damageType);
   if(this.reaction.mode!=='scatter'){this.corpse=new DeathCorpse(view,event,this.reaction);this.update(0);return;}
-  this.pool=new THREE.Group();this.pool.position.set(event.x,.028+groundY(view, event.x,event.z),event.z);view.scene.add(this.pool);
+  this.pool=new THREE.Group();this.pool.position.set(event.x,.028+floorY(view, event.x,event.z,event.below),event.z);view.scene.add(this.pool);
   this.material=new THREE.MeshBasicMaterial({color:'#ce3041',depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1});
   this.poolGeometry=new THREE.CircleGeometry(1,24);this.lobeGeometry=new THREE.CircleGeometry(1,10);
   const direction=new THREE.Vector2(event.directionX||0,event.directionZ||0).normalize(),directed=direction.lengthSq()>0;
@@ -89,14 +89,14 @@ export class DeathView{
   if(!this.active)return;this.age+=dt;const t=this.age,e=this.event;
   const travel=Math.min(t,.7),settle=Math.min(1,t/.62);
   {const gx=this.origin.x+(-e.aimZ*.75+e.aimX*.35)*travel,gz=this.origin.z+(e.aimX*.75+e.aimZ*.35)*travel;
-  this.gun.position.set(gx,Math.max(.12+groundY(this.view, gx,gz),this.origin.y+1.2*t-4.9*t*t),gz);}
+  this.gun.position.set(gx,Math.max(.12+floorY(this.view, gx,gz,e.below),this.origin.y+1.2*t-4.9*t*t),gz);}
   this.gun.rotation.set(this.rotation.x,this.rotation.y+.8*settle,this.rotation.z+Math.PI*.47*settle);
   if(this.corpse){this.corpse.update(t);return;}
   this.pool.scale.setScalar(.1+1.5*(1-Math.exp(-t*1.7)));
   this.gore?.update(t);
   this.particles.forEach((p,i)=>{
    const flight=(p.vy+Math.sqrt(p.vy*p.vy+19.6*(p.y-.035)))/9.8,age=Math.min(t,flight),landed=t>=flight;
-   {const x=e.x+p.vx*age,z=e.z+p.vz*age;this.dummy.position.set(x,Math.max(.035,p.y+p.vy*age-4.9*age*age)+groundY(this.view, x,z),z);}
+   {const x=e.x+p.vx*age,z=e.z+p.vz*age;this.dummy.position.set(x,Math.max(.035,p.y+p.vy*age-4.9*age*age)+floorY(this.view, x,z,e.below),z);}
    this.dummy.rotation.set(landed?0:age*4,i*1.7,landed?0:age*3);
    this.dummy.scale.set(p.size*(landed?1.8:1),p.size*(landed?.2:1.4),p.size*(landed?1.5:1));this.dummy.updateMatrix();this.drops.setMatrixAt(i,this.dummy.matrix);
   });this.drops.instanceMatrix.needsUpdate=true;
@@ -108,7 +108,7 @@ export class DeathView{
   const e=this.event;
   for(const b of this.boneParticles){
    const flight=(b.vy+Math.sqrt(b.vy*b.vy+19.6*(b.y-b.floor)))/9.8,age=Math.min(t,flight),landed=t>=flight;
-   {const x=e.x+b.vx*age,z=e.z+b.vz*age;b.model.position.set(x,Math.max(b.floor,b.y+b.vy*age-4.9*age*age)+groundY(this.view, x,z),z);}
+   {const x=e.x+b.vx*age,z=e.z+b.vz*age;b.model.position.set(x,Math.max(b.floor,b.y+b.vy*age-4.9*age*age)+floorY(this.view, x,z,e.below),z);}
    // Settle broad faces on the ground, retaining a random in-plane orientation.
    const fall=Math.min(1,age/flight),flat=fall*fall*(3-2*fall);
    b.model.rotation.set((b.angle+age*b.spin)*(1-flat)+b.flatAngle*flat,b.angle,landed?0:(1-flat)*age*b.spin*.45);

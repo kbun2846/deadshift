@@ -5,7 +5,9 @@ export function makeQualityDetails(view) {
   const all = new THREE.Group(); view.scene.add(all);
   // (Deadwater's street and desert dressing; a hills map brings its own.)
   if(view.map.training||view.map.terrain)return all;
-  for (const b of view.map.buildings) {
+  // s2-buildings: Hollow Wick's colonial buildings draw their own wear (none of Deadwater's sand drifts or door paths).
+  const buildings = view.map.buildings.filter(b => b.style !== 'colonial');
+  for (const b of buildings) {
     const g = new THREE.Group(); g.position.set(b.x, b.baseY || 0, b.z); g.rotation.y = b.angle || 0; all.add(g);
     // Thin chips, nail heads and broken grain; sparse enough to preserve clean silhouettes.
     for (let side = 0; side < 4; side++) {
@@ -124,7 +126,7 @@ export function makeQualityDetails(view) {
     new THREE.LineBasicMaterial({ color: '#8d7857', transparent: true, opacity: .26 })));
   // Worn paths from each doorway out to the street: a strip of pale, scuffed
   // ground where the boots have gone, fading as it leaves the threshold.
-  for (const b of view.map.buildings) {
+  for (const b of buildings) {
     for (const side of b.doors || []) {
       const local = side === 'front' ? [0, b.d / 2] : side === 'back' ? [0, -b.d / 2] : [side === 'left' ? -b.w / 2 : b.w / 2, 0];
       const out = side === 'front' ? [0, 1] : side === 'back' ? [0, -1] : [side === 'left' ? -1 : 1, 0];
@@ -196,7 +198,7 @@ export function makeQualityDetails(view) {
     }
   }
   // Handbills nailed to the street-facing walls, curling at one corner.
-  for (const b of view.map.buildings) {
+  for (const b of buildings) {
     const g = new THREE.Group(); g.position.set(b.x, 0, b.z); g.rotation.y = b.angle || 0; all.add(g);
     for (let i = 0; i < 3; i++) {
       const x = Math.sin(i * 23 + b.w) * (b.w / 2 - 1.4);
@@ -209,7 +211,7 @@ export function makeQualityDetails(view) {
     }
   }
   // Broken glass under the boarded windows, and the nails that boarded them.
-  for (const b of view.map.buildings) {
+  for (const b of buildings) {
     const g = new THREE.Group(); g.position.set(b.x, 0, b.z); g.rotation.y = b.angle || 0; all.add(g);
     for (const w of (b.windows || []).filter(w => w.boarded)) {
       const along = w.side === 'front' || w.side === 'back' ? [w.offset, (w.side === 'front' ? 1 : -1) * (b.d / 2 + .3)] : [(w.side === 'left' ? -1 : 1) * (b.w / 2 + .3), w.offset];

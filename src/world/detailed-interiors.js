@@ -1,8 +1,10 @@
 import * as THREE from 'three';
+import { isColonial, colonialCover, makeColonialInterior } from './colonial-interiors.js'; // s2-interiors: Hollow Wick's rooms
 
 // Local coordinates shared by visible furniture and collision, including rotated buildings.
 export function interiorCover(b) {
   if (!b.interiorStyle) return [];
+  if (isColonial(b)) return colonialCover(b); // s2-interiors
   if (b.interiorStyle==='cargo') return [{kind:['open-car-a','open-car-c'].includes(b.id)?'coal':'lumber',x:-.6,z:b.doors?.includes('back')?b.d/2-1.5:-b.d/2+1.5,w:1.8,d:1.7,h:1}];
   if (b.interiorStyle==='station') return [
     // Broken ticket counter, staggered waiting benches and a rear baggage office.
@@ -36,6 +38,7 @@ export function interiorCover(b) {
 }
 
 export function makeDetailedInterior(view,b) {
+  if (isColonial(b)) return makeColonialInterior(view,b); // s2-interiors
   const g=new THREE.Group();g.position.set(b.x,0,b.z);view.static.add(g);
   const wood='#897052',faded='#a28b69',dark='#65533f',iron='#565b51';
   const box=(x,y,z,w,h,d,c=wood,parent=g)=>view.box(x,y,z,w,h,d,c,parent);

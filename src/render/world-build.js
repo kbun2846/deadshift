@@ -14,12 +14,17 @@ import { boxIndex } from '../box-index.js';
 import { makeDetailedInterior } from '../world/detailed-interiors.js';
 import { makeInteriorDetails } from '../world/interior-details.js';
 import { BUILDING_FINISHES } from '../world/building-finishes.js';
+import { makeColonialBuilding, makeColonialPart, isColonialPart } from '../world/colonial-buildings.js'; // s2-buildings
 import { makeApproaches, onApproach } from '../world/approach-paths.js';
+import { HOLLOW_BREAKABLES, makeHollowBreakable } from '../world/hollow-breakables.js'; // s2-breakables
 import { ROADSIDE_TYPES, makeRoadside } from '../world/roadside.js';
+import { HOLLOW_TYPES, makeHollowProp } from '../world/hollow-props.js'; // (s2-props)
+import { GRAVE_TYPES, makeGrave } from '../world/graveyard.js'; // s2-graveyard
 import { freezeTransforms } from './frozen-transforms.js';
 import { DustDevils } from '../effects/dust-devils.js';
 import { ROOF_PREPASS_ORDER, CLUTTER_CLAY, CLUTTER_DARK, CLUTTER_SEAT, lerp, randomGenerator } from './renderer.js';
 import { buildTerrainMesh, buildRetainingWalls } from './terrain-mesh.js';
+import { buildTrees } from '../world/trees.js'; // s2-trees
 import { buildWaterMesh } from './water-mesh.js';
 import { buildCrossingDecks } from './crossing-decks.js';
 import { buildTerrainDetails } from '../world/terrain-details.js';
@@ -173,12 +178,14 @@ export const WorldBuild = {
     this.terrainError = TERRAIN_ERROR[this.initialQuality] ?? .02;
     this.terrainMesh = buildTerrainMesh(this, this.ground, map, this.terrainError);
     this.scene.add(this.terrainMesh);
-    // The stream's water, if the map has one, and its crossings' decks (a
-    // plain plank deck for now: each deck's own look comes with its build).
+    // The stream's water, if the map has one, and what stands over and in it:
+    // each crossing's deck (map.crossings looks), the stones and the mill
+    // wheel (render/crossing-decks.js).
     this.waterMesh = buildWaterMesh(this, this.ground, map);
     if (this.waterMesh) this.scene.add(this.waterMesh);
     buildCrossingDecks(this, this.ground, map);
     buildRetainingWalls(this, this.ground, map.terrainLook);
+    buildTrees(this, map); // s2-trees: trunks merged per cell, canopies instanced
     this.roadProfile = [{ z: -1e4, left: 1e5, right: 1e5 }, { z: 1e4, left: 1e5, right: 1e5 }];
     this.sandMarks = [];
     for (const key of ['groundDetails', 'extraGroundDetails', 'performanceDetails']) { this[key] = new THREE.Group(); this.scene.add(this[key]); }
@@ -405,6 +412,7 @@ export const WorldBuild = {
   },
 
   makeBuilding(b) {
+    if (b.style === 'colonial') return makeColonialBuilding(this, b); // s2-buildings: Hollow Wick's buildings
     // Hills: a building stands on its pad at baseY (heightfield.js pads);
     // everything below is built at 0 and lifted with it at the end.
     const angle = b.angle || 0, baseY = b.baseY || 0, oldStatic = new Set(this.static.children);
@@ -556,10 +564,8 @@ export const WorldBuild = {
     this.roofs.push({ ...b, group: roof, casters, materials: roofMaterials, colour, prepass, opacity: 1, reach, doors });
     const beforeInterior = new Set(this.static.children);
     if(b.interiorStyle) makeDetailedInterior(this,b);
-    else {
-      this.box(b.x, .4, b.z - b.d / 2 + 1.1, b.w - (b.finish==='plaster'?3.5:2), .8, .65, b.trim || '#987853');
-      for (const sx of [-1, 1]) this.cylinder(b.x + sx * (b.finish==='vertical'?1.5:2), .28, b.z - b.d / 2 + 2.2, .32, .56, b.trim || '#7d6a50');
-    }
+    // (dw-furniture: the plain rooms' counter and stools are drawn by
+    // makeInteriorDetails from room-furniture.js, the list their colliders come from.)
     if (!b.cargo) makeInteriorDetails(this,b);
     // Furniture and interior trim sit under a closed roof, so the sun driving the
     // shadow map never reaches them. Their casters are draw cost with no pixels.
@@ -608,6 +614,10 @@ export const WorldBuild = {
     if (['brokenWagon', 'windmill', 'trough', 'cistern', 'ruinedArch', 'telegraph', 'deadTree', 'stump', 'boulder'].includes(p.type)) makeLandmark(this, p, g);
     if (RAIL_TYPES[p.type]) makeRailProp(this,p,g);
     else if (ROADSIDE_TYPES[p.type]) makeRoadside(this, p, g);
+    else if (isColonialPart(p.type)) makeColonialPart(this, p, g); // s2-buildings
+    else if (GRAVE_TYPES[p.type]) makeGrave(this, p, g); // s2-graveyard
+    else if (HOLLOW_TYPES[p.type]) makeHollowProp(this, p, g); // (s2-props)
+    else if (HOLLOW_BREAKABLES[p.type]) makeHollowBreakable(this, p, g); // s2-breakables
     else if (p.type === 'barrel') {
       this.cylinder(0, .5, 0, .46, 1, '#9c7d58', g, 10, .41);
       for (const y of [.2, .77]) this.cylinder(0, y, 0, .465, .09, '#696c58', g, 10);

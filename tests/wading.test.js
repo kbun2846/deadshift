@@ -20,10 +20,14 @@ const walk = (s, mx, mz, ticks) => { for (let i = 0; i < ticks; i++) s.step({ mo
 const moved = (at, p) => Math.hypot(p.x - at[0], p.z - at[1]);
 
 test('the stream: no barriers, and its depth varies along it', () => {
- // Nothing stands in the water or along its banks but the mill dam's two
- // stone faces (you walk along its top).
- const dam = map.terrain.levels.find(l => l.id === 'dam').poly, inDam = c => c.x > Math.min(...dam.map(p => p[0])) - .6 && c.x < Math.max(...dam.map(p => p[0])) + .6;
- assert.equal(mapColliders(map).filter(c => ground.bankDistance(c.x, c.z) < 0 && !(c.terrainEdge && inDam(c))).length, 0, 'a collider in the stream');
+ // Nothing stands in the water or along its banks but authored stone walls
+ // (the mill dam's two faces, you walk along its top; the mill's foundation
+ // at the pond's edge).
+ // (Reeds on the banks are screens, walked and shot through: not barriers.)
+ // (But the mill wheel and its sluice: solid, off the mill's south wall.)
+ assert.equal(mapColliders(map).filter(c => ground.bankDistance(c.x, c.z) < 0 && !c.terrainEdge && !c.walkOver && !c.playerOnly && !c.streamWorks).length, 0, 'a collider in the stream');
+ assert.ok(mapColliders(map).filter(c => c.streamWorks).every(c => c.x > 19 && c.x < 27 && c.z < 21), 'solid works only at the mill wheel');
+ assert.ok(mapColliders(map).filter(c => ground.bankDistance(c.x, c.z) < 0 && c.terrainEdge).length <= 3, 'no barrier edges along the water');
  // Straight across it, bank to bank, in several places.
  for (const x of [-40, -30, -20, 30]) {
   const s = sim([x, 12]); let wet = 0;
@@ -133,4 +137,18 @@ test('a body pushed into a deck\'s outline from the water stays under it; orbs a
  o.step({ aimX: 1, aimZ: 0, seed: true });
  for (let i = 0; i < 20; i++) o.step({ aimX: 1, aimZ: 0 });
  assert.equal(o.drainEvents().some(e => e.type === 'wall'), false, 'an orb stopped at the deck');
+});
+
+test('a body that falls wading under a deck lies in the water there, not on the planks', async () => {
+ const { floorY } = await import('../src/render/ground-lift.js');
+ const s = sim([-14, 22]); s.player.below = true;
+ s.events.length = 0; s.damagePlayer(9999, 'test');
+ const death = s.events.find(e => e.type === 'playerDeath');
+ assert.ok(death && death.below === true, 'the death says it was under the deck');
+ const view = { ground };
+ assert.equal(floorY(view, death.x, death.z, death.below), ground.drawnHeightAt(death.x, death.z));
+ assert.ok(floorY(view, death.x, death.z, false) > floorY(view, death.x, death.z, true) + .5, 'the deck is well over the water');
+ // (On the deck, or anywhere on a flat map, nothing changes.)
+ const top = sim([-14, 22]); top.events.length = 0; top.damagePlayer(9999, 'test');
+ assert.equal(top.events.find(e => e.type === 'playerDeath').below, undefined);
 });

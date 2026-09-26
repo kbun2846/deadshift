@@ -16,6 +16,8 @@ export class CropView {
       // Transparent ground must render before airborne effects, regardless of field center distance.
       mesh.renderOrder = -2;
       mesh.rotation.x = -Math.PI / 2; mesh.position.set(field.x, .032, field.z); mesh.receiveShadow = true; view.scene.add(mesh);
+      // (s2-props) Hills: the bed is draped over the ground under it.
+      if (view.ground && !view.ground.flat) drapeBed(mesh, field, view.ground);
       this.beds.set(field.id, { field, canvas, texture, signature: null });
     }
     this.updateBeds([]);
@@ -33,13 +35,16 @@ export class CropView {
         const seed = Math.sin((x + s.x) * 47 + (z + s.z) * 13);
         // Continuous world-space waviness avoids ruler-straight section boundaries.
         const wx=x+s.x,wz=z+s.z;
-        stalks.push({ x: x + seed * .15 + Math.sin(wz*1.55)*.34 + Math.sin(wz*.63)*.18, z: z + Math.cos(seed * 19) * .14 + Math.sin(wx*1.37)*.32 + Math.cos(wx*.71)*.17, scale: .84 + (seed + 1) * .15, edgeScale:1, yaw: seed * 3, bend: 0, dirX: 0, dirZ: 0 });
+        const sx = x + seed * .15 + Math.sin(wz*1.55)*.34 + Math.sin(wz*.63)*.18, sz = z + Math.cos(seed * 19) * .14 + Math.sin(wx*1.37)*.32 + Math.cos(wx*.71)*.17;
+        // (s2-props) Hills: each stalk stands on the ground under it (flat: 0).
+        stalks.push({ y: view.gy ? view.gy(s.x + sx, s.z + sz) : 0, x: x + seed * .15 + Math.sin(wz*1.55)*.34 + Math.sin(wz*.63)*.18, z: z + Math.cos(seed * 19) * .14 + Math.sin(wx*1.37)*.32 + Math.cos(wx*.71)*.17, scale: .84 + (seed + 1) * .15, edgeScale:1, yaw: seed * 3, bend: 0, dirX: 0, dirZ: 0 });
       }
-      const material = new THREE.MeshStandardMaterial({ color: '#a59e68', roughness: 1 });
+      const colour = (view.map.crops || []).find(f => f.id === s.fieldId)?.stalk || '#a59e68'; // (s2-props: a field's own stalk colour)
+      const material = new THREE.MeshStandardMaterial({ color: colour, roughness: 1 });
       const mesh = new THREE.InstancedMesh(geometry, material, stalks.length);
       mesh.position.set(s.x, 0, s.z); mesh.castShadow = true; mesh.receiveShadow = true; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       view.scene.add(mesh);
-      const part = { mesh, stalks, shape: s }; this.parts.set(s.id, part); this.writeStalks(part);
+      const part = { mesh, stalks, shape: s, colour }; this.parts.set(s.id, part); this.writeStalks(part);
     }
     this.flames = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false, transparent: true, opacity: .88, depthWrite: false, blending: THREE.AdditiveBlending }), 672);
     this.smoke = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ color: '#5b5348', transparent: true, opacity: .4, depthWrite: false }), 448);
@@ -58,7 +63,7 @@ export class CropView {
   writeStalks(part) {
     const o = this.dummy;
     for (const [i, s] of part.stalks.entries()) {
-      o.position.set(s.x, 0, s.z); o.rotation.set(s.dirZ * s.bend, s.yaw, -s.dirX * s.bend); o.scale.setScalar(s.scale*s.edgeScale); o.updateMatrix(); part.mesh.setMatrixAt(i, o.matrix);
+      o.position.set(s.x, s.y || 0, s.z); o.rotation.set(s.dirZ * s.bend, s.yaw, -s.dirX * s.bend); o.scale.setScalar(s.scale*s.edgeScale); o.updateMatrix(); part.mesh.setMatrixAt(i, o.matrix);
     }
     part.mesh.instanceMatrix.needsUpdate = true;
     // Bounds include leaned stalks so culling cannot remove a trampled edge.
@@ -89,7 +94,7 @@ export class CropView {
       const part = this.parts.get(s.id); if (!part) continue;
       part.mesh.visible = s.state !== 'gone';
       if (s.state === 'gone') continue;
-      part.mesh.material.color.set('#a59e68').lerp(color.set('#30281d'), s.state === 'burning' ? Math.min(1, s.burnAge / (CROP_FIRE.duration * .87)) : 0);
+      part.mesh.material.color.set(part.colour).lerp(color.set('#30281d'), s.state === 'burning' ? Math.min(1, s.burnAge / (CROP_FIRE.duration * .87)) : 0);
       const near = Math.abs(sim.player.x - s.x) < s.w / 2 + 1 && Math.abs(sim.player.z - s.z) < s.d / 2 + 1;
       if (near && dt > 0) {
         let changed = false;
@@ -108,12 +113,13 @@ export class CropView {
       for (let i = 0; i < count; i++) {
         const seed = index * 71 + i * 13, phase = (sim.time * 1.9 + i * .37) % 1;
         const x = s.x + Math.sin(seed) * s.w * .43, z = s.z + Math.cos(seed * 2) * s.d * .43;
-        o.position.set(x + Math.sin(sim.time * 15 + seed) * .12, .3 + phase * 1.1, z);
+        const gy = this.view.gy ? this.view.gy(x, z) : 0; // (s2-props: hills)
+        o.position.set(x + Math.sin(sim.time * 15 + seed) * .12, .3 + phase * 1.1 + gy, z);
         o.rotation.set(.1 * Math.sin(seed), seed, .18 * Math.sin(sim.time * 12 + seed));
         o.scale.set((.25 + .16 * Math.sin(seed) ** 2) * fade, (1.3 + Math.sin(sim.time * 19 + seed) * .4) * fade, .3 * fade); o.updateMatrix();
         this.flames.setMatrixAt(flameCount, o.matrix); this.flames.setColorAt(flameCount++, color.set(i % 3 ? '#ff9b28' : '#fff0a2'));
         if (i % 2 === 0) {
-          o.position.set(x + phase * .8, 1.3 + phase * 2.5, z + phase * .3); o.rotation.set(seed, phase, 0); o.scale.setScalar((.25 + phase * .65) * fade); o.updateMatrix(); this.smoke.setMatrixAt(smokeCount++, o.matrix);
+          o.position.set(x + phase * .8, 1.3 + phase * 2.5 + gy, z + phase * .3); o.rotation.set(seed, phase, 0); o.scale.setScalar((.25 + phase * .65) * fade); o.updateMatrix(); this.smoke.setMatrixAt(smokeCount++, o.matrix);
         }
       }
     }
@@ -132,11 +138,13 @@ export class CropView {
       const ctx = bed.canvas.getContext('2d'), f = bed.field, size = bed.canvas.width;
       ctx.clearRect(0,0,size,size);
       if(!bed.base){
-      ctx.fillStyle = '#7c7951'; ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = f.bed || '#7c7951'; ctx.fillRect(0, 0, size, size);
+      // (s2-props: a field with its own bed colour gets stubble browns.)
+      const strokes = f.bed ? ['#8a7a4e', '#7a6a44', '#5e5238'] : ['#aaa36c', '#918c5d', '#6e7049'];
       // A continuous mat of fallen leaves hides exposed brown soil between stalks.
       for(let i=0;i<4200;i++) {
         const x=(Math.sin(i*43)*.5+.5)*size,y=(Math.sin(i*19+2)*.5+.5)*size;
-        ctx.strokeStyle=i%3===0?'#aaa36c':i%3===1?'#918c5d':'#6e7049';ctx.lineWidth=1.2;
+        ctx.strokeStyle=strokes[i%3];ctx.lineWidth=1.2;
         ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+Math.sin(i*7)*5,y+Math.cos(i*11)*6);ctx.stroke();
       }
       bed.base=document.createElement('canvas');bed.base.width=bed.base.height=size;
@@ -197,9 +205,21 @@ export class CropView {
     this.updateBeds([]);
     for (const part of this.parts.values()) {
       for (const s of part.stalks) {s.bend = 0;s.edgeScale=1;}
-      part.mesh.visible = true; part.mesh.material.color.set('#a59e68'); this.writeStalks(part);
+      part.mesh.visible = true; part.mesh.material.color.set(part.colour); this.writeStalks(part);
     }
     this.flames.count = this.smoke.count = 0;
   }
 }
 
+
+// (s2-props) A crop bed on a map with hills: the flat plane replaced by one
+// with a vertex every half metre, each lifted to the ground under it.
+function drapeBed(mesh, field, ground) {
+  const geometry = new THREE.PlaneGeometry(field.w, field.d, Math.max(1, Math.ceil(field.w / .5)), Math.max(1, Math.ceil(field.d / .5)));
+  geometry.rotateX(-Math.PI / 2);
+  const pos = geometry.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setY(i, ground.drawnHeightAt(field.x + pos.getX(i), field.z + pos.getZ(i)) + .035);
+  geometry.computeVertexNormals();
+  mesh.geometry.dispose(); mesh.geometry = geometry;
+  mesh.rotation.x = 0; mesh.position.set(field.x, 0, field.z);
+}

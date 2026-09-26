@@ -1253,7 +1253,9 @@ export class Simulation {
     const length=impact?Math.hypot(impact.x,impact.z):0;
     const directionX=length>1e-6?impact.x/length:impact?-p.aimX:0;
     const directionZ=length>1e-6?impact.z/length:impact?-p.aimZ:0;
-    this.events.push({type:'playerDeath',x:p.x,z:p.z,aimX:p.aimX,aimZ:p.aimZ,directionX,directionZ,damageType,weapon:this.weapon||'static'});
+    // (Hills: `below` when the body fell wading under a deck, so it is drawn
+    // in the water there, not on the planks; never set on a flat map.)
+    this.events.push({type:'playerDeath',x:p.x,z:p.z,aimX:p.aimX,aimZ:p.aimZ,directionX,directionZ,damageType,weapon:this.weapon||'static',...(p.below?{below:true}:{})});
   }
 
   applyBlastKnockback(x,z,radius,strength,coreRadius=0){

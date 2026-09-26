@@ -19,12 +19,13 @@ import { GRAPHICS, renderPixelRatio, isDemanding } from '../settings.js';
 import { ElectricEffects } from '../effects/electric-effects.js';
 import { makeQualityDetails } from '../world/world-details.js';
 import { SurfaceMarks } from '../effects/surface-marks.js';
+import { HollowBreakFX, handlesBreak } from '../effects/breakable-effects.js'; // s2-breakables
 import { DustTrail, FOOTFALL_PARTICLES, IMPACT_PARTICLES, kickedDust, debrisDust, CLUTTER_BURST, throwsDust } from '../effects/dust-trail.js';
 import { Birds } from '../effects/birds.js';
 import { CropView } from '../world/crop-view.js';
 import { cropEntityVisible } from '../crops.js';
 import { InteriorVisibility } from './interior-visibility.js';
-import { lightBasis, snapShadowFocus } from './shadow-snap.js';
+import { lightBasis, snapShadowFocus, shadowFrame, shadowBoxOver, settleShadowBox, SHADOW_FIT } from './shadow-snap.js';
 
 import { mergeTransformed } from './merge-transformed.js';
 
@@ -78,8 +79,11 @@ import { setExtremeSurfaces, tickExtremeSurfaces, setExtremeGround } from './ext
 import { viewWidth, viewHeight } from '../viewport.js';
 import { WorldBuild } from './world-build.js';
 import { updateCrossingDecks } from './crossing-decks.js';
+import { WaterDrips } from '../effects/water-drips.js';
+import { WADE } from '../config/gameplay.js';
 import { WarmUp } from './warm-up.js';
 import { Vision } from './vision.js';
+import { graveBreak } from '../world/graveyard.js'; // s2-graveyard
 
 const UP = new THREE.Vector3(0, 1, 0);
 // A flat marker lying down (layFlat): a quarter turn about x.
@@ -186,13 +190,17 @@ export class WorldView {
     // biases come down. Tightening the box also multiplies texel density by
     // 2.2x, which is what pays for the cheaper filters below.
     // (A lower sun than the default reaches further toward itself: shadowDepth.)
+    // That was the first box; each shadow update now fits it to what the camera
+    // sees (fitShadow, shadow-snap.js), so shadows reach every screen edge.
     Object.assign(sun.shadow.camera, { left: -21, right: 21, top: 15, bottom: -15, ...shadowDepth(sunOffset) });
     sun.shadow.normalBias = .02; sun.shadow.bias = -.00008; sun.shadow.radius = 1;
     this.scene.add(sun, sun.target); this.sun = sun;
     // The sun sits at a fixed offset from its target, so its direction never
-    // changes and the basis across its shadow map is computed once.
+    // changes; the basis across its shadow map changes only with the screen's
+    // shape (the box's roll, fitShadow).
     this.sunOffset = { x: sunOffset.x, y: sunOffset.y, z: sunOffset.z };
     this.sunBasis = lightBasis({ x: -this.sunOffset.x, y: -this.sunOffset.y, z: -this.sunOffset.z });
+    this.shadowBox = null; this.shadowAspect = 0;
     this.static = new THREE.Group(); this.scene.add(this.static);
     this.propDetails = []; this.roofs = []; this.tumbleweeds = []; this.props = new Map();
     this.makeTerrain();
@@ -476,6 +484,29 @@ export class WorldView {
     texture.colorSpace = THREE.SRGBColorSpace; this.textureCache.set(size, texture); return texture;
   }
 
+  // Fits the sun's shadow box to what the camera sees this frame (shadow-snap.js
+  // shadowBoxOver): the view's corners between the lowest ground in view and
+  // the roof tops over the highest, turned into the light's frame, reaching
+  // toward the sun past the tallest caster. The box keeps its size until it
+  // no longer holds the view or is far too big (settleShadowBox), and its roll
+  // about the light follows the screen's shape.
+  fitShadow(fx, fz) {
+    if (!this.quality?.shadows) return; // (Potato: no shadow map)
+    const cam = this.sun.shadow.camera, fy = this.focus.y;
+    const view = { height: this.cameraHeight, tilt: CAMERA_TILT, fov: this.camera.fov, aspect: this.camera.aspect, near: CAMERA_NEAR };
+    if (this.shadowAspect !== view.aspect) {
+      const frame = shadowFrame(this.sunOffset, { ...view, height: OUTDOOR_CAMERA_HEIGHT });
+      this.sunBasis = frame.basis; cam.up.set(frame.up.x, frame.up.y, frame.up.z);
+      this.shadowAspect = view.aspect; this.shadowBox = null;
+    }
+    const box = settleShadowBox(this.shadowBox, shadowBoxOver(view, this.sunOffset, this.sunBasis, this.ground, fx, fy, fz),
+      SHADOW_FIT, this.ground.flat ? 0 : SHADOW_FIT.slack);
+    if (box === this.shadowBox) return;
+    this.shadowBox = box; Object.assign(cam, box); cam.updateProjectionMatrix();
+    // The same few millimetres of depth bias whatever the box's depth.
+    this.sun.shadow.bias = -SHADOW_FIT.bias / (box.far - box.near);
+  }
+
   setQuality(name) {
     this.rifleView?.setQuality(name);
     this.qualityName = name; this.quality = GRAPHICS[name] || GRAPHICS.balanced;
@@ -615,7 +646,10 @@ export class WorldView {
       // Material-only batches span the entire map, drawing every blade of grass.
       if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
       const center=o.geometry.boundingSphere.center.clone().applyMatrix4(o.matrixWorld);
-      const cell=`${Math.floor(center.x/24)},${Math.floor(center.z/24)}`;
+      // (Hills maps: bigger cells. Their scenery is denser, so a 24 m cell
+      // left the town at 40-odd batches in view and as many again in the
+      // shadow pass; 40 m cells cut the draws and cost little in culling.)
+      const size=this.map?.terrain?40:24, cell=`${Math.floor(center.x/size)},${Math.floor(center.z/size)}`;
       // Body parts that death reactions remove on their own (a head, the legs)
       // merge only with parts of the same kind, and the merged mesh keeps the tag.
       const part = o.userData.deathPart || '';
@@ -845,6 +879,7 @@ export class WorldView {
   }
 
   walkingDustColor(x, z) {
+    const spray = this.waterFX?.sprayColour(x, z); if (spray) return spray;
     for (const b of this.map.buildings) {
       const c = Math.cos(b.angle || 0), s = Math.sin(b.angle || 0);
       const lx = (x - b.x) * c - (z - b.z) * s, lz = (x - b.x) * s + (z - b.z) * c;
@@ -964,6 +999,7 @@ export class WorldView {
     const base = (slot + 1) * 1e6;
     // Their stain, one per player (the slot), like yours below.
     // Their Surge: the beams and the white body on their avatar.
+    if (e.type === 'scatterBurst' || e.type === 'scatterHit') this.waterFX?.event(e);
     if (e.type.startsWith('scatter') && this.scatterView?.event(e, shooter)) return;
     if (e.type === 'surgeCharge' || e.type === 'surgeStart' || e.type === 'surgeEnd') {
       const avatar = [...(this.remote?.avatars.values() || [])].find(a => a.slot === slot);
@@ -987,6 +1023,7 @@ export class WorldView {
     }
     if (e.type === 'playerDeath') {
       this.blood.add(e.x, e.z, e.directionX, e.directionZ, 'slot' + slot); this.burst(e.x, e.z, 34, 'kill'); this.fx.impact?.(e.x, e.z, this.kickedDustColor(e.x, e.z));
+      this.waterFX?.death(e.x, e.z, e.directionX || 0, e.directionZ || 0); // (a body in the stream bleeds into it)
       // Their body, like yours: one per player (remote-corpses.js).
       this.remote ||= new RemotePlayers(this); (this.remoteCorpses ||= new RemoteCorpses(this)).add(e, slot, e.weapon);
       return;
@@ -1017,6 +1054,8 @@ export class WorldView {
   }
 
   event(e) {
+    // The stream (effects/water-effects.js): a shot or blast into the water splashes (in place of the dust), blood spreads on it.
+    if (this.waterFX?.event(e)) return;
     // Your body and your stain from the last death stay; the ones before go
     // (DeathView.start clears the old body, the blood keeps one per player).
     // Your Scatter kicks the view like a big shot.
@@ -1196,6 +1235,7 @@ export class WorldView {
         life, maxLife: life, size: .025 + Math.random() * .045, material: 7, tint: colour.clone().multiplyScalar(.8 + Math.random() * .5), angle: Math.random() * Math.PI * 2 });
     }
     (this.drops ||= new BloodDrops(this)).splash(e.x, e.z, dx, dz, amount, this.lastSim?.colliders, this.map);
+    this.waterFX?.blood(e.x, e.z, dx, dz, amount);
   }
 
   addBeam(path, width) {
@@ -1211,6 +1251,8 @@ export class WorldView {
   }
 
   breakProp(e) {
+    if (handlesBreak(e.propType)) { (this.hollowBreaks ||= new HollowBreakFX(this)).break(e); return; } // s2-breakables
+    if (graveBreak(this, e)) return; // s2-graveyard: slate shards
     const plant = e.propType === 'cactus', barrel = e.propType === 'barrel';
     // Small floor clutter throws a handful of pieces, not a barrel's worth, and
     // they are shards rather than staves: shorter, squarer and lower.
@@ -1430,7 +1472,10 @@ export class WorldView {
     { const g = this.ground, under = this.playerUnder = !!(sim.player.below || (previousPlayer.below && g.deckAt(renderX, renderZ) >= 0));
       const want = under ? g.drawnHeightAt(renderX, renderZ) : this.gy(renderX, renderZ);
       // (In the stream, under a deck too: no dust, grit or footprints.)
-      this.playerWet = !g.flat && g.waterDepthAt(renderX, renderZ, want) > .03;
+      const depth = g.flat ? 0 : g.waterDepthAt(renderX, renderZ, want);
+      this.playerWet = depth > .03;
+      // Stepping out: water drips off you for a moment (Balanced and up).
+      if (!g.flat) (this.drips ||= new WaterDrips(this.fx)).update(dt, renderX, renderZ, Math.min(1, depth / WADE.depth));
       this.playerY = this.playerY === undefined || this.cameraCut || (want >= this.playerY - .25 && want <= this.playerY + .2) ? want : want > this.playerY ? Math.min(want, this.playerY + 8 * dt) : Math.max(want, this.playerY - 9 * dt);
       this.player.position.set(renderX, this.playerY, renderZ); }
     // (A deck the player has waded in under turns see-through for them.)
@@ -1521,6 +1566,7 @@ export class WorldView {
       // Snapped to whole shadow texels so the map's grid stays fixed to the
       // world; otherwise every update lands edges on a slightly different grid
       // and they crawl. See shadow-snap.js.
+      this.fitShadow(fx, fz);
       const cam = this.sun.shadow.camera, size = this.sun.shadow.mapSize;
       const at = snapShadowFocus({ x: fx, y: this.focus.y, z: fz }, this.sunBasis,
         (cam.right - cam.left) / size.x, (cam.top - cam.bottom) / size.y);
@@ -1698,6 +1744,7 @@ export class WorldView {
     this.wasDashing = dashing;
     this.dustTrail.update(dt);
     if (active) { this.fx.clearZone.value.set(renderX, renderZ); this.updateDetailFX(sim, fdt); this.fx.update(fdt); }
+    this.waterFX?.update(sim, fdt, elapsed);
     // Training range only: the pink zone and the arrow in front of the player.
     if (this.tutorialGuide && !this.tutorialMarkers) this.tutorialMarkers = new TutorialMarkers(this.scene);
     this.tutorialMarkers?.update(dt, this.tutorialGuide, { x: renderX, z: renderZ });
@@ -1722,6 +1769,7 @@ export class WorldView {
       this.blobShadows.update(i => sim.props[i]?.hp > 0, movers);
     }
     this.cropView.update(sim, dt);
+    this.hollowBreaks?.update(fdt); // s2-breakables: rollers, stains, feathers, swarms
     this.updateParticles(fdt); this.updateBlasts(fdt); this.blood.update(fdt);this.electric.updateAftershocks(fdt,sim); this.electric.drift(sim.seeds,sim.player,sim.colliders,fdt); this.electric.charge(sim.hexOrbs,fdt,sim.player); this.electric.syncSpin(sim.hexSpin,sim.player,fdt); this.electric.update(fdt); this.electric.boundary(sim.hexOrbs);
     for (const ring of this.rings) {
       ring.age += fdt; ring.mesh.scale.setScalar(1 + ring.age * 8); ring.mesh.material.opacity = Math.max(0, 1 - ring.age * 2.5);
@@ -1958,7 +2006,9 @@ export class WorldView {
       this.particlePool[p.material].setMatrixAt(index, this.dummy.matrix);
       this.particlePool[p.material].setColorAt(index, p.tint || WHITE);
     }
-    this.particlePool.forEach((mesh, i) => { mesh.count = Math.min(counts[i], PARTICLE_POOL); if(mesh.count){mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;} });
+    // (An empty pool is hidden: three still binds its program and buffers for a
+    // zero-instance draw. The warm-up shows every pool, so nothing compiles late.)
+    this.particlePool.forEach((mesh, i) => { mesh.count = Math.min(counts[i], PARTICLE_POOL); mesh.visible = mesh.count > 0; if(mesh.count){mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;} });
   }
 
   // Debris only (online map reset): the world's marks and leftovers, not the
@@ -1968,6 +2018,7 @@ export class WorldView {
     this.blood?.clear?.();
     this.surfaceMarks.clear(); this.cropView.reset();
     this.particles.length = 0; this.fx.clear();
+    this.hollowBreaks?.clear(); // s2-breakables
     for (const r of this.rings) { r.mesh.removeFromParent(); r.mesh.geometry.dispose(); r.mesh.material.dispose(); } this.rings.length = 0;
   }
 
@@ -1985,7 +2036,8 @@ export class WorldView {
 
   reset(sim) {
     this.orbBeams?.clear(); this.deathView?.clear(); this.surgeView?.clear(); this.blood?.clear(); this.remoteCorpses?.clear(); this.robotWrecks?.clear(); this.robotScrap?.clear(); this.scatterView?.clear(); this.drops?.clear(); this.bleeds?.clear(); this.cleanPlayer();
-    this.fx.clear();
+    this.fx.clear(); this.waterFX?.clear();
+    this.hollowBreaks?.clear(); // s2-breakables
     this.remote?.clear();
     this.rifleView?.clear();this.shotgunView?.clear();
     this.grenadeView?.clear();
@@ -1994,7 +2046,7 @@ export class WorldView {
     this.cropView.reset();
     this.electric.clear(); this.surfaceMarks.clear(); this.dustTrail.clear(); this.birds.clear();
     this.footprints.length = 0; this.footMesh.count = 0; this.footDistance = 0; this.lastFootPosition = { ...sim.player };
-    this.playerY = undefined; this.playerUnder = false;
+    this.playerY = undefined; this.playerUnder = false; this.drips?.clear();
     this.focus.set(sim.player.x, this.gy(sim.player.x, sim.player.z), sim.player.z); this.kick.set(0, 0, 0); this.shake = 0; this.particles.length = 0;
     for (const g of this.shots.values()) { this.scene.remove(g); g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); } this.shots.clear();
     for (const r of this.rings) { r.mesh.removeFromParent(); r.mesh.geometry.dispose(); r.mesh.material.dispose(); } this.rings.length = 0;

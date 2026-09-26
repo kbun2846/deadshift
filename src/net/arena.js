@@ -36,6 +36,8 @@
 // Nobody spawns inside the ground the weapon-pick camera shows (pick-view.js).
 // Nothing here touches the DOM, three.js or the network.
 import { interiorSpawns, pickSpawn, openSpot } from './spawn-points.js';
+// s2-spawns: authored bases and FFA points (Hollow Wick).
+import { hasAuthoredSpawns, teamBase, baseSpot, ffaSpot, furthestSpot } from './map-spawns.js';
 import { stepCrops } from '../crops.js';
 import { segmentBox } from '../simulation.js';
 import { RULES } from '../config/gameplay.js';
@@ -294,6 +296,8 @@ export class Arena {
 
  spawn(seat) {
   const others = [...this.seats.values()].filter(s => s !== seat && s.present && !s.dead).map(s => s.sim.player);
+  // s2-spawns: a map with bases and FFA points (net/map-spawns.js).
+  if (hasAuthoredSpawns(this.map)) return this.enter(seat, this.authoredSpawn(seat, others));
   // Scattered (owner, v0.9b): nobody within SPAWN_APART (about a screen) of
   // anyone else, in a room or failing that in the open. "With my team" (team
   // modes): each side in its own building (picked per round, a different one
@@ -316,6 +320,22 @@ export class Arena {
   }
   const at = pickSpawn(rooms, others, this.random, gap) || pickSpawn(this.rooms, others, this.random, 1.6) || this.map.spawn;
   this.enter(seat, at);
+ }
+
+ // s2-spawns. Team modes: the side's base (whatever the spawns setting; the
+ // bases are exempt from the pick-view rule). Everyone else: an FFA point a
+ // screen from everyone alive (hidden from them where it can be), else an
+ // open spot that far, else the point furthest from everyone.
+ authoredSpawn(seat, others) {
+  const entry = modeById(this.mode), colliders = this.world.colliders;
+  if (seat.team && entry?.teams && this.map.bases?.length) {
+   const base = teamBase(this.map, seat.team, TEAMS.slice(0, entry.teams).map(t => t.id));
+   if (base) return baseSpot(this.map, colliders, base, { others, random: this.random });
+  }
+  const skip = (x, z) => inPickArea(this.noSpawn, x, z);
+  return ffaSpot(this.map, colliders, { others, random: this.random, space: SPAWN_APART, skip })
+   || this.openOutside(others)
+   || furthestSpot(this.map, colliders, others) || this.map.spawn;
  }
 
  // An open spot a screen from everyone, never in the weapon-pick view's ground.

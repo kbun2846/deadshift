@@ -26,14 +26,16 @@ export function cropEntityVisible(crops, viewer, entity) {
 export function cropSegments(map) {
   const segments = [];
   for (const f of map.crops || []) {
-    const weights = Array.from({ length: 8 }, (_, i) => .85 + (Math.sin(i * 7 + 3) + 1) * .25);
+    // (s2-props: a field may set its own rows and cols; Deadwater's are 8 x 7.)
+    const rows = f.rows || 8, cols = f.cols || 7;
+    const weights = Array.from({ length: rows }, (_, i) => .85 + (Math.sin(i * 7 + 3) + 1) * .25);
     const sum = weights.reduce((a, b) => a + b, 0);
     let z = f.z - f.d / 2;
-    for (let row = 0; row < 8; row++) {
+    for (let row = 0; row < rows; row++) {
       const d = f.d * weights[row] / sum;
-      const widths = Array.from({ length: 7 }, (_, i) => .7 + (Math.sin(i * 13 + row * 7) + 1) * .4);
+      const widths = Array.from({ length: cols }, (_, i) => .7 + (Math.sin(i * 13 + row * 7) + 1) * .4);
       const total = widths.reduce((a, b) => a + b, 0); let x = f.x - f.w / 2;
-      for (let col = 0; col < 7; col++) {
+      for (let col = 0; col < cols; col++) {
         const w = f.w * widths[col] / total;
         segments.push({ id: `${f.id}-${row}-${col}`, fieldId: f.id, x: x + w / 2, z: z + d / 2, w, d, visibility: f.visibility, state: 'standing', burnAge: 0 }); x += w;
       }

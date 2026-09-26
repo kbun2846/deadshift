@@ -1,4 +1,6 @@
 import { SURGE } from './config/gameplay.js';
+import { hasBreakSound, playBreakSound } from './effects/breakable-sounds.js'; // s2-breakables
+import { graveThud } from './world/graveyard.js'; // s2-graveyard
 // Small synthesized sounds: no downloads, sample assets, or audio before a gesture.
 // How far sound carries. Full volume out to `near` metres (about half the
 // screen), then it fades, down to `far` of it at 3x that distance (barely
@@ -299,6 +301,8 @@ export class Soundscape {
       const now = this.context?.currentTime ?? 0;
       if (now - (this.lastBreak ?? -1) < .028) return;
       this.lastBreak = now;
+      if (hasBreakSound(e.propType)) { playBreakSound(this, e); return; } // s2-breakables: Hollow Wick's breakables
+      if (graveThud(this, e)) return; // s2-graveyard
       if (e.propType === 'pot' || e.propType === 'pottedPlant') { this.pottery(e.dashed, e.propType === 'pottedPlant'); return; }
       if (e.dashed) { this.dashSmash(e.propType); return; }
       if (e.propType === 'brokenChair') {

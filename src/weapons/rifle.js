@@ -71,7 +71,8 @@ export function roundSees(sim,round,t,s=round.flight&&along(round,t.x,t.z)){
 export function roundMeets(sim,round,box,x,z,s=round.flight&&along(round,x,z)){
  if(round.flight===undefined||(box.height??2)>1.5)return true;
  const y=roundY(sim,round,s),base=sim.ground.heightAt(x,z);
- return y>=base-.2&&y<=base+Math.max(box.height??2,TERRAIN.roundHeight+.2);
+ // s2-trees: a stump or fallen log (lowTop) meets it only below its own top.
+ return y>=base-.2&&y<=base+(box.lowTop?box.height:Math.max(box.height??2,TERRAIN.roundHeight+.2));
 }
 
 export function resetRifle(sim){sim.rifle={ammo:RIFLE.magazine,capacity:RIFLE.magazine,reloadCapacity:RIFLE.magazine,cooldown:0,reload:0,aiming:false,triggerHeld:false,burst:0,sway:0,kick:0};sim.magazines=[];sim.rifleBullets=[];}

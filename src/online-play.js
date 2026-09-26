@@ -6,7 +6,7 @@ import { NETWORK } from './config/network.js';
 import { makeRoomCode, cleanRoomCode } from './net/transport.js';
 import { movementInput, cleanName } from './net/protocol.js';
 import { ProjectileMirror } from './net/projectiles.js';
-import { supportsMode, multiplayerMaps } from './maps.js';
+import { supportsMode, multiplayerMaps, DEFAULT_MAP } from './maps.js';
 import { DEFAULT_WEAPON } from './items.js';
 import { pickState } from './net/host-session.js';
 import { SIDE_COLOURS } from './config/match.js';
@@ -26,7 +26,8 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
  // overlap whatever the title's size (menu-theme.css).
  (document.querySelector('.masthead .brand > div') || $('game')).append(badge);
  const copyInvite = async () => {
-  const link = location.origin + location.pathname + '?join=' + code;
+  // (A map other than the default rides along, so the friend loads the same one: s2-spawns.)
+  const link = location.origin + location.pathname + '?' + (map.id !== DEFAULT_MAP ? 'map=' + encodeURIComponent(map.id) + '&' : '') + 'join=' + code;
   try { await navigator.clipboard.writeText(link); toast('INVITE LINK COPIED'); }
   catch { toast('ROOM CODE ' + code); }
  };

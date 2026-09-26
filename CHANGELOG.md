@@ -2,6 +2,29 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.960 (2026-09-26)
+
+### Hollow Wick, stage 2: the village (developer tools > World > Map in progress while it is being built)
+- Sixteen colonial New England buildings on their pads: capes, saltboxes and a gambrel, the tavern with its hanging sign, the white meetinghouse with its belfry and portico, the smithy and open forge with a glowing hearth, the barn, the gristmill on the stream with its turning undershot wheel, the horse sheds, the hillside tomb, the hearse house, a farm and a woodshed. Steep shingled roofs, big chimneys, clapboard, 9-over-6 windows (dark, broken or shuttered), plank doors standing open; roofs fade when you go in.
+- Every room furnished for 1790 and left mid-task, the eerie way: centre chimneys with hearth, crane and pot, trestle tables with apples half pared, rope beds, dressers with pewter, spinning wheels and cradles; the tavern's bar cage, settle and casks; box pews and a raised pulpit under its sounding board; the smithy's banked coals; millstones and the pit wheel; stalls with a dead horse's ribs; coffins on stone shelves and one fallen open; one house still lit by a pierced-tin lantern, a place laid with food gone to mould and a chair on its back. You bump into all of it, and no doorway is ever blocked.
+- The woods: an autumn North Woods and West Woods in clumps and gaps, an old orchard, bare village elms, willows on the banks, the fork's great maple on its orange carpet, stumps and fallen logs. Trunks are cover; canopies thin out round anyone under them.
+- The burying ground on Church Hill's terraces (slate and fieldstone headstones, table tombs, an open grave beside fresh mounds) and low fieldstone walls across the land.
+- The field and the set pieces: corn shocks and dead standing stalks to hide in, scarecrows, an ox cart, a corn crib, a haystack, woodpiles, the well and its sweep, rail fences, boulders, reeds on the banks; the hanging tree, a drag trail of old blood into the woods, the body pile by the stream, skeletons, and a body in a rocking chair that still rocks.
+- Ten new breakables, each breaking its own way: pumpkins (seeds and pulp), cider kegs (a spray of cider and a stain), apple crates (the apples roll downhill), grain sacks (the grain pours out), chicken coops (feathers drift down), bee skeps (a swarm circles off), stoneware crocks (the lid spins down like a coin), tin lanterns (the candle burns on in the dirt, then gutters out), cordwood (the logs tumble and roll) and wheelbarrows of squash.
+- The crossings built for real: an open timber bridge on stone abutments, a mossy fallen tree trunk, and a plank footbridge on trestles; stones in the stream.
+- Bases and spawn points for every mode (the town yard, the graveyard's foot and the south bank), and robots on the map.
+
+### The stream
+- See-through water on every preset: the bed, the ford's pebbles and a wader's legs show through it, darker the deeper.
+- It reacts to you: rings and a splash at every step, a bigger splash on a dodge, slow rings while you stand still, and water dripping off you for a moment after you climb out (Balanced and up). Shots, orb volleys and grenades splash and throw up spray instead of dust; blood spreads on the water and drifts downstream (Quality and up); leaves float by; the weir churns white below the mill dam; Extreme adds a gentle swell and shimmer.
+
+### Every map
+- Furniture in every room is solid now (Deadwater's counters, stools, stoves, shelves and woodpiles too), and the doors it used to block are clear: the sheriff's and the boarding house's back doors, the farmhouse's side door and Test Hill's plateau house.
+- Shadows reach the edge of the screen on every preset and screen shape (they used to stop short in a corner, and at the top and bottom of a phone).
+
+### Performance
+- Fewer draws on maps with hills (bigger scenery batches), and idle effect pools skip their draws.
+
 ## alpha v0.955 (2026-09-26)
 
 ### Hollow Wick, stage 1: the ground (developer tools > World > Map in progress while it is being built)

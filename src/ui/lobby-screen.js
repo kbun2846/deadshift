@@ -42,10 +42,10 @@ export const MODE_NOTES = Object.freeze({
  '3v3': 'two sides of three · robots fill empty seats',
 });
 
-export function createLobbyScreen(parent, { kick, setMode, setSetting, start, leave, copyInvite, addRobot, chooseTeam, tuneRobot, tuneAllRobots }) {
+export function createLobbyScreen(parent, { kick, setMode, setSetting, start, leave, copyInvite, addRobot, chooseTeam, tuneRobot, tuneAllRobots, map = null }) {
   const root = document.createElement('section');
   root.id = 'lobby-screen'; root.className = 'lobby-screen hidden'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'Lobby');
-  const maps = multiplayerMaps();
+  const maps = multiplayerMaps(map); // s2-spawns: a map in progress only where it is loaded
   root.innerHTML = `<div class="lobby-screen-card">
     <header class="lobby-screen-head"><h2>lobby</h2><button type="button" class="lobby-code plain-text" title="Copy an invite link"></button></header>
     <div class="lobby-columns">

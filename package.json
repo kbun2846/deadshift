@@ -1,6 +1,6 @@
 {
   "name": "deadshift",
-  "version": "0.9.55",
+  "version": "0.9.60",
   "private": true,
   "type": "module",
   "scripts": {

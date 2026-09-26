@@ -62,6 +62,7 @@ import {keyboardAim} from './keyboard-aim.js';
 import { overheadMapSVG } from './ui/overhead-map.js';
 import { installDevWiring } from './ui/dev-wiring.js';
 import { openSpot } from './net/spawn-points.js';
+import { hasAuthoredSpawns } from './net/map-spawns.js'; // s2-spawns
 import { createToast } from './ui/toast.js';
 import { createRobotMinds } from './ui/robot-minds.js';
 import { addWatermark } from './ui/watermark.js';
@@ -237,7 +238,8 @@ function randomPracticeSpawn(){
  // VS ROBOTS: a screen away from every robot (bots.apart, owner v0.9b);
  // "with my team": beside one of your robots.
  const mate=bots.teamSpawn&&bots.living().find(b=>b.team==='blue');
- const at=(mate&&bots.spot(mate.sim.player,2.5,6))||openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:bots.apart||14})||openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:14});
+ // s2-spawns: a map with bases and FFA points (net/map-spawns.js) first.
+ const at=bots.youSpot(sim)||(mate&&bots.spot(mate.sim.player,2.5,6))||openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:bots.apart||14})||openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:14});
  if(!at)return false;
  const aim={aimX:sim.player.aimX,aimZ:sim.player.aimZ};sim.respawn(at);Object.assign(sim.player,aim);previousPlayer={...sim.player};
  return true;
@@ -262,7 +264,7 @@ async function start(weapon=sim.weapon,course) {
   $('intro').classList.add('hidden'); ['weapon', 'reticle'].forEach(id => $(id).classList.remove('hidden'));
   $('world').focus();
   // 1V1: the URL carries the choices (menu.js); one robot, no targets.
-  {const q=new URLSearchParams(location.search);if(!map.training&&q.get('mode')==='duel'){duel.begin(readDuel(q.get('duel'))||{});modeLabel.textContent=(DUEL_MODES[duel.config?.mode]?.name||'1V1');}}
+  {const q=new URLSearchParams(location.search);if(!map.training&&q.get('mode')==='duel'){duel.begin(readDuel(q.get('duel'))||{});if(hasAuthoredSpawns(map)&&randomPracticeSpawn())view.cutCamera?.();/* s2-spawns: you to your base / an FFA point */modeLabel.textContent=(DUEL_MODES[duel.config?.mode]?.name||'1V1');}}
   if(tutorial){$('tutorial-guide').classList.remove('hidden');updateTutorial();}
   try { await sound.start(); if (paused) sound.suspend(true); }
   catch (error) { console.warn('Audio unavailable:', error); }
@@ -609,6 +611,7 @@ const lobbyScreen=createLobbyScreen($('game'),{
  chooseTeam:team=>online.chooseTeam(team),
  leave:()=>$('main-menu').click(),
  copyInvite:()=>online.copyInvite(),
+ map,// s2-spawns: the lobby's map list
 });
 const weaponPick=createWeaponPick($('game'),{
  pick:weapon=>{if(online.active)online.choose(weapon,false);},

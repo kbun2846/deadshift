@@ -16,6 +16,14 @@
 // above the mill dam and at -0.3 below it). The fence runs about x -65..56,
 // z -66..50; the ground and the stream run on past it.
 import { roundPlayableOutline } from '../playable-area.js';
+import { HOLLOW_WICK_TREES } from './hollow-wick-trees.js'; // stage 2 trees (s2-trees)
+import { CROSSINGS } from './hollow-wick-crossings.js'; // s2-crossings
+// s2-spawns: bases, FFA points, no-spawn areas, the pick view, practice targets.
+import { HW_SPAWNS } from './hollow-wick-spawns.js';
+import { GRAVEYARD_PROPS, FIELD_WALLS } from './hollow-wick-graveyard.js'; // s2-graveyard
+import { HW_PROPS, HW_CROPS, HW_GROUND_LAYERS } from './hollow-wick-props.js'; // (s2-props)
+import { hollowWickBuildings, hollowWickBuildingProps } from './hollow-wick-buildings.js'; // s2-buildings
+import { HOLLOW_WICK_BREAKABLES } from './hollow-wick-breakables.js'; // s2-breakables
 
 const deg = Math.PI / 180;
 // Worked-out points are kept to the millimetre, so the map's numbers (and its
@@ -38,10 +46,12 @@ const GY = [-80, 72]; // the graveyard's sector round O (north-up degrees)
 // 2026-09-26), a little deeper here and shallower there: knee-deep riffles
 // by the ford, deeper pools by the log, under the bridge and below the dam,
 // the mill pond above it; past the fence it deepens.
+// (Owner, 2026-09-26: no sudden narrowing. Widths and beds change slowly:
+// the mill pond is upstream of the dam, east of x 14, the widest water.)
 export const STREAM = [
- [-95, 15, 3.2, -1.6], [-70, 16.2, 3.0, -1.4], [-56, 17.2, 2.7, -.85], [-46, 18.4, 2.6, -.72], [-36, 20.2, 2.6, -.8],
- [-26, 21.8, 2.6, -.66], [-16, 22.4, 2.6, -.82], [-6, 21.6, 2.9, -.6], [4, 20.2, 3.4, -.7], [12, 20.0, 3.4, -.84],
- [18, 21.8, 2.6, -.52], [26, 22.6, 2.5, -.6], [34, 22.8, 2.5, -.46], [44, 23.4, 2.6, -.42], [56, 23, 2.8, -.62],
+ [-95, 15, 3.2, -1.6], [-70, 16.2, 3.0, -1.4], [-56, 17.2, 2.8, -.9], [-46, 18.4, 2.7, -.8], [-36, 20.2, 2.7, -.82],
+ [-26, 21.8, 2.7, -.8], [-16, 22.4, 2.7, -.82], [-6, 21.6, 2.8, -.76], [4, 20.2, 2.9, -.8], [12, 20.0, 3.0, -.84],
+ [18, 21.8, 3.0, -.72], [26, 22.6, 3.1, -.7], [34, 22.8, 2.9, -.62], [44, 23.4, 2.8, -.58], [56, 23, 2.8, -.66],
  [70, 22, 3.0, -1.3], [95, 21, 3.2, -1.6],
 ];
 
@@ -51,7 +61,7 @@ export const BUILDING_PADS = [
  { id: 'tavern', x: 24, z: -19, w: 12, d: 9, h: 5 },
  { id: 'saltbox', x: 38.5, z: -19.5, w: 9, d: 7, h: 5, angle: .06 },
  { id: 'cape', x: 50.5, z: -18.5, w: 9, d: 7, h: 5, angle: -.04 },
- { id: 'gambrel', x: 13, z: -24, w: 9, d: 7.5, h: 5.1, angle: .06 },
+ { id: 'gambrel', x: 13, z: -24, w: 9, d: 7.5, h: 5, angle: .06 }, // (s2-buildings: was 5.1; its pad's margin ran 0.1 m up into the tavern's corner, 0.3 m away)
  { id: 'lit-cape', x: 30, z: -33, w: 8, d: 7, h: 5, angle: -.08 },
  { id: 'saltbox-2', x: 46, z: -33, w: 9, d: 7, h: 5, angle: .05 },
  { id: 'smithy', x: 26, z: 2, w: 8, d: 6, h: 5 },
@@ -117,6 +127,10 @@ export const hollowWick = {
   { poly: [[-12, 27.5], [95, 29.5], [95, 85], [-12, 85]], colour: '#7d6d45', feather: 2, mix: .75, noise: .35 },
   // Leaf litter deep in the woods (litter browns only: never red on the ground).
   ...WOODS.map(w => ({ poly: w.poly, colour: ['#8a6a3e', '#7a5a34', '#6e4a2c'], feather: 3, mix: .65, noise: .5 })),
+  ...HW_GROUND_LAYERS, // (s2-props: the body pile's reddish ground)
+  // The mill dam's top: a walk of weathered stone, not the stream bed's mud
+  // (it reads as a walkway across the water, not a strip of water).
+  { poly: [[13.2, 14.4], [14.8, 14.4], [14.8, 25.4], [13.2, 25.4]], colour: '#7b7466', feather: .15, mix: 1, noise: .25 },
  ],
  terrain: {
   bounds: [-96, -80, 86, 80],
@@ -157,7 +171,8 @@ export const hollowWick = {
    // The mill dam: an earth dam across the stream, its walk on top.
    // The mill dam: stone faces across the stream (walls), laid over the
    // channel (overWater), its ends on the banks: you walk along its top.
-   { id: 'dam', h: .75, poly: [[13.2, 14.4], [14.8, 14.4], [14.8, 25.4], [13.2, 25.4]], grade: .25, cliffs: [1, 3], overWater: true },
+   // (Its ends meet the banks steeply, so they don't fan out into the water.)
+   { id: 'dam', h: .75, poly: [[13.2, 14.4], [14.8, 14.4], [14.8, 25.4], [13.2, 25.4]], grade: 1.2, cliffs: [1, 3], overWater: true },
   ],
   // Knolls in the woods: deliberate crests for reverse-slope play.
   knolls: [{ x: -14, z: -52, r: 5, h: 1.4 }, { x: 0, z: -56, r: 4.5, h: 1.2 }, { x: -24, z: -56, r: 4, h: 1.5 }, { x: -52, z: -2, r: 4, h: 1.2 }],
@@ -198,13 +213,14 @@ export const hollowWick = {
   // (Each wall stands where the gully's shoulder ends, so the town beside it
   // is untouched: 2.2 m either side of the lane's line.)
   edges: [{ points: [[38.8, -5.5], [38.6, 4], [38.18, 8.9], [37.58, 12.2]] }, { points: [[43.2, -5.5], [43, 4], [42.58, 8.9], [41.98, 12.2]] },
-   { points: [[16.4, 17.25], [26.9, 17.25]] }],
+   { points: [[15.8, 17.25], [26.9, 17.25]] }],
   // The stream's channel (its banks rise to the ground beside them).
   // `surface`: where the water stands: 0 upstream of the mill dam at x 14
   // (the mill pond), -0.3 below it; `flow` -1: it runs toward -x (west).
   water: [{ id: 'stream', points: STREAM, bank: 2.2, surface: { up: 0, down: -.3, damX: 14, flow: -1 } }],
   // The ford: a pebbled shallow a hand deep.
-  fords: [{ points: [[-2, 15.5, .75], [-2, 18.4, -.12], [-2, 21.6, -.42], [-2, 24.7, -.12], [-2, 27.5, 1.3]], width: 5, shoulder: 2 }],
+  // (A shallow riffle the stream's full width: water over it everywhere.)
+  fords: [{ points: [[-2, 15.5, .75], [-2, 17.6, -.34], [-2, 18.6, -.42], [-2, 21.3, -.45], [-2, 23.9, -.42], [-2, 24.9, -.34], [-2, 27.5, 1.3]], width: 5, shoulder: 2 }],
   // Walk surfaces over the water: their ends land on the banks, you can step
   // off their sides into the stream, and wade under them (heightfield.js
   // decks; stage 2 builds them).
@@ -215,7 +231,8 @@ export const hollowWick = {
    { id: 'log', h: .9, poly: [[-32.0, 15.75], [-30.6, 15.75], [-31.9, 27.0], [-33.3, 27.0]] },
    { id: 'footbridge', h: .8, poly: [[40.1, 18.5], [41.9, 18.5], [41.9, 27.9], [40.1, 27.9]] },
   ],
-  pads: BUILDING_PADS.map(({ x, z, w, d, h, angle = 0, margin = 1.5, blend = 2 }) => ({ x, z, w, d, h, angle, margin, blend })),
+  // (The buildings' pads come from the buildings themselves: baseY,
+  // padMargin, padBlend; s2-buildings.)
  },
  // Ground detail (world/terrain-details.js): dry grass and stalks thick in the
  // hollow and the field, packed yards in the town, leaf litter and twigs deep
@@ -229,12 +246,12 @@ export const hollowWick = {
    ...WOODS.map(w => ({ poly: w.poly, kinds: { leaves: 3, twigs: 2.2, tufts: .35, stalks: .5 } })),
   ],
  },
- buildings: [], props: [], fences: [],
- // (Stage 1 practice targets: level, above and below the fork. Stage 2
- // places the real ones on the green and the slope.)
- targets: [
-  { id: 'fork-east', x: -4, z: -2.5 }, { id: 'lip', x: -10, z: 8.6 }, { id: 'slope', x: 2.5, z: -10 },
-  { id: 'fork-west', x: -20, z: 1 }, { id: 'terrace', x: 7, z: -12 }, { id: 'moving', x: -14, z: -6, moving: true, travel: 3 },
- ],
+ buildings: hollowWickBuildings(BUILDING_PADS) /* s2-buildings */, props: [...GRAVEYARD_PROPS, ...FIELD_WALLS /* s2-graveyard */, ...HW_PROPS /* s2-props */, ...hollowWickBuildingProps(BUILDING_PADS) /* s2-buildings */, ...HOLLOW_WICK_BREAKABLES /* s2-breakables: pumpkins, cider, apples, grain, coops, skeps, crocks, lanterns, cordwood, barrows */], fences: [], crops: HW_CROPS, // (s2-props)
+ // s2-spawns: bases, teamBases, ffaSpawns, noSpawn, pickView and targets.
+ ...HW_SPAWNS,
+ // s2-crossings: the crossings' and mill wheel's looks (render/crossing-decks.js).
+ crossings: CROSSINGS,
+ // Stage 2 trees (s2-trees): the woods, orchard, village trees, stumps, logs (world/tree-kinds.js, world/trees.js).
+ trees: HOLLOW_WICK_TREES,
  zones: [], scenerySeed: 1790,
 };

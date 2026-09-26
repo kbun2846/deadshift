@@ -20,8 +20,9 @@ export const SPOTS = {
  // view, north-woods the densest: those two are the perf budget checks.
  'hollow-wick': {
   start: { x: -10, z: -2 },
-  // The scarecrow field: open and level, clear of every wall and target.
-  walk: { x: 20, z: 40 },
+  // The scarecrow field's east end: its whole route (the square and the
+  // diagonal) clear of the stalks' props, the cart, walls and targets.
+  walk: { x: 27, z: 43 },
   'summit-into-hollow': { x: -40, z: -14, look: { x: -12, z: 14 } },
   'north-woods': { x: -6, z: -52 },
   town: { x: 30, z: -4.5 },

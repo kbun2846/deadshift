@@ -4,9 +4,14 @@
 // Coordinates are metres: x east, z south, y height.
 import { ROADSIDE_TYPES } from './world/roadside.js';
 import { RAIL_TYPES } from './world/rail-depot.js';
-import { interiorCover } from './world/detailed-interiors.js';
+import { HOLLOW_BREAKABLES } from './world/hollow-breakables.js'; // s2-breakables
+import { COLONIAL_TYPES } from './world/colonial-parts.js'; // s2-buildings
+import { GRAVE_TYPES } from './world/graveyard.js'; // s2-graveyard
+import { HOLLOW_TYPES } from './world/hollow-props.js'; // (s2-props: Hollow Wick's open-ground pieces)
+import { solidFurniture } from './world/room-furniture.js'; // dw-furniture: all furniture solid
 import { FLAT, groundFromBaked, edgeCollider } from './world/heightfield.js';
 import { BAKED_TERRAIN } from './maps/terrain/index.js';
+import { treeColliders } from './world/tree-kinds.js'; // s2-trees
 
 // The ground under a map (world/heightfield.js): FLAT for a map without a
 // `terrain` spec, otherwise its prebaked grid, built once per map id and
@@ -30,6 +35,10 @@ export const building = (id, x, z, w, d, height, label, color, roofColor) => ({
 
 export const PROP_TYPES = Object.freeze({
   ...ROADSIDE_TYPES, ...RAIL_TYPES,
+  ...COLONIAL_TYPES, // s2-buildings: Hollow Wick's portico and forge parts
+  ...GRAVE_TYPES, // s2-graveyard
+  ...HOLLOW_TYPES, // (s2-props)
+  ...HOLLOW_BREAKABLES, // s2-breakables: Hollow Wick's breakables
   // Breakable scenery shares one low health so a single orb clears it on the way
   // through. They are dressing and light cover, never a damage sponge that eats
   // a volley meant for something behind them.
@@ -119,6 +128,8 @@ export function buildingWalls(b) {
 
 export function localOpenings(b) {
   return [...(b.doors || ['front']).map(side => ({ side, offset: 0, width: b.doorWidth, type: 'door' })),
+    // s2-buildings: extra doorways anywhere on a side ({ side, offset, width }).
+    ...(b.openings || []).map(o => ({ offset: 0, width: b.doorWidth, ...o, type: 'door' })),
     ...(b.windows || []).filter(w => !w.boarded).map(w => ({ ...w, type: 'window' }))];
 }
 
@@ -143,19 +154,31 @@ export function buildingOpenings(b) {
 
 export function mapColliders(map) {
   const colliders = map.buildings.flatMap(buildingWalls);
-  for(const b of map.buildings)for(const p of interiorCover(b)) {
+  // Furniture (world/room-furniture.js, the list the renderer draws it from):
+  // one box per piece at its drawn height. Styled rooms' cover keeps
+  // `interiorCover`; low pieces (not `cover`) stop bodies and robots but not
+  // rounds (playerOnly, as a window's sill). (dw-furniture)
+  for(const b of map.buildings)for(const p of solidFurniture(b)) {
     const point=buildingPoint(b,p.x,p.z),c=Math.abs(Math.cos(b.angle||0)),s=Math.abs(Math.sin(b.angle||0));
-    colliders.push({x:point.x,z:point.z,w:p.w*c+p.d*s,d:p.w*s+p.d*c,angle:b.angle||0,localW:p.w,localD:p.d,height:p.h,interiorCover:true,buildingId:b.id});
+    colliders.push({x:point.x,z:point.z,w:p.w*c+p.d*s,d:p.w*s+p.d*c,angle:b.angle||0,localW:p.w,localD:p.d,height:p.h,
+      ...(p.styled?{interiorCover:true}:{furniture:p.kind}),...(p.cover?{}:{playerOnly:true}),buildingId:b.id});
   }
   for (const p of mapProps(map)) {
     // A box list scales with the prop that owns it, exactly as w/d already do;
     // otherwise a scaled prop is drawn at one size and collides at another.
     const size = p.scale || 1;
-    const pieces = p.collisionBoxes ? p.collisionBoxes.map(([bx,bz,bw,bd]) => [bx*size,bz*size,bw*size,bd*size]) : [[0,0,p.w,p.d]];
+    const pieces = p.collisionBoxes ? p.collisionBoxes.map(([bx,bz,bw,bd,bh]) => [bx*size,bz*size,bw*size,bd*size,bh]) : [[0,0,p.w,p.d]];
     const c=Math.cos(p.angle||0),s=Math.sin(p.angle||0);
-    for (const [x,z,w,d] of pieces) colliders.push({ x: p.x+x*c+z*s, z:p.z-x*s+z*c, w:Math.abs(w*c)+Math.abs(d*s),d:Math.abs(w*s)+Math.abs(d*c),angle:p.angle||0,localW:w,localD:d,height: p.walkOver ? .5 : 1.2, blocksSight: !!p.blocksSight, walkOver: !!p.walkOver, propId: p.id, destructible: p.health !== null });
+    // (s2-props: a box's fifth number is its height; `screen` props stop sight only.
+    // s2-graveyard: per-type cover heights, `coverHeight`.)
+    for (const [x,z,w,d,h] of pieces) colliders.push({ x: p.x+x*c+z*s, z:p.z-x*s+z*c, w:Math.abs(w*c)+Math.abs(d*s),d:Math.abs(w*s)+Math.abs(d*c),angle:p.angle||0,localW:w,localD:d,height: p.walkOver ? .5 : h ?? p.coverHeight ?? 1.2, blocksSight: !!p.blocksSight, walkOver: !!p.walkOver, propId: p.id, destructible: p.health !== null, ...(p.screen && { playerOnly: true }) });
   }
+  // s2-trees: trunks, stumps and fallen logs (world/tree-kinds.js).
+  colliders.push(...treeColliders(map.trees));
   for (const f of map.fences) colliders.push({ x: f.x, z: f.z, w: f.axis === 'x' ? f.length : .24, d: f.axis === 'z' ? f.length : .24, height: 1.1 });
+  // Hills: what stands in the stream and is solid (Hollow Wick's mill wheel
+  // and sluice): the one exception to wading anywhere.
+  for (const box of map.crossings?.solid || []) colliders.push({ x: box.x, z: box.z, w: box.w, d: box.d, angle: 0, localW: box.w, localD: box.d, height: box.height, streamWorks: true });
   // Hills: every authored steep edge is a retaining wall bodies cannot cross
   // (playerOnly: shots, sight and blasts go by the ground, not by the box).
   if (map.terrain) for (const edge of groundFor(map).edges) colliders.push(edgeCollider(edge));

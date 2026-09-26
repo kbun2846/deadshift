@@ -4,6 +4,12 @@
 // halving the depth target's bandwidth — which on a mobile tiler is the
 // cheapest saving available.
 //
+// The box is now fitted to each screen every frame (shadow-snap.js) so it
+// reaches every edge; on Deadwater its long side is still about 42 m, but on
+// hills and tall phones it runs to 50-60 m. Balanced and Quality got a bigger
+// map (1024 -> 1280, 2048 -> 2560) so shadows there stay as sharp as before;
+// Performance (phones) keeps 768.
+//
 // Performance and Balanced draw the world off-screen at the sizes below and
 // are written to the screen by one crisp upscale pass (crisp-output.js):
 // FXAA-lite on Performance, 4x multisampling on Balanced, contrast-limited
@@ -14,9 +20,9 @@ export const GRAPHICS = Object.freeze({
     description: 'Barebones · half resolution · flat terrain · no decorative foliage, shadows or ambient dust' },
   performance: { label: 'Performance', pixelRatio: 1.15, scale: .82, maxPixels: 1150000, shadows: 768, shadowFPS: 24, texture: 256, effects: .3, particleCap: 140, motes: 20, glow: false, light: true, antialias: false, anisotropy: 2, relief: null,
     description: 'Smoothed, sharpened upscale · adaptive resolution · simplified foliage · contact shadows on landmarks · lit effects' },
-  balanced: { label: 'Balanced', pixelRatio: 1.3, scale: 1, maxPixels: 1800000, shadows: 1024, shadowFPS: 30, texture: 512, effects: .75, particleCap: 400, motes: 72, glow: true, light: true, antialias: true, anisotropy: 4, relief: 'ground',
+  balanced: { label: 'Balanced', pixelRatio: 1.3, scale: 1, maxPixels: 1800000, shadows: 1280, shadowFPS: 30, texture: 512, effects: .75, particleCap: 400, motes: 72, glow: true, light: true, antialias: true, anisotropy: 4, relief: 'ground',
     description: 'Antialiased, sharpened upscale · adaptive resolution · soft shadows on buildings, props & entities · raised sand grain · detailed foliage & effects' },
-  quality: { label: 'Quality', pixelRatio: 2, scale: 1, maxPixels: 3700000, shadows: 2048, shadowFPS: 45, texture: 1024, effects: 2, particleCap: 1300, motes: 190, glow: true, light: true, antialias: true, anisotropy: 8, relief: 'full',
+  quality: { label: 'Quality', pixelRatio: 2, scale: 1, maxPixels: 3700000, shadows: 2560, shadowFPS: 45, texture: 1024, effects: 2, particleCap: 1300, motes: 190, glow: true, light: true, antialias: true, anisotropy: 8, relief: 'full',
     description: 'Raised sand & wood grain · dense vegetation · richer landmark detail & effects' },
   // Everything Quality has, and on top: ambient occlusion, bloom and a colour
   // grade (extreme-post.js), a 4096 shadow map redrawn every frame, varied and

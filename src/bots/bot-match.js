@@ -45,6 +45,8 @@ import { RobotBrain } from './robot-brain.js';
 import { ROBOT_SLOT, ALLY_SLOT, ROBOT_SKINS, isAllySlot } from './robot-model.js';
 import { makeProfile } from './robot-profile.js';
 import { openSpot } from '../net/spawn-points.js';
+// s2-spawns: authored bases and FFA points (Hollow Wick).
+import { hasAuthoredSpawns, baseSpot, ffaSpot } from '../net/map-spawns.js';
 import { SIDE_COLOURS } from '../config/match.js';
 import { Squads } from './squad.js';
 
@@ -73,6 +75,10 @@ export class BotMatch {
   // VS ROBOTS "with my team": your robots come in beside you and the enemies
   // beside each other, each side far from the other.
   this.teamSpawn = false;
+  // SOLO team modes (duel.js): on a map with bases, each side at its base
+  // (your side at teamBases[2][0], the enemies at [1]), whatever the spawns
+  // setting (s2-spawns).
+  this.baseSpawn = false;
   this.intel = new Map(); this.clock = 0; this.youHurtBy = null; this.loud = new Set(); this.loudNext = new Set();
   // The shape of your screen (width / height; main.js keeps it current): no
   // robot fires on you from off it (robot-brain.js offScreen). 0: unknown.
@@ -110,10 +116,34 @@ export class BotMatch {
  }
 
  place(bot, main, near, far) {
-  if (this.teamSpawn && this.placeWithTeam(bot, main)) return;
   const others = [...(main.player.hp > 0 && !main.player.dead ? [main.player] : []), ...this.living().filter(b => b !== bot).map(b => b.sim.player)];
+  // s2-spawns: a map with bases and FFA points.
+  const authored = this.authoredSpot(bot.team, main, others);
+  if (authored) { this.putAt(bot, main, authored); return; }
+  if (this.teamSpawn && this.placeWithTeam(bot, main)) return;
   const scattered = this.apart && (openSpot(this.map, main.colliders, { random: this.random, others, space: this.apart, tries: 600 }) || openSpot(this.map, main.colliders, { random: this.random, others, space: this.apart * .6, tries: 400 }));
   const at = scattered || this.spot(main.player, near, far) || (near > 10 && openSpot(this.map, main.colliders, { random: this.random, others: [main.player], space: near })) || this.map.spawn;
+  bot.sim.respawn(at, bot.id); bot.sim.player.team = bot.team; this.hand(bot.sim, main);
+  const hp = main.dev?.robotHealth; if (hp) bot.sim.player.hp = bot.sim.player.maxHp = hp;
+  bot.prev = { x: at.x, z: at.z }; bot.alive = true; bot.respawnIn = 0;
+  bot.brain.reset();
+ }
+
+ // s2-spawns. On a map with authored spawns (net/map-spawns.js), in SOLO:
+ // a team game puts each side at its base; scattered, an FFA point `apart`
+ // from everyone alive. Null: the usual spots (dev-tool robots, other maps).
+ authoredSpot(team, main, others) {
+  if (!hasAuthoredSpawns(this.map) || !this.apart) return null;
+  if (this.baseSpawn && this.map.bases?.length) {
+   const ids = this.map.teamBases?.[2] || [], id = ids[team === YOU_TEAM ? 0 : 1], base = this.map.bases.find(b => b.id === id);
+   if (base) return baseSpot(this.map, main.colliders, base, { others, random: this.random });
+  }
+  return ffaSpot(this.map, main.colliders, { others, random: this.random, space: this.apart });
+ }
+ // You, at the start of a SOLO game and after a death (main.js): your base or
+ // an FFA point, as the robots. Null on other maps.
+ youSpot(main) { return this.authoredSpot(YOU_TEAM, main, this.living().map(b => b.sim.player)); }
+ putAt(bot, main, at) {
   bot.sim.respawn(at, bot.id); bot.sim.player.team = bot.team; this.hand(bot.sim, main);
   const hp = main.dev?.robotHealth; if (hp) bot.sim.player.hp = bot.sim.player.maxHp = hp;
   bot.prev = { x: at.x, z: at.z }; bot.alive = true; bot.respawnIn = 0;
@@ -169,7 +199,7 @@ export class BotMatch {
  hurtAll(amount) { let n = 0; for (const b of this.living()) { b.sim.damagePlayer(amount, 'dev', false, false, null, 'gunshot'); n++; } return n; }
  destroyAll() { return this.hurtAll(1e6); }
 
- clear() { this.squads?.clear(); this.enemyRange = [22, 60]; this.friendlyFire = 0; this.apart = 0; this.teamSpawn = false; this.bots = []; this.out = []; this.noises = []; this.mirror = new ProjectileMirror(); this.intel.clear(); this.youHurtBy = null; }
+ clear() { this.squads?.clear(); this.enemyRange = [22, 60]; this.friendlyFire = 0; this.apart = 0; this.teamSpawn = false; this.baseSpawn = false; this.bots = []; this.out = []; this.noises = []; this.mirror = new ProjectileMirror(); this.intel.clear(); this.youHurtBy = null; }
 
  hand(sim, main) { sim.props = main.props; sim.colliders = main.colliders; sim.crops = main.crops; }
 

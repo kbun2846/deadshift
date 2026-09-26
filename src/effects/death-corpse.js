@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { makeBoneBank } from './death-bones.js';
 import { BallastBlood } from './ballast-blood.js';
 import { addGore, skeletonRemains, spilledBrains, charMaterial, compact, disposeMerged, GORE_DETAIL } from './gore.js';
-import { groundY, hilly } from '../render/ground-lift.js';
+import { groundY, floorY, hilly } from '../render/ground-lift.js';
 
 // A body left where it fell, copied from a live avatar's pose: yours
 // (view.player, the default) or another player's (`source`: { root, skip, yaw },
@@ -11,7 +11,7 @@ export class DeathCorpse{
  constructor(view,event,reaction,source=null){
   this.view=view;this.event=event;this.reaction=reaction;this.materials=[];this.geometries=[];
   // (Hills: at the ground where they fell; `base` is that height.)
-  const base=groundY(view, event.x,event.z);
+  const base=floorY(view, event.x,event.z,event.below);
   this.root=new THREE.Group();this.root.position.set(event.x,base,event.z);view.scene.add(this.root);
   this.body=new THREE.Group();this.root.add(this.body);
   const player=source?.root||view.player,gun=source?source.skip:player.userData.gun,inverse=new THREE.Matrix4().makeTranslation(-event.x,-base,-event.z);
@@ -78,7 +78,7 @@ export class DeathCorpse{
     // since the body is still falling as they spill).
     let bx=event.directionX||0,bz=event.directionZ||0;if(Math.hypot(bx,bz)<.001){bx=-event.aimX||0;bz=-event.aimZ||0;}if(Math.hypot(bx,bz)<.001)bz=1;const bl=Math.hypot(bx,bz);bx/=bl;bz/=bl;
     const spill=spilledBrains(detail);this.brains=spill.group;this.materials.push(...spill.materials);this.geometries.push(...spill.geometries);
-    const side=random()<.5?-1:1;{const sx=event.x+bx*1.55-bz*side*.22,sz=event.z+bz*1.55+bx*side*.22;spill.group.position.set(sx,.02+groundY(view, sx,sz),sz);}spill.group.rotation.y=random()*Math.PI*2;spill.group.scale.setScalar(1.5);view.scene.add(spill.group);
+    const side=random()<.5?-1:1;{const sx=event.x+bx*1.55-bz*side*.22,sz=event.z+bz*1.55+bx*side*.22;spill.group.position.set(sx,.02+floorY(view, sx,sz,event.below),sz);}spill.group.rotation.y=random()*Math.PI*2;spill.group.scale.setScalar(1.5);view.scene.add(spill.group);
     this.brainMaterials=spill.materials;for(const m of spill.materials){m.transparent=true;m.opacity=0;}
    }
    this.materials.push(...skeletonRemains(this.skeleton,detail));
@@ -97,7 +97,7 @@ export class DeathCorpse{
    const t=Math.max(0,Math.min(1,(time-.08)/.95)),kneel=t*t*(3-2*t);
    this.body.position.y=-.12*kneel;
    this.body.quaternion.setFromAxisAngle(this.axis,.16*kneel);
-   {const x=this.event.x+this.direction.x*.12*kneel,z=this.event.z+this.direction.z*.12*kneel;this.root.position.set(x,groundY(this.view, x,z),z);}
+   {const x=this.event.x+this.direction.x*.12*kneel,z=this.event.z+this.direction.z*.12*kneel;this.root.position.set(x,floorY(this.view, x,z,this.event.below),z);}
    this.root.updateMatrixWorld(true);this.blood.update(time,kneel);return;
   }
   const delay=this.reaction.charred?.12:0,t=Math.max(0,Math.min(1,(time-delay)/.85)),fall=t*t*(3-2*t);

@@ -110,6 +110,7 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
    sim.noTargets = true; sim.targets = [];
    bots.clear(); bots.enemyRange = [...DUEL_ENEMY_RANGE]; bots.apart = SPAWN_APART;
    bots.teamSpawn = !!mode.allies && cfg.spawn === 'team';
+   bots.baseSpawn = !!mode.allies; // s2-spawns: sides at their bases on a map with bases
    bots.friendlyFire = mode.allies && cfg.friendlyFire === 'on' ? FRIENDLY_SHARE : 0;
    robots = [];
    for (let i = 0; i < mode.allies; i++) {
