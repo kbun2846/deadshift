@@ -16,9 +16,13 @@ import * as THREE from 'three';
 // per-vertex colour attribute, which is how many flat-coloured materials
 // become one draw. Sources must not already have their own colours.
 //
+// Entries may also carry a `stamp` (four numbers) when the call names one
+// (`{ stamp: '<attribute>' }`): the merge writes it into that per-vertex
+// attribute, so each vertex keeps what it came from (world/trees.js: its tree).
+//
 // Returns null for anything it does not handle -- mismatched attributes,
 // interleaved or non-float data, morph targets -- and the caller falls back.
-export function mergeTransformed(entries) {
+export function mergeTransformed(entries, { stamp = null } = {}) {
   if (!entries.length) return null;
   const first = entries[0].geometry;
   const names = Object.keys(first.attributes);
@@ -42,11 +46,12 @@ export function mergeTransformed(entries) {
   const out = {};
   for (const name of names) out[name] = new Float32Array(vertices * first.attributes[name].itemSize);
   const colors = colored ? new Float32Array(vertices * 3) : null;
+  const stamps = stamp && entries.every(e => e.stamp?.length === 4) ? new Float32Array(vertices * 4) : null;
   const index = indexed ? (vertices > 65535 ? new Uint32Array(indices) : new Uint16Array(indices)) : null;
 
   const normalMatrix = new THREE.Matrix3();
   let vertexOffset = 0, indexOffset = 0;
-  for (const { geometry, matrix, color } of entries) {
+  for (const { geometry, matrix, color, stamp: mark } of entries) {
     const e = matrix.elements, count = geometry.attributes.position.count;
     normalMatrix.getNormalMatrix(matrix);
     const n = normalMatrix.elements;
@@ -76,6 +81,7 @@ export function mergeTransformed(entries) {
       }
     }
     if (colors) for (let i = 0; i < count; i++) { const at = (vertexOffset + i) * 3; colors[at] = color.r; colors[at + 1] = color.g; colors[at + 2] = color.b; }
+    if (stamps) for (let i = 0; i < count; i++) stamps.set(mark, (vertexOffset + i) * 4);
     if (indexed) {
       const src = geometry.index.array;
       for (let i = 0; i < geometry.index.count; i++) index[indexOffset + i] = src[i] + vertexOffset;
@@ -86,6 +92,7 @@ export function mergeTransformed(entries) {
   const merged = new THREE.BufferGeometry();
   for (const name of names) merged.setAttribute(name, new THREE.BufferAttribute(out[name], first.attributes[name].itemSize, first.attributes[name].normalized));
   if (colors) merged.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  if (stamps) merged.setAttribute(stamp, new THREE.BufferAttribute(stamps, 4));
   if (index) merged.setIndex(new THREE.BufferAttribute(index, 1));
   return merged;
 }

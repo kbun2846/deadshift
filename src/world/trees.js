@@ -11,13 +11,16 @@
 // the West Woods, everything else) with a colour per clump: four draws (and
 // four in the shadow pass) whatever the count, culled by part.
 //
-// Canopies near any character you can see thin out with an ordered dither
-// (alpha-hash, discard in the fragment shader) so nobody hides under leaves
-// from above; the positions (up to 8) are uniforms set as the canopy is
-// drawn, so it costs no extra draws.
+// Standing under a tree's crown, or behind it from the camera, fades that
+// whole tree (owner, v0.985a): its leaf clumps go nearly clear, its limbs
+// fade too, easing back to solid toward the trunk's foot, so nobody hides
+// under a tree and the trunk is still cover you can see. Smooth, not
+// dithered: the opaque draw leaves the faded parts out and a blended copy
+// draws them (world/roof-fade.js treeFade, fadeOverlay). Each limb vertex and
+// each clump carries its tree (`treeAt`: trunk x, z, crown radius, ground).
 import * as THREE from 'three';
 import { TREE_KINDS, STUMP_RADIUS } from './tree-kinds.js';
-import { roofFade, ditherFade, LIMB_FADE } from './roof-fade.js';
+import { roofFade, treeFade, fadeOverlay, TREE_FADE } from './roof-fade.js';
 
 const TRUNK = '#231d1a', BARK = '#3b322c', STUMP_TOP = '#4a3f36', ROOT_EARTH = '#3a3026';
 // Canopies only (never on the ground: red there reads as blood).
@@ -28,7 +31,6 @@ const CARPET = ['#c0612b', '#94803e'];
 // Everything the trees lay on the ground (their drifts and beds): readable
 // under a body like the leaf carpet (tests/hollow-wick-look.test.js).
 export const TREE_DRIFT_COLOURS = Object.freeze([...LITTER, ...CARPET]);
-export const FADE_SLOTS = 8;
 
 // A small seeded generator per tree, from its position (the same tree every
 // load, on every machine).
@@ -203,49 +205,28 @@ function buildCarpet(view, t) {
  }
 }
 
-// The dither fade (see the top): each clump's centre and size from its
-// instance matrix, its distance past its own edge to the nearest character.
-function canopyMaterial() {
+// The leaves' material: flat-shaded, rough; `overlay` the blended copy's
+// (world/roof-fade.js treeFade: a whole clump fades with its tree).
+function canopyMaterial(view, overlay = false) {
  const material = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, flatShading: true });
- const fade = Array.from({ length: FADE_SLOTS }, () => new THREE.Vector3(0, 0, 0));
- material.userData.fade = fade;
- material.onBeforeCompile = shader => {
-  shader.uniforms.treeFade = { value: fade };
-  shader.vertexShader = shader.vertexShader
-   .replace('#include <common>', `#include <common>\nuniform vec3 treeFade[${FADE_SLOTS}];\nvarying float vTreeFade;`)
-   .replace('#include <begin_vertex>', `#include <begin_vertex>
- {
-  #ifdef USE_INSTANCING
-   vec4 clumpCentre = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-   float clumpSize = length((instanceMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz);
-  #else
-   vec4 clumpCentre = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-   float clumpSize = 1.0;
-  #endif
-  float fadeBy = 0.0;
-  for (int i = 0; i < ${FADE_SLOTS}; i++) {
-   float away = max(0.0, length(clumpCentre.xz - treeFade[i].xy) - clumpSize);
-   fadeBy = max(fadeBy, treeFade[i].z * (1.0 - smoothstep(1.6, 4.5, away)));
-  }
-  vTreeFade = fadeBy * 0.9;
- }`);
-  shader.fragmentShader = shader.fragmentShader
-   .replace('#include <common>', `#include <common>\nvarying float vTreeFade;`)
-   .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
- if (vTreeFade > 0.0 && fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453) < vTreeFade) discard;`);
- };
- material.customProgramCacheKey = () => 'tree-canopy-fade';
+ treeFade(view, material, { key: 'tree-canopy-fade', instanced: true, strength: TREE_FADE.canopy, overlay });
  return material;
 }
 
-// The characters the local player can see: themselves, and every other body
-// the view is drawing (remote-players.js hides the unseen ones).
-function updateFade(view, fade) {
- let n = 0;
- const add = (x, z) => { if (n < FADE_SLOTS) fade[n++].set(x, z, 1); };
- if (view.player?.visible !== false && view.player) add(view.player.position.x, view.player.position.z);
- for (const avatar of view.remote?.avatars?.values() || []) if (avatar.root?.visible && avatar.root.parent) add(avatar.root.position.x, avatar.root.position.z);
- for (let i = n; i < FADE_SLOTS; i++) fade[i].z = 0;
+// A tree's stamp: its trunk, how far its crown reaches from it (limbs and
+// clumps) and the ground there. Things that are no tree's (stumps, logs,
+// drifts, the carpet) carry radius 0: they never fade.
+function crownOf(t, meshes, clumps, ground) {
+ let reach = 0;
+ const box = new THREE.Box3();
+ for (const m of meshes) {
+  m.updateMatrixWorld(true);
+  if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+  box.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld);
+  for (const x of [box.min.x, box.max.x]) for (const z of [box.min.z, box.max.z]) reach = Math.max(reach, Math.hypot(x - t.x, z - t.z));
+ }
+ for (const c of clumps) reach = Math.max(reach, Math.hypot(c.x - t.x, c.z - t.z) + c.size);
+ return [t.x, t.z, reach, ground];
 }
 
 export function buildTrees(view, map) {
@@ -259,43 +240,65 @@ export function buildTrees(view, map) {
  view.material(TRUNK); // (the view's colour registry exists before the proxy reads it)
  into.static = group; view.scene.add(group);
  const clumps = { north: [], northEast: [], west: [], village: [] };
- for (const t of data.trees) buildTree(into, t, t.kind !== 'woods' ? clumps.village : t.z > -38 ? clumps.west : t.x < -12 ? clumps.north : clumps.northEast);
+ // (Each tree's meshes and clumps are stamped with its crown as they are
+ // made: the stamp rides into the merged cells, crownOf.)
+ for (const t of data.trees) {
+  const list = t.kind !== 'woods' ? clumps.village : t.z > -38 ? clumps.west : t.x < -12 ? clumps.north : clumps.northEast, from = list.length, before = group.children.length;
+  buildTree(into, t, list);
+  const meshes = []; for (const o of group.children.slice(before)) o.traverse(m => { if (m.isMesh) meshes.push(m); });
+  const stamp = crownOf(t, meshes, list.slice(from), view.gy(t.x, t.z));
+  for (const m of meshes) m.userData.treeAt = stamp;
+  for (let i = from; i < list.length; i++) list[i].tree = stamp;
+ }
  for (const s of data.stumps || []) buildStump(into, s);
  for (const l of data.logs || []) buildLog(into, l);
  for (const d of data.drifts || []) buildDrift(into, d);
  for (const t of data.trees) if (t.kind === 'maple') buildCarpet(into, t);
- group.traverse(o => { if (o.isMesh) o.castShadow = true; });
+ group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.userData.treeAt ||= [0, 0, 0, 0]; } });
  view.batch(group);
  group.traverse(o => { o.matrixAutoUpdate = false; o.updateMatrix(); });
  group.updateMatrixWorld(true);
- // The limbs thin out over anyone standing under them, like the canopies
- // (stage 4 audit: a body north of the fork maple's trunk vanished under its
- // limbs); the trunks' feet stay solid (world/roof-fade.js ditherFade). Their
- // own copies of the scenery's materials (in view.bakedMaterials, so the
- // presets treat them as the rest: Extreme's weathering), one program.
- const limbMaterials = new Map(), { update } = roofFade(view);
- group.traverse(o => {
-  if (!o.isMesh || Array.isArray(o.material)) return;
-  let m = limbMaterials.get(o.material);
-  if (!m) { m = o.material.clone(); ditherFade(view, m, { key: 'tree-limb-fade', ...LIMB_FADE }); limbMaterials.set(o.material, m); (view.bakedMaterials ||= new Map()).set(`tree-limbs-${limbMaterials.size}`, m); }
-  o.material = m; o.onBeforeRender = update;
- });
- const material = canopyMaterial(), geometry = new THREE.IcosahedronGeometry(1, 0), matrix = new THREE.Matrix4(), colour = new THREE.Color();
+ // The limbs fade with their tree (see the top; stage 4 audit: a body north
+ // of the fork maple's trunk vanished under its limbs), easing back to solid
+ // toward the trunk's foot (world/roof-fade.js treeFade). Their own copies of
+ // the scenery's materials, and a blended copy of each for the faded part
+ // (all in view.bakedMaterials, so the presets treat them as the rest:
+ // Extreme's weathering), one program each.
+ const limbMaterials = new Map(), { update } = roofFade(view), cells = [];
+ group.traverse(o => { if (o.isMesh && !Array.isArray(o.material)) cells.push(o); });
+ for (const o of cells) {
+  let pair = limbMaterials.get(o.material);
+  if (!pair) {
+   const solid = o.material.clone(), clear = o.material.clone(), n = limbMaterials.size + 1;
+   treeFade(view, solid, { key: 'tree-limb-fade', strength: TREE_FADE.limbs });
+   treeFade(view, clear, { key: 'tree-limb-fade', strength: TREE_FADE.limbs, overlay: true });
+   pair = [solid, clear]; limbMaterials.set(o.material, pair);
+   (view.bakedMaterials ||= new Map()).set(`tree-limbs-${n}`, solid); view.bakedMaterials.set(`tree-limbs-${n}-clear`, clear);
+  }
+  o.material = pair[0]; o.onBeforeRender = update;
+  if (o.geometry.attributes.treeAt) fadeOverlay(view, o, pair[1], null, 'trees');
+ }
+ const material = canopyMaterial(view), clearMaterial = canopyMaterial(view, true), geometry = new THREE.IcosahedronGeometry(1, 0), matrix = new THREE.Matrix4(), colour = new THREE.Color();
  const q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3();
  const meshes = [];
  for (const list of Object.values(clumps)) {
   if (!list.length) continue;
-  const mesh = new THREE.InstancedMesh(geometry, material, list.length);
+  // (Each part's own copy of the clump's shape, carrying each clump's tree.)
+  const shape = geometry.clone(), trees = new Float32Array(list.length * 4);
+  const mesh = new THREE.InstancedMesh(shape, material, list.length);
   list.forEach((c, i) => {
    matrix.compose(p.set(c.x, c.y, c.z), q.setFromEuler(e.set(c.tilt, c.yaw, 0)), sc.set(c.size, c.size * c.flat, c.size));
    mesh.setMatrixAt(i, matrix); mesh.setColorAt(i, colour.set(c.colour).multiplyScalar(c.shade));
+   trees.set(c.tree || [0, 0, 0, 0], i * 4);
   });
+  shape.setAttribute('treeAt', new THREE.InstancedBufferAttribute(trees, 4));
   mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.computeBoundingSphere(); mesh.computeBoundingBox?.();
   mesh.matrixAutoUpdate = false; mesh.updateMatrix();
   mesh.userData.treeCanopy = true;
-  mesh.onBeforeRender = () => updateFade(view, material.userData.fade);
+  mesh.onBeforeRender = update;
   view.scene.add(mesh); meshes.push(mesh);
+  fadeOverlay(view, mesh, clearMaterial, null, 'trees');
  }
  view.treeCanopies = meshes;
  return meshes;

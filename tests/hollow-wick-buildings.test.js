@@ -123,7 +123,9 @@ test('the colonial buildings build: finite geometry, one fading roof each, merge
   for (const root of [view.static, ...view.roofs.map(r => r.group)]) root.traverse(o => {
     // (Placed where it can be drawn: a NaN height once hid the pulpit's sounding board.)
     assert.ok(o.matrixWorld.elements.every(Number.isFinite), `finite placement (${o.geometry?.type})`);
-    if (!o.geometry) return;
+    // (A roof's blended copy for the see-through patch shares its geometry and
+    // draws only while someone is by it: roof-fade.js. Not counted twice.)
+    if (!o.geometry || o.userData.fadeOverlay) return;
     assert.ok([...o.geometry.attributes.position.array].every(Number.isFinite), 'finite geometry');
     triangles += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
   });

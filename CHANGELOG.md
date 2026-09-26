@@ -2,6 +2,16 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.985 (2026-09-26)
+
+### Hollow Wick (developer tools > World > Map in progress)
+- Walking under a tree turns that whole tree see-through: its leaves nearly vanish and its branches fade away above you, easing back to solid toward the trunk, so nobody hides under a tree and the trunk is still cover you can see. Standing behind a tree from the camera's side does the same.
+- No more speckled noise: the see-through patches that roofs, walls and trees open round people are smooth fades now.
+- The body pile by the stream is solid where its bodies are, instead of stopping you short on its dry side while you walked into it from the others.
+
+### Performance
+- The smooth fades cost an extra draw only while a patch is actually open, and each building's walls fade on their own rather than a whole street's at once: Hollow Wick's town stays at 72 draws a frame on Potato and 163 on Performance.
+
 ## alpha v0.980 (2026-09-26)
 
 ### Hollow Wick: the stage 5 review (developer tools > World > Map in progress)

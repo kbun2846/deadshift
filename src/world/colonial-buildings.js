@@ -27,7 +27,8 @@ import { ROOF_PREPASS_ORDER } from '../render/renderer.js';
 import { makeDetailedInterior } from './detailed-interiors.js';
 import { COLONIAL_TYPES } from './colonial-parts.js';
 import { takeLifeParts } from './hollow-life.js'; // s5-life: loose shutters, the tavern's sign, chimney smoke
-import { fadeRoofMaterial, fadeRoofMeshes } from './roof-fade.js';
+import { fadeRoofMaterial, fadeRoofMeshes, roofOverlayMaterial, registerOverlay } from './roof-fade.js';
+import { mergeTransformed } from '../render/merge-transformed.js';
 
 export const isColonialPart = type => !!COLONIAL_TYPES[type];
 
@@ -276,6 +277,7 @@ export function makeColonialBuilding(view, b) {
   // leave the static group, and smoking flues start their smoke
   // (world/hollow-life.js).
   takeLifeParts(view, g, smoke.map(v => g.localToWorld(v)), b.id);
+  shellOverlay(view, g);
   registerRoof(view, b, roof);
 
   // The interior (the interiors builder's styles; detailed-interiors.js):
@@ -572,6 +574,31 @@ function graniteFace(b, g, onSide, e, rand) {
   for (const s of [-1, 1]) onSide(g, side, s * (len / 2 + .05), (e + .6) / 2, T / 2 + .12, .34, e + .6, .22, granite);
 }
 
+// The shell's blended copy for the see-through patch (world/roof-fade.js):
+// this building's own merged copy of its walls, clapboard, trim and sashes,
+// in the colours the batches bake, drawn only while a patch can fall on it
+// (the shell itself is merged per 40 m cell with its neighbours', so a copy of
+// the cell would draw every house in it for one).
+function shellOverlay(view, g) {
+  g.updateMatrixWorld(true);
+  const buckets = new Map();
+  g.traverse(o => {
+    if (!o.isMesh || Array.isArray(o.material) || o.material.map || !o.material.color || o.geometry.attributes.color) return;
+    const key = `${!!o.geometry.index}-${Object.keys(o.geometry.attributes).sort().join(',')}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(o);
+  });
+  const material = view.bakedMaterial('wall-overlay');
+  for (const meshes of buckets.values()) {
+    const geometry = mergeTransformed(meshes.map(m => ({ geometry: m.geometry, matrix: m.matrixWorld, color: m.material.color })));
+    if (!geometry) continue;
+    geometry.computeBoundingSphere(); geometry.computeBoundingBox();
+    const mesh = new THREE.Mesh(geometry, material); mesh.matrixAutoUpdate = false; mesh.receiveShadow = true;
+    view.scene.add(mesh);
+    registerOverlay(view, mesh);
+  }
+}
+
 // As world-build.js makeBuilding: batch the roof, bake its shades into one
 // material, keep depth-only copies for the fade, and register it with its
 // reach and doorways.
@@ -583,7 +610,6 @@ function registerRoof(view, b, roof) {
   // (One mesh, one draw: its shingles, which never cast, after the parts that
   // do; the shadow pass draws only those: bake-colors.js castersFirst.)
   bakeColors(roof, { material: roofMaterial, castersFirst: true });
-  fadeRoofMeshes(view, roof);
   roof.traverse(m => { if (m.isMesh) m.receiveShadow = false; });
   const casters = []; roof.traverse(m => { if (m.isMesh && m.castShadow) casters.push(m); });
   const depthOnly = view.roofDepthMaterial ||= new THREE.MeshBasicMaterial({ colorWrite: false, transparent: true, depthWrite: true });
@@ -596,7 +622,14 @@ function registerRoof(view, b, roof) {
   }
   roof.updateMatrixWorld(true); const reach = new THREE.Box3().setFromObject(roof);
   const doors = buildingOpenings(b).filter(o => o.type !== 'window').map(o => { const len = Math.hypot(o.b.x - o.a.x, o.b.z - o.a.z) || 1; return { x: (o.a.x + o.b.x) / 2, z: (o.a.z + o.b.z) / 2, ux: (o.b.x - o.a.x) / len, uz: (o.b.z - o.a.z) / len, half: len / 2 + .15 }; });
-  view.roofs.push({ ...b, group: roof, casters, materials: [roofMaterial], colour, prepass, opacity: 1, reach, doors });
+  const entry = { ...b, group: roof, casters, materials: [roofMaterial], colour, prepass, opacity: 1, reach, doors };
+  view.roofs.push(entry);
+  // The fade: each roof mesh keeps the list current before it draws, and has
+  // a blended copy for the see-through patch, hidden while the roof fades as
+  // a whole (you inside, or in a doorway: world/roof-fade.js; near a door the
+  // roof is already on its blended shader at full opacity, and the patch
+  // still draws then).
+  fadeRoofMeshes(view, colour, roofOverlayMaterial(view), () => entry.opacity < .995);
 }
 
 // The forge's parts (props: world/colonial-parts.js), built from y 0 on the

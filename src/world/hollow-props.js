@@ -43,7 +43,10 @@ export const HOLLOW_TYPES = {
  hangingTree: { w: 2, d: 2, health: null, blocksSight: true, collisionBoxes: [[0, 0, 1, 1, 4], [2.6, .15, .5, .5, 1.9]] },
  // (The hanged man hangs low enough to walk into: a box under him, stage 4 audit.)
  // (Its collider covers the heap up the bank; the bodies below it lie in the water.)
- bodyPile: { w: 4.6, d: 2.8, health: null, collisionBoxes: [[0, -1.2, 4.2, 1.5, 1.1]] },
+ // (Its box over the heap itself, dry side to the water's edge: v0.985a, owner,
+ // "collisions are weird here": it stood north of the heap, stopping you short
+ // there while you walked into the bodies from the sides and the water.)
+ bodyPile: { w: 4.6, d: 2.8, health: null, collisionBoxes: [[0, -.25, 4, 1.9, .9]] },
  rockingChair: { w: .9, d: .9, health: null, collisionBoxes: [[0, 0, .7, .75, 1.1]] },
  // Lying on the ground: nothing to collide with.
  skeletonLeaves: { w: 1.8, d: 1, health: null, collisionBoxes: [] },

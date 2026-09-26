@@ -25,7 +25,9 @@ test('the stream: no barriers, and its depth varies along it', () => {
  // at the pond's edge).
  // (Reeds on the banks are screens, walked and shot through: not barriers.)
  // (But the mill wheel and its sluice: solid, off the mill's south wall.)
- assert.equal(mapColliders(map).filter(c => ground.bankDistance(c.x, c.z) < 0 && !c.terrainEdge && !c.walkOver && !c.playerOnly && !c.streamWorks).length, 0, 'a collider in the stream');
+ // (And the body pile's heap, which lies down the west bank into the water:
+ // solid where its bodies are, v0.985a, owner: "collisions are weird here".)
+ assert.equal(mapColliders(map).filter(c => ground.bankDistance(c.x, c.z) < 0 && !c.terrainEdge && !c.walkOver && !c.playerOnly && !c.streamWorks && c.propId !== 'body-pile').length, 0, 'a collider in the stream');
  assert.ok(mapColliders(map).filter(c => c.streamWorks).every(c => c.x > 19 && c.x < 27 && c.z < 21), 'solid works only at the mill wheel');
  assert.ok(mapColliders(map).filter(c => ground.bankDistance(c.x, c.z) < 0 && c.terrainEdge).length <= 3, 'no barrier edges along the water');
  // Straight across it, bank to bank, in several places.

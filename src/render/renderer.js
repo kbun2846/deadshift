@@ -27,7 +27,7 @@ import { cropEntityVisible } from '../crops.js';
 import { InteriorVisibility } from './interior-visibility.js';
 import { lightBasis, snapShadowFocus, shadowFrame, shadowBoxOver, settleShadowBox, SHADOW_FIT } from './shadow-snap.js';
 import { castersOnlyInShadow } from './bake-colors.js';
-import { ditherFade, roofFade, WALL_FADE } from '../world/roof-fade.js';
+import { ditherFade, roofFade, prepareFades, WALL_FADE } from '../world/roof-fade.js';
 
 import { mergeTransformed } from './merge-transformed.js';
 
@@ -580,10 +580,11 @@ export class WorldView {
     const timberColors = this.timberColors();
     for (const [color,m] of this.materials) if (timberColors.has(color) && !this.groundMaterials.has(m)) { m.bumpMap=woodRelief; m.bumpScale=.035; m.needsUpdate=true; }
     // (The colonial shells, 'wall', are wood too: clapboard, boards and trim.)
-    for (const kind of ['timber', 'wall']) { const baked = this.bakedMaterials?.get(kind); if (baked) { baked.bumpMap = woodRelief; baked.bumpScale = .035; baked.needsUpdate = true; } }
+    for (const kind of ['timber', 'wall', 'wall-overlay']) { const baked = this.bakedMaterials?.get(kind); if (baked) { baked.bumpMap = woodRelief; baked.bumpScale = .035; baked.needsUpdate = true; } }
+    if (this.roofOverlay) { this.roofOverlay.bumpMap = woodRelief; this.roofOverlay.bumpScale = .035; this.roofOverlay.roughness = .88; this.roofOverlay.needsUpdate = true; }
     // Extreme: varied, pebbled ground and dust-weathered surfaces (shader only).
     const surfaces = [...(this.bakedMaterials?.values() || []), ...[...this.materials.values()].filter(m => !m.transparent && !this.groundMaterials.has(m)),
-      ...this.roofs.flatMap(roof => roof.materials)];
+      ...this.roofs.flatMap(roof => roof.materials), ...(this.roofOverlay ? [this.roofOverlay] : [])];
     setExtremeSurfaces({ ground: this.groundMaterials, surfaces }, name === 'extreme');
     // Materials are shared across thousands of meshes; flag each one once so a
     // preset change queues one recompile per program instead of per mesh.
@@ -658,7 +659,8 @@ export class WorldView {
     this.bakedMaterials ||= new Map();
     if (!this.bakedMaterials.has(kind)) {
       const material = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, metalness: 0, vertexColors: true });
-      if (kind === 'wall') ditherFade(this, material, { key: 'colonial-wall-fade', ...WALL_FADE });
+      // (The walls' see-through patch: cut from the batch, drawn by its blended copy.)
+      if (kind === 'wall' || kind === 'wall-overlay') ditherFade(this, material, { key: 'colonial-wall-fade', ...WALL_FADE, overlay: kind === 'wall-overlay' });
       this.bakedMaterials.set(kind, material);
     }
     return this.bakedMaterials.get(kind);
@@ -689,7 +691,8 @@ export class WorldView {
       // merge only with parts of the same kind, and the merged mesh keeps the tag.
       const part = o.userData.deathPart || '';
       // (Casting or not is part of the key only without mergeCasters: v0.980a, see below.)
-      const key = `${cell}-${part}-${baked ? 'baked-' + baked : o.material.uuid}-${mergeCasters || o.castShadow}-${!!o.geometry.index}-${Object.keys(o.geometry.attributes).sort().join(',')}`;
+      // (A mesh stamped with its tree, world/trees.js `treeAt`, merges only with stamped ones.)
+      const key = `${cell}-${part}-${baked ? 'baked-' + baked : o.material.uuid}-${mergeCasters || o.castShadow}-${!!o.geometry.index}-${Object.keys(o.geometry.attributes).sort().join(',')}${o.userData.treeAt ? '-tree' : ''}`;
       if (!buckets.has(key)) buckets.set(key, { material: baked ? this.bakedMaterial(baked) : o.material, baked: !!baked, part, meshes: [] });
       buckets.get(key).meshes.push(o);
     });
@@ -710,7 +713,7 @@ export class WorldView {
       for (const m of meshes) { const n = m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count; allCount += n; if (m.castShadow) castCount += n; }
       // Written straight into the merged buffers; the clone-per-mesh path is
       // kept only for anything the direct merge declines.
-      let combined = mergeTransformed(meshes.map(m => ({ geometry: m.geometry, matrix: new THREE.Matrix4().multiplyMatrices(inverse, m.matrixWorld), color: baked ? m.material.color : undefined })));
+      let combined = mergeTransformed(meshes.map(m => ({ geometry: m.geometry, matrix: new THREE.Matrix4().multiplyMatrices(inverse, m.matrixWorld), color: baked ? m.material.color : undefined, stamp: m.userData.treeAt })), { stamp: meshes[0].userData.treeAt ? 'treeAt' : null });
       if (!combined) {
         const geometries = meshes.map(m => {
           const g = m.geometry.clone().applyMatrix4(local.multiplyMatrices(inverse, m.matrixWorld));
@@ -725,6 +728,7 @@ export class WorldView {
       const m = castersOnlyInShadow(new THREE.Mesh(combined, material), castCount, allCount); m.receiveShadow = true;
       if (part) m.userData.deathPart = part;
       // (The walls' hole list is brought up to date before they are drawn, as the roofs': roof-fade.js.)
+      // (Its blended copies are each building's own: colonial-buildings.js shellOverlay.)
       if (material === this.bakedMaterials?.get('wall')) m.onBeforeRender = roofFade(this).update;
       for (const original of meshes) { merged.add(original); if (original.parent) parents.add(original.parent); if (!original.geometry.userData.shared) original.geometry.dispose(); }
       group.add(m);
@@ -1884,6 +1888,8 @@ export class WorldView {
   }
 
   drawFrame() {
+    // The see-through patches: who is out there now, and which blended copies draw (roof-fade.js).
+    prepareFades(this);
     if (this.lastSim) {
       this.updateVision(this.lastSim); this.interiorVisibility.update(this.lastSim);
       const apply = root => this.interiorVisibility.apply(root);
