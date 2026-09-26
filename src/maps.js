@@ -10,10 +10,11 @@
 import { deadwater } from './maps/deadwater.js';
 import { dryCreek } from './maps/dry-creek.js';
 import { hillTest } from './maps/hill-test.js';
+import { hollowWick } from './maps/hollow-wick.js';
 import { groundFor } from './map-kit.js';
 
 export * from './map-kit.js';
-export { deadwater, dryCreek, hillTest };
+export { deadwater, dryCreek, hillTest, hollowWick };
 
 // modes: where the map can be played ('practice', 'multiplayer').
 // menu:  listed on the Gamemodes > Practice map page (false = dev only, ?map=id).
@@ -22,6 +23,8 @@ const MAP_LIST = [
   { map: dryCreek, modes: ['practice'], menu: false },
   // The hills system's proving ground (stage 0 of Hollow Wick).
   { map: hillTest, modes: ['practice'], menu: false },
+  // Being built (AGENTS.md > Adding a map, the staged process).
+  { map: hollowWick, modes: ['practice'], menu: false },
 ];
 
 for (const entry of MAP_LIST) Object.assign(entry.map, { modes: entry.modes, menu: entry.menu });

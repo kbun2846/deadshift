@@ -21,7 +21,7 @@
 //    straight line through a wall).
 // It rebuilds itself when the colliders change (a prop broken or put back).
 // No DOM, no three.js.
-import { RULES } from '../config/gameplay.js';
+import { RULES, WADE } from '../config/gameplay.js';
 import { isPlayable } from '../playable-area.js';
 import { groundFor } from '../map-kit.js';
 
@@ -69,7 +69,9 @@ export class NavGrid {
   const ground = groundFor(map);
   if (!ground.flat) {
    const slope = this.slope = new Float32Array(n), out = { x: 0, z: 0 };
-   for (let i = 0; i < n; i++) { const c = this.centre(i); ground.gradientAt(c.x, c.z, out); slope[i] = .5 * Math.min(1.5, Math.hypot(out.x, out.z) / .3); }
+   // Wading costs too (up to double in water WADE.depth deep), so robots
+   // cross by the bridges and the ford when the stream is not much shorter.
+   for (let i = 0; i < n; i++) { const c = this.centre(i); ground.gradientAt(c.x, c.z, out); slope[i] = .5 * Math.min(1.5, Math.hypot(out.x, out.z) / .3) + Math.min(1, ground.waterDepthAt(c.x, c.z) / WADE.depth); }
   }
   this.build(colliders);
  }

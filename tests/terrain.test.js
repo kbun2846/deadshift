@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { maps, groundFor, mapColliders, mapHash, hashNumber } from '../src/maps.js';
 import { isPlayable } from '../src/playable-area.js';
-import { FLAT, Ground, CELL, ROUND_GRACE, decodeHeights, edgeCollider } from '../src/world/heightfield.js';
+import { FLAT, Ground, CELL, FLIGHT_STEP, FLIGHT_SPAN, decodeHeights, edgeCollider } from '../src/world/heightfield.js';
 import { bakeTerrain, encodeHeights, terrainSourceHash } from '../src/world/terrain-bake.js';
 import { BAKED_TERRAIN } from '../src/maps/terrain/index.js';
 import { inside } from '../src/simulation.js';
@@ -21,7 +21,8 @@ test('a map without terrain is exactly flat, and gets no terrain colliders', () 
  assert.equal(FLAT.heightAt(12.3, -40), 0);
  assert.deepEqual(FLAT.gradientAt(1, 2), { x: 0, z: 0 });
  assert.equal(FLAT.sightClear(0, 0, 50, 50), true);
- assert.equal(FLAT.roundStop(0, 0, 1, 0, 1, 0, 55), Infinity);
+ assert.equal(FLAT.flight(1, 0, 1, 0, 55, 0).stop, Infinity);
+ assert.equal(FLAT.flightReaches(0, 0, 50, 50), true);
  assert.equal(mapColliders(maps.deadwater).some(c => c.terrainEdge), false);
 });
 
@@ -97,24 +98,51 @@ test('sight over the ground is mutual, blocked by a crest and clear over open gr
  assert.equal(ground.sightClear(14, -10, 28, -10), true);
 });
 
-test('a round flies on as far as its shooter can see, and no further', () => {
- const map = maps['hill-test'], ground = groundFor(map), random = seeded(33);
- let stopped = 0;
- for (let k = 0; k < 600; k++) {
-  const ox = -30 + random() * 60, oz = -26 + random() * 52, a = random() * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
-  const x = ox + dx * .9, z = oz + dz * .9, range = 40, stop = ground.roundStop(ox, oz, x, z, dx, dz, range);
-  if (stop < range) stopped++;
-  // A body standing on the path that its shooter can see is never past the
-  // round's end (it would fly through it into the ground first).
-  for (let s = 1; s < range; s += .75) {
-   if (ground.sightClear(ox, oz, x + dx * s, z + dz * s)) assert.ok(s <= stop + .75, `seen at ${s}, round ends at ${stop}`);
+test('a round flies over the ground: never into it before its stop, never steeper than 1:1, and stopped only by walls', () => {
+ // (Owner, 2026-09-26: rounds stay over the ground wherever the height
+ // changes gently. heightfield.js flight.)
+ for (const map of terrainMaps) {
+  const ground = groundFor(map), random = seeded(33), walls = mapColliders(map).filter(c => c.terrainEdge);
+  let stopped = 0;
+  for (let k = 0; k < 500; k++) {
+   const ox = ground.minX + random() * (ground.maxX - ground.minX), oz = ground.minZ + random() * (ground.maxZ - ground.minZ), a = random() * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
+   if (walls.some(w => inside({ x: ox, z: oz }, w, RULES.radius))) continue;
+   const x = ox + dx * .9, z = oz + dz * .9, f = ground.flight(x, z, dx, dz, 40, ground.heightAt(ox, oz));
+   for (let i = 1; i <= f.n; i++) {
+    const s = Math.min(40, i * FLIGHT_STEP), was = Math.min(40, (i - 1) * FLIGHT_STEP);
+    assert.ok(Math.abs(f.heights[i] - f.heights[i - 1]) <= TERRAIN.roundClimb * (s - was) + 1e-9, `${map.id}: too steep at ${s}`);
+    if (s < f.stop) assert.ok(ground.drawnHeightAt(x + dx * s, z + dz * s) <= f.heights[i] + TERRAIN.roundHeight + 1e-9 || ground.deckAt(x + dx * s, z + dz * s) >= 0, `${map.id}: into the ground at ${s} before its stop ${f.stop}`);
+   }
+   if (!(f.stop < 40)) continue;
+   stopped++;
+   // Where it stops, a retaining wall stands, or the ground rises steeper
+   // than it climbs.
+   const px = x + dx * f.stop, pz = z + dz * f.stop;
+   const wall = walls.some(w => inside({ x: px, z: pz }, w, 1.5)), steep = ground.drawnHeightAt(px, pz) - ground.drawnHeightAt(px - dx, pz - dz) > TERRAIN.orbRise;
+   assert.ok(wall || steep, `${map.id}: stopped at ${px.toFixed(2)}, ${pz.toFixed(2)} by neither a wall nor a steep rise`);
   }
+  assert.ok(stopped >= 3, `${map.id}: the walls end some rounds (${stopped})`);
  }
- assert.ok(stopped > 20, 'the ground ends some rounds');
- // Straight into the hill from its foot: the round ends on the slope; from
- // the top down the other side: it flies on.
- assert.ok(ground.roundStop(-8, -10, -7, -10, 1, 0, 55) < 40);
- assert.equal(ground.roundStop(14, -10, 15, -10, 1, 0, 20), Infinity);
+});
+
+test('a round holds its height across a narrow hollow, comes down a slope with the ground, and goes over or under a deck', () => {
+ const map = maps['hollow-wick'], ground = groundFor(map);
+ // Across the east gully (a walled cutting 4.4 m wide) from the town to the town.
+ assert.equal(ground.flightReaches(43.9, 6.9, 32.1, -4.4), true);
+ assert.ok(FLIGHT_SPAN >= 4.4);
+ // Down the terraced slope and over the lip to the stream's bank: it keeps
+ // to the ground (never more than a metre over it by the end).
+ const f = ground.flight(-40, -14, 0, 1, 26, ground.heightAt(-40, -14));
+ assert.equal(f.stop, Infinity);
+ assert.ok(ground.flightAt(f, 26) - ground.heightAt(-40, 12) < 1, 'it came down with the ground');
+ // Along the bridge from its north bank: over the deck all the way.
+ const deck = ground.decks[ground.deckAt(-14, 22)], along = ground.flight(-14, 14, 0, 1, 16, ground.heightAt(-14, 14));
+ for (let s = 4; s <= 13; s += .5) assert.ok(Math.abs(ground.flightAt(along, s) - deck.h) < .05, `over the bridge at ${s}: ${ground.flightAt(along, s)}`);
+ // Across the stream under it from the west: under the deck.
+ const under = ground.flight(-19, 22.1, 1, 0, 10, ground.heightAt(-19, 22.1));
+ for (let s = 4; s <= 6; s += .5) assert.ok(ground.flightAt(under, s) + TERRAIN.roundHeight < deck.h - .15, `under the bridge at ${s}`);
+ assert.equal(ground.flightReaches(-19, 22.1, -14, 22.1, undefined, ground.drawnHeightAt(-14, 22.1)), true, 'reaches a body wading under it');
+ assert.equal(ground.flightReaches(-19, 22.1, -14, 22.1), false, 'not one standing on it');
 });
 
 test('decks are ground to stand on but are not drawn', () => {
@@ -127,14 +155,19 @@ test('decks are ground to stand on but are not drawn', () => {
  assert.equal(ground.heightAt(5, 0), -2);
 });
 
+// A deck's sides are left out: you may step off a bridge into the stream
+// (and wade under it), so its edge is a drop by design.
+const nearDeck = (ground, x, z) => ground.decks.some(d => x > d.x0 - 1.1 && x < d.x1 + 1.1 && z > d.z0 - 1.1 && z < d.z1 + 1.1 &&
+ d.poly.some((a, i) => { const b = d.poly[(i + 1) % d.poly.length], dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz, t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / l2)); return Math.hypot(a[0] + dx * t - x, a[1] + dz * t - z) < 1.1; }));
+
 test('steep edges are walls; nowhere a body can stand is steeper than 1:1', () => {
  for (const map of terrainMaps) {
   const ground = groundFor(map), walls = mapColliders(map).filter(c => c.terrainEdge);
   assert.equal(walls.length, ground.edges.length);
-  for (const w of walls) assert.ok(w.playerOnly && w.localD >= .6 && w.localW > 1);
+  for (const w of walls) assert.ok(w.playerOnly && w.localD >= .6 && w.localW > .7);
   const r = RULES.radius, out = { x: 0, z: 0 }, bad = [];
   for (let x = -map.width / 2; x <= map.width / 2; x += .25) for (let z = -map.depth / 2; z <= map.depth / 2; z += .25) {
-   if (!isPlayable(map, x, z, r)) continue;
+   if (!isPlayable(map, x, z, r) || nearDeck(ground, x, z)) continue;
    if (walls.some(w => inside({ x, z }, w, r))) continue;
    ground.gradientAt(x, z, out);
    if (Math.hypot(out.x, out.z) > 1) bad.push([x, z, Math.hypot(out.x, out.z).toFixed(2)]);
@@ -143,13 +176,15 @@ test('steep edges are walls; nowhere a body can stand is steeper than 1:1', () =
  }
 });
 
-test('open ground: never steeper than an orb climbs, nor steeper than 30% for more than 4 m', () => {
- // Bodies walk any open ground; orbs stop against a rise steeper than
- // TERRAIN.orbRise, so no ground a body can stand on may be steeper (they
- // must agree). And the design: no slope over 30% runs on for more than 4 m.
+test('open ground: never steeper than an orb climbs, nor steeper than 30% for more than 8 m', () => {
+ // Bodies walk any open ground (streams included: they are waded); orbs stop
+ // against a rise steeper than TERRAIN.orbRise, so no ground a body can
+ // stand on may be steeper (they must agree). And no slope over 30% runs on
+ // for more than 8 m (the design had 4 m; the owner, 2026-09-26, wants earth
+ // banks between levels, not walls, and a bank down from a town is ~6 m).
  for (const map of terrainMaps) {
   const ground = groundFor(map), walls = mapColliders(map).filter(c => c.terrainEdge), r = RULES.radius, out = { x: 0, z: 0 };
-  const open = (x, z) => isPlayable(map, x, z, r) && !walls.some(w => inside({ x, z }, w, r));
+  const open = (x, z) => isPlayable(map, x, z, r) && !nearDeck(ground, x, z) && !walls.some(w => inside({ x, z }, w, r));
   const slope = (x, z) => { ground.gradientAt(x, z, out); return Math.hypot(out.x, out.z); };
   const steep = [], long = [];
   for (let x = -map.width / 2; x <= map.width / 2; x += .25) for (let z = -map.depth / 2; z <= map.depth / 2; z += .25) {
@@ -159,31 +194,12 @@ test('open ground: never steeper than an orb climbs, nor steeper than 30% for mo
    if (g <= TERRAIN.fullGrade) continue;
    // Down the fall line from here while it stays steeper than 30%.
    let px = x, pz = z, run = 0;
-   while (run < 6) { ground.gradientAt(px, pz, out); const m = Math.hypot(out.x, out.z); if (m <= TERRAIN.fullGrade || !open(px, pz)) break; px -= out.x / m * .1; pz -= out.z / m * .1; run += .1; }
-   if (run > 4) long.push([x, z, run.toFixed(1)]);
+   while (run < 10) { ground.gradientAt(px, pz, out); const m = Math.hypot(out.x, out.z); if (m <= TERRAIN.fullGrade || !open(px, pz)) break; px -= out.x / m * .1; pz -= out.z / m * .1; run += .1; }
+   if (run > 8) long.push([x, z, run.toFixed(1)]);
   }
   assert.deepEqual(steep.slice(0, 5), [], `${map.id}: open ground steeper than orbs climb (${steep.length} points)`);
-  assert.deepEqual(long.slice(0, 5), [], `${map.id}: slopes over 30% for more than 4 m (${long.length} points)`);
+  assert.deepEqual(long.slice(0, 5), [], `${map.id}: slopes over 30% for more than 8 m (${long.length} points)`);
  }
-});
-
-test('a round goes no further than a metre past the last point its shooter can see', () => {
- // (The other half of the test above: rounds carrying on through the ground.)
- const map = maps['hill-test'], ground = groundFor(map), random = seeded(34);
- // (Shooters only where a body can stand: not inside a retaining wall.)
- const walls = mapColliders(map).filter(c => c.terrainEdge);
- let stopped = 0;
- for (let k = 0; k < 300; k++) {
-  const ox = -30 + random() * 60, oz = -26 + random() * 52, a = random() * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
-  if (walls.some(w => inside({ x: ox, z: oz }, w, RULES.radius))) continue;
-  const x = ox + dx * .9, z = oz + dz * .9, range = 40, stop = ground.roundStop(ox, oz, x, z, dx, dz, range);
-  if (!(stop < range)) continue;
-  stopped++;
-  let last = 0;
-  for (let s = .25; s <= range; s += .25) if (ground.sightClear(ox, oz, x + dx * s, z + dz * s)) last = s;
-  assert.ok(stop <= last + ROUND_GRACE + .75, `round ends at ${stop.toFixed(2)}, last seen ${last} (from ${ox.toFixed(2)}, ${oz.toFixed(2)})`);
- }
- assert.ok(stopped > 10);
 });
 
 test('map fingerprints: engine-independent (every number to the micrometre, far from a tie)', () => {

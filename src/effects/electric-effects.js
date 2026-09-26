@@ -7,6 +7,8 @@ import { ArcBatch, LINE_POINTS, FORKS } from '../render/arc-batch.js';
 const SCRATCH = new THREE.Vector3();
 const ARC_UP = new THREE.Vector3(0, 1, 0);
 const POINTS = new Float32Array(LINE_POINTS * 3), FORK_SEGMENTS = new Float32Array(FORKS * 6);
+// Hills: an arc keeps at least this far over the ground between its ends.
+const ARC_CLEAR = .32;
 
 // How much of each arc is built, per preset. Every arc now shares four draw
 // calls whatever this says, so the knobs here are about vertex work and fill
@@ -294,11 +296,15 @@ export class ElectricEffects {
         const { a, b } = effect, dx = b.x - a.x, dz = b.z - a.z, length = Math.hypot(dx, dz) || 1;
         const lift = this.ground && !this.ground.flat ? this.ground : null;
         const ay = a.y ?? (lift ? .76 + lift.heightAt(a.x, a.z) : .76), by = b.y ?? (lift ? .76 + lift.heightAt(b.x, b.z) : .76), intensity = effect.intensity || 1;
+        // (Hills: over a rise between its ends the arc bends up over the
+        // ground instead of cutting through it, owner 2026-09-26.)
+        let bent = false;
         for (let i = 0; i < LINE_POINTS; i++) {
           const f = i / (LINE_POINTS - 1), jitter = Math.sin(i * 41 + effect.seed + Math.floor(effect.motion * 42) * 5) * Math.sin(Math.PI * f) * .23 * intensity;
-          POINTS[i * 3] = a.x + dx * f - dz / length * jitter;
-          POINTS[i * 3 + 1] = ay + (by - ay) * f + jitter * .4;
-          POINTS[i * 3 + 2] = a.z + dz * f + dx / length * jitter;
+          const x = a.x + dx * f - dz / length * jitter, z = a.z + dz * f + dx / length * jitter;
+          let y = ay + (by - ay) * f + jitter * .4;
+          if (lift && i && i < LINE_POINTS - 1) { const floor = lift.drawnHeightAt(x, z) + ARC_CLEAR + jitter * .4; if (y < floor) { y = floor; bent = true; } }
+          POINTS[i * 3] = x; POINTS[i * 3 + 1] = y; POINTS[i * 3 + 2] = z;
         }
         arcs.line(POINTS, effect.lineColor, (1 - t) ** .7);
         if (detail.ribbon) {
@@ -307,8 +313,13 @@ export class ElectricEffects {
             (1 - t) ** .6 * (.8 + .2 * Math.sin(effect.motion * 110 + effect.seed)));
         }
         const width = (this.quality ? .1 : .075) * intensity * (effect.energy === undefined ? 1 : effect.energy === 1 ? 2.8 : .7) * (.8 + .2 * Math.sin(effect.motion * 93 + effect.seed));
-        arcs.glow(a.x, ay, a.z, b.x, by, b.z, width, effect.glowColor,
-          (1 - t) * (effect.energy === 1 ? .8 : effect.energy === .25 ? .18 : .5), ARC_UP, SCRATCH);
+        const glowAlpha = (1 - t) * (effect.energy === 1 ? .8 : effect.energy === .25 ? .18 : .5);
+        if (!bent) arcs.glow(a.x, ay, a.z, b.x, by, b.z, width, effect.glowColor, glowAlpha, ARC_UP, SCRATCH);
+        // Bent over the ground: its glow follows it, in four pieces.
+        else for (let j = 0; j < 4; j++) {
+          const p = j * 6 * 3, q = Math.min(LINE_POINTS - 1, (j + 1) * 6) * 3;
+          arcs.glow(POINTS[p], POINTS[p + 1], POINTS[p + 2], POINTS[q], POINTS[q + 1], POINTS[q + 2], width, effect.glowColor, glowAlpha, ARC_UP, SCRATCH);
+        }
         if (detail.forks) {
           for (let j = 0; j < FORKS; j++) {
             const o = j * 6;

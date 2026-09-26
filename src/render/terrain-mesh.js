@@ -10,12 +10,19 @@
 // point along the edge they share (their errors there are made equal before
 // either is cut), so there are no cracks between them.
 //
-// Colour is baked per vertex: the map's ground colour, darker and browner on
-// steep banks, damp and dark down in hollows, its paths, and the long shadow
-// of a hill where the sun cannot reach (the terrain itself casts nothing in
-// the shadow map; everything else still does, onto it).
+// Colour is not in the mesh: one world-space texture read per pixel
+// (ground-layers.js: the map's ground, its layers, banks, damp and hollow
+// ground, paths), so an edge stays where it is however few triangles the
+// ground has there. The hills' own long shadow is a second texture that dims
+// only the sun's direct light (hill-shade.js), carried in the same texture's
+// alpha (the terrain casts nothing in the shadow map, everything else still
+// does, onto it). Baked once at load; one material, one texture read, one
+// shader program per preset.
 import * as THREE from 'three';
 import { CELL } from '../world/heightfield.js';
+import { bakeGroundLayers, groundLayersPatch, GROUND_TEXEL } from './ground-layers.js';
+import { bakeHillShade, heightsOf, hillShadePatch, addPatch, boxOf } from './hill-shade.js';
+import { mapLook } from './map-look.js';
 
 const TILE = 64, SIZE = TILE + 1;
 let COORDS = null; // the RTIN triangle table for one SIZE x SIZE tile (shared)
@@ -69,10 +76,6 @@ function cut(errors, maxError) {
  return { points, faces };
 }
 
-const hex = c => new THREE.Color(c);
-// Linear-space colour helpers (THREE.Color is linear once set from hex).
-function mixInto(out, c, t) { out.r += (c.r - out.r) * t; out.g += (c.g - out.g) * t; out.b += (c.b - out.b) * t; return out; }
-
 // Across a grid step: the rise per metre from the two half-metre steps either
 // side of a point (h at -.5, 0 and +.5). Where one of them is a retaining
 // wall's drop (steeper than 1:1), the point belongs to the level on the other
@@ -82,17 +85,6 @@ function riseAcross(a, c, b) {
  const l = c - a, r = b - c;
  if (Math.abs(l) <= .5 && Math.abs(r) <= .5) return l + r;
  return 2 * (Math.abs(l) < Math.abs(r) ? l : r);
-}
-
-// Distance from (x, z) to a polyline, and the point's share along it.
-function lineDistance(x, z, pts) {
- let best = Infinity;
- for (let i = 1; i < pts.length; i++) {
-  const ax = pts[i - 1][0], az = pts[i - 1][1], dx = pts[i][0] - ax, dz = pts[i][1] - az, l2 = dx * dx + dz * dz;
-  const t = l2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)) : 0;
-  best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z));
- }
- return best;
 }
 
 // `view`: the WorldView (for the sun and the ground materials). Returns the
@@ -125,31 +117,12 @@ export function buildTerrainMesh(view, ground, map, maxError) {
   for (const t of tiles) accumulate(t.heights, t.errors);
  }
 
- // Colours and light.
- const palette = map.palette || {}, look = map.terrainLook || {};
- const grass = hex(palette.ground || '#6e6a50'), bank = hex(look.bank || '#5f5842'), damp = hex(look.damp || '#57503e');
- const path = hex(palette.road || '#857a5c'), color = new THREE.Color();
- // (Each with its box, grown by its colour's reach: most points are in none.)
- const paths = (map.terrain.paths || []).map(p => {
-  const half = p.width / 2 + (p.colourPad ?? .3), grow = half + .6, xs = p.points.map(q => q[0]), zs = p.points.map(q => q[1]);
-  return { pts: p.points, half, x0: Math.min(...xs) - grow, x1: Math.max(...xs) + grow, z0: Math.min(...zs) - grow, z1: Math.max(...zs) + grow };
- });
- // The sun's way, flattened: toward the light from each vertex.
- const sun = view.sunOffset, sunLength = Math.hypot(sun.x, sun.z) || 1, sunRise = sun.y / sunLength;
- const toSunX = sun.x / sunLength, toSunZ = sun.z / sunLength;
- const shadeOf = (x, z, h) => {
-  // March toward the sun: any ground above the ray puts this point in shade.
-  for (let d = 1; d <= 40; d += 1) if (ground.drawnHeightAt(x + toSunX * d, z + toSunZ * d) > h + sunRise * d + .05) return .7;
-  return 1;
- };
-
- const material = view.terrainMaterial ||= new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 1, metalness: 0 });
- view.groundMaterials.add(material);
+ const material = groundLook(view, ground, map);
  const group = new THREE.Group(); group.name = 'terrain';
  let triangleCount = 0;
  for (const t of tiles) {
   const { points, faces } = cut(t.errors, maxError), n = points.length / 2;
-  const position = new Float32Array(n * 3), normal = new Float32Array(n * 3), uv = new Float32Array(n * 2), colour = new Float32Array(n * 3);
+  const position = new Float32Array(n * 3), normal = new Float32Array(n * 3), uv = new Float32Array(n * 2);
   for (let i = 0; i < n; i++) {
    const gx = t.tx * TILE + points[i * 2], gz = t.tz * TILE + points[i * 2 + 1];
    const x = ground.minX + gx * CELL, z = ground.minZ + gz * CELL, h = t.heights[points[i * 2 + 1] * SIZE + points[i * 2]];
@@ -158,20 +131,11 @@ export function buildTerrainMesh(view, ground, map, maxError) {
    const nx = -riseAcross(ground.drawnHeightAt(x - .5, z), h, ground.drawnHeightAt(x + .5, z)), nz = -riseAcross(ground.drawnHeightAt(x, z - .5), h, ground.drawnHeightAt(x, z + .5));
    const nl = Math.hypot(nx, 1, nz); normal[i * 3] = nx / nl; normal[i * 3 + 1] = 1 / nl; normal[i * 3 + 2] = nz / nl;
    uv[i * 2] = x / 4; uv[i * 2 + 1] = z / 4;
-   // Steep: bank earth. Low: damp. Paths: packed and lighter.
-   const slope = Math.hypot(nx, nz);
-   color.copy(grass);
-   mixInto(color, bank, Math.min(1, slope / .5) * .55);
-   if (h < 0) mixInto(color, damp, Math.min(1, -h / 1.2) * .7);
-   for (const p of paths) { if (x < p.x0 || x > p.x1 || z < p.z0 || z > p.z1) continue; const d = lineDistance(x, z, p.pts); if (d < p.half + .6) mixInto(color, path, d < p.half ? .85 : .85 * (1 - (d - p.half) / .6)); }
-   const shade = shadeOf(x, z, h);
-   colour[i * 3] = color.r * shade; colour[i * 3 + 1] = color.g * shade; colour[i * 3 + 2] = color.b * shade;
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
   geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
   geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  geometry.setAttribute('color', new THREE.BufferAttribute(colour, 3));
   // (RTIN's triangles already face up: counter-clockwise seen from above.)
   const index = n > 65535 ? new Uint32Array(faces) : new Uint16Array(faces);
   geometry.setIndex(new THREE.BufferAttribute(index, 1));
@@ -184,6 +148,47 @@ export function buildTerrainMesh(view, ground, map, maxError) {
  }
  group.userData.triangles = triangleCount;
  return group;
+}
+
+// The terrain's one material, its texture (colour, and the hill shade in its
+// alpha) and their patches. Made with
+// the first mesh; a later build (a finer preset: refineTerrain) reuses the
+// material and re-bakes the colour only when the preset wants finer texels
+// (the uniforms take the new texture: no new program). `view.groundLook`
+// keeps the texture, the hill-shade bake (for props later) and what the
+// bakes cost.
+function groundLook(view, ground, map) {
+ const preset = view.qualityName || view.initialQuality, texel = GROUND_TEXEL[preset] ?? GROUND_TEXEL.balanced;
+ let look = view.groundLook;
+ if (!look) {
+  const grid = heightsOf(ground), shade = bakeHillShade(grid, view.sunOffset || mapLook(map).sunOffset);
+  look = view.groundLook = { grid, shade, texel: Infinity, timing: { shade: Math.round(shade.ms) }, uniforms: { groundLook: { value: null }, groundLookBox: { value: new THREE.Vector4() } } };
+ }
+ if (texel < look.texel) {
+  const bake = bakeGroundLayers(look.grid, map, texel, { shade: look.shade });
+  const texture = new THREE.DataTexture(bake.data, bake.width, bake.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  look.colour?.dispose(); look.colour = finish(texture); look.texel = texel;
+  look.uniforms.groundLook.value = texture; look.uniforms.groundLookBox.value.set(...boxOf(bake));
+  look.timing.colour = Math.round(bake.ms); look.timing.texels = bake.width * bake.height;
+ }
+ let material = view.terrainMaterial;
+ if (!material) {
+  // White: the colour is all in the texture (and the sand tile's grain, map).
+  material = view.terrainMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, metalness: 0 });
+  addPatch(material, groundLayersPatch(look.uniforms));
+  // The hill shade rides in the colour texture's alpha: one read, not two.
+  addPatch(material, hillShadePatch(null, { source: 'groundSunLeft' }));
+ }
+ view.groundMaterials.add(material);
+ return material;
+}
+// Smooth between texels, no mipmaps (the camera always sees them larger than
+// a pixel), clamped at the map's edge.
+function finish(texture) {
+ texture.magFilter = texture.minFilter = THREE.LinearFilter; texture.generateMipmaps = false;
+ texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping; texture.needsUpdate = true;
+ return texture;
 }
 
 // Retaining walls: dry-stone faces along each authored edge, with a lighter

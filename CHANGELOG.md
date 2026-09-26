@@ -2,6 +2,22 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.955 (2026-09-26)
+
+### Hollow Wick, stage 1: the ground (developer tools > World > Map in progress while it is being built)
+- The whole map's ground: the town's plateau, the terraced slope, the fork, Church Hill, the stream hollow, the south terrace and field, and the woods' knolls, joined by earth banks (only a few stone walls), inside an irregular fence that follows the land. Darker brown ground, only the main road, its field branch and the bridges' paths drawn, hill shade under a low west-south-west sun, and grass, stones, twigs and leaf litter scattered per preset.
+- The stream: wade anywhere, at depths that vary. It runs west: slower against it, quicker with it, a little slower across; dodges go shorter and stamina refills slower in water, and water kicks up no dust and keeps no footprints.
+- The bridge, the fallen log and the footbridge: walk onto them from their ends, step off their sides into the water, or wade in underneath (the deck turns see-through while you are under it). The mill dam's stone top is a walk across the stream. Online and against robots, a player under a bridge is hit where they wade, never through the planks from the deck above.
+- The fence follows the ground and reaches down to each bank.
+- Fog drifts over the hollow, clears unevenly round you and your aim, and stays up on a hilltop instead of cutting through it. Every map's fog clearing is uneven now, not a perfect circle.
+
+### Hills (every map with hills)
+- Rounds, pellets, Scatter's shells and Static's spray fly over the ground: up and over any slope you can walk, across narrow dips, down with the ground. Only walls and rises too steep to climb stop them, so a round hits whoever it reaches, even just past a brow you cannot see over; walls are cover.
+- Static's lightning, the orb beams and the volley beams bend over the ground instead of cutting through hills.
+
+### Multiplayer
+- Protocol 11: players wading under a deck are shown there.
+
 ## alpha v0.95 (2026-09-26)
 
 ### Hills (the ground can rise and fall)

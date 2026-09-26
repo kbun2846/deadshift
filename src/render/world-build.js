@@ -1,7 +1,7 @@
 // Building the world once at load: terrain, roads, sand, buildings and their
 // walls, fences, props, ground detail, the player and target models, and the
-// ambient life (dust wisps, tumbleweeds). Methods of WorldView (renderer.js),
-// kept here to keep that file readable; `this` is the view.
+// ambient life (fog sheets, in fog-sheets.js; tumbleweeds). Methods of
+// WorldView (renderer.js), kept here to keep that file readable; `this` is the view.
 import * as THREE from 'three';
 import { buildingOpenings } from '../map-kit.js';
 import { bakeColors } from './bake-colors.js';
@@ -20,6 +20,11 @@ import { freezeTransforms } from './frozen-transforms.js';
 import { DustDevils } from '../effects/dust-devils.js';
 import { ROOF_PREPASS_ORDER, CLUTTER_CLAY, CLUTTER_DARK, CLUTTER_SEAT, lerp, randomGenerator } from './renderer.js';
 import { buildTerrainMesh, buildRetainingWalls } from './terrain-mesh.js';
+import { buildWaterMesh } from './water-mesh.js';
+import { buildCrossingDecks } from './crossing-decks.js';
+import { buildTerrainDetails } from '../world/terrain-details.js';
+import { FogSheets } from './fog-sheets.js';
+import { groundHeights } from './extreme-surfaces.js';
 
 // The drawn ground's allowed error from the height grid, per preset (m):
 // RTIN keeps it within this everywhere (terrain-mesh.js).
@@ -28,6 +33,7 @@ const TERRAIN_ERROR = { potato: .04, performance: .035, balanced: .02, quality: 
 export const WorldBuild = {
   makePlayableEdge(){
     const outline=this.map.playableArea;if(!outline)return;
+    if(this.map.terrain)return this.makeHillFence(outline);
     // A low continuous ranch fence makes the collision edge readable. Scenery
     // outside it stays rendered; it is not deleted or clipped by the perimeter.
     let nextPost=0;
@@ -42,6 +48,67 @@ export const WorldBuild = {
       for(const y of [.34,.73]){
         const rail=this.box((ax+bx)/2,y,(az+bz)/2,.075,.075,length+.015,'#91816a');
         rail.rotation.y=Math.atan2(bx-ax,bz-az);
+      }
+    }
+  },
+
+  // Hills: the same fence, standing on the ground. A post every 5 m, the
+  // rails running post to post up and down the slopes; it stops at each bank
+  // where a stream leaves (the water flows on past it; the playable edge
+  // still holds there).
+  makeHillFence(outline) {
+    const ground = this.ground, posts = [];
+    let nextPost = 0;
+    for (let i = 0; i < outline.length; i++) {
+      const [ax, az] = outline[i], [bx, bz] = outline[(i + 1) % outline.length], length = Math.hypot(bx - ax, bz - az);
+      while (nextPost < length) { const t = nextPost / length; posts.push([ax + (bx - ax) * t, az + (bz - az) * t]); nextPost += 5; }
+      nextPost -= length;
+    }
+    const dry = (x, z) => ground.bankDistance(x, z) > .3;
+    const standing = posts.map(([x, z]) => dry(x, z) ? { x, z, y: ground.drawnHeightAt(x, z) } : null);
+    for (const p of standing) if (p) this.box(p.x, p.y + .48, p.z, .14, .96, .14, '#71624f');
+    // Rails run post to post; where the ground between strays more than
+    // 0.3 m off that line (a bank's brow, a retaining wall) the span gets
+    // posts every metre and a quarter, and a piece still that far off (a
+    // wall's face) is left open rather than buried or hung in the air.
+    const straysFrom = (a, b) => { let worst = 0; for (let t = .1; t < .95; t += .1) worst = Math.max(worst, Math.abs(ground.drawnHeightAt(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t) - (a.y + (b.y - a.y) * t))); return worst; };
+    const rails = (a, b) => {
+      const run = Math.hypot(b.x - a.x, b.z - a.z), rise = b.y - a.y, yaw = Math.atan2(b.x - a.x, b.z - a.z), pitch = -Math.atan2(rise, run);
+      for (const y of [.34, .73]) {
+        const rail = this.box((a.x + b.x) / 2, (a.y + b.y) / 2 + y, (a.z + b.z) / 2, .075, .075, Math.hypot(run, rise) + .015, '#91816a');
+        rail.rotation.order = 'YXZ'; rail.rotation.set(pitch, yaw, 0);
+      }
+    };
+    // A span that runs into a stream stops at its bank with a post there,
+    // so the fence reaches the water instead of leaving a gap on dry grass.
+    const at = (ax, az, bx, bz, t) => { const x = ax + (bx - ax) * t, z = az + (bz - az) * t; return { x, z, y: ground.drawnHeightAt(x, z) }; };
+    const fence = (a, b) => {
+      if (straysFrom(a, b) <= .3) { rails(a, b); return; }
+      const n = Math.max(2, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 1.25));
+      let last = a;
+      for (let k = 1; k <= n; k++) {
+        const next = k === n ? b : at(a.x, a.z, b.x, b.z, k / n);
+        if (k < n) this.box(next.x, next.y + .48, next.z, .14, .96, .14, '#71624f');
+        if (straysFrom(last, next) <= .3) rails(last, next);
+        last = next;
+      }
+    };
+    for (let i = 0; i < posts.length; i++) {
+      const [ax, az] = posts[i], [bx, bz] = posts[(i + 1) % posts.length], length = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(length / .25));
+      let from = null;
+      for (let k = 0; k <= n; k++) {
+        const t = k / n, wet = !dry(ax + (bx - ax) * t, az + (bz - az) * t);
+        if (!wet && from === null) from = t;
+        if ((wet || k === n) && from !== null) {
+          const to = wet ? (k - 1) / n : 1;
+          if ((to - from) * length > .5) {
+            const a = at(ax, az, bx, bz, from), b = at(ax, az, bx, bz, to);
+            if (from > 0) this.box(a.x, a.y + .48, a.z, .14, .96, .14, '#71624f');
+            if (to < 1) this.box(b.x, b.y + .48, b.z, .14, .96, .14, '#71624f');
+            fence(a, b);
+          }
+          from = null;
+        }
       }
     }
   },
@@ -106,10 +173,18 @@ export const WorldBuild = {
     this.terrainError = TERRAIN_ERROR[this.initialQuality] ?? .02;
     this.terrainMesh = buildTerrainMesh(this, this.ground, map, this.terrainError);
     this.scene.add(this.terrainMesh);
+    // The stream's water, if the map has one, and its crossings' decks (a
+    // plain plank deck for now: each deck's own look comes with its build).
+    this.waterMesh = buildWaterMesh(this, this.ground, map);
+    if (this.waterMesh) this.scene.add(this.waterMesh);
+    buildCrossingDecks(this, this.ground, map);
     buildRetainingWalls(this, this.ground, map.terrainLook);
     this.roadProfile = [{ z: -1e4, left: 1e5, right: 1e5 }, { z: 1e4, left: 1e5, right: 1e5 }];
     this.sandMarks = [];
     for (const key of ['groundDetails', 'extraGroundDetails', 'performanceDetails']) { this[key] = new THREE.Group(); this.scene.add(this[key]); }
+    // Grass tufts, stones, twigs, stalks and leaf litter, per preset (it reads
+    // the terrain mesh, so after it).
+    buildTerrainDetails(this, this.ground, map);
   },
 
   // A switch to a finer preset than the map loaded with rebuilds the ground's
@@ -734,60 +809,14 @@ export const WorldBuild = {
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(points, 3));
     this.motes = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#fff1c6', size: .045, transparent: true, opacity: .6, depthWrite: false })); this.scene.add(this.motes);
     this.ambientClock = 3;
-    // Broad overlapping wisps, baked once rather than a full-screen fog pass.
-    // Built from many soft lobes of two tones, then combed with fine
-    // wind-blown streaks, so a cloud has body and grain instead of one blur.
-    const dustCanvas=document.createElement('canvas');dustCanvas.width=512;dustCanvas.height=256;
-    const ctx=dustCanvas.getContext('2d');
-    for(let i=0;i<46;i++){
-      const x=70+rand()*372,y=70+rand()*116,r=14+rand()*58,light=i%3===0;
-      const gradient=ctx.createRadialGradient(x,y,0,x,y,r);
-      const tone=light?'232,214,172':'208,186,142';
-      gradient.addColorStop(0,`rgba(${tone},${light?.32:.4})`);gradient.addColorStop(.5,`rgba(${tone},.14)`);gradient.addColorStop(1,`rgba(${tone},0)`);
-      ctx.fillStyle=gradient;ctx.fillRect(x-r,y-r,r*2,r*2);
-    }
-    ctx.globalCompositeOperation='destination-out';
-    for(let i=0;i<70;i++){const y=40+rand()*176,x=rand()*512;ctx.strokeStyle=`rgba(0,0,0,${.05+rand()*.08})`;ctx.lineWidth=1+rand()*3;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+40+rand()*120,y+(rand()-.5)*6);ctx.stroke();}
-    ctx.globalCompositeOperation='source-over';
-    const dustTexture=new THREE.CanvasTexture(dustCanvas);dustTexture.colorSpace=THREE.SRGBColorSpace;
-    // Clear space around the player and where they aim: a cloud drifting over
-    // either thins to nothing there, so weather never hides the fight.
-    this.wispClear={player:{value:new THREE.Vector2()},aim:{value:new THREE.Vector2()}};
-    // Each of these covers a fifth to a quarter of the screen, and they
-    // overlap: three of them is roughly two thirds of a full-screen blended
-    // pass, which is what the comment above was trying to avoid. On a tiler
-    // every blended layer is a read-modify-write of the tile with no early
-    // depth rejection, so the phone tiers get fewer of them and the scene fog
-    // carries the haze instead.
-    const wispGeometry=new THREE.PlaneGeometry(1,1);wispGeometry.rotateX(-Math.PI/2);
-    this.dustWisps=Array.from({length:5},(_,i)=>{
-      const material=new THREE.MeshBasicMaterial({map:dustTexture,transparent:true,opacity:0,depthWrite:false,depthTest:true});
-      material.onBeforeCompile=shader=>{
-        shader.uniforms.clearPlayer=this.wispClear.player;shader.uniforms.clearAim=this.wispClear.aim;
-        shader.vertexShader='varying vec2 vWispWorld;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvWispWorld=(modelMatrix*vec4(transformed,1.0)).xz;');
-        shader.fragmentShader='uniform vec2 clearPlayer; uniform vec2 clearAim; varying vec2 vWispWorld;\n'+shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
-          diffuseColor.a*=smoothstep(2.2,5.5,distance(vWispWorld,clearPlayer))*smoothstep(1.2,3.6,distance(vWispWorld,clearAim));`);
-      };
-      material.customProgramCacheKey=()=>'dust-wisp';
-      const wisp=new THREE.Mesh(wispGeometry,material);wisp.renderOrder=5;
-      wisp.scale.set(15+(i%3)*3,1,7+(i%3));this.resetDustWisp(wisp,i%3);this.scene.add(wisp);return wisp;
-    });
+    // The drifting fog sheets (fog-sheets.js: their picture, their uneven
+    // clearing round the player and the aim, and on terrain maps their world
+    // heights over the ground's height texture, made now on every preset).
+    this.fogSheets = new FogSheets({ scene: this.scene, fog: this.look.fog, ground: this.ground, rand, heights: groundHeights() });
+    this.dustWisps = this.fogSheets.meshes; this.wispClear = this.fogSheets.clear;
     // (Tumbleweeds and dust devils are Deadwater's desert; a map with hills
     // brings its own ambient life.)
     if (!this.map.terrain) for (const [x, z] of [[-4, -9], [20, 18], [-22, 12]]) this.spawnTumbleweed(x, z);
-  },
-
-  resetDustWisp(wisp, initial = -1) {
-    const route=initial>=0?initial:Math.floor(Math.random()*4);
-    const horizontal=route<2,direction=route===1?-1:1;
-    const life=30+Math.random()*24;
-    wisp.userData.drift={age:initial>=0?life*(.12+initial*.18):0,life,
-      x:horizontal?-direction*1.1:(Math.random()-.5)*1.8,
-      z:route===2?-1.05:(Math.random()-.5)*1.8,
-      dx:horizontal?direction*(1.8+Math.random()*.6):(Math.random()-.5)*1.1,
-      dz:route===2?1.8+Math.random()*.5:(Math.random()-.5)*.9,
-      phase:Math.random()*Math.PI*2,height:1.2+Math.random()*1.4};
-    wisp.rotation.y=(Math.random()-.5)*.25;
   },
 
   spawnTumbleweed(x, z) {
@@ -804,25 +833,18 @@ export const WorldBuild = {
   updateAmbient(sim, dt, elapsed) {
     const bare = this.qualityName === 'potato';
     for (const t of this.tumbleweeds) t.visible = !bare;
-    if (bare) { for (const wisp of this.dustWisps) wisp.visible = false; return; }
+    if (bare) { this.fogSheets.hide(); return; }
     // How many of the big blended haze sprites this preset can afford. One is
     // enough to read as moving air; three is most of a full-screen blend.
     const wisps = this.qualityName === 'performance' ? 1 : this.qualityName === 'balanced' ? 2 : this.qualityName === 'extreme' ? 5 : 3;
-    this.wispClear.player.value.set(sim.player.x, sim.player.z);
-    this.wispClear.aim.value.set(sim.player.aimPointX ?? sim.player.x, sim.player.aimPointZ ?? sim.player.z);
-    for (let i = wisps; i < this.dustWisps.length; i++) this.dustWisps[i].visible = false;
     const halfHeight=Math.tan(this.camera.fov*Math.PI/360)*this.camera.position.distanceTo(this.focus);
     const halfWidth=halfHeight*this.camera.aspect;
-    for(const [index,wisp] of this.dustWisps.entries()){
-      if(index>=wisps)continue;
-      let drift=wisp.userData.drift;drift.age+=dt;
-      if(drift.age>=drift.life){this.resetDustWisp(wisp);drift=wisp.userData.drift;}
-      const phase=drift.age/drift.life;
-      wisp.position.set(this.focus.x+(drift.x+drift.dx*phase)*halfWidth,drift.height+this.focus.y,
-        this.focus.z+(drift.z+drift.dz*phase)*halfHeight*1.25+Math.sin(elapsed*.07+drift.phase)*.7);
-      wisp.material.opacity=.27*Math.sin(phase*Math.PI)**2;
-      wisp.visible=!sim.interior;
-    }
+    // (One frame object, reused: nothing allocated per frame.)
+    const p = sim.player, frame = this.fogFrame ||= { focus: this.focus, player: { x: 0, z: 0, y: 0 }, aim: { x: 0, z: 0, y: 0 } };
+    frame.count = wisps; frame.interior = !!sim.interior; frame.halfWidth = halfWidth; frame.halfHeight = halfHeight; frame.dt = dt; frame.elapsed = elapsed;
+    frame.player.x = p.x; frame.player.z = p.z; frame.player.y = this.gy(p.x, p.z);
+    frame.aim.x = p.aimPointX ?? p.x; frame.aim.z = p.aimPointZ ?? p.z; frame.aim.y = this.gy(frame.aim.x, frame.aim.z);
+    this.fogSheets.update(frame);
     // Weather on its own clock: an occasional sheet of sand driven across the
     // open ground downwind, skipped indoors where there is no wind to carry it.
     this.gustClock = (this.gustClock ?? 5) - dt;

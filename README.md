@@ -1,4 +1,4 @@
-deadshift alpha v0.95 is a minimalist top down shooter with distinct weapons and explosive combat, playable in the browser on mobile or pc
+deadshift alpha v0.955 is a minimalist top down shooter with distinct weapons and explosive combat, playable in the browser on mobile or pc
 
 - three distinct weapons: static, nominal and ballast
 - online multiplayer for up to 6 players, with robots: host a game, share the room code, and play rounds from a lobby
@@ -8,6 +8,12 @@ deadshift alpha v0.95 is a minimalist top down shooter with distinct weapons and
 - weapon tutorials, solo practice and solo matches against robots
 - built for multiple maps, with more to come; the alpha is tested on deadwater outpost, a desert town with enterable buildings, destructible props and a crop field that burns
 - touch controls with an editable layout, five graphics presets
+
+## what's new in v0.955
+
+- hollow wick (dev tools for now): the first hilly map's ground is in: a new england village's hills, the stream you can wade anywhere (with and against its current), bridges you can walk on, wade under or step off, and fog that drifts in the hollow
+- on hills, rounds, pellets and shells fly over the ground instead of into it; lightning and beams bend over hills
+- fog clears unevenly round you, not in a perfect circle
 
 ## what's new in v0.95
 

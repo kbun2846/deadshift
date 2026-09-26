@@ -14,6 +14,7 @@ import { createLoopback } from '../src/net/transport.js';
 import { HostSession } from '../src/net/host-session.js';
 import { ClientSession } from '../src/net/client-session.js';
 import { RULES, RIFLE, TERRAIN } from '../src/config/gameplay.js';
+import { FLIGHT_STEP } from '../src/world/heightfield.js';
 
 const map = maps['hill-test'], ground = groundFor(map);
 function seeded(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -59,8 +60,12 @@ test('sight: a crest hides you from target lock, aim assist and robots', () => {
  assert.equal(s.canSeeTarget(32, -10), false);
  assert.equal(s.obstacleBetween(-4, -10, 32, -10), true);
  assert.equal(s.sees(4, -2), true);          // the near slope
- assert.equal(shotClear(s.colliders, -4, -10, 32, -10, .04, s.ground), false);
- assert.equal(shotClear(s.colliders, -4, -10, 32, -10, .04), true, 'without the ground: walls only');
+ // Robots' shots go by the rounds' flight (heightfield.js flight): over the
+ // hill (walkable) a round gets there; from below into the plateau's
+ // retaining wall it does not.
+ assert.equal(shotClear(s.colliders, -4, -10, 32, -10, .04, s.ground), true);
+ assert.equal(shotClear(s.colliders, -8, -17, -16, -17, .04, s.ground), false);
+ assert.equal(shotClear(s.colliders, -8, -17, -16, -17, .04), true, 'without the ground: walls only');
  s.targets = [{ id: 'far', x: 32, z: -10, hp: 100, maxHp: 100 }, { id: 'near', x: 4, z: -2, hp: 100, maxHp: 100 }];
  assert.deepEqual(s.assistTargets().map(t => t.id), ['near']);
 });
@@ -77,49 +82,49 @@ function rifleHits(a, b) {
  return target.hp < 5000;
 }
 
-test('a round hits exactly what its shooter can see, both ways round', () => {
- const random = seeded(77);
- let checked = 0, hidden = 0;
- for (let k = 0; k < 400 && checked < 120; k++) {
-  const a = [-30 + random() * 60, -26 + random() * 52], b = [-30 + random() * 60, -26 + random() * 52], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  if (d < 3 || d > 40) continue;
-  // Only lines no wall, prop or retaining wall crosses (those are tested elsewhere).
-  const s = sim('rifle', a);
-  if (s.colliders.some(c => Math.abs(c.x - a[0]) < 2 && Math.abs(c.z - a[1]) < 2)) continue;
-  if (!shotClear(s.colliders, a[0], a[1], b[0], b[1], .5) || s.colliders.some(c => c.terrainEdge && Math.hypot(c.x - b[0], c.z - b[1]) < 2)) continue;
-  if (map.buildings.some(bld => Math.abs(bld.x - a[0]) < 6 && Math.abs(bld.z - a[1]) < 6 || Math.abs(bld.x - b[0]) < 6 && Math.abs(bld.z - b[1]) < 6)) continue;
-  // (Both settled away from any wall, as the shots are.)
-  const settled = p => { const t = sim('rifle', p); t.step({ aimX: 1, aimZ: 0 }); return [t.player.x, t.player.z]; };
-  const [sa, sb] = [settled(a), settled(b)];
-  if (Math.hypot(sa[0] - a[0], sa[1] - a[1]) > 1e-6 || Math.hypot(sb[0] - b[0], sb[1] - b[1]) > 1e-6) continue;
-  const seen = ground.sightClear(a[0], a[1], b[0], b[1]);
-  assert.equal(rifleHits(a, b), seen, `a ${a} -> b ${b} (seen ${seen})`);
-  assert.equal(rifleHits(b, a), seen, `b ${b} -> a ${a} (seen ${seen})`);
-  checked++; if (!seen) hidden++;
- }
- assert.ok(checked >= 60 && hidden >= 5, `checked ${checked}, hidden ${hidden}`);
+test('rounds fly over the ground: over a crest they hit, into a retaining wall they do not, off a ledge they come down', () => {
+ // Over the hill: sight is cut, but the round flies over it (owner, 2026-09-26).
+ assert.equal(ground.sightClear(-4, -10, 32, -10), false);
+ assert.equal(rifleHits([-4, -10], [32, -10]), true);
+ // From below the plateau into its east wall: the round ends in the wall.
+ assert.equal(rifleHits([-8, -17], [-16, -17]), false);
+ // From the plateau east, down its 1.8 m wall: bodies near its foot and further out.
+ assert.equal(rifleHits([-16, -17], [-10.6, -17]), true);
+ assert.equal(rifleHits([-16, -17], [-4, -17]), true);
+ // Off its south wall (2.5 m): right under it a body is under the round,
+ // 1.5 m out it is not.
+ assert.equal(rifleHits([-15, -16], [-15, -9.3]), false);
+ assert.equal(rifleHits([-15, -16], [-15, -8]), true);
+ // Robots agree (their shots go by the same flight).
+ assert.equal(shotClear([], -15, -16, -15, -9.3, .04, ground), false);
+ assert.equal(shotClear([], -15, -16, -15, -8, .04, ground), true);
 });
 
-test('a round fired into a rise ends in the ground there', () => {
- const s = sim('rifle', [-8, -10]); Object.assign(s.dev, { noSpread: true, noRecoil: true });
- s.step({ aimX: 1, aimZ: 0, aimPointX: 30, aimPointZ: -10, fire: true });
+test('a round fired into a retaining wall ends in it; over a hill it flies on', () => {
+ const s = sim('rifle', [-8, -17]); Object.assign(s.dev, { noSpread: true, noRecoil: true });
+ s.step({ aimX: -1, aimZ: 0, aimPointX: -20, aimPointZ: -17, fire: true });
  const bullet = s.rifleBullets[0];
- assert.ok(bullet.stop > 5 && bullet.stop < 40, `stop ${bullet.stop}`);
+ assert.ok(bullet.stop > 1.5 && bullet.stop < 5, `stop ${bullet.stop}`);
  const events = [];
- for (let i = 0; i < 60 && s.rifleBullets.length; i++) { s.step({ aimX: 1, aimZ: 0, aimPointX: 30, aimPointZ: -10 }); events.push(...s.drainEvents()); }
+ for (let i = 0; i < 60 && s.rifleBullets.length; i++) { s.step({ aimX: -1, aimZ: 0, aimPointX: -20, aimPointZ: -17 }); events.push(...s.drainEvents()); }
  const impact = events.find(e => e.type === 'rifleImpact');
  assert.ok(impact?.ground, 'a ground impact');
- assert.ok(Math.abs(impact.x - (bullet.x)) < 1e-9 && impact.x < 30);
+ assert.ok(Math.abs(impact.x - bullet.x) < 1e-9 && impact.x > -12.6 && impact.x < -10.8, `at ${impact.x}`);
+ // Up and over the hill from its foot: no stop at all.
+ const over = sim('rifle', [-8, -10]); Object.assign(over.dev, { noSpread: true, noRecoil: true });
+ over.step({ aimX: 1, aimZ: 0, aimPointX: 30, aimPointZ: -10, fire: true });
+ assert.equal(over.rifleBullets[0].stop, undefined);
  // Off the hilltop down its far side: no stop at all.
  const top = sim('rifle', [14, -10]); Object.assign(top.dev, { noSpread: true, noRecoil: true });
  top.step({ aimX: 1, aimZ: 0, aimPointX: 30, aimPointZ: -10, fire: true });
  assert.equal(top.rifleBullets[0].stop, undefined);
- // Ballast's pellets too: fired into the plateau's east wall from below.
+ // Ballast's pellets too: fired into the plateau's east wall from below, at
+ // point blank (the muzzle is at its face).
  const b = sim('shotgun', [-11, -12.7]); Object.assign(b.dev, { noSpread: true });
  const aim = { aimX: -.91, aimZ: -.42, aimPointX: -11 - .91 * 6, aimPointZ: -12.7 - .42 * 6 };
  b.step({ ...aim, fire: true });
  const stopped = b.shotgunPellets.filter(p => p.stop !== undefined);
- assert.ok(stopped.length > 0 && stopped.every(p => p.stop > 1 && p.stop < 6), `pellet stops ${stopped.map(p => p.stop?.toFixed(2))}`);
+ assert.ok(stopped.length > 0 && stopped.every(p => p.stop < 2), `pellet stops ${stopped.map(p => p.stop?.toFixed(2))}`);
  const pelletEvents = [];
  for (let i = 0; i < 30 && b.shotgunPellets.length; i++) { b.step(aim); pelletEvents.push(...b.drainEvents()); }
  assert.ok(pelletEvents.some(e => e.type === 'rifleImpact' && e.ground && e.x < -11.5), 'a pellet goes into the ground at the wall');
@@ -169,26 +174,29 @@ test('blasts are measured in 3D and stop at a crest', () => {
  assert.ok(open.hp < 1000);
 });
 
-test('Scatter: its shells never hit a body the Ballast player cannot see', () => {
- // From the plateau at bodies under its south wall (hidden by the lip).
+test('Scatter: its shells fly over the ground as rounds do: off the plateau onto bodies below, not onto one right under its wall', () => {
+ const run = (a, b, seed) => {
+  const random = seeded(seed * 31), keep = Math.random; Math.random = random;
+  try {
+   const s = sim('shotgun', a); Object.assign(s.dev, { cooldowns: true, noKnockback: true });
+   s.step({ aimX: 0, aimZ: 1 });
+   const t = { id: 'b', kind: 'player', x: b[0], z: b[1], hp: 5000, maxHp: 5000 }; s.targets = [t];
+   const shells = []; const hit = s.hit.bind(s); s.hit = (target, o) => { if (!o.blast) shells.push(o.damage); return hit(target, o); };
+   const aim = { aimX: 0, aimZ: 1 };
+   s.step({ ...aim, scatter: true });
+   for (let i = 0; i < 190; i++) s.step(aim);
+   s.step({ ...aim, scatter: true });
+   for (let i = 0; i < 150; i++) s.step(aim);
+   return shells.length;
+  } finally { Math.random = keep; }
+ };
+ // From the plateau at bodies 1.5 m out from its south wall (hidden by its
+ // lip, but the shells come down onto them), and right under it (over them).
  for (const [a, b] of [[[-15, -16], [-15, -8]], [[-16, -16.5], [-16, -8.5]], [[-13.5, -16], [-13.5, -8]]]) {
-  for (let seed = 1; seed <= 3; seed++) {
-   const random = seeded(seed * 31), keep = Math.random; Math.random = random;
-   try {
-    const s = sim('shotgun', a); Object.assign(s.dev, { cooldowns: true, noKnockback: true });
-    s.step({ aimX: 0, aimZ: 1 });
-    const t = { id: 'hid', kind: 'player', x: b[0], z: b[1], hp: 5000, maxHp: 5000 }; s.targets = [t];
-    assert.equal(ground.sightClear(s.player.x, s.player.z, t.x, t.z), false, 'hidden');
-    const shells = []; const hit = s.hit.bind(s); s.hit = (target, o) => { if (!o.blast) shells.push(o.damage); return hit(target, o); };
-    const aim = { aimX: 0, aimZ: 1 };
-    s.step({ ...aim, scatter: true });
-    for (let i = 0; i < 190; i++) s.step(aim);
-    s.step({ ...aim, scatter: true });
-    for (let i = 0; i < 150; i++) s.step(aim);
-    assert.deepEqual(shells, [], `a shell hit a hidden body from ${a} at ${b}`);
-   } finally { Math.random = keep; }
-  }
+  assert.equal(ground.sightClear(a[0], a[1], b[0], b[1]), false, 'hidden');
+  assert.ok([1, 2, 3].some(seed => run(a, b, seed) > 0), `no shell reached ${b} from ${a}`);
  }
+ for (let seed = 1; seed <= 3; seed++) assert.equal(run([-15, -16], [-15, -9.3], seed), 0, 'a shell hit a body right under the wall');
 });
 
 test('an orb volley does not turn onto a body hidden over a crest', () => {
@@ -307,8 +315,8 @@ test('robots: the off-screen box leans with the height between you', () => {
 });
 
 test('network: rounds carry their stop, the mirror keeps them short of it, and a joiner on another map is turned away', () => {
- const s = sim('rifle', [-8, -10]); Object.assign(s.dev, { noSpread: true, noRecoil: true });
- s.step({ aimX: 1, aimZ: 0, aimPointX: 30, aimPointZ: -10, fire: true });
+ const s = sim('rifle', [-8, -17]); Object.assign(s.dev, { noSpread: true, noRecoil: true });
+ s.step({ aimX: -1, aimZ: 0, aimPointX: -20, aimPointZ: -17, fire: true });
  const packed = pack(s);
  assert.ok(Number.isFinite(packed.bullets[0].stop));
  const mirror = new ProjectileMirror();
@@ -345,7 +353,8 @@ test('the ground never walks forever: runaway positions return at once', () => {
  const t0 = performance.now();
  assert.equal(ground.sightClear(-20, -15, Infinity, 5), true);
  assert.equal(ground.sightClear(-20, -15, 1e7, 5), true);
- assert.equal(ground.roundStop(0, 0, 1, 0, 1, 0, 1e7), Infinity);
- assert.equal(ground.roundStop(0, 0, 1, 0, 1, 0, Infinity), Infinity);
+ assert.equal(ground.flightReaches(-20, -15, 1e7, 5), true);
+ assert.ok(ground.flight(0, 0, 1, 0, 1e7, 0).n <= 512 / FLIGHT_STEP);
+ assert.ok(ground.flight(0, 0, 1, 0, Infinity, 0).n <= 512 / FLIGHT_STEP);
  assert.ok(performance.now() - t0 < 50);
 });

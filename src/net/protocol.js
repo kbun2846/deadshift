@@ -28,7 +28,9 @@ import { weaponOrDefault } from '../items.js';
 // 10: hills (terrain maps: slopes, retaining walls, rounds ending in the
 // ground with `stop` in snapshots, grenade heights above the ground, the map
 // fingerprint in welcome).
-export const PROTOCOL_VERSION = 10;
+// 11: streams are waded (slower in water, with and against the current) and
+// a body can wade in under a deck (`below` in player states).
+export const PROTOCOL_VERSION = 11;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);
@@ -73,6 +75,8 @@ export function playerState(id, p, lastSeq = 0) {
   stamina: round(p.stamina, 4), staminaWait: round(p.staminaWait, 4),
   blastVX: round(p.blastVX), blastVZ: round(p.blastVZ),
   hp: round(p.hp, 1), maxHp: p.maxHp,
+  // (Hills: wading under a deck. Only sent when so.)
+  ...(p.below ? { below: 1 } : {}),
  };
 }
 
@@ -80,6 +84,7 @@ export function playerState(id, p, lastSeq = 0) {
 export function applyPlayerState(p, s) {
  for (const key of ['x', 'z', 'vx', 'vz', 'aimX', 'aimZ', 'aimSpin', 'dodgeRemaining', 'dodgeX', 'dodgeZ', 'stamina', 'staminaWait', 'blastVX', 'blastVZ'])
   if (Number.isFinite(s[key])) p[key] = s[key];
+ if (s.below) p.below = true; else if (p.below) p.below = false;
 }
 
 // Your own weapon state, from the host: what the HUD shows (ammo, reloads,

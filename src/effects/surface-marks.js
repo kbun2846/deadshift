@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { groundY, hilly } from '../render/ground-lift.js';
+import { TerrainMarks } from './terrain-marks.js';
 
 // Surface-clipped soot, capped per surface. Every mark is a blended,
 // ground-coplanar draw with depthWrite off, and in a top-down camera the
@@ -33,6 +34,9 @@ export class SurfaceMarks {
     // burn, including across a road edge. It is projection geometry, not rendered.
     this.groundReceiver=new THREE.Mesh(new THREE.PlaneGeometry(view.map.width+60,view.map.depth+60));
     this.groundReceiver.rotation.x=-Math.PI/2;this.groundReceiver.position.y=.048;this.groundReceiver.updateMatrixWorld(true);
+    // Hills: marks on the terrain's own ground are pooled quads and draped
+    // burns (terrain-marks.js), found from the height grid, not the mesh.
+    if (hilly(view)) this.terrain = new TerrainMarks(view, this.material);
   }
 
   enqueue(kind,e) {
@@ -55,21 +59,46 @@ export class SurfaceMarks {
     if(this.receiverCache)return this.receiverCache;
     const v = this.view;
     const targets = [...v.targets.entries()].filter(([id]) => !v.lastSim || v.lastSim.targets.find(t => t.id === id)?.hp > 0).map(([, g]) => g);
-    // (Hills: the ground's own mesh takes marks too.)
-    return this.receiverCache=[v.static, ...v.props.values(), ...targets, ...v.roofs.map(r => r.group), ...(v.terrainMesh ? [v.terrainMesh] : [])];
+    // (Hills: the ground's own mesh is left to groundAlong; see hit.)
+    return this.receiverCache=[v.static, ...v.props.values(), ...targets, ...v.roofs.map(r => r.group), ...(v.terrainMesh && !this.terrain ? [v.terrainMesh] : [])];
   }
 
   hit(origin, direction, distance) {
-    this.ray.set(origin, direction); this.ray.far = distance;
+    // Hills: the ground comes from the height grid (groundAlong); only what
+    // stands nearer than it (a floor, a deck, a wall, a prop) is raycast.
+    // Raycasting the RTIN tiles walked every triangle of each one hit.
+    const ground = this.terrain ? this.groundAlong(origin, direction, distance) : null;
+    this.ray.set(origin, direction); this.ray.far = ground ? ground.distance : distance;
     return this.ray.intersectObjects(this.surfaces(), true).find(h => {
       if (h.object.userData.surfaceMark || h.object.userData.maskedGround || !h.face) return false;
       for (let p = h.object; p; p = p.parent) if (!p.visible) return false;
       return true;
-    });
+    }) || ground || undefined;
+  }
+
+  // Hills: where a ray first meets the drawn ground, as a stand-in hit
+  // ({ terrain, point, distance }), or null within `far`. Straight down is
+  // one lookup; any other ray is walked in quarter metres and the crossing
+  // found between the last two steps.
+  groundAlong(origin, direction, far) {
+    const ground = this.view.ground, at = (t, out) => out.copy(origin).addScaledVector(direction, t);
+    const above = t => { const p = at(t, this.probe ||= new THREE.Vector3()); return p.y - ground.drawnHeightAt(p.x, p.z); };
+    let distance = null;
+    if (direction.x === 0 && direction.z === 0) { const d = above(0) / -direction.y; if (d >= 0 && d <= far) distance = d; }
+    else if (above(0) <= 0) distance = 0;
+    else for (let t = 0, before = above(0); t < far;) {
+      const next = Math.min(far, t + .25), now = above(next);
+      if (now <= 0) { distance = t + (next - t) * before / (before - now); break; }
+      t = next; before = now;
+    }
+    return distance === null ? null : { terrain: true, distance, point: at(distance, new THREE.Vector3()) };
   }
 
   stamp(hit, size, projectionPoint = hit?.point, projectionNormal = null) {
     if (!hit) return;
+    // (Nothing marks deep water: its splash is the stream's own, to come.)
+    // (No marks where the stream stands: in open water or under a deck.)
+    if (hit.terrain) { const g = this.view.ground; if (g && !g.flat && g.waterAt(hit.point.x, hit.point.z) > g.drawnHeightAt(hit.point.x, hit.point.z) + .03) return; this.terrain.mark(hit.point.x, hit.point.z, size); this.count++; return; }
     const v = this.view, normal = projectionNormal || hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
     const rotation = new THREE.Euler().setFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal));
     let parent = v.scene;
@@ -141,7 +170,8 @@ export class SurfaceMarks {
       yield;
       const angle = i / 24 * Math.PI * 2;
       const hit = this.hit(center, new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle)), e.radius);
-      if (!hit) continue;
+      // (Hills: a ray that meets the ground is inside the burn already.)
+      if (!hit || hit.terrain) continue;
       const key = hit.object.uuid + ':' + Math.round(hit.point.x) + ':' + Math.round(hit.point.z);
       if (seen.has(key)) continue; seen.add(key);
       this.stamp(hit, Math.max(.3, e.radius * .85 * (1 - hit.distance / (e.radius * 1.4))));
@@ -152,6 +182,7 @@ export class SurfaceMarks {
     this.jobs.length=0;this.currentJob=null;this.receiverCache=null;
     for (const batches of this.batches.values()) for (const mesh of batches) { mesh.removeFromParent(); mesh.geometry.dispose(); }
     this.batches.clear(); this.count = 0;
+    this.terrain?.clear();
   }
 
   clearFor(parent) {

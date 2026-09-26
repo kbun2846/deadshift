@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mapProps, groundFor } from '../maps.js';
+import { mapLook, sunLean } from './map-look.js';
 
 // Potato has no shadow map, which left everything looking pasted onto the
 // ground. These are the cheap stand-in: a soft dark patch under each prop and
@@ -7,7 +8,11 @@ import { mapProps, groundFor } from '../maps.js';
 // presets so the lighting still reads the same. Two draws in total (props,
 // movers), no shadow pass, and the props' patches are only rewritten when one
 // breaks or comes back.
-const SUN_LEAN = { x: .6, z: .45 }; // ground offset per metre of height, from the sun at (-24, 40, -18)
+// Each patch leans the way the map's sun throws shadows (map-look.js
+// sunLean: { x: .6, z: .45 } per metre of height for the default sun). A lower
+// sun leans further, and its patches stretch to match (`reach`: 1 for the
+// default sun and anything higher).
+const DEFAULT_LEAN = .75; // the default sun's lean, Math.hypot(.6, .45)
 const UP = new THREE.Vector3(0, 1, 0), NORMAL = new THREE.Vector3(), YAW = new THREE.Quaternion();
 const COLOR = '#3a2a18';
 
@@ -36,13 +41,17 @@ export class BlobShadows {
   this.maxMovers = maxMovers;
   // Hills: each patch lies on the ground where it falls.
   this.ground = groundFor(map);
+  const lean = this.lean = sunLean(mapLook(map).sunOffset);
+  const leans = Math.hypot(lean.x, lean.z); this.reach = leans > DEFAULT_LEAN + 1e-9 ? leans / DEFAULT_LEAN : 1;
+  // How much wider a prop's patch is per metre of its height, across x and z.
+  this.spreadX = .35 * Math.max(1, Math.abs(lean.x) / .6); this.spreadZ = .25 * Math.max(1, Math.abs(lean.z) / .45);
  }
 
  set enabled(value) { this.propMesh.visible = this.moverMesh.visible = value; if (value) this.shown.clear(); }
  get enabled() { return this.propMesh.visible; }
 
  place(mesh, i, x, z, w, d, angle, height) {
-  const o = this.dummy, px = x + SUN_LEAN.x * height * .5, pz = z + SUN_LEAN.z * height * .5;
+  const o = this.dummy, px = x + this.lean.x * height * .5, pz = z + this.lean.z * height * .5;
   o.position.set(px, .05 + this.ground.heightAt(px, pz), pz);
   if (this.ground.flat) o.rotation.set(0, angle, 0);
   else {
@@ -65,14 +74,14 @@ export class BlobShadows {
    if (this.shown.get(i) === standing) return;
    this.shown.set(i, standing); changed = true;
    const h = HEIGHT[p.type] ?? .9, grow = standing ? 1.25 : 0;
-   this.place(this.propMesh, i, p.x, p.z, (p.w + h * .35) * grow, (p.d + h * .25) * grow, -(p.angle || 0), h);
+   this.place(this.propMesh, i, p.x, p.z, (p.w + h * this.spreadX) * grow, (p.d + h * this.spreadZ) * grow, -(p.angle || 0), h);
   });
   if (changed) this.propMesh.instanceMatrix.needsUpdate = true;
   const count = Math.min(this.maxMovers, movers.length);
   for (let i = 0; i < count; i++) {
    const m = movers[i], size = m.size || 1;
    // Stretched along the way the sun throws it, like the real shadows.
-   this.place(this.moverMesh, i, m.x, m.z, size * 1.35, size * .95, -Math.atan2(SUN_LEAN.z, SUN_LEAN.x), m.height ?? 1.3);
+   this.place(this.moverMesh, i, m.x, m.z, size * 1.35 * this.reach, size * .95, -Math.atan2(this.lean.z, this.lean.x), m.height ?? 1.3);
   }
   this.moverMesh.count = count; this.moverMesh.instanceMatrix.needsUpdate = true;
  }

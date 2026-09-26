@@ -3,11 +3,14 @@
 // moment and gone in BEAM_LIFE seconds. Every beam in the game is one
 // instance of one InstancedMesh (additive, unlit; the fade is the instance
 // colour going to black, so no per-beam material and no new shader mid-game).
+// Hills: a beam is a chain of instances, each metre and a half over the
+// ground under it, so it bends over a rise instead of cutting through it
+// (owner, 2026-09-26).
 import * as THREE from 'three';
 import { groundY, hilly } from '../render/ground-lift.js';
 
 export const BEAM_LIFE = .32;
-const CAPACITY = 96, COLOUR = new THREE.Color('#bfeaff'), X_AXIS = new THREE.Vector3(1, 0, 0);
+const CAPACITY = 480, PIECE = 1.5, COLOUR = new THREE.Color('#bfeaff'), X_AXIS = new THREE.Vector3(1, 0, 0);
 
 export class OrbBeams {
  constructor(view) {
@@ -33,20 +36,31 @@ export class OrbBeams {
   for (const b of list) b.age += dt;
   this.list = list.filter(b => b.age < BEAM_LIFE);
   let n = 0;
+  const view = this.view, hills = view.ground && hilly(view);
   for (const b of this.list) {
-   const k = 1 - b.age / BEAM_LIFE, fade = k * k;
-   this.p.set((b.fromX + b.x) / 2, .72, (b.fromZ + b.z) / 2);
-   const view = this.view;
-   if (view.ground && hilly(view)) {
-    // Hills: from over the ground it left to over the ground it landed on.
-    const y0 = groundY(view, b.fromX, b.fromZ), y1 = groundY(view, b.x, b.z);
-    this.p.y += (y0 + y1) / 2;
-    this.q.setFromUnitVectors(X_AXIS, this.dir.set(b.x - b.fromX, y1 - y0, b.z - b.fromZ).normalize());
-   } else this.q.setFromAxisAngle(this.up, -Math.atan2(b.z - b.fromZ, b.x - b.fromX));
-   this.s.set(b.length, .03 + .03 * k, .03 + .05 * k);
-   this.mesh.setMatrixAt(n, this.m.compose(this.p, this.q, this.s));
-   this.mesh.setColorAt(n, this.c.copy(COLOUR).multiplyScalar(fade * 1.6));
-   n++;
+   const k = 1 - b.age / BEAM_LIFE, fade = k * k, thick = .03 + .03 * k, wide = .03 + .05 * k;
+   this.c.copy(COLOUR).multiplyScalar(fade * 1.6);
+   if (!hills) {
+    this.p.set((b.fromX + b.x) / 2, .72, (b.fromZ + b.z) / 2);
+    this.q.setFromAxisAngle(this.up, -Math.atan2(b.z - b.fromZ, b.x - b.fromX));
+    this.s.set(b.length, thick, wide);
+    this.mesh.setMatrixAt(n, this.m.compose(this.p, this.q, this.s)); this.mesh.setColorAt(n, this.c);
+    n++; continue;
+   }
+   // Hills: from over the ground it left to over the ground it landed on,
+   // over the ground between.
+   const pieces = Math.min(16, Math.max(1, Math.ceil(b.length / PIECE)));
+   let ax = b.fromX, az = b.fromZ, ay = .72 + groundY(view, ax, az);
+   for (let i = 1; i <= pieces && n < CAPACITY; i++) {
+    const t = i / pieces, bx = b.fromX + (b.x - b.fromX) * t, bz = b.fromZ + (b.z - b.fromZ) * t, by = .72 + groundY(view, bx, bz);
+    const length = Math.hypot(bx - ax, by - ay, bz - az);
+    this.p.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
+    this.q.setFromUnitVectors(X_AXIS, this.dir.set(bx - ax, by - ay, bz - az).normalize());
+    // (A hair long, so the pieces meet at a bend.)
+    this.s.set(length + .02, thick, wide);
+    this.mesh.setMatrixAt(n, this.m.compose(this.p, this.q, this.s)); this.mesh.setColorAt(n, this.c);
+    n++; ax = bx; az = bz; ay = by;
+   }
   }
   this.mesh.count = n; this.mesh.visible = n > 0;
   if (n) { this.mesh.instanceMatrix.needsUpdate = true; this.mesh.instanceColor.needsUpdate = true; }

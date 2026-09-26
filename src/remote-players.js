@@ -8,7 +8,7 @@
 // change weapon; one model per weapon is built once and shared by every avatar.
 import * as THREE from 'three';
 import { SIDE_COLOURS } from './config/match.js';
-import { RULES } from './config/gameplay.js';
+import { RULES, WADE } from './config/gameplay.js';
 import { makeRifle } from './weapons/rifle-model.js';
 import { makeShotgun } from './weapons/shotgun-model.js';
 import { Wading, makeBloodStains } from './effects/blood-wading.js';
@@ -124,7 +124,16 @@ export class RemotePlayers {
    if (avatar.ring && avatar.shownRing !== ringColour) { avatar.shownRing = ringColour; avatar.ring.material.color.set(ringColour); avatar.ring.material.opacity = p.ring ? .95 : avatar.ringOpacity; if (p.ring) { avatar.ownRing ??= avatar.ring.geometry; avatar.ring.geometry = TEAM_RING(); } else if (avatar.ownRing) avatar.ring.geometry = avatar.ownRing; }
    const weapon = p.weapon || 'static';
    if (avatar.weapon !== weapon) { avatar.hand.clear(); avatar.hand.add(gunModel(this.view, weapon)); avatar.weapon = weapon; }
-   avatar.root.position.set(p.x, groundY(this.view, p.x, p.z), p.z);
+   // (Hills: wading under a deck, on the ground below it. The drawn position
+   // trails the snapshots, so one that has just waded out stays under until
+   // it is clear of the deck instead of popping up onto it; stepping off a
+   // deck's side it drops quickly, not in one frame.)
+   // (Up on the deck again, as its ground rises to within a step of the top.)
+   const g = this.view.ground, deck = avatar.under && !p.below ? g.deckAt(p.x, p.z) : -1;
+   avatar.under = !!(p.below || (deck >= 0 && g.drawnHeightAt(p.x, p.z) < g.decks[deck].h - WADE.step));
+   const y = avatar.under ? g.drawnHeightAt(p.x, p.z) : groundY(this.view, p.x, p.z);
+   avatar.y = avatar.y === undefined || !(dt > 0) || y >= avatar.y - .25 ? y : Math.max(y, avatar.y - 9 * dt);
+   avatar.root.position.set(p.x, avatar.y, p.z);
    avatar.root.visible = !sees || sees(p);
    avatar.group.rotation.y = Math.atan2(-p.aimX, -p.aimZ);
    // Hills: the base ring lies on the slope (renderer layFlat).

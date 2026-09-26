@@ -118,8 +118,8 @@ function install(material, fragment, kind) {
 // above zero. Set by the view on a map with terrain (setExtremeGround), and
 // only then hooked into the surfaces (installGround): a flat map's shaders
 // and program keys are exactly what they were.
-// (The texture itself is made the first time Extreme is switched on: no
-// other preset reads it.)
+// (The texture is made at load on a terrain map: the fog sheets read it on
+// every preset, fog-sheets.js, through groundHeights.)
 const GROUND_TEX = { value: null }, GROUND_BOX = { value: new THREE.Vector4() };
 let groundSource = null;
 const LOW = 'float low = 1.0 - smoothstep(.0, .55, vExWorld.y);';
@@ -136,6 +136,12 @@ function groundTexture() {
  GROUND_TEX.value = texture;
  // uv = (world - (the grid's first point - half a cell)) / (the grid's size in metres)
  GROUND_BOX.value.set(ground.minX - .25, ground.minZ - .25, 1 / (cols * .5), 1 / (rows * .5));
+}
+// The ground's height texture as uniforms ({ texture, box }), made now if
+// it is not yet; null on a flat map.
+export function groundHeights() {
+ groundTexture();
+ return groundSource ? { texture: GROUND_TEX, box: GROUND_BOX } : null;
 }
 function installGround(material) {
  if (material.userData.extremeGround) return;

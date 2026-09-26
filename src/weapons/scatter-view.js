@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { SCATTER_RED } from '../effects/effects-detail.js';
 import { SCATTER } from '../config/gameplay.js';
-import { groundY, hilly, roundGlide } from '../render/ground-lift.js';
+import { groundY, hilly, roundFlight } from '../render/ground-lift.js';
 
 const CAPACITY = 64;
 const RED = new THREE.Color('#ff3a2a'), FIRE_GLOW = new THREE.Color('#ff3a22'), FIRE_RING = new THREE.Color('#ff6a4a'), SPLIT_FLASH = new THREE.Color('#ffd0b8');
@@ -42,8 +42,8 @@ export class ScatterView {
    if (n >= CAPACITY) break;
    // A shell starts at the muzzle, not the body.
    const lift = b.big ? .78 : .72, len = b.big ? .42 : .22, wide = b.big ? .15 : .09;
-   // (Hills: gliding over edges from where it set off, as rifle rounds do.)
-   const under = hills ? roundGlide(this.view, this.glides, b, b.x - b.dx * b.travel, b.z - b.dz * b.travel, groundY(this.view, b.x - b.dx * b.travel, b.z - b.dz * b.travel)).h : 0;
+   // (Hills: on its flight over the ground, as rifle rounds are.)
+   const under = hills ? this.view.ground.flightAt(roundFlight(this.view, this.glides, b, b.x - b.dx * b.travel, b.z - b.dz * b.travel, groundY(this.view, b.x - b.dx * b.travel, b.z - b.dz * b.travel), b.limit), b.travel) : 0;
    this.p.set(b.x, lift + under, b.z); this.q.setFromAxisAngle(this.up, -Math.atan2(b.dz, b.dx)); this.s.set(len, wide, wide);
    this.mesh.setMatrixAt(n++, this.m.compose(this.p, this.q, this.s));
    // The trail, at a steady rate whatever the frame rate.

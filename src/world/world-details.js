@@ -3,7 +3,8 @@ import { isPlayable } from '../playable-area.js';
 
 export function makeQualityDetails(view) {
   const all = new THREE.Group(); view.scene.add(all);
-  if(view.map.training)return all;
+  // (Deadwater's street and desert dressing; a hills map brings its own.)
+  if(view.map.training||view.map.terrain)return all;
   for (const b of view.map.buildings) {
     const g = new THREE.Group(); g.position.set(b.x, b.baseY || 0, b.z); g.rotation.y = b.angle || 0; all.add(g);
     // Thin chips, nail heads and broken grain; sparse enough to preserve clean silhouettes.

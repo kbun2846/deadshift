@@ -15,17 +15,28 @@
 //     Each side falls at its own grade and the highest wins, so a wall fades
 //     out where it meets a gentle side, like a real retaining wall.
 //     `openings` are steep like cliffs but have no wall: a walled ramp or
-//     steps (a path plus `edges`) go down through them.
+//     steps (a path plus `edges`) go down through them. `banks` are earth
+//     banks: sides that fall at `bankGrade` (.6) with no wall, walkable up
+//     and down (owner, 2026-09-26: far fewer walls; maxSlope eases them).
 //   edges: [{ points }]                walls along a polyline (a ramp's sides)
 //   knolls: [{ x, z, r, h }]           round bumps (added)
 //   paths: [{ points: [[x, z, h]], width, shoulder, onlyDown }]   ramps and
 //     cuttings: the ground is pulled to the path's own height along it
-//   water: [{ points: [[x, z, half, bed]], top, bank }]   the stream's channel
+//   water: [{ points: [[x, z, half, bed]], top, bank, surface }]   the
+//     stream's channel (its bank rises from the bed to `top`, or without one
+//     to the ground already there; heightfield.js: the water stands at
+//     `surface` and is waded anywhere)
 //   fords: [{ points: [[x, z, h]], width, shoulder }]
 //   decks: [{ poly, h }]               walk surfaces over water (heightfield.js)
 //   pads: [{ x, z, w, d, angle, h, margin, blend }]   extra flat pads
+//   maxSlope: n   the steepest open ground allowed (rise per metre, any way).
+//     Ground left steeper where features meet (a path cut into a bank, a
+//     knoll by a level) is lowered until it is not, walls and pads
+//     excepted (limitSlopes, below). Without it the grid is as built.
 // Every building with a `baseY` gets a flat pad: its footprint plus
 // `margin` (1.5 m), blended out over `blend` (2 m).
+import { Ground, edgeCollider, insidePoly as inPoly } from './heightfield.js';
+
 export const CELL = .5;
 const mm = v => Math.round(v * 1000);
 
@@ -87,8 +98,8 @@ export function terrainPads(map) {
 function prepare(spec, pads) {
  const floor = spec.floorMin ?? -3;
  const levels = (spec.levels || []).map(l => {
-  const steepSides = new Set([...(l.cliffs || []), ...(l.openings || [])]), steep = l.cliffGrade || 8;
-  const grades = l.poly.map((_, i) => steepSides.has(i) ? steep : l.grade);
+  const steepSides = new Set([...(l.cliffs || []), ...(l.openings || [])]), steep = l.cliffGrade || 8, banks = new Set(l.banks || []);
+  const grades = l.poly.map((_, i) => steepSides.has(i) ? steep : banks.has(i) ? (l.bankGrade ?? .6) : l.grade);
   if (grades.some(g => !(g > 0))) throw new Error(`terrain level ${l.id ?? ''}: every side needs a grade above 0`);
   const gentlest = Math.min(...grades), reach = Math.min(80, Math.abs(l.lower ? (spec.ceiling ?? 12) - l.h : l.h - floor) / gentlest);
   return { ...l, grades, box: bounds(l.poly, reach) };
@@ -101,7 +112,8 @@ function prepare(spec, pads) {
   const r = Math.hypot(p.w, p.d) / 2 + p.margin + p.blend;
   return { ...p, cos: Math.cos(p.angle), sin: Math.sin(p.angle), box: { minX: p.x - r, maxX: p.x + r, minZ: p.z - r, maxZ: p.z + r } };
  });
- return { ...spec, levels, carves, paths, water, fords, pads: padded };
+ // (Levels with `overWater` are laid after the streams and fords: a dam.)
+ return { ...spec, levels: levels.filter(l => !l.overWater), over: levels.filter(l => l.overWater), carves, paths, water, fords, pads: padded };
 }
 
 // The ground's height at a point, before rounding (no decks).
@@ -113,23 +125,7 @@ function rawHeight(s, x, z) {
   const d = lineDist(x, z, c.line);
   h = Math.min(h, c.floor + c.grade * Math.max(0, d - c.half));
  }
- for (const l of s.levels) {
-  if (!inBox(l.box, x, z)) continue;
-  let v;
-  if (insidePoly(x, z, l.poly)) v = l.h;
-  else {
-   // Each side falls away at its own grade; the highest (for a pit, the
-   // lowest) wins, so a cliff shrinks toward a gentle neighbour.
-   v = l.lower ? Infinity : -Infinity;
-   const poly = l.poly;
-   for (let i = 0; i < poly.length; i++) {
-    const a = poly[i], b = poly[(i + 1) % poly.length];
-    const d = segDist(x, z, a[0], a[1], b[0], b[1]), side = l.lower ? l.h + l.grades[i] * d : l.h - l.grades[i] * d;
-    v = l.lower ? Math.min(v, side) : Math.max(v, side);
-   }
-  }
-  h = l.lower ? Math.min(h, v) : Math.max(h, v);
- }
+ h = applyLevels(s.levels, h, x, z);
  for (const k of s.knolls || []) {
   const dx = x - k.x, dz = z - k.z, d2 = dx * dx + dz * dz, r2 = k.r * k.r;
   if (d2 < r2) { const t = 1 - d2 / r2; h += k.h * t * t; }
@@ -149,7 +145,8 @@ function rawHeight(s, x, z) {
   const half = w.points[0].length > 2 ? valueAlong(w.points, hitSeg, hitT) : w.half;
   const bed = w.points[0].length > 3 ? valueAlong(w.points, hitSeg, hitT, 3) : w.bed;
   if (d > half + w.bank) continue;
-  const v = d <= half ? bed + (w.top - bed) * .15 * smooth(d / half) : bed + (w.top - bed) * (.15 + .85 * smooth((d - half) / w.bank));
+  const top = w.top ?? h;
+  const v = d <= half ? bed + (top - bed) * .15 * smooth(d / half) : bed + (top - bed) * (.15 + .85 * smooth((d - half) / w.bank));
   h = Math.min(h, v);
  }
  for (const f of s.fords) {
@@ -159,6 +156,7 @@ function rawHeight(s, x, z) {
   const ph = valueAlong(f.points, hitSeg, hitT), w = d <= half ? 1 : 1 - smooth((d - half) / Math.max(1e-3, f.shoulder));
   h += (ph - h) * w;
  }
+ h = applyLevels(s.over, h, x, z);
  for (const p of s.pads) {
   if (!inBox(p.box, x, z)) continue;
   // Distance outside the footprint grown by its margin (0 inside it).
@@ -170,19 +168,130 @@ function rawHeight(s, x, z) {
  }
  return h;
 }
+// Levels over a height: a plateau raises it, a pit (`lower`) sinks it.
+function applyLevels(levels, h, x, z) {
+ for (const l of levels) {
+  if (!inBox(l.box, x, z)) continue;
+  let v;
+  if (insidePoly(x, z, l.poly)) v = l.h;
+  else {
+   // Each side falls away at its own grade; the highest (for a pit, the
+   // lowest) wins, so a cliff shrinks toward a gentle neighbour.
+   v = l.lower ? Infinity : -Infinity;
+   const poly = l.poly;
+   for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const d = segDist(x, z, a[0], a[1], b[0], b[1]), side = l.lower ? l.h + l.grades[i] * d : l.h - l.grades[i] * d;
+    v = l.lower ? Math.min(v, side) : Math.max(v, side);
+   }
+  }
+  h = l.lower ? Math.min(h, v) : Math.max(h, v);
+ }
+ return h;
+}
 
 // The whole grid: { minX, minZ, cols, rows, heights (Int16Array mm), hash }.
 export function bakeTerrain(map) {
  const spec = map.terrain, [minX, minZ, maxX, maxZ] = spec.bounds;
  const s = prepare(spec, terrainPads(map));
  const cols = Math.round((maxX - minX) / CELL) + 1, rows = Math.round((maxZ - minZ) / CELL) + 1;
+ const raw = new Float64Array(cols * rows);
+ for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) raw[r * cols + c] = rawHeight(s, minX + c * CELL, minZ + r * CELL);
+ if (spec.maxSlope) limitSlopes(raw, cols, rows, minX, minZ, spec, s.pads);
  const heights = new Int16Array(cols * rows);
- for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-  const v = mm(rawHeight(s, minX + c * CELL, minZ + r * CELL));
-  if (v < -32768 || v > 32767) throw new Error(`terrain ${map.id}: height ${v / 1000} m out of range at ${minX + c * CELL}, ${minZ + r * CELL}`);
-  heights[r * cols + c] = v;
+ for (let i = 0; i < raw.length; i++) {
+  const v = mm(raw[i]);
+  if (v < -32768 || v > 32767) throw new Error(`terrain ${map.id}: height ${v / 1000} m out of range at ${minX + (i % cols) * CELL}, ${minZ + Math.floor(i / cols) * CELL}`);
+  heights[i] = v;
  }
  return { minX, minZ, cols, rows, heights, hash: terrainSourceHash(map) };
+}
+
+// Lowers ground that is steeper than spec.maxSlope until it is not: every
+// step to a grid neighbour east, west, north or south is kept to
+// maxSlope / sqrt(2) per metre, so the bilinear slope (world/heightfield.js
+// gradientAt) is at most maxSlope whichever way it faces. Only the higher
+// side is lowered, so paths and hollows keep their heights and a bank cut
+// by a path recedes into a gentler one. Never across an authored wall (a
+// level's cliff sides with their path gaps, the spec's edges: a step between
+// two points either side of one is the wall's), and never inside a pad (the
+// footprint plus its margin stays at its height). Streams are waded and the
+// ground under a deck is walked (under it), so both are eased like the rest;
+// ground under a deck is kept no higher than the deck.
+function limitSlopes(h, cols, rows, minX, minZ, spec, pads) {
+ const step = spec.maxSlope / Math.SQRT2 * CELL, n = cols * rows;
+ // The walls and the water as the game will have them, over the unlimited
+ // ground (heightfield.js).
+ const heights = new Int16Array(n);
+ for (let i = 0; i < n; i++) heights[i] = Math.max(-32768, Math.min(32767, mm(h[i])));
+ const ground = new Ground({ minX, minZ, cols, rows, heights, hash: '' }, spec);
+ const free = new Uint8Array(n).fill(1), fixed = new Uint8Array(n);
+ // cutE[i]: the step from point i east crosses a wall; cutS[i]: south.
+ const cutE = new Uint8Array(n), cutS = new Uint8Array(n);
+ const crosses = (ax, az, bx, bz, cx, cz, dx, dz) => {
+  const d1 = (bx - ax) * (cz - az) - (bz - az) * (cx - ax), d2 = (bx - ax) * (dz - az) - (bz - az) * (dx - ax);
+  const d3 = (dx - cx) * (az - cz) - (dz - cz) * (ax - cx), d4 = (dx - cx) * (bz - cz) - (dz - cz) * (bx - cx);
+  // (Touching counts: a grid point exactly on a level's edge is the level's.
+  // A step along the wall's own line does not cross it.)
+  return !(d1 === 0 && d2 === 0) && d1 * d2 <= 0 && d3 * d4 <= 0;
+ };
+ for (const e of ground.edges) {
+  const ax = e.ax - e.ux * e.extend, az = e.az - e.uz * e.extend, bx = e.bx + e.ux * e.extend, bz = e.bz + e.uz * e.extend;
+  const c0 = Math.max(0, Math.floor((Math.min(ax, bx) - minX) / CELL) - 1), c1 = Math.min(cols - 1, Math.ceil((Math.max(ax, bx) - minX) / CELL) + 1);
+  const r0 = Math.max(0, Math.floor((Math.min(az, bz) - minZ) / CELL) - 1), r1 = Math.min(rows - 1, Math.ceil((Math.max(az, bz) - minZ) / CELL) + 1);
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+   const x = minX + c * CELL, z = minZ + r * CELL, i = r * cols + c;
+   if (c < cols - 1 && crosses(ax, az, bx, bz, x, z, x + CELL, z)) cutE[i] = 1;
+   if (r < rows - 1 && crosses(ax, az, bx, bz, x, z, x, z + CELL)) cutS[i] = 1;
+  }
+ }
+ // Ground under a deck is kept no higher than the deck (its ends on the
+ // banks would poke through it otherwise).
+ for (const d of spec.decks || []) {
+  const xs = d.poly.map(p => p[0]), zs = d.poly.map(p => p[1]);
+  const c0 = Math.max(0, Math.floor((Math.min(...xs) - minX) / CELL)), c1 = Math.min(cols - 1, Math.ceil((Math.max(...xs) - minX) / CELL));
+  const r0 = Math.max(0, Math.floor((Math.min(...zs) - minZ) / CELL)), r1 = Math.min(rows - 1, Math.ceil((Math.max(...zs) - minZ) / CELL));
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (inPoly(minX + c * CELL, minZ + r * CELL, d.poly)) h[r * cols + c] = Math.min(h[r * cols + c], d.h);
+ }
+ // Kept as they are: a wall's face (under its collider: nobody stands there,
+ // and lowering the ground just past a wall's line would tilt the cell that
+ // holds the line) and each pad (its footprint plus margin).
+ const fix = (x0, z0, angle, hw, hd) => {
+  const cos = Math.cos(angle), sin = Math.sin(angle), reach = Math.hypot(hw, hd);
+  const c0 = Math.max(0, Math.floor((x0 - reach - minX) / CELL)), c1 = Math.min(cols - 1, Math.ceil((x0 + reach - minX) / CELL));
+  const r0 = Math.max(0, Math.floor((z0 - reach - minZ) / CELL)), r1 = Math.min(rows - 1, Math.ceil((z0 + reach - minZ) / CELL));
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+   const rx = minX + c * CELL - x0, rz = minZ + r * CELL - z0;
+   if (Math.abs(rx * cos - rz * sin) <= hw && Math.abs(rx * sin + rz * cos) <= hd) fixed[r * cols + c] = 1;
+  }
+ };
+ for (const e of ground.edges) {
+  // From just inside the line to just past the drop. (Only along the edge
+  // itself, not its corner-closing ends: where a piece stops at a path's
+  // gap, the rim beside the gap may be eased. A polyline edge, centred on its
+  // line, keeps nothing: the steps across its line are its own already.)
+  if (e.centred) continue;
+  const b = edgeCollider(e), inner = .1, outer = e.face + .1, mid = (outer - inner) / 2;
+  fix(e.ax + (e.bx - e.ax) / 2 + e.nx * mid, e.az + (e.bz - e.az) / 2 + e.nz * mid, b.angle, e.length / 2, (inner + outer) / 2);
+ }
+ for (const p of pads) fix(p.x, p.z, p.angle, p.w / 2 + p.margin, p.d / 2 + p.margin);
+ // Chamfer sweeps (forward, then back) until nothing moves.
+ const relax = (i, j) => { if (free[j] && !fixed[i] && h[i] > h[j] + step) { h[i] = h[j] + step; return true; } return false; };
+ for (let pass = 0; pass < 60; pass++) {
+  let moved = false;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+   const i = r * cols + c; if (!free[i]) continue;
+   if (c > 0 && !cutE[i - 1] && relax(i, i - 1)) moved = true;
+   if (r > 0 && !cutS[i - cols] && relax(i, i - cols)) moved = true;
+  }
+  for (let r = rows - 1; r >= 0; r--) for (let c = cols - 1; c >= 0; c--) {
+   const i = r * cols + c; if (!free[i]) continue;
+   if (c < cols - 1 && !cutE[i] && relax(i, i + 1)) moved = true;
+   if (r < rows - 1 && !cutS[i] && relax(i, i + cols)) moved = true;
+  }
+  if (!moved) return;
+ }
+ throw new Error('terrain: slopes did not settle');
 }
 
 // The grid as text (heightfield.js decodeHeights reads it back).

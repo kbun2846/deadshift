@@ -4,8 +4,8 @@ import { makeRifle } from './rifle-model.js';
 import { RiflePose } from './rifle-pose.js';
 import { RIFLE_QUALITY, CASING_CAPACITY, casingPose } from './rifle-quality.js';
 import { NO_FX } from '../effects/effects-detail.js';
-import { RIFLE_MUZZLE } from '../config/gameplay.js';
-import { groundY, hilly, roundGlide } from '../render/ground-lift.js';
+import { RIFLE, RIFLE_MUZZLE, TERRAIN } from '../config/gameplay.js';
+import { groundY, hilly, roundFlight, flightRise } from '../render/ground-lift.js';
 const UP=new THREE.Vector3(0,1,0);
 const BULLET_GLOW=new THREE.Color('#ffd98a'),SURGE_GLOW=new THREE.Color('#f2f8ff'),PORT_SMOKE=new THREE.Color('#bdb5a2');
 function disposeObject(root){const materials=new Set();root.traverse(o=>{o.geometry?.dispose();if(o.material)materials.add(o.material);});materials.forEach(m=>m.dispose());}
@@ -120,15 +120,14 @@ export class RifleView{
   const view=this.view,hills=hilly(view);
   for(const b of sim.rifleBullets){
    if(count>=8||!this.visible(sim,b.x,b.z))continue;
-   // Hills: a round is drawn at the muzzle's height over the ground under it
-   // (so a round that hits a body is drawn at that body), gliding over a
-   // wall's edge (ground-lift.js glide) from the ground its shooter stood on,
-   // and into the ground over its last metre where the ground takes it (`stop`).
+   // Hills: a round is drawn on its flight over the ground (heightfield.js
+   // flight, the very line the simulation hits things by), the muzzle's
+   // height over a line that follows the ground from where its shooter
+   // stood; where the ground stops it, it meets the rise.
    let y=.74,rise=0;
    if(hills){
-    const sx=b.x-b.dx*b.travel,sz=b.z-b.dz*b.travel,from=b.ox!==undefined?groundY(view,b.ox,b.oz):groundY(view,sx-b.dx*RIFLE_MUZZLE.forward,sz-b.dz*RIFLE_MUZZLE.forward);
-    const s=roundGlide(view,this.glides,b,sx,sz,from);y=.74+s.h;rise=s.rise;
-    if(b.stop!==undefined&&b.stop-b.travel<1)y-=.74*(1-Math.max(0,b.stop-b.travel));
+    const sx=b.x-b.dx*b.travel,sz=b.z-b.dz*b.travel,from=b.oy??(b.ox!==undefined?groundY(view,b.ox,b.oz):groundY(view,sx-b.dx*RIFLE_MUZZLE.forward,sz-b.dz*RIFLE_MUZZLE.forward));
+    const f=roundFlight(view,this.glides,b,sx,sz,from,RIFLE.maxRange,b.ox!==undefined?Math.hypot(sx-b.ox,sz-b.oz):RIFLE_MUZZLE.forward);y=TERRAIN.roundHeight+view.ground.flightAt(f,b.travel);rise=flightRise(view.ground,f,b.travel);
    }
    this.dummy.position.set(b.x,y,b.z);this.direction.set(b.dx,rise,b.dz);if(hills)this.direction.normalize();this.dummy.quaternion.setFromUnitVectors(UP,this.direction);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();
    this.bullets.setMatrixAt(count,this.dummy.matrix);this.outlines.setMatrixAt(count,this.dummy.matrix);this.bands.setMatrixAt(count,this.dummy.matrix);

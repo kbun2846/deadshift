@@ -60,7 +60,7 @@ const ROBOT_CHIP = new THREE.Color('#c9d3d6');
 import { freezeTransforms } from './frozen-transforms.js';
 import { BlobShadows } from './blob-shadows.js';
 import { DetailFX, ELECTRIC as FX_ELECTRIC, orbBlastScale } from '../effects/effects-detail.js';
-import { mapLook } from './map-look.js';
+import { mapLook, shadowDepth, sunLean } from './map-look.js';
 import { BloodSplatters } from '../effects/blood-splatter.js';
 import { RemoteCorpses } from '../effects/remote-corpses.js';
 import { CrispOutput, CRISP } from './crisp-output.js';
@@ -77,6 +77,7 @@ import { setExtremeSurfaces, tickExtremeSurfaces, setExtremeGround } from './ext
 
 import { viewWidth, viewHeight } from '../viewport.js';
 import { WorldBuild } from './world-build.js';
+import { updateCrossingDecks } from './crossing-decks.js';
 import { WarmUp } from './warm-up.js';
 import { Vision } from './vision.js';
 
@@ -172,7 +173,9 @@ export class WorldView {
     this.cameraHeight = OUTDOOR_CAMERA_HEIGHT;
     this.scene.add(new THREE.HemisphereLight(this.look.sky, this.look.bounce, this.look.skyIntensity));
     const sun = new THREE.DirectionalLight(this.look.sun, this.look.sunIntensity);
-    sun.position.set(-24, 40, -18); sun.castShadow = true;
+    // Where the sun stands comes from the map too (map-look.js sunOffset).
+    const sunOffset = this.look.sunOffset;
+    sun.position.set(sunOffset.x, sunOffset.y, sunOffset.z); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     // Fitted to the ground the overhead camera can actually frame. At height 29
     // with a 40-degree fov and the standard tilt that is roughly 38m by 26m;
@@ -182,12 +185,13 @@ export class WorldView {
     // of spanning 89m, which spreads the depth range over 60m and lets the
     // biases come down. Tightening the box also multiplies texel density by
     // 2.2x, which is what pays for the cheaper filters below.
-    Object.assign(sun.shadow.camera, { left: -21, right: 21, top: 15, bottom: -15, near: 20, far: 82 });
+    // (A lower sun than the default reaches further toward itself: shadowDepth.)
+    Object.assign(sun.shadow.camera, { left: -21, right: 21, top: 15, bottom: -15, ...shadowDepth(sunOffset) });
     sun.shadow.normalBias = .02; sun.shadow.bias = -.00008; sun.shadow.radius = 1;
     this.scene.add(sun, sun.target); this.sun = sun;
     // The sun sits at a fixed offset from its target, so its direction never
     // changes and the basis across its shadow map is computed once.
-    this.sunOffset = { x: -24, y: 40, z: -18 };
+    this.sunOffset = { x: sunOffset.x, y: sunOffset.y, z: sunOffset.z };
     this.sunBasis = lightBasis({ x: -this.sunOffset.x, y: -this.sunOffset.y, z: -this.sunOffset.z });
     this.static = new THREE.Group(); this.scene.add(this.static);
     this.propDetails = []; this.roofs = []; this.tumbleweeds = []; this.props = new Map();
@@ -266,7 +270,7 @@ export class WorldView {
     this.fx = new DetailFX(this.scene); this.fx.ground = this.ground;
     // Where two floating orbs arc to each other, both ends flash and spit.
     this.electric.onContact = (a, b) => { for (const end of [a, b]) this.fx.electric(end.x, .72, end.z, .45, { ring: false }); };
-    this.birds = new Birds(this.scene);
+    this.birds = new Birds(this.scene, { off: map.birds === false }); this.birds.lean = sunLean(this.sunOffset);
     this.dummy = new THREE.Object3D(); this.dustClock = 0; this.stepClock = 0; this.windClock = 0;
     this.footprints = []; this.footDistance = 0; this.footSide = 1;
     this.lastFootPosition = { ...map.spawn };
@@ -277,7 +281,7 @@ export class WorldView {
       uniforms: { relief: { value: 0 }, pressed: { value: 0 } },
       vertexShader: 'attribute float fade; uniform float pressed; varying float vFade; varying vec2 vFoot; varying vec2 vSun; void main(){ vFade=fade; vFoot=uv*2.0-1.0;'
         // The sun, turned into this print's own frame (x across the foot, y along it).
-        + ' vec3 across=normalize(vec3(instanceMatrix[0].x,0.0,instanceMatrix[0].z)); vec3 along=normalize(vec3(instanceMatrix[2].x,0.0,instanceMatrix[2].z)); vec3 sun=normalize(vec3(-24.0,0.0,-18.0));'
+        + ' vec3 across=normalize(vec3(instanceMatrix[0].x,0.0,instanceMatrix[0].z)); vec3 along=normalize(vec3(instanceMatrix[2].x,0.0,instanceMatrix[2].z)); vec3 sun=normalize(vec3(' + this.sunOffset.x.toFixed(1) + ',0.0,' + this.sunOffset.z.toFixed(1) + '));'
         + ' vSun=vec2(dot(sun,across),dot(sun,along)); gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.0); }',
       // Extreme ('pressed') shapes a real boot print: a sole and a heel sunk
       // into the sand with tread bars across the sole and a lip of pushed-up
@@ -380,7 +384,7 @@ export class WorldView {
   // moves (they move only on simulation ticks, not every frame).
   seenFrom(memo, from, to) {
     if (memo.sx !== from.x || memo.sz !== from.z || memo.tx !== to.x || memo.tz !== to.z) {
-      memo.sx = from.x; memo.sz = from.z; memo.tx = to.x; memo.tz = to.z; memo.seen = this.ground.sightClear(from.x, from.z, to.x, to.z);
+      memo.sx = from.x; memo.sz = from.z; memo.tx = to.x; memo.tz = to.z; memo.seen = this.ground.sightClear(from.x, from.z, to.x, to.z, from.below ? this.ground.drawnHeightAt(from.x, from.z) : undefined);
     }
     return memo.seen;
   }
@@ -1070,7 +1074,7 @@ export class WorldView {
     // A shot stopped by a hex shield: a small crackle where it would have landed.
     if (e.type === 'hexBlock') this.fx.electric(e.x, .8, e.z, .45);
     if (e.type.startsWith('hex')) { this.electric.event(e); if (e.type === 'hexPulse') { this.shake = Math.max(this.shake, .2); this.fxLight.color.set('#b8ecff'); this.fxLight.position.set(e.nodes[0].originX, 1.3 + this.gy(e.nodes[0].originX, e.nodes[0].originZ), e.nodes[0].originZ); this.fxLightLevel = 35; } }
-    if (e.type === 'dodge') {
+    if (e.type === 'dodge' && !(hilly(this) && this.ground.waterAt(e.x, e.z) > this.ground.drawnHeightAt(e.x, e.z) + .03)) {
       this.burst(e.x, e.z, 12 * (FOOTFALL_PARTICLES[this.qualityName] ?? 1), 'dust', this.kickedDustColor(e.x, e.z));
       const p = this.lastSim?.player;
       this.fx.grit(e.x, e.z, this.kickedDustColor(e.x, e.z), p?.dodgeX ?? 0, p?.dodgeZ ?? 0, 3);
@@ -1325,6 +1329,43 @@ export class WorldView {
     if (b.kit.kind === this.blastKitKind && this.blastKits.length < 8) this.blastKits.push(b.kit); else this.freeBlastKit(b.kit);
   }
 
+  // Hills: a volley beam's core or halo as a tube of `radius` along the
+  // ground from its start to its end (.72 over the ground, 16 pieces), its
+  // own geometry (made the first time; the mesh sits at the origin).
+  beamTube(b, mesh, radius) {
+    const RINGS = 17, SIDES = 6;
+    if (!b.tube) {
+      b.tube = true;
+      for (const m of [b.core, b.halo]) {
+        const geometry = new THREE.BufferGeometry(), index = [];
+        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(RINGS * SIDES * 3), 3));
+        for (let i = 0; i < RINGS - 1; i++) for (let j = 0; j < SIDES; j++) {
+          const a = i * SIDES + j, c = i * SIDES + (j + 1) % SIDES, d = a + SIDES, e = c + SIDES;
+          index.push(a, d, c, c, d, e);
+        }
+        geometry.setIndex(index); m.geometry = geometry; m.frustumCulled = false;
+        m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.set(1, 1, 1);
+      }
+    }
+    const line = this.tubeLine ||= new Float32Array(RINGS * 3), T = this.tubeT ||= new THREE.Vector3(), N1 = this.tubeN1 ||= new THREE.Vector3(), N2 = this.tubeN2 ||= new THREE.Vector3();
+    for (let i = 0; i < RINGS; i++) {
+      const t = i / (RINGS - 1), x = lerp(b.startX, b.endX, t), z = lerp(b.startZ, b.endZ, t);
+      line[i * 3] = x; line[i * 3 + 1] = .72 + this.gy(x, z); line[i * 3 + 2] = z;
+    }
+    const positions = mesh.geometry.attributes.position, flat = Math.hypot(b.endX - b.startX, b.endZ - b.startZ) < 1e-4;
+    for (let i = 0; i < RINGS; i++) {
+      const p = Math.max(0, i - 1) * 3, q = Math.min(RINGS - 1, i + 1) * 3;
+      T.set(line[q] - line[p], line[q + 1] - line[p + 1], line[q + 2] - line[p + 2]);
+      if (flat || T.lengthSq() < 1e-10) T.set(1, 0, 0);
+      T.normalize(); N1.crossVectors(T, UP); if (N1.lengthSq() < 1e-8) N1.set(0, 0, 1); N1.normalize(); N2.crossVectors(N1, T).normalize();
+      for (let j = 0; j < SIDES; j++) {
+        const a = j / SIDES * Math.PI * 2, c = Math.cos(a) * radius, d = Math.sin(a) * radius;
+        positions.setXYZ(i * SIDES + j, line[i * 3] + N1.x * c + N2.x * d, line[i * 3 + 1] + N1.y * c + N2.y * d, line[i * 3 + 2] + N1.z * c + N2.z * d);
+      }
+    }
+    positions.needsUpdate = true; mesh.geometry.computeBoundingSphere();
+  }
+
   updateBeams(sim, dt) {
     // Indexed once instead of a linear scan per beam: a twelve-orb volley made
     // this O(beams x shots), a hundred-odd comparisons a frame for nothing.
@@ -1335,6 +1376,7 @@ export class WorldView {
       if (b.finished) b.age += dt;
       if (b.age > .62) {
         b.core.removeFromParent(); b.halo.removeFromParent(); b.core.material.dispose(); b.halo.material.dispose();
+        if (b.tube) { b.core.geometry.dispose(); b.halo.geometry.dispose(); }
         b.arc.removeFromParent(); b.arc.geometry.dispose(); b.arc.material.dispose(); this.beams.delete(id); continue;
       }
       // Scratch vectors: one per beam per frame otherwise.
@@ -1352,6 +1394,16 @@ export class WorldView {
         arcPoints.setXYZ(i, ax, .74 + offset * .45 + this.gy(ax, az), az);
       }
       arcPoints.needsUpdate = true; b.arc.material.opacity = Math.max(0, opacity * .8); b.arc.visible = length > .05;
+      // Hills: the core and halo bend over the ground as the arc does (one
+      // straight beam cut through any rise between the orb and where it
+      // flew, owner 2026-09-26).
+      if (hilly(this)) {
+        for (const [mesh, scale] of [[b.core, 1], [b.halo, this.qualityName === 'extreme' ? 11 : isDemanding(this.qualityName) ? 9 : 5]]) {
+          this.beamTube(b, mesh, b.width * scale);
+          mesh.material.opacity = Math.max(0, opacity * (scale === 1 ? .98 : .12));
+        }
+        continue;
+      }
       for (const [mesh, scale] of [[b.core, 1], [b.halo, this.qualityName === 'extreme' ? 11 : isDemanding(this.qualityName) ? 9 : 5]]) {
         mesh.position.set((b.startX + b.endX) / 2, .72 + (y0 + y1) / 2, (b.startZ + b.endZ) / 2);
         if (length > .0001) mesh.quaternion.setFromUnitVectors(UP, BEAM_DIR.copy(delta).normalize());
@@ -1370,7 +1422,19 @@ export class WorldView {
     if (this.qualityName === 'extreme') tickExtremeSurfaces(elapsed);
     const p = sim.player, speed = Math.hypot(p.vx, p.vz);
     const renderX = lerp(previousPlayer.x, p.x, alpha), renderZ = lerp(previousPlayer.z, p.z, alpha);
-    this.player.position.set(renderX, this.gy(renderX, renderZ), renderZ);
+    // (Hills: wading under a deck the player stands on the ground below it;
+    // stepping off a deck into the water it drops, and stepping up onto one
+    // it rises, quickly but not in one frame. The drawn position trails the simulation's by up to a tick, so
+    // `below` a tick ago still counts while it is inside the deck: wading out
+    // from under one does not pop up onto it for a frame, owner 2026-09-26.)
+    { const g = this.ground, under = this.playerUnder = !!(sim.player.below || (previousPlayer.below && g.deckAt(renderX, renderZ) >= 0));
+      const want = under ? g.drawnHeightAt(renderX, renderZ) : this.gy(renderX, renderZ);
+      // (In the stream, under a deck too: no dust, grit or footprints.)
+      this.playerWet = !g.flat && g.waterDepthAt(renderX, renderZ, want) > .03;
+      this.playerY = this.playerY === undefined || this.cameraCut || (want >= this.playerY - .25 && want <= this.playerY + .2) ? want : want > this.playerY ? Math.min(want, this.playerY + 8 * dt) : Math.max(want, this.playerY - 9 * dt);
+      this.player.position.set(renderX, this.playerY, renderZ); }
+    // (A deck the player has waded in under turns see-through for them.)
+    updateCrossingDecks(this, sim, dt);
     // Dev "remove my player" hides the body (the death view hides it too, so
     // only give it back when no death is playing).
     // Online, a player on the weapon menu (or down after their death has
@@ -1400,7 +1464,7 @@ export class WorldView {
       const ud = this.player.userData, yaw = this.player.rotation.y, al = Math.hypot(p.aimX, p.aimZ) || 1;
       const tipX = renderX + p.aimX / al * .95, tipZ = renderZ + p.aimZ / al * .95;
       this.layFlat(ud.ring, renderX, renderZ, yaw);
-      if (ud.pointer) { this.layFlat(ud.pointer, tipX, tipZ, yaw); ud.pointer.position.y = .08 + this.gy(tipX, tipZ) - this.player.position.y; }
+      if (ud.pointer) { this.layFlat(ud.pointer, tipX, tipZ, yaw); ud.pointer.position.y = .08 + (this.playerUnder ? this.ground.drawnHeightAt(tipX, tipZ) : this.gy(tipX, tipZ)) - this.player.position.y; }
     }
     const body = this.player.userData.body;
     const dodge = p.dodgeRemaining > 0 ? Math.sin(Math.PI * (1 - p.dodgeRemaining / RULES.dodgeDuration)) : 0;
@@ -1436,9 +1500,13 @@ export class WorldView {
     this.cameraHeight = deathCamera?deathCamera.height:lerp(this.cameraHeight, cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT, cut ? 1 : 1 - Math.exp(-5.7 * dt));
     }
     // Hills: the camera rides the ground under what it follows, smoothed
-    // (about 4/s) so it glides over bumps instead of bobbing on them.
+    // (about 4/s) so it glides over bumps instead of bobbing on them. Over a
+    // deck it rides the ground under it unless you are up on that deck (the
+    // focus trails you: wading out from under a bridge, or stepping off one,
+    // it stays down with you).
     if (hilly(this)) {
-      const want = cameraRoom && !cameraRoom.followCamera && !pick && !deathCamera ? cameraRoom.baseY || 0 : this.gy(this.focus.x, this.focus.z);
+      const g = this.ground, underDeck = !pick && !deathCamera && g.deckAt(this.focus.x, this.focus.z) >= 0 && (this.playerUnder || g.deckAt(renderX, renderZ) < 0);
+      const want = cameraRoom && !cameraRoom.followCamera && !pick && !deathCamera ? cameraRoom.baseY || 0 : underDeck ? g.drawnHeightAt(this.focus.x, this.focus.z) : this.gy(this.focus.x, this.focus.z);
       this.focus.y = cut ? want : lerp(this.focus.y, want, 1 - Math.exp(-4 * dt));
     }
     this.kick.multiplyScalar(Math.exp(-15 * dt)); this.shake *= Math.exp(-this.shakeDecay * dt);
@@ -1613,7 +1681,7 @@ export class WorldView {
     for (const [id, g] of this.shots) if (!present.has(id)) { this.scene.remove(g); g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); this.shots.delete(id); }
     this.updateBeams(sim, fdt); this.fxLightLevel *= Math.exp(-12 * dt);
     const dashing = p.dodgeRemaining > 0;
-    if (active && speed > 1) {
+    if (active && speed > 1 && !this.playerWet) {
       this.stepClock += dt;
       if (this.stepClock > .085) {
         const heading = speed > 1e-6 ? [p.vx / speed, p.vz / speed] : [0, 0];
@@ -1625,8 +1693,8 @@ export class WorldView {
     }
     // Sampled every frame of the dodge, so the streak follows the path actually
     // taken and ends where the player ended, wall slide included.
-    if (active && dashing) this.dustTrail.dash(renderX, renderZ, this.kickedDustColor(p.x, p.z), dt, p.dodgeX, p.dodgeZ);
-    if (active && this.wasDashing && !dashing) this.dustTrail.land(renderX, renderZ, this.kickedDustColor(p.x, p.z), p.dodgeX, p.dodgeZ);
+    if (active && dashing && !this.playerWet) this.dustTrail.dash(renderX, renderZ, this.kickedDustColor(p.x, p.z), dt, p.dodgeX, p.dodgeZ);
+    if (active && this.wasDashing && !dashing && !this.playerWet) this.dustTrail.land(renderX, renderZ, this.kickedDustColor(p.x, p.z), p.dodgeX, p.dodgeZ);
     this.wasDashing = dashing;
     this.dustTrail.update(dt);
     if (active) { this.fx.clearZone.value.set(renderX, renderZ); this.updateDetailFX(sim, fdt); this.fx.update(fdt); }
@@ -1643,7 +1711,7 @@ export class WorldView {
     // Hills: anyone the ground hides from you (sim.sees' rule) is not drawn,
     // on every preset (it is gameplay); your own side always is.
     const ground = this.ground, sees = !hilly(this) ? indoors : p => (!indoors || indoors(p)) &&
-      (p.ally || (this.teamRing && p.ring === this.teamRing) || ground.sightClear(sim.player.x, sim.player.z, p.x, p.z));
+      (p.ally || (this.teamRing && p.ring === this.teamRing) || ground.sightClear(sim.player.x, sim.player.z, p.x, p.z, sim.player.below ? ground.drawnHeightAt(sim.player.x, sim.player.z) : undefined, p.below ? ground.drawnHeightAt(p.x, p.z) : undefined));
     if (this.remotePlayers?.length || this.remote) (this.remote ||= new RemotePlayers(this)).update(this.remotePlayers || [], elapsed, fdt, this.bloodSources || [], sees);
     if (this.blobShadows?.enabled) {
       const movers = [];
@@ -1811,7 +1879,7 @@ export class WorldView {
         const angle = Math.atan2(sim.player.vx, sim.player.vz), offset = .15 * this.footSide, fx = x + Math.cos(angle) * offset, fz = z - Math.sin(angle) * offset;
         // Prints in the dirt outdoors; a bloody boot prints anywhere, on the
         // very same step, the same size and shape (blood-wading.js).
-        if (!sim.roofId) { this.footprints.push({ x: fx, z: fz, angle, age: 0 }); if (this.footprints.length > 160) this.footprints.shift(); }
+        if (!sim.roofId && !this.playerWet) { this.footprints.push({ x: fx, z: fz, angle, age: 0 }); if (this.footprints.length > 160) this.footprints.shift(); }
         const wet = this.wading?.takePrint() || 0;
         if (wet) (this.drops ||= new BloodDrops(this)).print(fx, fz, angle, wet, this.map);
       }
@@ -1833,7 +1901,7 @@ export class WorldView {
     const fx = this.fx; if (!fx.on) return;
     const p = sim.player, speed = Math.hypot(p.vx, p.vz);
     this.gritClock = (this.gritClock ?? 0) - dt;
-    if (speed > 1 && this.gritClock <= 0) {
+    if (speed > 1 && this.gritClock <= 0 && !this.playerWet) {
       this.gritClock = p.dodgeRemaining > 0 ? .03 : .17;
       fx.grit(p.x, p.z, this.kickedDustColor(p.x, p.z), p.vx / speed, p.vz / speed, p.dodgeRemaining > 0 ? 1.4 : .5);
     }
@@ -1926,10 +1994,11 @@ export class WorldView {
     this.cropView.reset();
     this.electric.clear(); this.surfaceMarks.clear(); this.dustTrail.clear(); this.birds.clear();
     this.footprints.length = 0; this.footMesh.count = 0; this.footDistance = 0; this.lastFootPosition = { ...sim.player };
+    this.playerY = undefined; this.playerUnder = false;
     this.focus.set(sim.player.x, this.gy(sim.player.x, sim.player.z), sim.player.z); this.kick.set(0, 0, 0); this.shake = 0; this.particles.length = 0;
     for (const g of this.shots.values()) { this.scene.remove(g); g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); } this.shots.clear();
     for (const r of this.rings) { r.mesh.removeFromParent(); r.mesh.geometry.dispose(); r.mesh.material.dispose(); } this.rings.length = 0;
-    for (const b of this.beams.values()) { b.core.removeFromParent(); b.halo.removeFromParent(); b.core.material.dispose(); b.halo.material.dispose(); b.arc.removeFromParent(); b.arc.geometry.dispose(); b.arc.material.dispose(); } this.beams.clear();
+    for (const b of this.beams.values()) { b.core.removeFromParent(); b.halo.removeFromParent(); b.core.material.dispose(); b.halo.material.dispose(); if (b.tube) { b.core.geometry.dispose(); b.halo.geometry.dispose(); } b.arc.removeFromParent(); b.arc.geometry.dispose(); b.arc.material.dispose(); } this.beams.clear();
     this.fxLightLevel = 0;
     for (const [id, g] of this.props) {
       if (g.userData.popIn !== undefined) { g.scale.copy(g.userData.baseScale); delete g.userData.popIn; }

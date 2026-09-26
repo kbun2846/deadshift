@@ -48,8 +48,21 @@ export const RULES = Object.freeze({
 // up to `uphill` slower straight up a `fullGrade` (30%) slope and up to
 // `downhill` faster straight down one; dodges, knockback and launches are not
 // changed by slopes. Orbs float `orbHeight` above the ground and stop against a
-// rise steeper than `orbRise` (m of rise per m of travel).
-export const TERRAIN = Object.freeze({ eye: 1.35, body: .9, crest: .5, uphill: .07, downhill: .04, fullGrade: .3, orbHeight: .72, orbRise: .8 });
+// rise steeper than `orbRise` (m of rise per m of travel). Rounds (rifle,
+// pellets, Scatter's shells, Static's spray) fly `roundHeight` over a line
+// that follows the ground, climbing and dropping at most `roundClimb` per
+// metre, and end where the ground rises into them (owner, 2026-09-26: they
+// stay over the ground wherever the height changes gently); one hits a body
+// it passes between the body's feet and `bodyTop` above them.
+export const TERRAIN = Object.freeze({ eye: 1.35, body: .9, crest: .5, uphill: .07, downhill: .04, fullGrade: .3, orbHeight: .72, orbRise: .8, roundHeight: .74, roundClimb: 1, bodyTop: 1.9 });
+// Wading a stream (hills maps; owner, 2026-09-26): water `depth` deep or more
+// slows walking by `slow`; the current makes it up to `current` quicker going
+// with it and as much slower going against it (across: just the slowing), all
+// in proportion to the depth; a dodge in water goes `dodge` shorter and
+// stamina refills `recharge` slower. `step`: a body walks onto a deck (a
+// bridge, a log) only from ground within this of its top; from lower it wades
+// in underneath.
+export const WADE = Object.freeze({ depth: .5, slow: .22, current: .3, dodge: .35, recharge: .45, step: .45 });
 
 // Static's orb volleys (its main fire, 1 to 12 orbs: impacts and blast) hit
 // 1.75x as hard as they used to (owner's call, v0.83); the hex and the stream

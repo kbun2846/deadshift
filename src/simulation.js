@@ -15,7 +15,7 @@ import { assistAim, clearAssist } from './aim-assist.js';
 import { AIM_ASSIST } from './config/gameplay.js';
 const AIM_ASSIST_RANGE = Math.max(...Object.values(AIM_ASSIST).map(l => l.maxRange));
 // Tunable numbers live in config/gameplay.js; re-exported so existing imports keep working.
-import { ORB_LAUNCH, RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, VOLLEY_BOOST, MOUSE_VOLLEY_ASSIST, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_ZAP_BONUS, HEX_DAMAGE_MULTIPLIER, boostedHexDamage, TERRAIN } from './config/gameplay.js';
+import { ORB_LAUNCH, RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, VOLLEY_BOOST, MOUSE_VOLLEY_ASSIST, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_ZAP_BONUS, HEX_DAMAGE_MULTIPLIER, boostedHexDamage, TERRAIN, WADE } from './config/gameplay.js';
 import { usesTrigger } from './items.js';
 
 // Each trigger weapon's own tick (fire, reload, its extras). Static's orbs,
@@ -191,7 +191,7 @@ export class Simulation {
   get seeds() { return this.shots.filter(s => !s.launched); }
   // The parked orbs a launch commands: on hills only those the caster can see
   // (a retaining wall hides the ledge above them); every one on a flat map.
-  launchableSeeds() { const p = this.player; return this.ground.flat ? this.seeds : this.seeds.filter(s => this.ground.sightClear(p.x, p.z, s.x, s.z)); }
+  launchableSeeds() { const p = this.player; return this.ground.flat ? this.seeds : this.seeds.filter(s => this.ground.sightClear(p.x, p.z, s.x, s.z, this.ownGround())); }
   // One dodge per weapon; Ballast gets two (owner's call, v0.83).
   get maxStamina(){return this.weapon==='shotgun'?SHOTGUN.dodges:RULES.maxStamina;}
   // Nominal has no self-movement of its own, so holding a position is the one
@@ -230,6 +230,42 @@ export class Simulation {
     const grade = (g.x * dx + g.z * dz) / length, share = Math.min(1, Math.abs(grade) / TERRAIN.fullGrade);
     return grade > 0 ? 1 - TERRAIN.uphill * share : 1 + TERRAIN.downhill * share;
   }
+  // Hills: the ground a body stands on: a deck's top where there is one,
+  // unless it waded in underneath (below), then the ground under the deck.
+  standY(p = this.player) { return p.below ? this.ground.drawnHeightAt(p.x, p.z) : this.ground.heightAt(p.x, p.z); }
+  // The player's own ground for a sight line or a round's start, when it is
+  // not the ground at its feet as heightAt has it (undefined: that one).
+  ownGround() { return this.player.below ? this.standY() : undefined; }
+  // How far into a stream the player stands, 0..1 of WADE.depth (0 on dry
+  // ground, on a deck, and on every flat map).
+  wadeShare(p = this.player) {
+   if (this.ground.flat) return 0;
+   const depth = this.ground.waterDepthAt(p.x, p.z, this.standY(p));
+   return depth > 0 ? Math.min(1, depth / WADE.depth) : 0;
+  }
+  // Walking speed in water, for a step in direction (dx, dz): slower the
+  // deeper it is, quicker with the current, slower against it (owner,
+  // 2026-09-26: the stream runs right to left).
+  wadeFactor(dx, dz) {
+   const share = this.wadeShare(); if (!share) return 1;
+   const flow = this.ground.flowAt(this.player.x, this.player.z, this.flow ||= { x: 0, z: 0 }), length = Math.hypot(dx, dz);
+   const along = length > 1e-9 ? (flow.x * dx + flow.z * dz) / length : 0;
+   return (1 - WADE.slow * share) * (1 + WADE.current * along * share);
+  }
+  // Decks (a bridge, a log): a body walks onto one only from ground within
+  // WADE.step of its top (its ends, on the banks); from the water it wades in
+  // underneath and stays under while inside the deck's outline, until the
+  // ground under it rises to the deck's top. Stepping off a deck's side drops
+  // it into the stream. Only on maps with decks (p.below is never set on
+  // any other).
+  updateStance(p, previousX, previousZ) {
+   const g = this.ground; if (g.flat || !g.decks.length) return;
+   const k = g.deckAt(p.x, p.z);
+   if (k < 0) { if (p.below) p.below = false; return; }
+   const top = g.decks[k].h;
+   if (g.deckAt(previousX, previousZ) !== k) p.below = (p.below ? g.drawnHeightAt(previousX, previousZ) : g.heightAt(previousX, previousZ)) < top - WADE.step;
+   else if (p.below && g.drawnHeightAt(p.x, p.z) >= top - WADE.step) p.below = false;
+  }
   get playerHitRadius() { return this.player.dodgeRemaining > 0 ? RULES.dodgeHitRadius : RULES.radius; }
 
   canAimAt(x, z) {
@@ -262,7 +298,7 @@ export class Simulation {
   // on hills, not hidden by the ground (TERRAIN: mutual, eye to body).
   // canSeeEntity alone stays what the views use for walls and rooms.
   sees(x, z, radius = .5, includeInterior = true) {
-    return this.canSeeEntity(x, z, radius, includeInterior) && (this.ground.flat || this.ground.sightClear(this.player.x, this.player.z, x, z));
+    return this.canSeeEntity(x, z, radius, includeInterior) && (this.ground.flat || this.ground.sightClear(this.player.x, this.player.z, x, z, this.ownGround()));
   }
 
   canSeeEntity(x, z, radius=.5, includeInterior=true) {
@@ -322,13 +358,15 @@ export class Simulation {
     const wasDodging = p.dodgeRemaining > 0;
     p.dodgeRemaining = Math.max(0, p.dodgeRemaining - dt);
     const staminaWaiting = Math.min(dt, p.staminaWait); p.staminaWait -= staminaWaiting;
-    p.stamina = Math.min(this.maxStamina, p.stamina + (dt - staminaWaiting) * this.staminaRate / RULES.staminaRecharge);
+    // (Hills: in a stream stamina refills slower.)
+    const wading = this.ground.flat ? 0 : this.wadeShare(p);
+    p.stamina = Math.min(this.maxStamina, p.stamina + (dt - staminaWaiting) * this.staminaRate / RULES.staminaRecharge * (wading ? 1 - WADE.recharge * wading : 1));
     const length = Math.hypot(input.moveX || 0, input.moveZ || 0);
     const ix = length ? (input.moveX || 0) / Math.max(1, length) : 0;
     const iz = length ? (input.moveZ || 0) / Math.max(1, length) : 0;
     let moveSpeed=RULES.speed*(input.aiming?RIFLE.aimMoveMultiplier:1)*(this.surge?.active?SURGE.speed:1);
     // Hills: walking up a slope is slower, down one a little quicker.
-    if (!this.ground.flat && length) moveSpeed *= this.slopeFactor(ix, iz);
+    if (!this.ground.flat && length) moveSpeed *= this.slopeFactor(ix, iz) * this.wadeFactor(ix, iz);
     if (wasDodging && !p.dodgeRemaining) { p.vx = ix * moveSpeed; p.vz = iz * moveSpeed; }
     // A dodge pressed a moment too early (still mid-dodge, or a charge just
     // short) is held for RULES.dodgeBuffer and happens the instant it can,
@@ -356,7 +394,9 @@ export class Simulation {
     p.vz += (iz * moveSpeed * (this.dev.speed||1) - p.aimZ * recoil - p.vz) * smooth;
     if (p.dodgeRemaining > 0) {
       const age = RULES.dodgeDuration - p.dodgeRemaining, end = Math.min(RULES.dodgeDuration, age + dt);
-      const distance = RULES.dodgeDistance / RULES.dodgeDuration * ((end - age) + .4 * RULES.dodgeDuration / Math.PI * (Math.sin(Math.PI * end / RULES.dodgeDuration) - Math.sin(Math.PI * age / RULES.dodgeDuration)));
+      let distance = RULES.dodgeDistance / RULES.dodgeDuration * ((end - age) + .4 * RULES.dodgeDuration / Math.PI * (Math.sin(Math.PI * end / RULES.dodgeDuration) - Math.sin(Math.PI * age / RULES.dodgeDuration)));
+      // (Hills: a dodge through water goes shorter.)
+      if (wading) distance *= 1 - WADE.dodge * wading;
       p.vx = p.dodgeX * distance / dt; p.vz = p.dodgeZ * distance / dt;
     }
     // Aim assist (aim-assist.js) bends the asked-for direction toward a locked
@@ -444,7 +484,9 @@ export class Simulation {
       // (It ends where it is, as against a wall: nothing along the way can
       // come nearer than 0.)
       if (!this.ground.flat) {
-        const run = Math.hypot(nx - s.x, nz - s.z), rise = this.ground.heightAt(nx, nz) - this.ground.heightAt(s.x, s.z);
+        // (The ground itself: an orb floats over a deck's water and under
+        // it, as a wading body does; decks are not walls to it.)
+        const run = Math.hypot(nx - s.x, nz - s.z), rise = this.ground.drawnHeightAt(nx, nz) - this.ground.drawnHeightAt(s.x, s.z);
         if (run > 1e-6 && rise > TERRAIN.orbRise * run) first = 0;
         // A parked orb drifting out stops at a ledge's lip (as steep down as a
         // wall is up) rather than dropping out of its caster's sight.
@@ -635,6 +677,9 @@ export class Simulation {
       }
       // A wall correction must not push the caster through the electric boundary.
       if (!this.withinHex(p.x, p.z)||!isPlayable(this.map,p.x,p.z,r)) { p.x = previousX; p.z = previousZ; p.vx = p.vz = 0; }
+      // Hills: on a deck or under it, judged where this substep really ended
+      // (after every push and correction).
+      this.updateStance(p, previousX, previousZ);
     }
     p.x = Math.max(-this.map.width / 2 + r, Math.min(this.map.width / 2 - r, p.x));
     p.z = Math.max(-this.map.depth / 2 + r, Math.min(this.map.depth / 2 - r, p.z));
@@ -702,7 +747,7 @@ export class Simulation {
       // never lifts a parked orb over a retaining wall's face.)
       const blocked = this.colliders.some(b => !b.playerOnly && segmentBox(orb.x, orb.z, x, z, b, .09) !== null) ||
         this.targets.some(t => t.hp > 0 && segmentCircle(orb.x, orb.z, x, z, t.x, t.z, .66) !== null) ||
-        (!this.ground.flat && this.ground.heightAt(x, z) - this.ground.heightAt(orb.x, orb.z) > TERRAIN.orbRise * Math.hypot(dx, dz));
+        (!this.ground.flat && this.ground.drawnHeightAt(x, z) - this.ground.drawnHeightAt(orb.x, orb.z) > TERRAIN.orbRise * Math.hypot(dx, dz));
       if (blocked || Math.abs(x) > this.map.width / 2 || Math.abs(z) > this.map.depth / 2) {
         orb.dead = true; this.events.push({ type: 'wall', x: orb.x, z: orb.z, launched: false });
       } else { orb.x = x; orb.z = z; }
@@ -724,7 +769,7 @@ export class Simulation {
     let x = p.x + p.aimX * .8, z = p.z + p.aimZ * .8;
     // Hills: a spot up a rise steeper than an orb climbs (a retaining wall's
     // face) is behind a wall, as far as an orb is concerned.
-    const rises = (sx, sz) => !this.ground.flat && this.ground.heightAt(sx, sz) - this.ground.heightAt(p.x, p.z) > TERRAIN.orbRise * Math.hypot(sx - p.x, sz - p.z);
+    const rises = (sx, sz) => !this.ground.flat && this.ground.drawnHeightAt(sx, sz) - this.standY(p) > TERRAIN.orbRise * Math.hypot(sx - p.x, sz - p.z);
     // Alternate muzzle lanes when rapid placement would overlap a drifting orb.
     const seeds = this.seeds;
     for (const side of [0, .32, -.32, .64, -.64, .96, -.96]) {
@@ -829,7 +874,7 @@ export class Simulation {
         if (Math.abs(toX * dirZ - toZ * dirX) > RULES.interceptCorridor) continue;
         if (this.colliders.some(b => !b.playerOnly && !b.destructible && segmentBox(p.x, p.z, candidate.x, candidate.z, b) !== null)) continue;
         // (Hills: nor over a crest; the refocus is only for a body the caster can see.)
-        if (!this.ground.flat && !this.ground.sightClear(p.x, p.z, candidate.x, candidate.z)) continue;
+        if (!this.ground.flat && !this.ground.sightClear(p.x, p.z, candidate.x, candidate.z, this.ownGround())) continue;
         let earliest = Infinity, crossing = 0;
         for (const seed of seeds) {
           const t = segmentCircle(seed.x, seed.z, travel.x, travel.z, candidate.x, candidate.z, .66);
@@ -922,7 +967,7 @@ export class Simulation {
       const dx = victim.x - origin.x, dz = victim.z - origin.z, distance = Math.hypot(dx, dz);
       if (distance > RULES.sprayRange || blocked(p, origin) || blocked(origin, victim, propId)) return 0;
       // Hills: the stream reaches only what its caster can see.
-      if (!ground.flat && !ground.sightClear(p.x, p.z, victim.x, victim.z)) return 0;
+      if (!ground.flat && !ground.sightClear(p.x, p.z, victim.x, victim.z, this.ownGround())) return 0;
       const dot = distance > 1e-6 ? (dx * p.aimX + dz * p.aimZ) / distance : 1;
       if (dot < Math.cos(RULES.sprayOuterAngle)) return 0;
       const dps = dot >= Math.cos(RULES.sprayInnerAngle) ? RULES.sprayInnerDPS : RULES.sprayOuterDPS;
@@ -967,8 +1012,9 @@ export class Simulation {
           const hit = segmentBox(origin.x, origin.z, end.x, end.z, box);
           if (hit !== null) t = Math.min(t, hit);
         }
-        // Hills: a lane runs into the ground where its caster stops seeing.
-        if (!ground.flat && range > 1e-6 && t > 0) t = Math.min(t, ground.roundStop(p.x, p.z, origin.x, origin.z, (end.x - origin.x) / range, (end.z - origin.z) / range, range) / range);
+        // Hills: a lane flies over the ground as a round does, and ends
+        // where the ground stops it (heightfield.js flight).
+        if (!ground.flat && range > 1e-6 && t > 0) t = Math.min(t, ground.flight(origin.x, origin.z, (end.x - origin.x) / range, (end.z - origin.z) / range, range, this.ownGround() ?? ground.heightAt(p.x, p.z), Math.hypot(origin.x - p.x, origin.z - p.z)).stop / range);
         paths.push({ energy: Math.abs(lanes[i]) < .25 ? 1 : .25, a: origin, b: { x: origin.x + (end.x - origin.x) * t, z: origin.z + (end.z - origin.z) * t } });
       }
       this.events.push({ type: 'sprayArc', paths, firing: firing > 0, x: origin.x, z: origin.z });

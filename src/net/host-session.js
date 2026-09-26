@@ -374,5 +374,7 @@ export function blend(id, name, a, b, alpha) {
   id, name,
   x: a.x + (b.x - a.x) * alpha, z: a.z + (b.z - a.z) * alpha,
   vx: b.vx, vz: b.vz, aimX: Math.cos(angle), aimZ: Math.sin(angle), dodgeRemaining: b.dodgeRemaining || 0,
+  // (Hills: wading under a deck.)
+  ...(b.below ? { below: true } : {}),
  };
 }

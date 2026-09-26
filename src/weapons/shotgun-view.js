@@ -6,7 +6,7 @@ import {SHOTGUN} from './shotgun.js';
 import {segmentBox} from '../simulation.js';
 import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { NO_FX } from '../effects/effects-detail.js';
-import { groundY, hilly, glide, roundGlide } from '../render/ground-lift.js';
+import { groundY, hilly, glide, roundFlight } from '../render/ground-lift.js';
 const SHELL_SMOKE=new THREE.Color('#c9c0ae'),PELLET_TRAIL=new THREE.Color('#ffe6b0');
 const SHELL_REST=.058;
 export class ShotgunView{
@@ -94,7 +94,7 @@ export class ShotgunView{
   // screen, so the shot reads as going somewhere.
   const now=new Set(sim.shotgunPellets);
   // (Hills: a ghost carries on gliding from where its pellet was drawn.)
-  for(const b of this.livePellets)if(!now.has(b)&&b.travel>=b.range-1e-6&&this.ghosts.length<96){const s=this.glides.get(b);this.ghosts.push({x:b.x,z:b.z,dx:b.dx,dz:b.dz,left:34,glide:s&&{...s}});}
+  for(const b of this.livePellets)if(!now.has(b)&&b.travel>=b.range-1e-6&&this.ghosts.length<96){const f=b.flight||this.glides.get(b);this.ghosts.push({x:b.x,z:b.z,dx:b.dx,dz:b.dz,left:34,glide:f&&{x:b.x,z:b.z,h:this.view.ground.flightAt(f,b.travel),rise:0}});}
   this.livePellets=now;
   let ghostCount=0;
   this.ghosts=this.ghosts.filter(g=>{
@@ -111,8 +111,8 @@ export class ShotgunView{
    // Each pellet leaves a hot streak back along the way it came.
    const last=this.lastPellets.get(b);this.lastPellets.set(b,{x:b.x,z:b.z});
    if(last&&fx.on&&(last.x!==b.x||last.z!==b.z))fx.streak({x:b.x,z:b.z,fromX:last.x,fromZ:last.z,y:.77,life:.07,width:.02,color:PELLET_TRAIL,glow:.8});
-   // Hills: over the ground as rifle rounds are (rifle-view.js), gliding over edges.
-   const under=hills?roundGlide(this.view,this.glides,b,b.x-b.dx*b.travel,b.z-b.dz*b.travel,b.ox!==undefined?groundY(this.view,b.ox,b.oz):groundY(this.view,b.x-b.dx*(b.travel+.9),b.z-b.dz*(b.travel+.9))).h:0;
+   // Hills: on its flight over the ground, as rifle rounds are (rifle-view.js).
+   const under=hills?this.view.ground.flightAt(roundFlight(this.view,this.glides,b,b.x-b.dx*b.travel,b.z-b.dz*b.travel,b.oy??(b.ox!==undefined?groundY(this.view,b.ox,b.oz):groundY(this.view,b.x-b.dx*(b.travel+.9),b.z-b.dz*(b.travel+.9))),b.range,.9),b.travel):0;
    if(i>=48||!sim.canSeeEntity(b.x,b.z,.05))continue;this.dummy.position.set(b.x,.77+under,b.z);this.dummy.rotation.set(0,0,0);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();this.pellets.setMatrixAt(i++,this.dummy.matrix);}if(ghostCount&&i<48)for(let k=0;k<ghostCount;k++){const m=new THREE.Matrix4();this.pellets.getMatrixAt(48+k,m);this.pellets.setMatrixAt(i+k,m);}this.pellets.count=i+ghostCount;this.pellets.instanceMatrix.needsUpdate=true;
   let smokeCount=0,sparkCount=0,flameCount=0;this.particles=this.particles.filter(p=>sim.time>=p.born&&sim.time-p.born<p.life);
   for(const p of this.particles){const age=sim.time-p.born,progress=age/p.life;if(!sim.canSeeEntity(p.x,p.z,.1))continue;

@@ -126,13 +126,16 @@ export class DustTrail {
   }
 
   // One footfall: a small puff just behind the player, gone within half a second.
+  // (Hills: none in a stream; the water splashes instead.)
   step(x, z, color, dirX = 0, dirZ = 0) {
+    if (this.ground?.wetAt?.(x, z)) return;
     for (let i = 0, n = this.#count(2); i < n; i++) this.#emit(x, z, color, STEP, -.18, dirX, dirZ);
   }
 
   // Called every frame of a dodge, so the haze samples the path actually taken
   // — through a wall slide or a clipped dash as readily as a clean one.
   dash(x, z, color, dt, dirX = 0, dirZ = 0) {
+    if (this.ground?.wetAt?.(x, z)) return;
     this.dashClock -= dt;
     if (this.dashClock > 0) return;
     this.dashClock += .016;

@@ -159,6 +159,8 @@ export class ClientSession {
   if (error > this.config.snapDistance) { p.x = r.x; p.z = r.z; }
   else if (error > 1e-4) { p.x += dx * this.config.correctionBlend; p.z += dz * this.config.correctionBlend; }
   for (const key of ['vx', 'vz', 'dodgeRemaining', 'dodgeX', 'dodgeZ', 'stamina', 'staminaWait', 'blastVX', 'blastVZ']) p[key] = r[key];
+  // (Hills: under a deck or on it, as the host has it.)
+  if (r.below) p.below = true; else if (p.below) p.below = false;
  }
 
  // Called once per tick with the full local input. Returns what the local

@@ -23,7 +23,9 @@ test('warmth pushes light and haze toward amber without much change in brightnes
 });
 
 test('every shipped map is a bit warmer than the base light, and a map can override any of it', () => {
-  for (const map of [...Object.values(maps), tutorialMap]) {
+  // (A map that sets its own sun and haze colours has its own light: Hollow
+  // Wick's overcast dusk is meant a little cooler.)
+  for (const map of [...Object.values(maps), tutorialMap].filter(m => !m.look?.sun || !m.look?.haze)) {
     const look = mapLook(map);
     assert.ok(warmthOf(look.sun) > warmthOf(BASE_LOOK.sun), `${map.id} sun`);
     assert.ok(warmthOf(look.haze) > warmthOf(BASE_LOOK.haze), `${map.id} haze`);

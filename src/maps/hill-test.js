@@ -9,7 +9,21 @@ const house = (id, x, z, w, d, height, baseY, extra = {}) => ({ ...building(id, 
 
 export const hillTest = {
  id: 'hill-test', name: 'Test Hill', width: 72, depth: 60,
- spawn: { x: 0, z: 6 }, palette: { ground: '#6e6a50', road: '#857a5c' }, look: { warmth: .05 },
+ spawn: { x: 0, z: 6 }, palette: { ground: '#6e6a50', road: '#857a5c' },
+ // A low dusk sun from the west-south-west (about 20 degrees up), as Hollow
+ // Wick's: long hill shade east of every rise (render/map-look.js sunOffset).
+ // Grey-white fog sheets gathering in the hollow, as Hollow Wick's
+ // (render/fog-sheets.js).
+ look: { warmth: .05, sunOffset: { x: -43, y: 17, z: 18 }, fog: { colour: '#c4c7c3', opacity: .34, lowBias: 1 } },
+ // Ground colour layers (render/ground-layers.js): leaf litter by the dead
+ // tree, stubble east of the start, a packed yard at the barn, and the
+ // hollow's floor darker than damp.
+ groundLayers: [
+  { poly: [[-16, -4], [-7, -7], [-2, -1], [-5, 6], [-13, 7], [-17, 3]], colour: ['#8a6a3e', '#7a5a34', '#6e4a2c'], feather: 1.5, mix: .7, noise: .6 },
+  { poly: [[12, 2], [28, 1], [30, 12], [13, 13]], colour: '#8a7a4e', feather: .8, mix: .85, noise: .3 },
+  { poly: [[16, -23], [28, -23], [28, -12], [16, -12]], colour: '#857a5c', feather: .6, mix: .6, noise: .4 },
+ ],
+ terrainLook: { hollow: '#4a4f48', hollowBelow: -.8, hollowDepth: .6 },
  terrain: {
   bounds: [-52, -46, 52, 46],
   base: 0, noise: { cell: 9, amp: .12, seed: 11 },
@@ -44,5 +58,8 @@ export const hillTest = {
   { id: 'flat', x: 6, z: 6 }, { id: 'rise', x: 8, z: -2 }, { id: 'top', x: 14, z: -10 },
   { id: 'hollow', x: 4, z: 20 }, { id: 'plateau', x: -20, z: -15 }, { id: 'moving', x: -8, z: 10, moving: true, travel: 3 },
  ],
+ // Ground detail (world/terrain-details.js): the default layer, with leaves
+ // drifted thick and grass thinned down in the hollow.
+ groundDetail: { regions: [{ poly: [[-16, 15], [26, 15], [26, 25], [-16, 25]], kinds: { leaves: 3, tufts: .5 } }] },
  zones: [], scenerySeed: 511,
 };

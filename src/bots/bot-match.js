@@ -193,7 +193,7 @@ export class BotMatch {
   for (const bot of this.living()) {
    const foe = hostile(bot.team, YOU_TEAM); if (!foe && !this.friendlyFire) continue;
    const p = bot.sim.player;
-   const proxy = { id: bot.id, kind: 'robot', team: bot.team, friendly: !foe, share: foe ? 1 : this.friendlyFire, x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false };
+   const proxy = { id: bot.id, kind: 'robot', team: bot.team, friendly: !foe, share: foe ? 1 : this.friendlyFire, x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false, ...(p.below ? { below: true } : {}) };
    this.proxies.set(bot.id, { proxy, before: p.hp, bot, scale: 1 });
    main.targets.push(proxy);
   }
@@ -267,12 +267,12 @@ export class BotMatch {
    if (youHere) {
     bodies.push(you);
     if (hostile(bot.team, YOU_TEAM) && !passive) {
-     const proxy = { id: you.id, kind: 'player', team: main.player.team, x: you.x, z: you.z, baseX: you.x, spawnX: you.x, spawnZ: you.z, hp: you.hp, maxHp: you.maxHp, respawn: 0, flash: 0, moving: false };
+     const proxy = { id: you.id, kind: 'player', team: main.player.team, x: you.x, z: you.z, baseX: you.x, spawnX: you.x, spawnZ: you.z, hp: you.hp, maxHp: you.maxHp, respawn: 0, flash: 0, moving: false, ...(you.below ? { below: true } : {}) };
      proxies.set(you.id, { proxy, before: you.hp, you: true });
      enemies.push({ id: you.id, human: true, aspect: this.viewAspect || 0, x: you.x, z: you.z, vx: you.vx, vz: you.vz, hp: you.hp, maxHp: you.maxHp, weapon: main.weapon, aimX: you.aimX, aimZ: you.aimZ, loud: this.loud.has(you.id), reloading: reloading(main) });
     } else if (!hostile(bot.team, YOU_TEAM)) {
      friends.push({ id: you.id, leader: lead === 'human', busy: (this.youHurtBy && this.clock - this.youHurtBy.at < 3) || this.loud.has(you.id), x: you.x, z: you.z, vx: you.vx, vz: you.vz, aimX: you.aimX, aimZ: you.aimZ, hp: you.hp, maxHp: you.maxHp, hurtBy: this.youHurtBy });
-     if (this.friendlyFire) proxies.set(you.id, { proxy: { id: you.id, kind: 'player', team: YOU_TEAM, friendly: true, share: this.friendlyFire, x: you.x, z: you.z, baseX: you.x, spawnX: you.x, spawnZ: you.z, hp: you.hp, maxHp: you.maxHp, respawn: 0, flash: 0, moving: false }, before: you.hp, you: true, scale: 1 });
+     if (this.friendlyFire) proxies.set(you.id, { proxy: { id: you.id, kind: 'player', team: YOU_TEAM, friendly: true, share: this.friendlyFire, x: you.x, z: you.z, baseX: you.x, spawnX: you.x, spawnZ: you.z, hp: you.hp, maxHp: you.maxHp, respawn: 0, flash: 0, moving: false, ...(you.below ? { below: true } : {}) }, before: you.hp, you: true, scale: 1 });
     }
    }
    for (const other of this.living()) {
@@ -281,10 +281,10 @@ export class BotMatch {
     bodies.push(o);
     if (!hostile(bot.team, other.team)) {
      friends.push({ id: other.id, leader: other.id === lead, busy: this.loud.has(other.id) || other.brain.mode === 'engage', x: o.x, z: o.z, vx: o.vx, vz: o.vz, aimX: o.aimX, aimZ: o.aimZ, hp: o.hp, maxHp: o.maxHp });
-     if (this.friendlyFire) proxies.set(other.id, { proxy: { id: other.id, kind: 'robot', team: other.team, friendly: true, share: this.friendlyFire, x: o.x, z: o.z, baseX: o.x, spawnX: o.x, spawnZ: o.z, hp: o.hp, maxHp: o.maxHp, respawn: 0, flash: 0, moving: false }, before: o.hp, bot: other, scale: 1 });
+     if (this.friendlyFire) proxies.set(other.id, { proxy: { id: other.id, kind: 'robot', team: other.team, friendly: true, share: this.friendlyFire, x: o.x, z: o.z, baseX: o.x, spawnX: o.x, spawnZ: o.z, hp: o.hp, maxHp: o.maxHp, respawn: 0, flash: 0, moving: false, ...(o.below ? { below: true } : {}) }, before: o.hp, bot: other, scale: 1 });
      continue;
     }
-    const proxy = { id: other.id, kind: 'robot', team: other.team, x: o.x, z: o.z, baseX: o.x, spawnX: o.x, spawnZ: o.z, hp: o.hp, maxHp: o.maxHp, respawn: 0, flash: 0, moving: false };
+    const proxy = { id: other.id, kind: 'robot', team: other.team, x: o.x, z: o.z, baseX: o.x, spawnX: o.x, spawnZ: o.z, hp: o.hp, maxHp: o.maxHp, respawn: 0, flash: 0, moving: false, ...(o.below ? { below: true } : {}) };
     proxies.set(other.id, { proxy, before: o.hp, bot: other });
     enemies.push({ id: other.id, x: o.x, z: o.z, vx: o.vx, vz: o.vz, hp: o.hp, maxHp: o.maxHp, weapon: other.sim.weapon, aimX: o.aimX, aimZ: o.aimZ, loud: this.loud.has(other.id), reloading: reloading(other.sim) });
    }
@@ -372,7 +372,7 @@ export class BotMatch {
   return this.living().map(b => {
    const p = b.sim.player, prev = b.prev || p;
    return { id: b.id, slot: b.slot, robot: true, ...this.sideOf(b), hp: b.sim.player.hp, maxHp: b.sim.player.maxHp, ally: b.team === YOU_TEAM, x: prev.x + (p.x - prev.x) * alpha, z: prev.z + (p.z - prev.z) * alpha, vx: p.vx, vz: p.vz,
-    aimX: p.aimX, aimZ: p.aimZ, dodgeRemaining: p.dodgeRemaining, weapon: b.sim.weapon };
+    aimX: p.aimX, aimZ: p.aimZ, dodgeRemaining: p.dodgeRemaining, weapon: b.sim.weapon, ...(p.below ? { below: true } : {}) };
   });
  }
 

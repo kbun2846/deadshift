@@ -203,8 +203,10 @@ export function wingOutline(spec) {
 }
 
 export class Birds {
-  constructor(scene, { random = Math.random } = {}) {
-    this.scene = scene; this.random = random; this.flights = []; this.enabled = true;
+  constructor(scene, { random = Math.random, off = false } = {}) {
+    // `off`: a map without these birds (Hollow Wick has crows only, and its
+    // hills reach the heights they fly at).
+    this.scene = scene; this.random = random; this.flights = []; this.off = off; this.enabled = !off; this.lean = { x: .6, z: .45 }; // metres of shadow per metre of height (the view sets the map's: map-look.js sunLean)
     this.schedule = new FlightSchedule(BIRD_INTERVAL, random);
     this.templates = new Map(); this.materials = new Map(); this.solid = true; this.rich = false;
     this.shadowGeometry = null; this.shadowMaterial = null;
@@ -214,7 +216,7 @@ export class Birds {
   setQuality(name) {
     // A crossing is a couple of small draws for a few seconds a minute, which
     // even Potato can afford, and the sky is part of the world on every tier.
-    this.enabled = true;
+    this.enabled = !this.off;
     const solid = name === 'balanced' || isDemanding(name);
     // The cache is already keyed by build, so both sets can simply stay
     // resident — eight small groups in total. Clearing it stranded every
@@ -518,7 +520,7 @@ export class Birds {
       group.position.set(flight.x, flight.y, flight.z);
       // Thrown the way the sun throws every other shadow: 0.6 m across and
       // 0.45 m down the screen per metre of height.
-      if (flight.shadow) { flight.shadow.position.set(flight.x + flight.y * .6, .06, flight.z + flight.y * .45); flight.shadow.rotation.y = group.rotation.y; flight.shadow.visible = !hidden; }
+      if (flight.shadow) { flight.shadow.position.set(flight.x + flight.y * this.lean.x, .06, flight.z + flight.y * this.lean.z); flight.shadow.rotation.y = group.rotation.y; flight.shadow.visible = !hidden; }
       group.rotation.y = Math.atan2(flight.vx, flight.vz) + Math.PI;
       // Seen from above, a beat is the span shortening and lengthening. The
       // down stroke is sharper than the recovery, so it never reads as a hinge.

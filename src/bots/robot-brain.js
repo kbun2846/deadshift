@@ -100,7 +100,10 @@ export function shotClear(colliders, ax, az, bx, bz, pad = .04, ground = null) {
   if (c.x + c.w / 2 < x0 || c.x - c.w / 2 > x1 || c.z + c.d / 2 < z0 || c.z - c.d / 2 > z1) continue;
   if (segmentBox(ax, az, bx, bz, c, pad) !== null) return false;
  }
- return !ground || ground.flat || ground.sightClear(ax, az, bx, bz);
+ // Hills: and a round from a gets to b over the ground (heightfield.js
+ // flight): a retaining wall or a rise too steep for it is cover; a crest a
+ // round flies over is not (robots' eyes are `sees`, apart from this).
+ return !ground || ground.flat || ground.flightReaches(ax, az, bx, bz);
 }
 
 export class RobotBrain {

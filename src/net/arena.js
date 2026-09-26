@@ -370,7 +370,7 @@ export class Arena {
   const players = living.filter(other => this.hostile(seat, other) || ff).map(other => {
    const p = other.sim.player;
    const friend = !this.hostile(seat, other);
-   const proxy = { id: other.id, kind: other.robot ? 'robot' : 'player', team: other.team, friendly: friend, share: friend ? FRIENDLY_SHARE : 1, x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false };
+   const proxy = { id: other.id, kind: other.robot ? 'robot' : 'player', team: other.team, friendly: friend, share: friend ? FRIENDLY_SHARE : 1, x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false, ...(p.below ? { below: true } : {}) };
    seat.proxies.set(other.id, { proxy, before: p.hp, seat: other, x0: p.x, z0: p.z });
    return proxy;
   });
