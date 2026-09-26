@@ -16,17 +16,21 @@ export function hollowAmbience(map, view, sound) {
   const players = [];
   return {
     crows, voice,
-    // Every event of yours (shooter: you) and of everyone else (their shooter).
-    event(e, shooter) { crows?.event(e, shooter); },
+    // Every event of yours (shooter: you) and of everyone else (their shooter
+    // and slot: whose body a death leaves, one each).
+    event(e, shooter, slot) { crows?.event(e, shooter, slot); },
     // Each drawn frame: the living players scare the crows; indoors the beds soften.
     update(dt, sim, others = view?.remotePlayers || []) {
       players.length = 0;
       const me = sim?.player;
       if (me && !me.dead && !(me.hp <= 0)) players.push(me);
-      for (const o of others) if (!o.dead && !(o.hp <= 0)) players.push(o);
+      // (Not those the view hides from you: a crow taking off would give them away.)
+      for (const o of others) if (!o.dead && !(o.hp <= 0) && view?.remote?.avatars?.get(o.id)?.root?.visible !== false) players.push(o);
       if (!players.length && me) players.push(me); // (dead: the camera still stands there)
       const room = sim?.interior?.id ?? null;
       if (voice) voice.indoors = !!room;
+      // Which perch props stand, twice a second (a reset, a restore, a late join).
+      if (crows && sim?.props && (this.syncIn = (this.syncIn ?? 0) - dt) <= 0) { this.syncIn = .5; crows.flock.syncBroken(sim.props); }
       crows?.update(dt, players, room);
     },
     reset() { crows?.reset(); voice?.reset(); },

@@ -11,7 +11,7 @@
 // to peck.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { mapProps } from '../map-kit.js';
+import { mapProps, buildingContains } from '../map-kit.js';
 import { CrowFlock, crowPerches, seededRandom } from './crow-rules.js';
 
 export const CROW_LOOK = Object.freeze({ body: '#2a2c30', wing: '#1e2024', beak: '#18191b', scale: .82 });
@@ -51,7 +51,8 @@ export class Crows {
     const heightAt = (x, z) => view.gy(x, z);
     const field = () => view.waterFX?.field;
     this.perches = crowPerches(map, mapProps(map), heightAt);
-    this.flock = new CrowFlock(this.perches, { heightAt, random, quality: view.qualityName || 'balanced', wetAt: (x, z) => (field()?.depthAt?.(x, z) ?? -1) > .05 });
+    this.flock = new CrowFlock(this.perches, { heightAt, random, quality: view.qualityName || 'balanced', wetAt: (x, z) => (field()?.depthAt?.(x, z) ?? -1) > .05,
+      indoorsAt: (x, z) => map.buildings.some(b => buildingContains(b, { x, z })) });
     const max = this.flock.crows.length;
     this.bodies = new THREE.InstancedMesh(crowBodyGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), max);
     this.wings = new THREE.InstancedMesh(crowWingGeometry(), new THREE.MeshLambertMaterial({ color: CROW_LOOK.wing, flatShading: true, side: THREE.DoubleSide }), max * 2);
@@ -67,7 +68,7 @@ export class Crows {
   get onCall() { return this.flock.onCall; }
   set onCall(f) { this.flock.onCall = f; }
 
-  event(e, shooter) { this.flock.event(e, shooter); }
+  event(e, shooter, slot) { this.flock.event(e, shooter, slot); }
   reset() { this.flock.reset(); this.draw(); }
 
   // `players`: every living player's { x, z }; `interior`: your building's id.

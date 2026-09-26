@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { hollowWick } from '../src/maps/hollow-wick.js';
 import { deadwater } from '../src/maps/deadwater.js';
 import { groundFor, mapProps } from '../src/map-kit.js';
-import { CROWS, CrowFlock, crowPerches, seededRandom, HANGING_TREE_BUILT_IN, SHOT_REACH } from '../src/effects/crow-rules.js';
+import { CROWS, CrowFlock, crowPerches, seededRandom, HANGING_TREE_BUILT_IN, HANGING_TREE_PERCHES, SHOT_REACH, GUNFIRE } from '../src/effects/crow-rules.js';
 import { hasCrows } from '../src/effects/crows.js';
 import { HollowSound, hasHollowSound, bedLevels, HOLLOW_SOUND } from '../src/audio-hollow.js';
 import { hollowAmbience } from '../src/hollow-ambience.js';
@@ -49,12 +49,12 @@ test('crows perch on real roofs, chimneys, the belfry, stones, posts, walls and 
       if (p.kind === 'branch') { assert.equal(prop.type, 'hangingTree'); assert.ok(above > 3 && above < 7.5); }
     }
   }
-  // The hanging tree's own three crows (world/hollow-props.js) are not doubled.
+  // The hanging tree's crows are all the flock's (its model once carried three
+  // that never flew): every branch spot is a perch, none built in.
   const tree = props.find(p => p.type === 'hangingTree');
-  for (const [lx, , lz] of HANGING_TREE_BUILT_IN) {
-    const [x, z] = turn(tree.x, tree.z, tree.angle, lx, lz);
-    assert.ok(perches.every(p => p.kind !== 'branch' || Math.hypot(p.x - x, p.z - z) > .6), 'a perch on a built-in crow');
-  }
+  assert.equal(HANGING_TREE_BUILT_IN.length, 0);
+  assert.equal(perches.filter(p => p.kind === 'branch' && p.propId === tree.id).length, HANGING_TREE_PERCHES.length);
+  assert.doesNotMatch(readFileSync(new URL('../src/world/hollow-props.js', import.meta.url), 'utf8'), /function crow\(/, 'no crow modelled into a prop');
   // The meetinghouse's ridge and belfry carry crows.
   assert.ok(perches.filter(p => p.building === 'meetinghouse').length >= 4);
 });
@@ -154,6 +154,69 @@ test('after a death 1-3 come to the body after a while, hop and peck, and scatte
   assert.equal(g.crows.filter(c => c.state === 'ground').length, 0);
 });
 
+test('stage 3 review: perches follow the props, the roof over you is no perch, one visit per body and none indoors, returns glide in', () => {
+  const far = [{ x: 600, z: 600 }];
+  // Which perch props stand is read from the props themselves (a reset, a
+  // restore, a late join's snapshot), and from the events between.
+  const f = flockOf('extreme'), stone = f.crows.find(c => c.state === 'perched' && f.perches[c.perch].propId);
+  const id = f.perches[stone.perch].propId, spots = f.perches.map((p, i) => p.propId === id ? i : -1).filter(i => i >= 0);
+  f.syncBroken([{ id, hp: 0 }, { id: 'standing', hp: 4 }, { id: 'unbreakable', hp: null }]);
+  assert.deepEqual([...f.broken], [id]);
+  run(f, .1, far); assert.equal(stone.state, 'flying');
+  assert.ok(spots.every(i => !f.usable(i)));
+  f.syncBroken([{ id, hp: 4 }]); assert.ok(spots.every(i => f.usable(i)), 'a restored prop is a perch again');
+  f.event({ type: 'propBreak', id }); assert.ok(!f.usable(spots[0]));
+  f.event({ type: 'propRestore', id }); assert.ok(f.usable(spots[0]));
+  f.event({ type: 'propBreak', id }); f.event({ type: 'mapReset' }); assert.ok(f.usable(spots[0]));
+  // The building you are in: its roof is faded, so no crow sits or lands on it.
+  const m = flockOf('extreme'), roof = i => m.perches[i].building === 'meetinghouse';
+  run(m, 60, far, 'meetinghouse');
+  assert.ok(m.crows.every(c => c.state !== 'perched' || !roof(c.perch)), 'a crow on the roof over you');
+  assert.ok(m.perches.every((p, i) => !roof(i) || !m.usable(i)));
+  run(m, .1, far, null); assert.ok(m.perches.some((p, i) => roof(i) && m.usable(i)), 'the roof again once you are out');
+  // One body per player: your next death takes your first body away (its
+  // crows leave); a robot's death in its slot is its own body.
+  const v = flockOf('balanced'), away = [{ x: 30, z: -4 }];
+  v.event({ type: 'playerDeath', x: -2, z: -12 });
+  run(v, CROWS.visit.delay[1] + 6, away);
+  const pecking = v.crows.filter(c => c.state === 'ground');
+  assert.ok(pecking.length >= 1);
+  v.event({ type: 'playerDeath', x: 60, z: 40 }, { x: 60, z: 40 }, 3);
+  v.event({ type: 'playerDeath', x: 70, z: 40 }, { x: 70, z: 40 }, 4);
+  assert.equal(v.visits.length, 2, 'two robots, two bodies');
+  assert.ok(pecking.every(c => c.state === 'ground'), 'a robot dying elsewhere is not your body going');
+  v.event({ type: 'playerDeath', x: 65, z: 40 }, null, 3);
+  assert.deepEqual(v.visits.map(o => [o.who, o.x]).sort(), [[3, 65], [4, 70]]);
+  v.event({ type: 'playerDeath', x: 60, z: -40 });
+  assert.ok(pecking.every(c => c.state === 'flying'), 'your old body is gone: its crows go');
+  assert.equal(v.visits.filter(o => o.who === 'you').length, 1);
+  // Nobody comes to a body under a roof (the Crows view asks the buildings).
+  const view = { scene: new THREE.Scene(), gy: heightAt, qualityName: 'balanced', remotePlayers: [], waterFX: { field: { depthAt: () => -1 } } };
+  const h = hollowAmbience(hollowWick, view, null), mh = hollowWick.buildings.find(b => b.id === 'meetinghouse');
+  assert.equal(h.crows.flock.indoorsAt(mh.x, mh.z), true); assert.equal(h.crows.flock.indoorsAt(30, -20), false);
+  h.event({ type: 'playerDeath', x: mh.x, z: mh.z }); assert.equal(h.crows.flock.visits.length, 0);
+  h.event({ type: 'playerDeath', x: 30, z: -20 }); assert.equal(h.crows.flock.visits.length, 1);
+  // Someone the view hides from you scares nothing (a crow taking off would give them away).
+  const c = h.crows.flock.crows.find(o => o.state === 'perched' && !h.crows.flock.perches[o.perch].high);
+  view.remote = { avatars: new Map([['p', { root: { visible: false } }]]) };
+  const sneaking = [{ id: 'p', x: c.x + 1, z: c.z }];
+  for (let i = 0; i < 5; i++) h.update(1 / 30, { player: { x: 500, z: 500 }, interior: null }, sneaking);
+  assert.equal(c.state, 'perched', 'a hidden player gave away by a crow');
+  view.remote.avatars.get('p').root.visible = true;
+  h.update(1 / 30, { player: { x: 500, z: 500 }, interior: null }, sneaking);
+  assert.equal(c.state, 'flying');
+  // A crow back from off the map glides in; it never pops onto a perch in view.
+  const r = flockOf('balanced'), back = r.crows.find(o => o.state === 'perched');
+  r.retire(back); back.returnAt = r.time + .5;
+  run(r, 1, [{ x: 0, z: 0 }]);
+  assert.equal(back.state, 'flying'); assert.equal(back.flight.phase, 'glide');
+  const to = r.perches[back.flight.perch];
+  assert.ok(Math.hypot(back.x - to.x, back.z - to.z) > 12, 'starts well off');
+  run(r, 12, [{ x: 0, z: 0 }]); assert.equal(back.state, 'perched');
+  // Another player's Static stream reaches you only as its start: that is gunfire too.
+  assert.ok(GUNFIRE.has('sprayStart'));
+});
+
 test('they fall silent after gunfire, and caw now and then otherwise', () => {
   const f = flockOf(), calls = []; f.onCall = (kind, x, y, z) => calls.push({ kind, t: f.time });
   run(f, 60);
@@ -207,7 +270,7 @@ test('audio.js hooks: Hollow Wick replaces the desert wind, ducks on gunfire, we
   assert.match(src, /if \(!this\.hollow\?\.step\(player\)\) \{ this\.noise\(\.06, \.16, 900\); this\.tone\(95, 45, \.05, \.025, 'triangle'\); \}/);
   const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   assert.match(main, /const hollow = hollowAmbience\(map, view, sound\);[\s\S]*warmProgramsParallel/, 'made before the warm-up');
-  assert.match(main, /hollow\?\.event\(e,shooter\)/); assert.match(main, /hollow\?\.event\(e,sim\.player\)/);
+  assert.match(main, /hollow\?\.event\(e,shooter,slot\)/); assert.match(main, /hollow\?\.event\(e,sim\.player\)/);
   assert.match(main, /hollow\?\.update\(renderDelta,sim\)/); assert.match(main, /hollow\?\.reset\(\)/);
   // A HollowSound with a fake audio graph: gunfire ducks, the rest does not; the desert wind is cut off.
   const ctx = fakeContext(), sound = { context: ctx, enabled: true, buses: { ambient: node(), effects: node() }, noiseBuffer: {}, impactBuffer: {}, wind: node() };

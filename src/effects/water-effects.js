@@ -434,7 +434,8 @@ export class WaterEffects {
      was.step -= dt;
      if (was.step <= 0) {
       was.step = .3;
-      this.onSound?.('wadeStep', b.x, b.z, deep);
+      // (Your own step's sound is audio.js's wet footstep: not a second one here.)
+      if (b.id !== 'you') this.onSound?.('wadeStep', b.x, b.z, deep);
       if (d.wade) this.ring(b.x - vx * .05, b.z - vz * .05, s.level, .22, 1 + deep * .5, .9, .06, 1.1 * d.wade, vx * .15, vz * .15);
       if (d.splash) for (let i = 0, n = count(4 * d.splash * (.5 + deep)); i < n; i++) {
        const a = Math.random() * 6.3, sp = .4 + Math.random() * .9;

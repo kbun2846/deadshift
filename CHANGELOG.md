@@ -2,6 +2,16 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.970 (2026-09-26)
+
+### Hollow Wick, stage 3 finished (developer tools > World > Map in progress)
+- Crows never give away someone you cannot see, never sit on the roof over your head, and never come down to a body indoors.
+- A body gets one visit: a player's next death takes the crows off their old body, and a robot dying elsewhere leaves yours alone. The crows fly on while you wait on the death screen.
+- A broken headstone or post is no perch until it is back (a restart, a restore or joining late all come right), and a crow coming back from off the map glides in rather than appearing on its perch.
+- Another player's Static stream hushes the crows like any other gunfire.
+- Your own steps in the stream no longer sound twice.
+- The hanging tree's three frozen crows are gone: every crow on it is a live one that can fly.
+
 ## alpha v0.965 (2026-09-26)
 
 ### Hollow Wick, stage 3: mechanics and style (developer tools > World > Map in progress)

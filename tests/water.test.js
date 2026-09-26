@@ -154,8 +154,9 @@ test('wading: any body where the ground is under the water ripples and splashes,
  fx.onSound = (kind, x, z) => sounds.push([kind, x, z]);
  const moving = { player: { x: FORD[0], z: FORD[1], vx: 3, vz: 0, dodgeRemaining: 0 }, grenades: [] };
  run(v, moving, 1.2);
- assert.ok(sounds.filter(s => s[0] === 'wadeStep').length >= 3, 'wet footsteps');
- assert.ok(fx.pools.rings.items.some(r => Math.hypot(r.x - FORD[0], r.z - FORD[1]) < 1));
+ // Your own wet footsteps are audio.js's step (HollowSound.step): not a second one from here.
+ assert.equal(sounds.filter(s => s[0] === 'wadeStep').length, 0, 'no doubled footsteps of yours');
+ assert.ok(fx.pools.rings.items.filter(r => Math.hypot(r.x - FORD[0], r.z - FORD[1]) < 1).length >= 2, 'a ring with each of your steps');
  // A dodge in the water throws a bigger splash.
  moving.player.dodgeRemaining = .2; run(v, moving, .05);
  assert.ok(sounds.some(s => s[0] === 'wadeDodge'));

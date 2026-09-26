@@ -55,7 +55,6 @@ const C = {
  trunk: '#231d1a', bark: '#3b322c', bone: '#e2d6b8', boneOld: '#cbbd9a', iron: '#3a3836',
  logEnd: '#9a8462', logBark: '#4a3f33', logMid: '#6e5c46',
  shingle: '#3a3632', corn: '#b08a3c', stalk: '#9a8656', stalkDark: '#85744a',
- crow: '#2a2c30', crowWing: '#1e2024',
  // The game's gore (effects/gore.js), rotted: dulled and darkened.
  blood: '#8c1c2a', soaked: '#5a1019', flesh: '#b4505e', rot: '#6e2e28', rotDark: '#4e1c1a', dried: '#7a4a3e', leather: '#8a5a48', rag: '#4a4540', ragDark: '#3e3a34',
  leaf: ['#8a6a3e', '#7a5a34', '#6e4a2c'],
@@ -384,8 +383,9 @@ const BUILDERS = {
   for (let i = 0; i < 7; i++) { const a = random() * 6.3, d = .3 + random() * 1.1, lf = box(Math.cos(a) * d, .02, Math.sin(a) * d, .16, .02, .12, C.leaf[i % 3]); lf.rotation.y = a; lf.castShadow = false; }
  },
  // The hanging tree: a gnarled bare oak with a strong low branch, a hanged
- // man on it (swaying, see swing()), an empty noose on a second branch and
- // crows watching. Its trunk collides.
+ // man on it (swaying, see swing()) and an empty noose on a second branch.
+ // Its crows are the flock's (effects/crow-rules.js: they perch on its
+ // branches, and fly). Its trunk collides.
  hangingTree(k) {
   const { stick, view, box, g, random } = k;
   // Root flares and the trunk, leaning a little away from the branch.
@@ -472,16 +472,6 @@ const BUILDERS = {
  // stopping dead; part-covered by leaves. Drawn as one draped decal mesh.
  dragTrail(k) { dragTrail(k); },
 };
-
-// A perched crow (body, wings folded, beak), looking along `yaw`.
-function crow(k, at, yaw) {
- const { view, g } = k, c = new THREE.Group(); c.position.set(...at); c.rotation.y = yaw; g.add(c);
- const b = view.mesh(new THREE.IcosahedronGeometry(.13, 0), C.crow, 0, .1, 0, c); b.scale.set(.8, .75, 1.35);
- view.mesh(new THREE.IcosahedronGeometry(.08, 0), C.crow, 0, .22, .15, c);
- const beak = view.mesh(new THREE.ConeGeometry(.03, .1, 4), '#1a1a1c', 0, .21, .25, c); beak.rotation.x = Math.PI / 2;
- for (const s of [-1, 1]) { const w = view.box(s * .09, .12, -.03, .04, .09, .3, C.crowWing, c); w.rotation.y = s * .12; }
- view.box(0, .08, -.24, .1, .03, .16, C.crowWing, c);
-}
 
 // Something that moves: built in its own group under the scene at the prop's
 // place, merged (batch) into a draw or two, and moved from onBeforeRender (the

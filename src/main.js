@@ -123,9 +123,9 @@ function heard(e,shooter){
 }
 // Someone else firing within earshot: a pink arc on the side it came from.
 const FIRING=new Set(['rifleShot','shotgunShot','launch','sprayArc','hexPulse','scatterFire']);
-function otherEvent(e,shooter){
+function otherEvent(e,shooter,slot){
  const {level,x,z}=heard(e,shooter);
- hollow?.event(e,shooter); // s3-sound
+ hollow?.event(e,shooter,slot); // s3-sound
  if(NET_SOUNDS.has(e.type))sound.event(e,level);
  if(FIRING.has(e.type)&&x!==null&&level>HEARING.silent&&running&&!deathActive){
   const me=view.screenPoint(sim.player.x,sim.player.z),at=view.screenPoint(shooter?.x??x,shooter?.z??z);
@@ -759,7 +759,7 @@ function netEvents(){
    continue;
   }
   view.netEvent(e,shooter,slot);
-  otherEvent(e,shooter);
+  otherEvent(e,shooter,slot);
  }
 }
 function multiplayerFrame(){
@@ -1101,7 +1101,7 @@ function frame(time) {
       for (const e of sim.drainEvents()) event(e);
     }
     if(online.active)netEvents();
-    else if(bots.active)for(const {e,shooter,slot} of bots.drain()){view.netEvent(e,shooter,slot);otherEvent(e,shooter);}
+    else if(bots.active)for(const {e,shooter,slot} of bots.drain()){view.netEvent(e,shooter,slot);otherEvent(e,shooter,slot);}
     sound.update(sim.player, sim.time);
     sound.updateHex(sim);
   }
@@ -1119,7 +1119,7 @@ function frame(time) {
       view.remotePlayers = online.active ? online.others(running ? accumulator / RULES.step : 1) : bots.others(running ? accumulator / RULES.step : 1);
       view.update(online.active?drawSim(sim,online.foreign()):bots.active?drawSim(sim,bots.foreign(elapsed)):sim, renderDelta, running||online.active, elapsed, previousPlayer, running ? accumulator / RULES.step : 1);
       robotMinds.update(bots,view,!!sim.dev.robotMinds&&!online.active);
-      if(running||online.active)hollow?.update(renderDelta,sim); // s3-sound: the crows
+      if(running||online.active||deathActive)hollow?.update(renderDelta,sim); // s3-sound: the crows (on the death screen too: they fly on while you wait)
       dirty = false; renderedFrames++;
     }
     // The aim dot is page markup, not the 3D frame: it follows every display

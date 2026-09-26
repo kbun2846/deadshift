@@ -8,7 +8,7 @@
 // trail and 4.6 m off the hanging tree. Run it after moving props, buildings,
 // spawns or trees, then node tools/place-trees.mjs and the tests.
 //   node tools/place-detail.mjs [--check]
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { maps, groundFor, mapColliders } from '../src/maps.js';
 import { buildingOpenings, mapProps } from '../src/map-kit.js';
 import { isPlayable } from '../src/playable-area.js';
@@ -86,6 +86,9 @@ export const HOLLOW_WICK_DETAIL = [
 ${placed.map(p => ` { type: '${p.type}', id: '${p.id}', x: ${p.x}, z: ${p.z}, angle: ${p.angle} },`).join('\n')}
 ];
 `;
-if (!process.argv.includes('--check')) writeFileSync(new URL('../src/maps/hollow-wick-detail.js', import.meta.url), out);
+const file = new URL('../src/maps/hollow-wick-detail.js', import.meta.url);
+// --check: the file must be what this run would write (exit 1 if stale).
+if (process.argv.includes('--check')) { if (readFileSync(file, 'utf8') !== out) { console.log('src/maps/hollow-wick-detail.js is stale: run node tools/place-detail.mjs'); process.exitCode = 1; } }
+else writeFileSync(file, out);
 const after = pieceList();
 console.log(`${placed.length} pieces; screens under 25: ${screens.filter(s => count(after, s) < 25).length}; under 20: ${screens.filter(s => count(after, s) < 20).length}`);

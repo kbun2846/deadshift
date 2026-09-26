@@ -228,7 +228,8 @@ export class LeafFX {
    const l = this.leaves[i];
    this.matrix.compose(this.p.set(l.x, l.y, l.z), this.q.setFromEuler(this.e.set(l.pitch, l.yaw, l.roll, 'YXZ')), this.s.setScalar(l.size * l.fade));
    mesh.setMatrixAt(i, this.matrix);
-   mesh.setColorAt(i, this.c.set(l.colour));
+   // (Parsed once per leaf, not every frame.)
+   mesh.setColorAt(i, l.col ||= this.c.clone().set(l.colour));
   }
   mesh.count = n; mesh.visible = n > 0;
   if (n) { mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true; }

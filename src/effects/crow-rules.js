@@ -46,7 +46,8 @@ export const CROWS = Object.freeze({
 });
 
 // Events that mean gunfire (the crows go quiet; the soundscape ducks too).
-export const GUNFIRE = new Set(['rifleShot', 'shotgunShot', 'launch', 'sprayArc', 'hexPulse', 'scatterFire', 'surgeStart', 'grenadeExplosion', 'explosion']);
+// (sprayStart: another player's Static stream reaches us only as its start.)
+export const GUNFIRE = new Set(['rifleShot', 'shotgunShot', 'launch', 'sprayArc', 'sprayStart', 'hexPulse', 'scatterFire', 'surgeStart', 'grenadeExplosion', 'explosion']);
 // Events whose own point is something landing or going off.
 const IMPACTS = new Set(['rifleImpact', 'impactMark', 'wall', 'hit', 'propHit', 'propBreak', 'scatterBurst', 'scatterHit', 'hexZap', 'grenadeExplosion', 'explosion', 'kill']);
 // Shots that travel along the shooter's aim (their line scares crows beside it).
@@ -95,7 +96,8 @@ export function crowPerches(map, props, heightAt) {
     // Roof frame (X along the ridge, Z across) to the building's frame.
     const toB = (x, z) => [x * Math.cos(yaw) + z * Math.sin(yaw), -x * Math.sin(yaw) + z * Math.cos(yaw)];
     const ridge = ridgeOf(r, H, e), belfry = b.features?.includes('belfry');
-    const chimneys = b.chimneys || [];
+    // (The forge's stack is a feature, not a chimney: its ridge keeps clear of it too.)
+    const chimneys = [...(b.chimneys || []), ...(b.features?.includes('forge-stack') ? [{ at: -1.3, w: .84 }] : [])];
     // Ridge boards: every 1.6 m or so, clear of chimneys and the belfry.
     const n = Math.max(2, Math.floor((L - 1) / 1.6));
     for (let i = 0; i < n; i++) {
@@ -163,8 +165,9 @@ function segmentDistance(px, pz, ax, az, bx, bz) {
 // event(e, shooter) reacts to the game's events. `onCall(kind, x, y, z, n)`
 // hears caws ('caw' idle, 'alarm' when they scatter, 'flap' on take-off).
 export class CrowFlock {
-  constructor(perches, { heightAt = () => 0, wetAt = () => false, random = seededRandom(), quality = 'balanced' } = {}) {
-    this.perches = perches; this.heightAt = heightAt; this.wetAt = wetAt; this.random = random;
+  // `indoorsAt(x, z)`: under a roof (no crow comes down to a body there).
+  constructor(perches, { heightAt = () => 0, wetAt = () => false, indoorsAt = () => false, random = seededRandom(), quality = 'balanced' } = {}) {
+    this.perches = perches; this.heightAt = heightAt; this.wetAt = wetAt; this.indoorsAt = indoorsAt; this.random = random; this.interior = null;
     this.time = 0; this.hushUntil = -1; this.broken = new Set(); this.visits = [];
     this.nextCaw = range(random, CROWS.caw); this.nextFlyover = range(random, CROWS.flyoverEvery); this.nextGather = range(random, CROWS.gatherEvery);
     this.onCall = null;
@@ -193,7 +196,14 @@ export class CrowFlock {
 
   retire(c) { c.state = 'off'; c.perch = -1; c.visit = null; c.flight = null; }
   taken() { const s = new Set(); for (const c of this.crows) { if (c.state === 'perched' && c.perch >= 0) s.add(c.perch); if (c.flight?.perch >= 0) s.add(c.flight.perch); } return s; }
-  usable(i) { const p = this.perches[i]; return !!p && !(p.propId && this.broken.has(p.propId)); }
+  // (Never a broken prop's, nor the roof of the building you are in: it is faded.)
+  usable(i) { const p = this.perches[i]; return !!p && !(p.propId && this.broken.has(p.propId)) && !(this.interior && p.building === this.interior); }
+  // Which perch props stand (sim.props: hp 0 is broken): a reset, a restore or
+  // a late join (a snapshot, no events) all come right.
+  syncBroken(props) {
+    this.broken.clear();
+    for (const p of props || []) if (p.hp !== null && p.hp !== undefined && p.hp <= 0) this.broken.add(p.id);
+  }
 
   // A crow sat straight on a free perch (at load, or when a preset adds crows).
   // Spread over the map: a perch not within 5 m of another crow if possible.
@@ -266,11 +276,14 @@ export class CrowFlock {
     return n;
   }
 
-  // The game's events. `shooter`: who fired (x, z, aimX, aimZ), for a shot's line.
-  event(e, shooter) {
+  // The game's events. `shooter`: who fired (x, z, aimX, aimZ), for a shot's
+  // line; `slot`: whose event (undefined: yours), for whose body a death leaves.
+  event(e, shooter, slot) {
     if (!e) return;
     if (GUNFIRE.has(e.type)) this.hushUntil = this.time + CROWS.hush;
     if (e.type === 'propBreak' && e.id) this.broken.add(e.id);
+    if (e.type === 'propRestore' && e.id) this.broken.delete(e.id);
+    if (e.type === 'mapReset') { this.broken.clear(); this.visits.length = 0; }
     const x = e.x ?? shooter?.x, z = e.z ?? shooter?.z;
     if (!Number.isFinite(x) || !Number.isFinite(z)) return;
     if (SHOTS.has(e.type)) {
@@ -282,7 +295,12 @@ export class CrowFlock {
     if (e.type === 'grenadeExplosion' || e.type === 'explosion') { this.scatter(x, z, CROWS.scatter + (e.radius || 0)); return; }
     if (e.type === 'playerDeath') {
       this.scatter(x, z);
-      if (!e.preview) this.visits.push({ x, z, at: this.time + range(this.random, CROWS.visit.delay), n: 1 + Math.floor(this.random() * (CROWS.visit.count[1] - CROWS.visit.count[0] + 1)), wet: !!this.wetAt(x, z) });
+      // (One body per player: a new death takes the old body away, so its
+      // pending visit goes, and crows already at it leave.)
+      const who = slot ?? 'you';
+      for (let i = this.visits.length - 1; i >= 0; i--) if (this.visits[i].who === who) this.visits.splice(i, 1);
+      for (const c of this.crows) if (c.state === 'ground' && c.visit?.body?.who === who) this.scare(c, c.x, c.z, this.players || []);
+      if (!e.preview && !this.indoorsAt(x, z)) this.visits.push({ x, z, who, at: this.time + range(this.random, CROWS.visit.delay), n: 1 + Math.floor(this.random() * (CROWS.visit.count[1] - CROWS.visit.count[0] + 1)), wet: !!this.wetAt(x, z) });
       return;
     }
     if (IMPACTS.has(e.type)) this.scatter(x, z);
@@ -298,7 +316,7 @@ export class CrowFlock {
   // of the building you are in (its roof fades: its crows leave).
   update(dt, { players = [], interior = null } = {}) {
     if (!(dt > 0)) return;
-    dt = Math.min(dt, .1); this.time += dt; this.players = players;
+    dt = Math.min(dt, .1); this.time += dt; this.players = players; this.interior = interior;
     const t = this.time;
     // Anyone walking up to them.
     for (const c of this.crows) {
@@ -477,7 +495,11 @@ export class CrowFlock {
   returns() {
     for (const c of this.crows) if (c.state === 'off' && c.returnAt && this.time > c.returnAt && this.resident(c)) {
       const i = this.pickPerch(c.x, c.z, this.players || [], null, [0, 400]); c.returnAt = 0;
-      if (i >= 0) this.land(c, i); else this.seat(c);
+      if (i < 0) { this.seat(c); continue; }
+      // (Gliding in from 20 m off, like a crow gathering in: never popping onto a perch in view.)
+      const p = this.perches[i], me = (this.players || [])[0] || p, b = Math.atan2(p.z - me.z, p.x - me.x) || 0;
+      c.x = p.x + Math.cos(b) * 20; c.z = p.z + Math.sin(b) * 20; c.y = Math.max(p.y, this.heightAt(c.x, c.z)) + 7;
+      c.state = 'flying'; c.perch = -1; c.flight = { phase: 'glide', t: 0, perch: i, sx: c.x, sy: c.y, sz: c.z }; c.beat = 1;
     }
   }
 }
