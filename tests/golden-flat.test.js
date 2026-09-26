@@ -14,6 +14,11 @@
 //   - all five: furniture made solid (owner, 2026-09-26): Deadwater's room
 //     furniture became colliders (world/room-furniture.js), so the collider
 //     list and every path through a room changed.
+//   - robots: re-recorded (owner, 2026-09-26, v0.990a: "fix the robots
+//     thing") after the shot-spot fix went onto every map: a robot that
+//     reaches a spot it picked for a clear shot and still has none marks it
+//     bad and looks again, instead of standing there (it was hills only).
+//     static, rifle, shotgun and hosted unchanged.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation } from '../src/simulation.js';
@@ -25,7 +30,7 @@ import { ClientSession } from '../src/net/client-session.js';
 
 // Recorded with Node 22.22 (V8 12.4.254). Math is deterministic within one engine build;
 // a different Node major may need a re-record on untouched code, never on new code.
-export const GOLDEN = { static: '8500a3fd', rifle: '5c57348a', shotgun: 'dc6257e4', robots: 'a370e78a', hosted: 'bb4e727d' };
+export const GOLDEN = { static: '8500a3fd', rifle: '5c57348a', shotgun: 'dc6257e4', robots: 'd841874d', hosted: 'bb4e727d' };
 
 const map = maps.deadwater;
 function seeded(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }

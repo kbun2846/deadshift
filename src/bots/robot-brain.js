@@ -363,9 +363,9 @@ export class RobotBrain {
     // (Stage 4 audit: a spot whose centre had a line, reached, where the
     // robot's own standing place had none, held it there a minute doing
     // nothing. Arrived and still blocked: that spot is no good for a while,
-    // look again. Hills maps only, so Deadwater replays exactly as before:
-    // tests/golden-flat.test.js.)
-    if (!sim.ground.flat && this.shotSpot && Math.hypot(this.shotSpot.x - p.x, this.shotSpot.z - p.z) < .6) { this.markBadSpot(this.shotSpot); this.shotSpot = null; this.shotSpotAt = -1e9; }
+    // look again. On every map since v0.990a (owner: "fix the robots
+    // thing"; it was hills only, and tests/golden-flat.test.js re-recorded).)
+    if (this.shotSpot && Math.hypot(this.shotSpot.x - p.x, this.shotSpot.z - p.z) < .6) { this.markBadSpot(this.shotSpot); this.shotSpot = null; this.shotSpotAt = -1e9; }
     const s = this.shotSpot;
     if ((!s || this.time - this.shotSpotAt > 1.2 || Math.hypot(s.forX - known.x, s.forZ - known.z) > 2.5) && this.afford('search')) {
      const found = this.findShotSpot(known, style);
