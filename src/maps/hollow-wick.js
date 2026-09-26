@@ -24,6 +24,7 @@ import { GRAVEYARD_PROPS, FIELD_WALLS } from './hollow-wick-graveyard.js'; // s2
 import { HW_PROPS, HW_CROPS, HW_GROUND_LAYERS } from './hollow-wick-props.js'; // (s2-props)
 import { hollowWickBuildings, hollowWickBuildingProps } from './hollow-wick-buildings.js'; // s2-buildings
 import { HOLLOW_WICK_BREAKABLES } from './hollow-wick-breakables.js'; // s2-breakables
+import { HOLLOW_WICK_DETAIL } from './hollow-wick-detail.js'; // stage 5 detail (tools/place-detail.mjs)
 
 const deg = Math.PI / 180;
 // Worked-out points are kept to the millimetre, so the map's numbers (and its
@@ -105,24 +106,33 @@ export const hollowWick = {
   [-54, 50], [-58, 30], [-64, 12], [-65, -8], [-60, -30], [-58, -44],
  ]).map(p => p.map(mm)),
  spawn: { x: -10, z: -2 },
- palette: { ground: '#625840', road: '#786c51' },
+ // s3-look: a touch warmer than #625840, away from the olive coat (#5c5f3a; tests/hollow-wick-look.test.js).
+ palette: { ground: '#665840', road: '#786c51' },
  // The low dusk sun from the west-south-west, about 20 degrees up (long hill
  // shade east of every rise). (Stage 3 makes the rest of the dusk: overcast,
  // fog, the grade.)
  // No vultures, swifts or finches: crows only (stage 3).
  birds: false,
  // Grey-white fog sheets, thickest over the stream hollow (render/fog-sheets.js).
- look: { sky: '#eceae2', bounce: '#8e8a78', sun: '#f2d4a8', sunIntensity: 2.3, haze: '#9c9892', sunOffset: { x: -43, y: 17, z: 18 }, fog: { colour: '#c4c7c3', opacity: .38, lowBias: .7 } },
+ // s3-look: the dusk (render/map-look.js; AGENTS.md > Hollow Wick's dusk look). Overcast sky light
+ // (the overcast's #8a8a86 at the brightness the ground needs to stay readable: #e7e7e1 is the same
+ // colour x 3.15 in linear light), the low weak WSW sun (#d9a070) through the west's dusk glow
+ // (#b58a66), fog-grey haze (#9c9892) that starts inside the view, and Extreme's grade duller and
+ // cooler in the shade. Exposure stays at the default, so unlit effects keep their colours.
+ look: { sky: '#e7e7e1', skyIntensity: 2.32, bounce: '#807a6d', sun: '#d9a070', glow: '#b58a66', glowMix: .3, sunIntensity: 2.1, haze: '#9c9892', fogNear: 34, fogFar: 120,
+  grade: { warmth: .03, shade: .06, contrast: .06, saturation: .9 },
+  sunOffset: { x: -43, y: 17, z: 18 }, fog: { colour: '#b9b6ae', opacity: .38, lowBias: .7 } },
  // The ground's colours (render/ground-layers.js): damp low ground in the
  // stream hollow, darker still by the water; earthier banks.
  terrainLook: { bank: '#544a37', damp: '#4b4333', dampBelow: 1.45, dampDepth: .6, dampMix: .55, hollow: '#40443c', hollowBelow: .95, hollowDepth: .7, hollowMix: .6,
   wallFace: '#6a665c', wallCap: '#8b8a80', wallDark: '#5f5c56' },
  groundLayers: [
   // Dry grass up on the ridge and the town's worn yards.
-  { poly: [[-40, -85], [9, -85], [9, -33], [0, -30], [-10, -31], [-18, -38], [-26, -46], [-36, -50]], colour: '#6c6247', feather: 4, mix: .35, noise: .5 },
-  { poly: town, colour: '#6c6247', feather: 2, mix: .45, noise: .45 },
+  // (s3-look: #746649, was #6c6247: lighter, away from the olive coat.)
+  { poly: [[-40, -85], [9, -85], [9, -33], [0, -30], [-10, -31], [-18, -38], [-26, -46], [-36, -50]], colour: '#746649', feather: 4, mix: .35, noise: .5 },
+  { poly: town, colour: '#746649', feather: 2, mix: .45, noise: .45 },
   // The burying ground's short turf, over Church Hill's east side.
-  { poly: terrace([26, 26.5, 25.5, 26.5, 26, 25.5, 26], GY[0] + 6, GY[1] - 6), colour: '#5a5840', feather: 2.5, mix: .5, noise: .3 },
+  { poly: terrace([26, 26.5, 25.5, 26.5, 26, 25.5, 26], GY[0] + 6, GY[1] - 6), colour: '#625a42', feather: 2.5, mix: .5, noise: .3 }, // (s3-look: was #5a5840, too near the olive coat)
   // Straw stubble in the scarecrow field.
   { poly: [[-12, 27.5], [95, 29.5], [95, 85], [-12, 85]], colour: '#7d6d45', feather: 2, mix: .75, noise: .35 },
   // Leaf litter deep in the woods (litter browns only: never red on the ground).
@@ -246,12 +256,14 @@ export const hollowWick = {
    ...WOODS.map(w => ({ poly: w.poly, kinds: { leaves: 3, twigs: 2.2, tufts: .35, stalks: .5 } })),
   ],
  },
- buildings: hollowWickBuildings(BUILDING_PADS) /* s2-buildings */, props: [...GRAVEYARD_PROPS, ...FIELD_WALLS /* s2-graveyard */, ...HW_PROPS /* s2-props */, ...hollowWickBuildingProps(BUILDING_PADS) /* s2-buildings */, ...HOLLOW_WICK_BREAKABLES /* s2-breakables: pumpkins, cider, apples, grain, coops, skeps, crocks, lanterns, cordwood, barrows */], fences: [], crops: HW_CROPS, // (s2-props)
+ buildings: hollowWickBuildings(BUILDING_PADS) /* s2-buildings */, props: [...GRAVEYARD_PROPS, ...FIELD_WALLS /* s2-graveyard */, ...HW_PROPS /* s2-props */, ...hollowWickBuildingProps(BUILDING_PADS) /* s2-buildings */, ...HOLLOW_WICK_BREAKABLES /* s2-breakables: pumpkins, cider, apples, grain, coops, skeps, crocks, lanterns, cordwood, barrows */, ...HOLLOW_WICK_DETAIL /* stage 5: the sparse screens' fieldstone, boulders, blocks */], fences: [], crops: HW_CROPS, // (s2-props)
  // s2-spawns: bases, teamBases, ffaSpawns, noSpawn, pickView and targets.
  ...HW_SPAWNS,
  // s2-crossings: the crossings' and mill wheel's looks (render/crossing-decks.js).
  crossings: CROSSINGS,
  // Stage 2 trees (s2-trees): the woods, orchard, village trees, stumps, logs (world/tree-kinds.js, world/trees.js).
  trees: HOLLOW_WICK_TREES,
+ // s3-leaves: the woods' leaf carpet, falling and kicked leaves (world/leaf-carpet.js, effects/leaf-fx.js).
+ leafLitter: { woods: WOODS },
  zones: [], scenerySeed: 1790,
 };

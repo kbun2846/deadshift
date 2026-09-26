@@ -55,6 +55,7 @@ import { weapon as weaponInfo, weaponOrDefault, usesTrigger, DEFAULT_WEAPON } fr
 import { Simulation, RULES } from './simulation.js';
 import { WorldView } from './render/renderer.js';
 import { Soundscape, hearingLevel, HEARING } from './audio.js';
+import { hollowAmbience } from './hollow-ambience.js'; // s3-sound: Hollow Wick's crows and soundscape
 import { createFireIndicator } from './ui/fire-indicator.js';
 import { validateSettings, RenderBudget, AdaptiveResolution } from './settings.js';
 import { installSettingsPanel } from './ui/settings-panel.js';
@@ -124,6 +125,7 @@ function heard(e,shooter){
 const FIRING=new Set(['rifleShot','shotgunShot','launch','sprayArc','hexPulse','scatterFire']);
 function otherEvent(e,shooter){
  const {level,x,z}=heard(e,shooter);
+ hollow?.event(e,shooter); // s3-sound
  if(NET_SOUNDS.has(e.type))sound.event(e,level);
  if(FIRING.has(e.type)&&x!==null&&level>HEARING.silent&&running&&!deathActive){
   const me=view.screenPoint(sim.player.x,sim.player.z),at=view.screenPoint(shooter?.x??x,shooter?.z??z);
@@ -154,6 +156,9 @@ catch (error) {
   $('error').classList.remove('hidden'); console.error(error); throw error;
 }
 
+// s3-sound: Hollow Wick's crows and soundscape (null on other maps); made
+// before the warm-up so the crows' meshes are compiled with the rest.
+const hollow = hollowAmbience(map, view, sound);
 // Shaders compile while the loading screen shows (renderer.js warmSteps);
 // bootstrap.js waits for this before revealing the game.
 export const ready = view.warmProgramsParallel().then(() => { view.programsWarmed = true; });
@@ -336,7 +341,7 @@ function reset() {
   if(nextWeapon){sim.weapon=weaponOrDefault(nextWeapon);nextWeapon=null;applyInputPreference();}
   deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');
   if(tutorial){tutorial=new Tutorial(courseFor(sim.weapon));tutorialSaved=false;tutorialCard.invalidate();updateTutorial();}
-  releaseInput(); sound.clearFlights(); sim.reset(); if(started)randomPracticeSpawn(); view.reset(sim); accumulator = 0; sound.lastStep = 0;
+  releaseInput(); sound.clearFlights(); sim.reset(); if(started)randomPracticeSpawn(); view.reset(sim); hollow?.reset(); /* s3-sound */ accumulator = 0; sound.lastStep = 0;
   // Restart keeps the robots (enemies sent back out away from you, allies by
   // you); the menu clears them.
   // All out first, so each side's first robot is placed afresh (VS ROBOTS "with my team").
@@ -439,7 +444,7 @@ function event(e) {
   if(e.type==='kill'&&(e.targetKind==='player'||e.targetKind==='robot'))outgoingFeedback.kill(e,sim.time);
   if(e.type==='syphon')outgoingFeedback.heal(e,sim.time);
   if(tutorial){tutorial.event(e,sim);updateTutorial();}
-  view.event(e); sound.event(e,heard(e).level);
+  view.event(e); sound.event(e,heard(e).level); hollow?.event(e,sim.player); // (s3-sound: the crows)
   if(e.type==='playerDeath'){duel.playerDied();beginDeath();}
   if (e.type === 'hit' || e.type === 'kill') {
     const marker = $('hit-marker'), position = view.screenPoint(e.x, e.z);
@@ -1114,6 +1119,7 @@ function frame(time) {
       view.remotePlayers = online.active ? online.others(running ? accumulator / RULES.step : 1) : bots.others(running ? accumulator / RULES.step : 1);
       view.update(online.active?drawSim(sim,online.foreign()):bots.active?drawSim(sim,bots.foreign(elapsed)):sim, renderDelta, running||online.active, elapsed, previousPlayer, running ? accumulator / RULES.step : 1);
       robotMinds.update(bots,view,!!sim.dev.robotMinds&&!online.active);
+      if(running||online.active)hollow?.update(renderDelta,sim); // s3-sound: the crows
       dirty = false; renderedFrames++;
     }
     // The aim dot is page markup, not the 3D frame: it follows every display

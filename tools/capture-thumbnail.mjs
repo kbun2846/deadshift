@@ -13,7 +13,7 @@ const [W, H, DPR] = [460, 570, 3];
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: DPR });
 await page.addInitScript(() => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: 'extreme', fps: 1, motion: false })));
-await page.goto(`http://127.0.0.1:5173/?play=1&map=${mapId}&weapon=rifle&capture=thumbnail`);
+await page.goto(`http://127.0.0.1:${process.env.PORT || 5173}/?play=1&map=${mapId}&weapon=rifle&capture=thumbnail`);
 await page.waitForFunction(() => window.__capture && document.body.classList.contains('playing'), null, { timeout: 60000 });
 // Extreme's passes load and the shadows settle over a few frames.
 await page.waitForFunction(() => !!window.__capture.view.post, null, { timeout: 60000 });
@@ -24,14 +24,14 @@ if (process.env.NOPOST) await page.evaluate(() => { window.__noPost = true; });
 if (process.env.NOAO) await page.evaluate(() => { window.__noAO = true; });
 if (process.env.NOBLOOM) await page.evaluate(() => { window.__noBloom = true; });
 const dataUrl = await page.evaluate(() => {
- const { view, sim, map } = window.__capture, shot = map.thumbnail || map.spawn;
+ const { view, sim, map } = window.__capture, shot = map.thumbnail || map.card?.thumbnail || map.spawn; // (s3-look: a card's spot)
  sim.dev = { ...sim.dev, ghost: true };
  view.setPickView({ x: shot.x, z: shot.z, height: shot.height || 44 });
  for (let i = 0; i < 3; i++) { view.sun.shadow.needsUpdate = true; view.update(sim, 1 / 60, false, 0, sim.player, 1); }
  // A vulture gliding over the scene, caught mid-frame, its shadow on the ground.
  const focus = { x: shot.x, z: shot.z };
  view.birds.clear?.();
- const vulture = view.birds.spawn('vulture', focus, view.birdView());
+ const vulture = map.birds === false ? null : view.birds.spawn('vulture', focus, view.birdView()); // (s3-look: no vulture where the map has no birds)
  // Put it over open ground up and left of centre (clear of the roof), let it
  // settle into a wing beat there, its shadow thrown by the sun.
  if (vulture) {

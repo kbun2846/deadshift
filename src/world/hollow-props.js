@@ -412,8 +412,8 @@ const BUILDERS = {
   view.mesh(new THREE.TorusGeometry(.17, .025, 3, 8), C.rope, -2.05, 2.82, -1.35, g).rotation.x = .3;
   // The rope's wrap on the low branch.
   box(2.6, 3.32, .15, .16, .3, .3, C.rope);
-  // Crows: one on the low branch's end, one up in the crown.
-  crow(k, [4.1, 3.6, -.2], .6); crow(k, [.9, 6.25, .8], -2.2); crow(k, [-2.7, 4.95, -1.75], 1.4);
+  // (Its crows are the live flock's, effects/crow-rules.js HANGING_TREE_PERCHES:
+  // they scatter, caw and come back like every other crow.)
   // Dried blood and leaves under him.
   const stain = view.mesh(new THREE.CircleGeometry(.55, 9), '#3a1614', 2.6, k.lift(2.6, .15) + .03, .15, g); stain.rotation.x = -Math.PI / 2; stain.castShadow = false;
   for (let i = 0; i < 8; i++) { const a = random() * 6.3, d = random() * 1.8; const leaf = box(Math.cos(a) * d + 1, k.lift(Math.cos(a) * d + 1, Math.sin(a) * d) + .02, Math.sin(a) * d, .16, .02, .12, C.leaf[i % 3]); leaf.rotation.y = a; leaf.castShadow = false; }

@@ -35,8 +35,8 @@ const picture = id => {
 export const SOON_LABEL = 'coming soon';
 export const soonTileHTML = (kind = 'weapon') => `<button type="button" class="weapon-tile weapon-tile-soon plain-text" disabled aria-disabled="true" title="More ${kind}s coming soon"><span class="weapon-tile-picture"><b class="weapon-tile-mystery" aria-hidden="true">+</b></span><span class="weapon-tile-name">${SOON_LABEL}</span></button>`;
 
-const tile = ({ value, name, picture: art, pressed, extra = '', attrs = '' }) =>
- `<button type="button" class="weapon-tile plain-text${extra}" data-choice="${esc(value)}" aria-pressed="${String(value) === String(pressed)}" title="${esc(name)}" ${attrs}><span class="weapon-tile-picture">${art}</span><span class="weapon-tile-name">${esc(name)}</span></button>`;
+const tile = ({ value, name, picture: art, pressed, extra = '', attrs = '', title = name }) =>
+ `<button type="button" class="weapon-tile plain-text${extra}" data-choice="${esc(value)}" aria-pressed="${String(value) === String(pressed)}" title="${esc(title)}" ${attrs}><span class="weapon-tile-picture">${art}</span><span class="weapon-tile-name">${esc(name)}</span></button>`;
 const frame = (label, tiles, kind = 'weapon') => `<div class="weapon-grid-frame"><div class="weapon-grid${kind === 'map' ? ' map-grid' : ''}" role="group" aria-label="${esc(label)}">${tiles}</div></div>`;
 
 // `attrs(value)`: extra attributes for each tile (the caller's own hooks).
@@ -48,7 +48,7 @@ export function weaponGridHTML({ label, pressed = '0', random = true, soon = fal
 // Maps the same way: `maps` [{ id, name }], the shipped top-down picture
 // (map-cards.js) as the tile's picture. Values are map ids.
 export function mapGridHTML({ label, maps, pressed, soon = true }) {
- const tiles = maps.map(m => tile({ value: m.id, name: m.name, picture: MAP_IMAGES[m.id] ? `<img src="${MAP_IMAGES[m.id]}" alt="" decoding="async" draggable="false">` : '', pressed, extra: ' map-tile' })).join('');
+ const tiles = maps.map(m => tile({ value: m.id, name: m.name, picture: MAP_IMAGES[m.id] ? `<img src="${MAP_IMAGES[m.id]}" alt="" decoding="async" draggable="false">` : '', pressed, extra: ' map-tile', title: m.card?.line ? `${m.name}: ${m.card.line}` : m.name /* s3-look: the card's line */ })).join('');
  return frame(label, tiles + (soon ? soonTileHTML('map') : ''), 'map');
 }
 

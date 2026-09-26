@@ -877,3 +877,5 @@ body[data-controls=touch].duel-on.playing #game .health-hud{top:calc(max(8px,env
 #game .round-settings-readonly .round-toggle{cursor:default}
 #game .round-settings .round-setting[hidden]{display:none!important}
 #game .keybinds>.settings-note{margin:0 0 14px}
+/* s3-look: a map card's one line (maps.js `card`), over the top of its picture. */
+#game .map-choice .map-line{position:absolute;top:12px;left:12px;right:12px;display:block;font:italic 13px/1.35 Georgia,'Times New Roman',serif;color:#ece4d2;text-align:center;text-shadow:0 1px 3px #000d,0 0 10px #000a;pointer-events:none;letter-spacing:.01em}

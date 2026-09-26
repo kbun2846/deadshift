@@ -85,7 +85,7 @@ class SceneAOPass extends GTAOPass {
 }
 
 export class ExtremePost {
- constructor(renderer, scene, camera, { excluded }) {
+ constructor(renderer, scene, camera, { excluded, grade = null }) { // s3-look: `grade`, a map's own (map-look.js look.grade)
   this.renderer = renderer;
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   // Multisampled HDR target: the composer bypasses the canvas's own
@@ -125,7 +125,7 @@ export class ExtremePost {
   high.needsUpdate = true;
   this.composer.addPass(this.bloom);
   this.grade = new ShaderPass(GradeShader);
-  for (const [k, v] of Object.entries(s.grade)) this.grade.uniforms[k].value = v;
+  for (const [k, v] of Object.entries({ ...s.grade, ...(grade || {}) })) if (this.grade.uniforms[k]) this.grade.uniforms[k].value = v; // s3-look
   this.composer.addPass(this.grade);
   this.size = size.clone(); this.aoScale = s.aoScale; this.bloomDivisor = 2; this.light = false;
  }

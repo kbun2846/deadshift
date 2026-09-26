@@ -158,9 +158,10 @@ export class WorldView {
     this.renderer.toneMappingExposure = .98;
     // Light and haze come from the map (map-look.js), so each map sets its own mood.
     this.look = mapLook(map);
+    this.renderer.toneMappingExposure = this.look.exposure; // s3-look: the map's exposure (default .98)
     this.renderer.setClearColor(this.look.haze);
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(this.look.haze, 70, 130);
+    this.scene.fog = new THREE.Fog(this.look.haze, this.look.fogNear, this.look.fogFar); // s3-look: the map's haze distances (default 70, 130)
     // Near plane at 2, not 0.1. The camera never comes within about seventeen
     // units of anything -- even zoomed into the smallest room, even the death
     // camera's push-in -- and depth precision is spent in proportion to 1/near,
@@ -1283,6 +1284,7 @@ export class WorldView {
 
   explosion(e) {
     this.surfaceMarks.enqueue('explosion',e);
+    this.leafFX?.blast(e); // s3-leaves: a burst of leaves out of the woods' litter
     // Orb blasts grow one step per landed orb (orbBlastScale); grenades stay full size.
     const look = e.type === 'explosion' ? orbBlastScale(e.count) : 1;
     this.fx.explosion(e.x, e.z, e.radius, e.count || 6, this.kickedDustColor(e.x, e.z), look);
@@ -1770,6 +1772,7 @@ export class WorldView {
     }
     this.cropView.update(sim, dt);
     this.hollowBreaks?.update(fdt); // s2-breakables: rollers, stains, feathers, swarms
+    this.leafFX?.update(sim, fdt); // s3-leaves: falling leaves, leaves kicked up
     this.updateParticles(fdt); this.updateBlasts(fdt); this.blood.update(fdt);this.electric.updateAftershocks(fdt,sim); this.electric.drift(sim.seeds,sim.player,sim.colliders,fdt); this.electric.charge(sim.hexOrbs,fdt,sim.player); this.electric.syncSpin(sim.hexSpin,sim.player,fdt); this.electric.update(fdt); this.electric.boundary(sim.hexOrbs);
     for (const ring of this.rings) {
       ring.age += fdt; ring.mesh.scale.setScalar(1 + ring.age * 8); ring.mesh.material.opacity = Math.max(0, 1 - ring.age * 2.5);
@@ -1865,7 +1868,7 @@ export class WorldView {
     this.postLoading ||= import('./extreme-post.js')
       .then(({ ExtremePost }) => {
         if (this.qualityName !== 'extreme') { this.postLoading = null; return; } // switched away while it loaded
-        this.post = new ExtremePost(this.renderer, this.scene, this.camera, { excluded: () => this.aoExcluded() });
+        this.post = new ExtremePost(this.renderer, this.scene, this.camera, { excluded: () => this.aoExcluded(), grade: this.look.grade }); // s3-look: the map's grade
         if (this.programsWarmed) this.warmPrograms(); // again, for the composer's target (see warmPrograms)
       })
       .catch(error => { console.warn('Extreme post-processing unavailable:', error); });
@@ -1902,6 +1905,7 @@ export class WorldView {
     // Ground cover (tufts, pebbles, twigs) is thousands of tiny triangles that
     // cast no occlusion worth the cost of drawing them a second time.
     list.push(this.groundDetails, this.extraGroundDetails, this.performanceDetails);
+    if (this.leafFX) list.push(...this.leafFX.carpet.meshes, this.leafFX.mesh); // s3-leaves: leaf litter is ground cover too
     // Lines and points tucked inside solid groups (crate slats, rope, cracks)
     // would be drawn into the depth and normals as if they were surfaces.
     // Those groups never change, so they are found once.
@@ -2019,6 +2023,7 @@ export class WorldView {
     this.surfaceMarks.clear(); this.cropView.reset();
     this.particles.length = 0; this.fx.clear();
     this.hollowBreaks?.clear(); // s2-breakables
+    this.leafFX?.clear(); // s3-leaves
     for (const r of this.rings) { r.mesh.removeFromParent(); r.mesh.geometry.dispose(); r.mesh.material.dispose(); } this.rings.length = 0;
   }
 
@@ -2038,6 +2043,7 @@ export class WorldView {
     this.orbBeams?.clear(); this.deathView?.clear(); this.surgeView?.clear(); this.blood?.clear(); this.remoteCorpses?.clear(); this.robotWrecks?.clear(); this.robotScrap?.clear(); this.scatterView?.clear(); this.drops?.clear(); this.bleeds?.clear(); this.cleanPlayer();
     this.fx.clear(); this.waterFX?.clear();
     this.hollowBreaks?.clear(); // s2-breakables
+    this.leafFX?.clear(); // s3-leaves
     this.remote?.clear();
     this.rifleView?.clear();this.shotgunView?.clear();
     this.grenadeView?.clear();

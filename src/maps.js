@@ -12,12 +12,15 @@ import { dryCreek } from './maps/dry-creek.js';
 import { hillTest } from './maps/hill-test.js';
 import { hollowWick } from './maps/hollow-wick.js';
 import { groundFor } from './map-kit.js';
+import { HOLLOW_WICK_CARD } from './maps/hollow-wick-card.js'; // s3-look: its menu card
 
 export * from './map-kit.js';
 export { deadwater, dryCreek, hillTest, hollowWick };
 
 // modes: where the map can be played ('practice', 'multiplayer').
 // menu:  listed on the Gamemodes > Practice map page (false = dev only, ?map=id).
+// card:  (optional) the map card's line and picture spot: { line, thumbnail:
+//        { x, z, height } } (s3-look; the picture is src/assets/thumbnails/<id>.webp).
 const MAP_LIST = [
   { map: deadwater, modes: ['practice', 'multiplayer'], menu: true },
   { map: dryCreek, modes: ['practice'], menu: false },
@@ -25,10 +28,10 @@ const MAP_LIST = [
   { map: hillTest, modes: ['practice'], menu: false },
   // Being built (AGENTS.md > Adding a map, the staged process).
   // s2-spawns: every mode (bases, FFA points, robots), still dev-only.
-  { map: hollowWick, modes: ['practice', 'multiplayer'], menu: false },
+  { map: hollowWick, modes: ['practice', 'multiplayer'], menu: false, card: HOLLOW_WICK_CARD /* s3-look */ },
 ];
 
-for (const entry of MAP_LIST) Object.assign(entry.map, { modes: entry.modes, menu: entry.menu });
+for (const entry of MAP_LIST) Object.assign(entry.map, { modes: entry.modes, menu: entry.menu }, entry.card ? { card: entry.card } : {}); // (s3-look: card)
 
 export const maps = Object.freeze(Object.fromEntries(MAP_LIST.map(({ map }) => [map.id, map])));
 

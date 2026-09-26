@@ -133,6 +133,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   const [first,second]=nameLines(option.name);
   card.innerHTML=`<span class="map-thumbnail"></span><small class="map-mode">Practice</small><span class="map-caption"><strong>${stretched(first)}${stretched(second)}</strong></span>`;
   card.querySelector('strong').setAttribute('aria-label',option.name);
+  // s3-look: a map's one line (maps.js `card`), over its picture.
+  if(option.card?.line){const line=document.createElement('span');line.className='map-line';line.textContent=option.card.line;card.querySelector('.map-thumbnail').after(line);card.title=option.name+': '+option.card.line;}
   // The shipped picture (map-cards.js), in place and decoding from the start.
   const picture=cardImage(option.id,'Top-down view of '+option.name);
   if(picture)card.querySelector('.map-thumbnail').append(picture);

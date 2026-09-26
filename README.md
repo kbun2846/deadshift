@@ -1,4 +1,4 @@
-deadshift alpha v0.960 is a minimalist top down shooter with distinct weapons and explosive combat, playable in the browser on mobile or pc
+deadshift alpha v0.965 is a minimalist top down shooter with distinct weapons and explosive combat, playable in the browser on mobile or pc
 
 - three distinct weapons: static, nominal and ballast
 - online multiplayer for up to 6 players, with robots: host a game, share the room code, and play rounds from a lobby

@@ -67,6 +67,7 @@ export class Soundscape {
       noise.connect(filter); filter.connect(this.wind); this.wind.connect(this.buses.ambient); noise.start();
       const lfo = ctx.createOscillator(); lfo.frequency.value = .11;
       const depth = ctx.createGain(); depth.gain.value = .03; lfo.connect(depth); depth.connect(this.wind.gain); lfo.start();
+      this.hollow?.start(this); // s3-sound: Hollow Wick's own wind and beds in place of the desert wind (audio-hollow.js)
     }
     await this.context.resume();
   }
@@ -215,6 +216,7 @@ export class Soundscape {
 
   // `level`: how loud from where you are (hearingLevel), 1 close by.
   event(e, level = 1) {
+    this.hollow?.event(e, level); // s3-sound: gunfire ducks Hollow Wick's ambience
     if (!(level > HEARING.silent)) return;
     this.currentBus = Soundscape.WEAPON_EVENTS.has(e.type) ? 'weapons' : 'effects';
     if (level < .999 && this.context) {
@@ -439,8 +441,9 @@ export class Soundscape {
   }
 
   update(player, time) {
+    this.hollow?.update(player, time); // s3-sound: Hollow Wick's beds, crows, rope, wheel, bell
     if (Math.hypot(player.vx, player.vz) > 1.5 && time - this.lastStep > .23) {
-      this.noise(.06, .16, 900); this.tone(95, 45, .05, .025, 'triangle'); this.lastStep = time;
+      if (!this.hollow?.step(player)) { this.noise(.06, .16, 900); this.tone(95, 45, .05, .025, 'triangle'); } this.lastStep = time; // (s3-sound: a wet step in the water)
     }
   }
 }

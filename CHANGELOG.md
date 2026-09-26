@@ -2,6 +2,18 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.965 (2026-09-26)
+
+### Hollow Wick, stage 3: mechanics and style (developer tools > World > Map in progress)
+- The woods' floor: a thick carpet of fallen leaves under the North and West Woods, litter browns with the yellows and oranges of the trees above, thickest under the crowns and thinning at the edges and along the tracks (sparse on Potato, lush on Extreme).
+- Leaves fall from the canopies near you, spinning and swaying down (not on Potato; the reds never lie on the ground), and they kick up round anyone walking or dodging through the litter; a blast in the woods throws a burst of them.
+- More to the land where it was bare: fieldstone piles, boulders and chopping blocks across the slopes between the town and the fork and elsewhere.
+- Crows: perched on ridges, chimneys, the belfry, headstones, posts and the hanging tree; a few cross the sky. They burst up and circle off when shots, blasts or people come near, go quiet after gunfire, and come down to the dead a while after a kill.
+- Its own sound: a cold gusting wind in place of the desert's, dry leaves near the woods, the stream's babble and the weir's rush, distant caws, the rope creaking on the hanging tree, the mill wheel groaning round, and now and then a single toll from the meetinghouse bell. Gunfire hushes it all for a moment. Wading splashes, and your steps in the water sound wet.
+- Dusk: an overcast grey sky, a low weak sun with a warm glow in the west and haze over the far ground and the hollow, the ground still readable (Extreme adds its own colour grade); the ground's browns nudged so blood, team colours and coats stand out on every patch of it.
+- The overhead map (pause > map) draws Hollow Wick properly: the ground by height, the woods, the stream at its real width with the ford, the paths, walls and fences, the crossings, the buildings on their pads, and the irregular fence.
+- Its card for the map pick (a picture and one line), ready for when it leaves developer tools.
+
 ## alpha v0.960 (2026-09-26)
 
 ### Hollow Wick, stage 2: the village (developer tools > World > Map in progress while it is being built)

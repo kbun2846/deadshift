@@ -31,6 +31,17 @@ export const BASE_LOOK = Object.freeze({
   // new sheets form over the lowest ground in view, and are up to 1 +
   // lowBias times as thick there. Not warmed: it is the dust's own colour.
   fog: Object.freeze({ colour: '#d0ba8e', highlight: '#e8d6ac', opacity: .27, lowBias: 0 }),
+  // s3-look: the rest of a map's grade, the same on every preset (all of it is
+  // lights, fog and tone mapping: no pass, nothing per pixel added).
+  // `exposure`: the tone mapping's exposure (ACES filmic). `fogNear`/`fogFar`:
+  // the distance haze (three's linear fog in the haze colour), in metres of
+  // view depth; the camera looks down from about 31 m, so the defaults (70,
+  // 130) never touch the play area, and a nearer start greys the far side
+  // of the screen and low ground a little. `glow` / `glowMix`: a low glow on
+  // the horizon the sun's light passes through (mixed into the sun's colour
+  // in linear light, 0..1). `grade`: Extreme's grade pass over its defaults
+  // (extreme-post.js EXTREME_POST.grade: warmth, shade, contrast, saturation).
+  exposure: .98, fogNear: 70, fogFar: 130, glow: null, glowMix: 0, grade: null,
 });
 
 // A map's fog over the defaults.
@@ -75,9 +86,18 @@ export function shadowDepth(offset) {
   return { near: length - reach, far: length + 32 };
 }
 
+// Two colours mixed in linear light (s3-look: the glow into the sun).
+export function mixLinear(a, b, amount) {
+  const lin = hex => { const v = parseInt(hex.replace('#', ''), 16); return [v >> 16 & 255, v >> 8 & 255, v & 255].map(c => { c /= 255; return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; }); };
+  const t = Math.max(0, Math.min(1, amount)), A = lin(a), B = lin(b);
+  return '#' + A.map((c, i) => { const v = c + (B[i] - c) * t, s = v <= .0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - .055; return Math.round(Math.max(0, Math.min(1, s)) * 255).toString(16).padStart(2, '0'); }).join('');
+}
+
 // The finished colours a map is lit with.
 export function mapLook(map) {
   const look = { ...BASE_LOOK, ...(map?.look || {}) };
   const w = look.warmth;
-  return { ...look, sky: warmColor(look.sky, w), bounce: warmColor(look.bounce, w), sun: warmColor(look.sun, w), haze: warmColor(look.haze, w * .6), fog: fogLook(map?.look?.fog) };
+  // (s3-look) The sun's light through the horizon's glow.
+  const sun = look.glow && look.glowMix > 0 ? mixLinear(look.sun, look.glow, look.glowMix) : look.sun;
+  return { ...look, sky: warmColor(look.sky, w), bounce: warmColor(look.bounce, w), sun: warmColor(sun, w), haze: warmColor(look.haze, w * .6), fog: fogLook(map?.look?.fog) };
 }

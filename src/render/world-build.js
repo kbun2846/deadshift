@@ -28,6 +28,7 @@ import { buildTrees } from '../world/trees.js'; // s2-trees
 import { buildWaterMesh } from './water-mesh.js';
 import { buildCrossingDecks } from './crossing-decks.js';
 import { buildTerrainDetails } from '../world/terrain-details.js';
+import { buildLeaves } from '../effects/leaf-fx.js'; // s3-leaves
 import { FogSheets } from './fog-sheets.js';
 import { groundHeights } from './extreme-surfaces.js';
 
@@ -192,6 +193,7 @@ export const WorldBuild = {
     // Grass tufts, stones, twigs, stalks and leaf litter, per preset (it reads
     // the terrain mesh, so after it).
     buildTerrainDetails(this, this.ground, map);
+    this.leafFX = buildLeaves(this, map); // s3-leaves: the woods' leaf carpet, falling and kicked-up leaves
   },
 
   // A switch to a finer preset than the map loaded with rebuilds the ground's

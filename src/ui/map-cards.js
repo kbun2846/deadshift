@@ -6,13 +6,16 @@
 // arrive late, and decoded as soon as the game starts, well before anyone
 // opens a menu page: each picture is complete the first time it shows. The
 // weapon pictures also spare the menus three WebGL contexts made on the spot.
-import deadwater from '../assets/thumbnails/deadwater.webp?inline';
+// (s3-look: every map picture in the folder, by file name = map id, so a new
+// map's card picks up its picture as soon as tools/capture-thumbnail.mjs has
+// written it: Hollow Wick's, src/assets/thumbnails/hollow-wick.webp.)
+const THUMBNAILS = import.meta.glob('../assets/thumbnails/*.webp', { eager: true, query: '?inline', import: 'default' });
 import staticImage from '../assets/weapons/static.webp?inline';
 import rifleImage from '../assets/weapons/rifle.webp?inline';
 import shotgunImage from '../assets/weapons/shotgun.webp?inline';
 import { registerWeaponImages, registerMapImages } from './weapon-grid.js';
 
-export const CARD_IMAGES = Object.freeze({ deadwater });
+export const CARD_IMAGES = Object.freeze(Object.fromEntries(Object.entries(THUMBNAILS).map(([path, src]) => [path.split('/').pop().replace(/\.webp$/, ''), src]))); // s3-look
 registerMapImages(CARD_IMAGES);
 export const WEAPON_IMAGES = Object.freeze({ static: staticImage, rifle: rifleImage, shotgun: shotgunImage });
 registerWeaponImages(WEAPON_IMAGES); // the picture grids (weapon-grid.js)
