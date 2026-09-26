@@ -67,7 +67,7 @@ const detailOf = view => LIFE_DETAIL[view.qualityName] || LIFE_DETAIL.balanced;
 const C = {
  coat: '#1c1a18', coat2: '#24211e', ridge: '#2e2a26', belly: '#151312', shag: '#121110', nose: '#2c2825', beard: '#0e0d0c', leg: '#191716', hoof: '#3a342f',
  horn: '#c9bfa5', hornMid: '#b3a88f', hornTip: '#8a8171',
- withy: ['#6d6150', '#7b6e5a', '#5f5445', '#857761'], stake: '#4a4036', mud: '#4a3f31', straw: '#9a8656', strawPale: '#a8925a', strawDull: '#7d6d48', dung: '#221c16',
+ withy: ['#6d6150', '#7b6e5a', '#5f5445', '#857761'], stake: '#4a4036', mud: '#4a3f31', straw: '#9a8656', strawPale: '#9c8a58', strawDull: '#7d6d48', dung: '#221c16',
  bucket: '#5b4a38', iron: '#34373a', water: '#1f2426', twine: '#9a8c6c',
  post: '#6a5f52', postDark: '#4f473d', line: '#7c705c', peg: '#8a7a60', basket: '#7d6c4c', basketDark: '#5e5039',
  sheet: '#b3ac9c', sheetHem: '#9d9585', shirt: '#9f9684', gown: '#bdb3a0', gownHem: '#8f8676', apron: '#4f4943',
@@ -284,10 +284,19 @@ export class GoatMind {
 // to the wall), a little spring toward half open, damping, and a bounce off
 // the wall. Sign: a pendulum on its hooks, pushed by the wind.
 // (Each takes its state `s`: angle, speed, its own phase and x, and a clock:
-// { t, dt }.)
-export const SHUTTER = Object.freeze({ rest: .45, spring: .9, damping: .55, bounce: .35, max: 2.3 });
+// { t, dt }. It steps from the time it was last stepped, `s.t`, to the
+// clock's (`dt` only for the first step): the view and the soundscape both
+// step it (lifeOf stir, audio-hollow.js swings), and whichever comes second
+// finds nothing to do. Each notes what the soundscape plays: a shutter the
+// speed it met the wall at, `bang` (rad/s, from SHUTTER.knock up), and when,
+// `bangAt`; the sign how far out it turned at the end of a swing, `turn`
+// (rad), and when, `turnAt`.)
+export const SHUTTER = Object.freeze({ rest: .45, spring: .9, damping: .55, bounce: .35, max: 2.3, knock: .15 });
+const sinceLast = (s, clock) => s.t >= 0 ? Math.min(.1, clock.t - s.t) : clock.dt;
 export function stepShutter(s, clock) {
- const t = clock.t, dt = clock.dt, x = s.x || 0;
+ const t = clock.t, dt = sinceLast(s, clock), x = s.x || 0;
+ if (!(dt > 0)) return;
+ s.t = t;
  AIR.t = t + s.phase; AIR.x = x; blow(AIR);
  const w = AIR.wind, g = AIR.gust;
  // Every other gust pushes it back against the wall instead (a bang).
@@ -297,21 +306,27 @@ export function stepShutter(s, clock) {
   const h = Math.min(left, 1 / 60);
   s.speed += (SHUTTER.spring * (SHUTTER.rest - s.angle) - SHUTTER.damping * s.speed + push) * h;
   s.angle += s.speed * h;
-  if (s.angle < 0) { s.angle = 0; s.speed = -s.speed * SHUTTER.bounce; }
+  if (s.angle < 0) {
+   if (-s.speed > SHUTTER.knock) { s.bang = -s.speed; s.bangAt = t; }
+   s.angle = 0; s.speed = -s.speed * SHUTTER.bounce;
+  }
   if (s.angle > SHUTTER.max) { s.angle = SHUTTER.max; s.speed = Math.min(0, s.speed); }
  }
  // (Nothing returned: read s.angle. A number handed back would be boxed.)
 }
 export const SIGN = Object.freeze({ period: 2.1, damping: .7, push: .55 });
 export function stepSign(s, clock) {
- const t = clock.t, dt = clock.dt, k = (Math.PI * 2 / SIGN.period) ** 2;
+ const t = clock.t, dt = sinceLast(s, clock), k = (Math.PI * 2 / SIGN.period) ** 2;
+ if (!(dt > 0)) return;
+ s.t = t;
  AIR.t = t + s.phase; AIR.x = s.x || 0; blow(AIR);
  const w = AIR.wind;
  const push = SIGN.push * (w - .55) + .12 * Math.sin((t + s.phase) * 1.3);
  for (let left = dt; left > 1e-6; left -= 1 / 60) {
-  const h = Math.min(left, 1 / 60);
+  const h = Math.min(left, 1 / 60), was = s.speed;
   s.speed += (-k * Math.sin(s.angle) - SIGN.damping * s.speed + push) * h;
   s.angle += s.speed * h;
+  if (was !== 0 && (was > 0) !== (s.speed > 0)) { s.turn = Math.abs(s.angle); s.turnAt = t; }
  }
  // (Nothing returned: read s.angle. A number handed back would be boxed.)
 }
@@ -489,7 +504,15 @@ class Region {
 // The view's life: its regions and the smoke, made on first use.
 export function lifeOf(view) {
  if (view.hollowLife) return view.hollowLife;
- const life = { regions: new Map(), smoke: null, goats: [], shutters: [], signs: [], effigies: [], linens: [] };
+ const life = { regions: new Map(), smoke: null, goats: [], shutters: [], signs: [], effigies: [], linens: [], clock: { t: 0, dt: 1 / 60 } };
+ // The soundscape steps the shutters and the sign within `reach` of (x, z)
+ // to time `t` (audio-hollow.js swings), so one out of sight still bangs;
+ // the view's own step then finds them there already.
+ life.stir = (t, x, z, reach) => {
+  life.clock.t = t;
+  for (let i = 0; i < life.shutters.length; i++) { const s = life.shutters[i]; if (Math.abs(s.x - x) < reach && Math.abs(s.z - z) < reach) stepShutter(s, life.clock); }
+  for (let i = 0; i < life.signs.length; i++) { const s = life.signs[i]; if (Math.abs(s.x - x) < reach && Math.abs(s.z - z) < reach) stepSign(s, life.clock); }
+ };
  life.region = (x, z) => {
   let best = null, name = null;
   for (const [id, [rx, rz]] of Object.entries(LIFE_REGIONS)) { const d = Math.hypot(rx - x, rz - z); if (!best || d < best) { best = d; name = id; } }
@@ -886,7 +909,9 @@ function effigy(view, p) {
 //  - userData.lifeShutter = { s, width, height, colour }: a loose shutter's
 //    top hinge (+x along the wall away from the window times s, +z out).
 // `smoke`: world points of flues that smoke.
-export function takeLifeParts(view, g, smoke = []) {
+// `building`: the id of the building whose flues these are (its roof's fade
+// takes the smoke with it).
+export function takeLifeParts(view, g, smoke = [], building = null) {
  const marked = [];
  g.traverse(o => { if (o.userData.lifeSwing || o.userData.lifeShutter) marked.push(o); });
  if (!marked.length && !smoke.length) return;
@@ -895,7 +920,7 @@ export function takeLifeParts(view, g, smoke = []) {
  for (const o of marked) {
   const base = o.matrixWorld.clone(), x = base.elements[12], z = base.elements[14];
   if (o.userData.lifeSwing === 'sign') {
-   const shape = new Shape().adopt(view, o), state = { angle: 0, speed: 0, phase: hash(x + z) * 9, x };
+   const shape = new Shape().adopt(view, o), state = { angle: 0, speed: 0, phase: hash(x + z) * 9, x, z, t: -Infinity, turn: 0, turnAt: -Infinity };
    o.removeFromParent();
    const v = new Float64Array(2);
    life.signs.push(state);
@@ -908,7 +933,7 @@ export function takeLifeParts(view, g, smoke = []) {
    const { s, width, height, colour } = o.userData.lifeShutter;
    o.removeFromParent();
    const shape = shutterShape(s, width, height, colour, x * 7 + z);
-   const state = { angle: SHUTTER.rest, speed: 0, phase: hash(x * 3 + z) * 13, tilt: .1 + hash(x + z * 5) * .08, x };
+   const state = { angle: SHUTTER.rest, speed: 0, phase: hash(x * 3 + z) * 13, tilt: .1 + hash(x + z * 5) * .08, x, z, t: -Infinity, bang: 0, bangAt: -Infinity };
    life.shutters.push(state);
    const v = new Float64Array([0, -s * state.tilt]);
    life.region(x, z).add(new Rig([shape], (clock, ms) => {
@@ -918,7 +943,7 @@ export function takeLifeParts(view, g, smoke = []) {
    }, new THREE.Vector3(x, base.elements[13] - height / 2, z), width + .5));
   }
  }
- for (const point of smoke) (life.smoke ||= new ChimneySmoke(view)).add(point);
+ for (const point of smoke) (life.smoke ||= new ChimneySmoke(view)).add(point, building);
 }
 
 // A board shutter in its hinge's frame: three planks, two battens and a brace
@@ -957,7 +982,7 @@ function smokeMaterial() {
 }
 class ChimneySmoke {
  constructor(view) {
-  this.view = view; this.sources = []; this.puff = { t: 0, x: 0, y: 0, z: 0, size: 0, alpha: 0 };
+  this.view = view; this.sources = []; this.buildings = []; this.roofs = []; this.puff = { t: 0, x: 0, y: 0, z: 0, size: 0, alpha: 0 };
   const geometry = new THREE.PlaneGeometry(1, 1);
   this.alpha = new THREE.InstancedBufferAttribute(new Float32Array(SMOKE_POOL), 1).setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute('puffAlpha', this.alpha);
@@ -969,8 +994,8 @@ class ChimneySmoke {
   this.mesh.onBeforeRender = (renderer, scene, camera) => this.update(camera);
   view.scene.add(this.mesh);
  }
- add(point) {
-  this.sources.push(point.clone());
+ add(point, building = null) {
+  this.sources.push(point.clone()); this.buildings.push(building); this.roofs.push(undefined);
   const s = this.sources[0];
   this.mesh.position.copy(s); this.mesh.updateMatrix();
   // Culled as a whole: a sphere round the plume (it leans east, up to 6 m).
@@ -984,12 +1009,19 @@ class ChimneySmoke {
   let i = 0;
   for (let k = 0; k < this.sources.length; k++) {
    const s = this.sources[k];
+   // Its roof lifting (you inside, or in its doorway) takes the chimney and
+   // its smoke with it (stage 5 review: a plume drifted over the room from a
+   // chimney that was not drawn). The roof is found the first time (the
+   // building registers it after its life parts are taken).
+   if (this.roofs[k] === undefined) this.roofs[k] = !this.buildings[k] ? null : this.view.roofs?.find(r => r.id === this.buildings[k]); // (undefined again until it is registered)
+   const shown = this.roofs[k] ? this.roofs[k].opacity : 1;
+   if (shown < .02) continue;
    for (let j = 0; j < per && i < SMOKE_POOL; j++, i++) {
     this.puff.t = now + k * 2.3;
     const puff = smokePuff(j, per, this.puff);
     this.at.set(s.x - origin.x + puff.x, s.y - origin.y + puff.y, s.z - origin.z + puff.z);
     this.mesh.setMatrixAt(i, this.matrix.compose(this.at, q, this.scale.setScalar(puff.size)));
-    this.alpha.array[i] = puff.alpha;
+    this.alpha.array[i] = puff.alpha * shown;
    }
   }
   this.mesh.count = i;

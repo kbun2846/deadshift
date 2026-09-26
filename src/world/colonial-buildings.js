@@ -196,13 +196,12 @@ export function makeColonialBuilding(view, b) {
   const tones = [b.roofColor, shade(b.roofColor, 1.1), shade(b.roofColor, .9)];
   if (r.kind === 'mound') moundRoof(b, rb, L, H, e, r, rand);
   else {
-    const over = .45, gOver = .3, len = L + 2 * gOver;
-    // The eaves run on past the walls, down the slope.
+    const gOver = .3, len = L + 2 * gOver;
+    // The eaves run on past the walls, down the slope (less on a side facing
+    // north: eaveRun).
     const pts = profile.map(p => p.slice());
-    const ext = (i, j) => { const dz = pts[i][0] - pts[j][0], dy = pts[i][1] - pts[j][1], k = over / Math.abs(dz); pts[i] = [pts[i][0] + dz * k, pts[i][1] + dy * k]; };
-    ext(0, 1); ext(pts.length - 1, pts.length - 2);
-    // Saltbox: the long back slope runs on lower still (the lean-to's look).
-    if (r.kind === 'saltbox') ext(pts.length - 1, pts.length - 2);
+    const ext = (i, j, over) => { const dz = pts[i][0] - pts[j][0], dy = pts[i][1] - pts[j][1], k = over / Math.abs(dz); pts[i] = [pts[i][0] + dz * k, pts[i][1] + dy * k]; };
+    ext(0, 1, eaveRun(b, 1)); ext(pts.length - 1, pts.length - 2, eaveRun(b, -1));
     for (let i = 1; i < pts.length; i++) {
       let [za, ya] = pts[i - 1], [zb, yb] = pts[i];
       if (za > zb) [za, ya, zb, yb] = [zb, yb, za, ya];
@@ -215,8 +214,17 @@ export function makeColonialBuilding(view, b) {
         for (let x = -len / 2 + (row % 2) * .4 - .4; x < len / 2; ) {
           const piece = 1.2 + rand() * 2, x0 = Math.max(-len / 2, x), x1 = Math.min(len / 2, x + piece); x += piece + .03;
           if (x1 - x0 < .15) continue;
-          const roll = rand(), missing = roll < .025, lifted = roll > .975;
-          const m = rb((x0 + x1) / 2, yc + nY * (missing ? .142 : .16), zc + nZ * (missing ? .142 : .16), x1 - x0, .035, .34, missing ? '#211e1b' : pick(tones, row + Math.floor(x0 * 1.7)), th + (lifted ? .12 : 0));
+          const roll = rand(), missing = roll < .025, lifted = roll > .975, tone = pick(tones, row + Math.floor(x0 * 1.7));
+          if (missing && x1 - x0 > .8) {
+            // A shingle or two gone from the run (0.25-0.6 m), the dark board
+            // under it showing, not the whole 1-3 m run (stage 5 review: long
+            // black slots read as holes on the lighter roofs).
+            const g = .25 + rand() * .35, g0 = x0 + .2 + rand() * (x1 - x0 - g - .4), g1 = g0 + g;
+            for (const [a, b2] of [[x0, g0], [g1, x1]]) view.noShadows(rb((a + b2) / 2, yc + nY * .16, zc + nZ * .16, b2 - a, .035, .34, tone, th));
+            view.noShadows(rb((g0 + g1) / 2, yc + nY * .142, zc + nZ * .142, g, .035, .34, shade(b.roofColor, .45), th));
+            continue;
+          }
+          const m = rb((x0 + x1) / 2, yc + nY * .16, zc + nZ * .16, x1 - x0, .035, .34, tone, th + (lifted ? .12 : 0));
           view.noShadows(m);
         }
       }
@@ -256,13 +264,18 @@ export function makeColonialBuilding(view, b) {
   }
   if (features.includes('granite-face')) graniteFace(b, g, onSide, e, rand);
 
+  // The shell (walls, clapboard, trim, sashes, doors) opens round anyone
+  // standing behind it, as the roof does (renderer.js bakeKind 'wall',
+  // world/roof-fade.js WALL_FADE).
+  g.traverse(o => { if (o.isMesh) o.userData.wallFade = true; });
+
   // --- The roof's fade (as world-build.js makeBuilding) --------------------
   g.position.set(b.x, baseY, b.z); g.rotation.y = angle;
   roof.position.set(b.x, baseY, b.z); roof.rotation.y = angle;
   // s5-life: the parts marked to move (a loose shutter, the tavern's sign)
   // leave the static group, and smoking flues start their smoke
   // (world/hollow-life.js).
-  takeLifeParts(view, g, smoke.map(v => g.localToWorld(v)));
+  takeLifeParts(view, g, smoke.map(v => g.localToWorld(v)), b.id);
   registerRoof(view, b, roof);
 
   // The interior (the interiors builder's styles; detailed-interiors.js):
@@ -279,6 +292,20 @@ export function makeColonialBuilding(view, b) {
 }
 
 // The roof's top line at the walls, front (+Z) to back: [[z, y], ...].
+// How far an eave runs past its wall (m, level): `side` +1 for the eave at the
+// roof's +Z (the building's front for a ridge along x, its right for one
+// along z), -1 the other. A saltbox's long back slope runs on further (the
+// lean-to's look). An eave facing north runs on less (owner, stage 5 review):
+// the camera looks from the south, so the slope turned away from it hid the
+// strip under its eave, and whoever stood there, from everyone.
+export const EAVE = Object.freeze({ run: .45, north: .2, saltbox: .45, saltboxNorth: .2 });
+export function eaveRun(b, side) {
+  const r = b.roof || {}, a = b.angle || 0;
+  // The eave's outward way in the building's frame, then its world z (-z is north).
+  const lx = r.axis === 'z' ? side : 0, lz = r.axis === 'z' ? 0 : side, north = -lx * Math.sin(a) + lz * Math.cos(a) < -.5;
+  const back = r.kind === 'saltbox' && side < 0 ? (north ? EAVE.saltboxNorth : EAVE.saltbox) : 0;
+  return (north ? EAVE.north : EAVE.run) + back;
+}
 function roofProfile(r, H, e) {
   const R = r.rise;
   if (r.kind === 'saltbox') return [[H, e], [H * .32, e + R], [-H, e]];
@@ -553,7 +580,9 @@ function registerRoof(view, b, roof) {
   view.batch(roof, false);
   const roofMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 1, transparent: true });
   fadeRoofMaterial(view, roofMaterial); // (stage 4: never hides a character standing outside under it: world/roof-fade.js)
-  for (const casts of [true, false]) bakeColors(roof, { material: roofMaterial, pick: m => m.castShadow === casts });
+  // (One mesh, one draw: its shingles, which never cast, after the parts that
+  // do; the shadow pass draws only those: bake-colors.js castersFirst.)
+  bakeColors(roof, { material: roofMaterial, castersFirst: true });
   fadeRoofMeshes(view, roof);
   roof.traverse(m => { if (m.isMesh) m.receiveShadow = false; });
   const casters = []; roof.traverse(m => { if (m.isMesh && m.castShadow) casters.push(m); });

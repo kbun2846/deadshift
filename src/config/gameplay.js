@@ -62,7 +62,10 @@ export const TERRAIN = Object.freeze({ eye: 1.35, body: .9, crest: .5, uphill: .
 // stamina refills `recharge` slower. `step`: a body walks onto a deck (a
 // bridge, a log) only from ground within this of its top; from lower it wades
 // in underneath.
-export const WADE = Object.freeze({ depth: .5, slow: .22, current: .3, dodge: .35, recharge: .45, step: .45 });
+// `under`: under a deck, a body goes no further toward either end than where
+// the ground comes within `under` m of its top (the bridge's abutments; owner,
+// stage 5 review: you walked straight up out of the stream through its end).
+export const WADE = Object.freeze({ depth: .5, slow: .22, current: .3, dodge: .35, recharge: .45, step: .45, under: .7 });
 
 // Static's orb volleys (its main fire, 1 to 12 orbs: impacts and blast) hit
 // 1.75x as hard as they used to (owner's call, v0.83); the hex and the stream

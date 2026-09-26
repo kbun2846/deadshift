@@ -53,6 +53,7 @@ import { DRAG_TRAIL, KEEP_CLEAR, lineDistance } from '../src/maps/hollow-wick-tr
 import { BUILDING_PADS, BASES } from '../src/maps/hollow-wick.js';
 import { CROSSING_EXITS } from '../src/maps/hollow-wick-props.js';
 import { GRAVE_TYPES } from '../src/world/graveyard.js';
+import { TERRAIN } from '../src/config/gameplay.js';
 
 // Set pieces a dressing piece may stand beside: the KEEP_CLEAR marks that
 // belong to it (hollow-wick-tree-rules.js) and the types that are the set piece
@@ -65,6 +66,7 @@ export const SET_PIECES = {
 export const DRESSING_RULES = Object.freeze({
   spawn: 1.1, apron: 2.4, solid: .35, touch: .15, trunk: 1.2, uneven: .38, pad: .5, middle: 2.4,
   base: 5.5 + 1.2, slope: .34, trail: 2.5, setPiece: 1.2, deckEnd: 3, ford: 1, grave: .4, at: 2.5, setPieceClear: .5,
+  squeeze: [.7, 1.4], // m: a gap to a wall is under the first (closed) or at least the second (a robot's lane)
 });
 
 // A collider's or footprint's corners, turned as mapColliders turns them.
@@ -114,6 +116,8 @@ export function dressingContext(map) {
     props,
     points: [...map.bases.flatMap(b => b.points), ...map.ffaSpawns],
     doors: map.buildings.flatMap(b => buildingOpenings(b).filter(o => o.type === 'door').map(o => ({ b, o }))),
+    windows: map.buildings.flatMap(b => buildingOpenings(b).filter(o => o.type === 'window').map(o => ({ b, o }))),
+    walls: mapColliders(map).filter(c => c.terrainEdge || (c.buildingId !== undefined && !c.furniture && !c.interiorCover)),
     solids: mapColliders(map).filter(c => !c.walkOver && !c.terrainEdge),
     graves: props.filter(p => GRAVE_TYPES[p.type] && !/^fieldWall/.test(p.type)).map(p => ({ p, outline: corners({ ...p, w: GRAVE_TYPES[p.type].w * (p.scale || 1), d: GRAVE_TYPES[p.type].d * (p.scale || 1) }) })),
   };
@@ -151,6 +155,37 @@ export function dressingProblems(map, ground, p, ctx = dressingContext(map)) {
     let hit = false;
     for (const out2 of [.5, 1.2, 2, R.apron]) for (const side of [-.7, 0, .7]) if (body.some(poly => pointGap(mx + nx * out2 + ux / len * side, mz + nz * out2 + uz / len * side, poly) < .55)) hit = true;
     if (hit) out.push(`door of ${b.id}`);
+  }
+  // No squeeze: between a piece and a wall (a building's or a retaining
+  // wall) a body either cannot pass at all or a robot can too. A gap of
+  // 0.7-1.4 m let a player slip through where robots (0.46 m round, on
+  // 0.5 m squares) had to go the long way (stage 5 review: the grindstone,
+  // the hay wagon and the plough).
+  for (const c of mine) {
+    if (c.walkOver) continue;
+    const cc = corners(c);
+    for (const w of ctx.walls) {
+      // (By the boxes' extents: a retaining wall's box is a long thin one.)
+      if (Math.abs(w.x - c.x) > (w.w + c.w) / 2 + 2 || Math.abs(w.z - c.z) > (w.d + c.d) / 2 + 2 || (p.at && w.buildingId === p.at)) continue;
+      const g = gap(cc, corners(w));
+      if (g > R.squeeze[0] && g < R.squeeze[1]) { out.push(`a squeeze by ${w.terrainEdge ? 'a retaining wall' : w.buildingId}`); break; }
+    }
+  }
+  // Every open window keeps a lane outside it, as colonial-interiors.js's
+  // windowZones inside: a round fired out through it flies 1.5 m past the
+  // wall before anything that meets rounds can stop it (stage 5 review: the
+  // stocks and the mounting block stopped rounds out of two meetinghouse
+  // windows). A knee-high piece a round flies over (lowTop) may stand there.
+  const meets = mine.filter(c => !c.playerOnly && !(c.lowTop && (c.height ?? 2) < TERRAIN.roundHeight));
+  if (meets.length) for (const { b, o } of ctx.windows) {
+    const mx = (o.a.x + o.b.x) / 2, mz = (o.a.z + o.b.z) / 2, ux = o.b.x - o.a.x, uz = o.b.z - o.a.z, len = Math.hypot(ux, uz);
+    let nx = -uz / len, nz = ux / len; if (nx * (mx - b.x) + nz * (mz - b.z) < 0) { nx = -nx; nz = -nz; }
+    let hit = false;
+    for (const out2 of [.3, .8, 1.5]) for (const t of [0, .5, 1]) {
+      const x = o.a.x + ux * t + nx * out2, z = o.a.z + uz * t + nz * out2;
+      if (meets.some(c => pointGap(x, z, corners(c)) < .05)) hit = true;
+    }
+    if (hit) out.push(`window of ${b.id}`);
   }
   for (const c of mine) {
     const cc = corners(c), home = [];

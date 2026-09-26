@@ -175,7 +175,7 @@ export function mapColliders(map) {
     const c=Math.cos(p.angle||0),s=Math.sin(p.angle||0);
     // (s2-props: a box's fifth number is its height; `screen` props stop sight only.
     // s2-graveyard: per-type cover heights, `coverHeight`.)
-    for (const [x,z,w,d,h] of pieces) colliders.push({ x: p.x+x*c+z*s, z:p.z-x*s+z*c, w:Math.abs(w*c)+Math.abs(d*s),d:Math.abs(w*s)+Math.abs(d*c),angle:p.angle||0,localW:w,localD:d,height: p.walkOver ? .5 : h ?? p.coverHeight ?? 1.2, blocksSight: !!p.blocksSight, walkOver: !!p.walkOver, propId: p.id, destructible: p.health !== null, ...(p.screen && { playerOnly: true }) });
+    for (const [x,z,w,d,h] of pieces) colliders.push({ x: p.x+x*c+z*s, z:p.z-x*s+z*c, w:Math.abs(w*c)+Math.abs(d*s),d:Math.abs(w*s)+Math.abs(d*c),angle:p.angle||0,localW:w,localD:d,height: p.walkOver ? .5 : h ?? p.coverHeight ?? 1.2, blocksSight: !!p.blocksSight, walkOver: !!p.walkOver, propId: p.id, destructible: p.health !== null, ...(p.screen && { playerOnly: true }), ...(p.lowTop && { lowTop: true }) });
   }
   // s2-trees: trunks, stumps and fallen logs (world/tree-kinds.js).
   colliders.push(...treeColliders(map.trees));

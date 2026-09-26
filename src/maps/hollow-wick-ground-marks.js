@@ -49,7 +49,7 @@ export const HW_GROUND_MARKS = {
  // The smith's shoeing spot by the forge's east side, beside the barn door
  // where the cart was unloaded, and the tavern's front on the street. (The
  // troughs get theirs from the placement: the side they drank from.)
- trampled: [[35.8, 2.3, .85], [45.4, 1.6, .75], [26.6, -12.3, 1.1]],
+ trampled: [[35.8, 2.3, .85], [45.4, 1.6, .75], [26.6, -12.3, 1.1], [28.1, -11.85, .75], [18.05, 2.3, .8]], // (the last two: the hitching rails' horse sides, v0.980a)
  // The bare footprints: out of the body pile, down the bank and into the
  // stream. They never come out.
  barefoot: [[-43.7, 12.4], [-42.1, 12.9], [-40.5, 13.6], [-39.4, 14.6], [-38.9, 15.7], [-38.75, 16.7]],

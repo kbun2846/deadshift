@@ -36,7 +36,7 @@
 //    rather than chasing across the map, goes first for whoever is hurting
 //    you, and stands between you and them when you are nearly dead.
 // Nothing here touches the DOM or three.js.
-import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER, WADE } from '../config/gameplay.js';
+import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER, WADE, TERRAIN } from '../config/gameplay.js';
 import { collidersAlong } from '../world/collider-grid.js';
 import { segmentBox } from '../simulation.js';
 import { makeProfile, stepMood } from './robot-profile.js';
@@ -97,6 +97,9 @@ export function shotClear(colliders, ax, az, bx, bz, pad = .04, ground = null) {
  const x0 = Math.min(ax, bx) - 1, x1 = Math.max(ax, bx) + 1, z0 = Math.min(az, bz) - 1, z1 = Math.max(az, bz) + 1;
  for (const c of collidersAlong(colliders, ax, az, bx, bz, 1)) {
   if (c.playerOnly) continue;
+  // (Hills: a stump, log or low piece marked lowTop that a round flies over,
+  // rifle.js roundMeets, is no cover: v0.980a. None on Deadwater.)
+  if (c.lowTop && (c.height ?? 2) < TERRAIN.roundHeight) continue;
   if (c.x + c.w / 2 < x0 || c.x - c.w / 2 > x1 || c.z + c.d / 2 < z0 || c.z - c.d / 2 > z1) continue;
   if (segmentBox(ax, az, bx, bz, c, pad) !== null) return false;
  }

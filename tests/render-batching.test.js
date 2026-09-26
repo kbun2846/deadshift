@@ -80,3 +80,33 @@ test('plain coloured parts bake into one draw with their colours kept per vertex
  view.batch(roof,false);
  assert.ok(!roof.children.some(m=>m.material.vertexColors),'roofs fade their own materials, so they are never baked');
 });
+
+test('the static batches: casting and non-casting parts share a mesh, and the shadow pass draws just the casters (v0.980a)',()=>{
+ const view=Object.create(WorldView.prototype),mat=new THREE.MeshStandardMaterial();
+ const make=(x,casts)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),mat);m.position.set(x,.5,0);m.castShadow=casts;return m;};
+ // Interleaved on purpose: the merge puts the casters first.
+ const root=new THREE.Group();root.add(make(0,false),make(2,true),make(4,false),make(6,true),make(8,true));
+ view.batch(root,true,{mergeCasters:true});
+ assert.equal(root.children.length,1,'one mesh, one draw');
+ const m=root.children[0],g=m.geometry;
+ assert.equal(m.castShadow,true);
+ assert.equal(m.userData.castCount,3*36,'the three casters\' indices come first');
+ assert.equal(g.index.count,5*36);
+ // The casters' part is exactly the casting boxes (x 2, 6, 8).
+ const nearest=x=>[0,2,4,6,8].reduce((a,b)=>Math.abs(b-x)<Math.abs(a-x)?b:a);
+ for(let i=0;i<g.index.count;i++){const box=nearest(g.attributes.position.getX(g.index.getX(i)));assert.equal(i<m.userData.castCount,[2,6,8].includes(box),`index ${i} (box at x ${box})`);}
+ // The shadow pass (three calls these round its draw) sees the casters only.
+ m.onBeforeShadow();assert.equal(g.drawRange.count,3*36);
+ m.onAfterShadow();assert.equal(g.drawRange.count,Infinity);
+ // Without the option (roofs, props: later steps rebuild those meshes) they stay apart.
+ const apart=new THREE.Group();apart.add(make(0,false),make(2,true),make(4,false),make(6,true));
+ view.batch(apart);
+ assert.equal(apart.children.length,2);
+ assert.deepEqual(apart.children.map(c=>c.castShadow).sort(),[false,true]);
+ assert.ok(apart.children.every(c=>c.userData.castCount===undefined));
+ // All casters, or none: no hooks.
+ const all=new THREE.Group();all.add(make(0,true),make(2,true));view.batch(all,true,{mergeCasters:true});
+ assert.equal(all.children[0].castShadow,true);assert.equal(all.children[0].userData.castCount,undefined);
+ const none=new THREE.Group();none.add(make(0,false),make(2,false));view.batch(none,true,{mergeCasters:true});
+ assert.equal(none.children[0].castShadow,false);
+});

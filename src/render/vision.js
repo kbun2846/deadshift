@@ -3,7 +3,7 @@
 // (renderer.js); `this` is the view.
 import { RULES } from '../simulation.js';
 import { cropImmersion } from '../crops.js';
-import { interiorPolygons, projectVisionPolygon } from './vision-polygons.js';
+import { interiorPolygons, projectVisionPolygon, roomBox } from './vision-polygons.js';
 import { viewWidth, viewHeight } from '../viewport.js';
 import { VISION_REPAINT, VISION_SHROUD } from './renderer.js';
 
@@ -83,7 +83,7 @@ export const Vision = {
   },
 
   updateInteriorVision(sim) {
-    const room = sim.interior?.open ? null : sim.interior; // (an open shed is outdoors: no shroud)
+    const room = sim.interior; // (an open shed too: renderer.js cameraRoom)
     const visionDisplay = room ? 'block' : 'none';
     // Gated the same way the crop overlay beside it is: writing an unchanged
     // display value still invalidates style on every frame.
@@ -110,8 +110,10 @@ export const Vision = {
     if (!cameraMoved && this.visionMaskClock > this.effectTime && this.visionMaskKey) return;
     this.visionMaskClock = this.effectTime + (VISION_REPAINT[this.qualityName] || VISION_REPAINT.balanced);
     this.visionMaskKey = maskKey;
-    this.paintVision(interiorPolygons(room, sim.player)
-      .map(points => projectVisionPolygon(points, this.camera, viewWidth(), viewHeight(), .7 + (room.baseY || 0))));
+    // The room's own box is never shrouded (vision-polygons.js roomBox); the
+    // openings' cones are laid at .7 m over its floor.
+    const polygons = roomBox(room).concat(interiorPolygons(room, sim.player));
+    this.paintVision(polygons.map(points => projectVisionPolygon(points, this.camera, viewWidth(), viewHeight(), .7 + (room.baseY || 0))));
   },
 
   // Paints the shroud: a flat wash over the viewport with the clear regions

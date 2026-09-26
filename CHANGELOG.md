@@ -2,6 +2,25 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.980 (2026-09-26)
+
+### Hollow Wick: the stage 5 review (developer tools > World > Map in progress)
+- Rounds fly over knee-high things, as they already flew over stumps and logs: washtubs, chopping blocks, troughs, headstone stumps, the stocks, the plough, the cairns. Someone standing behind a knee-high tub can be hit, and robots shoot over them too.
+- No more squeezes a player can slip through but a robot can't: the grindstone, the hay wagon (now drawn up against the barn) and the plough moved.
+- The coffin lid leaning on the hearse house is solid, the rowboat's whole dry hull is solid, and you can walk right up to a stone pile's stones.
+- Nobody hides behind a building any more: the eaves on the north sides of the roofs are shorter, the see-through patch a roof opens over someone now sits exactly between your camera and them (it fell short toward the top of the screen), and the walls of the village's buildings open the same way from the waist up, so someone pressed against a north wall shows.
+- Wading under the bridge, the log or the footbridge, you can no longer walk straight up out through its end: the abutments stop you, and you go out from under a side and up the bank round the end.
+- The forge, the horse sheds and the woodshed bring the camera in and grey out what their walls hide, like every other room.
+- Inside a building, its own walls are never greyed out: no more grey patches on the walls, the window heads or the pulpit where no window was.
+- The loose shutters now bang against their walls in the gusts and the tavern sign's hooks squeal at the end of a wide swing, even behind you; the chimney smoke fades with its roof when you go in.
+- A missing shingle is a gap of one or two, not a long black slot; chopping blocks stand only by woodpiles and troughs only on level ground; the barrels' and the washtub's water sits in them, not over the rim; puddles by the troughs only where the ground is level; the rails' churned mud lies on the ground; the straw and spilled grain are faded so they never pass for an Amber hat.
+
+### Performance (every map)
+- The same picture for fewer draw calls: each patch of scenery and each roof is drawn once where it was drawn twice (the shadows still come only from what casts them). Hollow Wick's town, shadows included: Potato 80 draws a frame down to 71, Performance 165 down to 162, even with the village walls' new see-through batches.
+- Roofs are drawn before whatever stands under them, so the floors, tables and hearths of closed houses are no longer shaded and then painted over.
+- The see-through patch that roofs and tree limbs open over players costs a fraction of what it did, and nothing about it is allocated a frame.
+- Every map loads a little faster: the chimneys that stand over a room's fire are placed from saved numbers instead of laying out every room when the game starts (190 ms to 110 ms).
+
 ## alpha v0.975 (2026-09-26)
 
 ### Hollow Wick, stage 4: development (developer tools > World > Map in progress)

@@ -42,32 +42,32 @@ import * as THREE from 'three';
 const NONE = [];
 export const DRESSING_TYPES = {
   // Puritan justice (Church Hill).
-  stocks: { w: 1.9, d: 1.1, health: null, collisionBoxes: [[0, -.1, 1.8, .8, .7]] },
+  stocks: { w: 1.9, d: 1.1, health: null, lowTop: true, collisionBoxes: [[0, -.1, 1.8, .8, .7]] },
   pillory: { w: 1.4, d: .6, health: null, collisionBoxes: [[0, 0, .34, .34, 2.1]] },
   whippingPost: { w: .6, d: .6, health: null, collisionBoxes: [[0, 0, .32, .32, 2.5]] },
-  mountingBlock: { w: 1.05, d: .85, health: null, collisionBoxes: [[0, 0, 1, .8, .7]] },
+  mountingBlock: { w: 1.05, d: .85, health: null, lowTop: true, collisionBoxes: [[0, 0, 1, .8, .7]] },
   // The town.
   hitchingRail: { w: 2.9, d: .5, health: null, screen: true, collisionBoxes: [[0, 0, 2.8, .2, 1.05]] },
   hayWagon: { w: 3.9, d: 1.9, health: null, collisionBoxes: [[-.15, 0, 3.3, 1.6, 1.5]] },
   rainBarrel: { w: .7, d: .7, health: null, collisionBoxes: [[0, 0, .62, .62, .95]] },
   grindstone: { w: 1.3, d: .8, health: null, collisionBoxes: [[0, 0, 1.2, .62, 1]] },
   slagHeap: { w: 1.8, d: 1.3, health: null, collisionBoxes: NONE },
-  plough: { w: 2.5, d: .8, health: null, collisionBoxes: [[0, 0, 2.2, .5, .6]] },
+  plough: { w: 2.5, d: .8, health: null, lowTop: true, collisionBoxes: [[0, 0, 2.2, .5, .6]] },
   harrow: { w: 1.6, d: 1.4, health: null, collisionBoxes: NONE },
   scythe: { w: .5, d: .5, health: null, collisionBoxes: NONE },
   // The graveyard's edge and the hearse house.
   bier: { w: 2.4, d: .8, health: null, collisionBoxes: [[0, 0, 2.2, .7, 1.05]] },
-  coffinLid: { w: .6, d: .8, health: null, collisionBoxes: NONE },
-  diggersBarrow: { w: 1.7, d: .75, health: null, collisionBoxes: [[0, 0, 1.5, .62, .6]] },
+  coffinLid: { w: .6, d: .8, health: null, collisionBoxes: [[0, 0, .56, .76, 1.4]] }, // (a 1.6 m board: bodies walked into it, stage 5 review)
+  diggersBarrow: { w: 1.7, d: .75, health: null, lowTop: true, collisionBoxes: [[0, 0, 1.5, .62, .6]] },
   tombLantern: { w: .3, d: .3, health: null, collisionBoxes: NONE },
   // The stream and the mill. (The boat's box is its dry half only.)
-  rowboat: { w: 3.6, d: 1.4, health: null, collisionBoxes: [[.85, 0, 1.7, 1.2, .6]] },
+  rowboat: { w: 3.6, d: 1.4, health: null, lowTop: true, collisionBoxes: [[.625, 0, 2.15, 1.2, .6]] }, // (the dry hull, from the bow to just past the middle: a wading body walked through the stern half, stage 5 review)
   eelPot: { w: 1.1, d: .5, health: null, collisionBoxes: NONE },
-  washTub: { w: 1.1, d: .9, health: null, collisionBoxes: [[0, 0, .8, .8, .45]] },
+  washTub: { w: 1.1, d: .9, health: null, lowTop: true, collisionBoxes: [[0, 0, .8, .8, .45]] },
   spareMillstones: { w: 1.3, d: .8, health: null, collisionBoxes: [[0, 0, 1.2, .6, 1.1]] },
   // The woods.
   fireRing: { w: 1.9, d: 1.7, health: null, collisionBoxes: NONE },
-  cairn: { w: .7, d: .7, health: null, collisionBoxes: [[0, 0, .55, .55, .7]] },
+  cairn: { w: .7, d: .7, health: null, lowTop: true, collisionBoxes: [[0, 0, .55, .55, .7]] },
   deerCarcass: { w: 1.9, d: 1.1, health: null, collisionBoxes: NONE },
   leanTo: { w: 2.6, d: 1.9, health: null, collisionBoxes: [[0, -.15, 2.2, 1.3, .8]] },
 };
@@ -79,7 +79,7 @@ const K = {
   iron: '#3a3836', rust: '#5a4638', tin: '#6a6862', tinDark: '#4c4b47', pewter: '#8a8c86', wax: '#cfc8b6', steel: '#77756e',
   stone: '#7f7b72', stoneDark: '#5f5c56', granite: '#8e8c86', graniteDark: '#77756e', lichen: '#8b8a80', moss: '#56603f', sandstone: '#8f887a',
   earth: '#6a5238', earthDark: '#4e3c2a', trampled: '#5f5140', hole: '#1c1714',
-  straw: '#a8925a', strawDark: '#8f7a48', strawPale: '#b59c5e', hay: '#9c8a55',
+  straw: '#9c8a58', strawDark: '#8f7a48', strawPale: '#9a8c64', hay: '#9c8a55', // (faded straws: the Amber hat reads on them)
   leather: '#5a4232', leatherDark: '#3e2e24', buckle: '#8a8c86', linen: '#a59a84', rag: '#4a4540',
   rope: '#5a4e3c', bone: '#e2d6b8', boneOld: '#cbbd9a', hide: '#6e5038', hideDark: '#57402e', hidePale: '#8a7258',
   ash: '#8a867e', ashDark: '#6e6a64', char: '#2a2622', soot: '#2f2d2a', cinder: '#35312c', slag: '#3f4642',
@@ -204,7 +204,7 @@ const BUILDERS = {
     const ring = view.mesh(new THREE.TorusGeometry(.09, .02, 4, 10), K.iron, 0, 1.87, .17, post); ring.rotation.x = .6;
     stick([0, 1.8, .2], [.04, 1.3, .22], .024, K.rope, post);
     for (let i = 0; i < 4; i++) stick([.04, 1.3, .22], [.04 + (i - 1.5) * .04, 1.14 + random() * .04, .22 + (random() - .5) * .08], .008, K.strawDark, post);
-    const t = onSlope(); patch(0, 0, .75, .6, K.trampled, t);
+    // (The trodden earth round it: ground marks, soft-edged; stage 5 review.)
   },
   // A granite mounting block of two steps, the top worn hollow, lichen on it.
   mountingBlock(k) {
@@ -222,7 +222,9 @@ const BUILDERS = {
     for (const x of [-1.3, 1.3]) { box(x, .55, 0, .15, 1.1, .15, K.dark); box(x, 1.11, 0, .18, .04, .18, K.greyDark); }
     cyl(0, 1.02, 0, .055, 2.9, K.wood).rotation.z = Math.PI / 2;
     for (const x of [-.75, .05, .7]) cyl(x + (random() - .5) * .2, 1.02, 0, .059, .22, K.rubbed).rotation.z = Math.PI / 2;
-    const t = onSlope(); patch(-.45, .75, .9, .5, K.trampled, t); patch(.55, .7, .8, .45, K.trampled, t, .012);
+    // (The churned mud on the horses' side is the ground marks' trampled
+    // mud and hoofprints now, soft-edged: HW_GROUND_MARKS.trampled; stage 5 review.)
+    const t = onSlope();
     const shoe = view.mesh(new THREE.TorusGeometry(.07, .016, 3, 8, Math.PI * 1.55), K.rust, .6, .03, .9, t); shoe.rotation.set(-Math.PI / 2, 0, random() * 6); shoe.castShadow = false;
   },
   // A hay wagon (bed, flared hay ladders, four spoked wheels, the tongue down
@@ -241,22 +243,24 @@ const BUILDERS = {
     box(bx, y, 0, 3.2, .08, 1.36, K.wood);
     for (const z of [-.68, .68]) box(bx, y + .18, z, 3.2, .3, .06, z < 0 ? K.grey : K.wood);
     for (const x of [-1.58, 1.58]) box(bx + x, y + .18, 0, .06, .3, 1.36, K.greyDark);
-    // The hay ladders, flared out over the wheels.
+    // The hay ladders, flared out over the wheels (the -z one, drawn up
+    // against the barn's wall, hardly: stage 5 review).
     for (const side of [-1, 1]) {
-      const rack = group(bx, y + .32, side * .7, side * .42, 0, 0);
+      const rack = group(bx, y + .32, side * .7, side * (side < 0 ? .1 : .42), 0, 0);
       box(0, .56, 0, 3.4, .06, .06, K.dark, rack);
       for (let i = 0; i < 6; i++) box(-1.55 + i * .62, .28, 0, .05, .58, .05, K.dark, rack);
     }
     // The hay: a long heap over the bed and the ladders, a paler top.
     for (let i = 0; i < 4; i++) { const h = ball(bx - 1.1 + i * .74, y + .45, (random() - .5) * .2, .72, i % 2 ? K.straw : K.hay); h.scale.set(.9, .56, 1.18); h.rotation.y = random() * 3; }
     for (let i = 0; i < 3; i++) { const h = ball(bx - .75 + i * .72, y + .68, (random() - .5) * .2, .48, K.strawPale); h.scale.set(1, .5, 1.1); }
-    for (let i = 0; i < 7; i++) { const side = i % 2 ? 1 : -1, st = box(bx - 1.3 + i * .42, y + .38, side * 1.02, .06, .5, .12, K.strawDark); st.rotation.x = side * .5; st.castShadow = false; }
+    for (let i = 0; i < 7; i++) { const side = i % 2 ? 1 : -1, st = box(bx - 1.3 + i * .42, y + .38, side * (side < 0 ? .74 : 1.02), .06, .5, .12, K.strawDark); st.rotation.x = side * (side < 0 ? .15 : .5); st.castShadow = false; }
     // The fork, stuck in the hay.
     stick([bx + .7, y + .8, .1], [bx + 1.3, y + 1.7, .35], .025, K.pale);
     for (const dz of [-.05, 0, .05]) stick([bx + .7, y + .8, .1 + dz], [bx + .6, y + .55, .08 + dz], .01, K.iron);
     // The tongue, run out forward, its end down on the ground; hay dropped round it.
     stick([bx + 1.6, .55, 0], [bx + 2.05, lift(bx + 2.05, 0) + .06, .05], .05, K.grey);
-    for (let i = 0; i < 8; i++) { const a = random() * 6.3, r = 1.2 + random() * .7, x = Math.cos(a) * r * 1.3, z = Math.sin(a) * r * .8; flat(x, lift(x, z) + .02, z, .45, .03, .07, i % 2 ? K.straw : K.strawDark).rotation.y = a; }
+    // (Dropped on the open side: -z is the barn's wall.)
+    for (let i = 0; i < 8; i++) { const a = random() * 6.3, r = 1.2 + random() * .7, x = Math.cos(a) * r * 1.3, z = Math.abs(Math.sin(a) * r * .8); flat(x, lift(x, z) + .02, z, .45, .03, .07, i % 2 ? K.straw : K.strawDark).rotation.y = a; }
   },
   // A rain barrel under the eaves: staves, three hoops, dark water to the
   // brim, a gourd dipper hung on the rim; moss and wet earth at its foot.
@@ -264,7 +268,7 @@ const BUILDERS = {
     const { box, cyl, stick, ball } = k;
     cyl(0, .45, 0, .28, .9, K.worn, k.g, 10, .3);
     for (const y of [.14, .5, .82]) cyl(0, y, 0, .3 + y * .015, .045, K.iron, k.g, 10);
-    cyl(0, .875, 0, .275, .012, K.water, k.g, 10);
+    cyl(0, .906, 0, .29, .012, K.water, k.g, 10); // (on the lid, not inside it: dark water to the brim, a ring of staves round it)
     box(.2, .45, .21, .07, .82, .015, K.dark).rotation.y = -.78;
     const gourd = ball(.26, .74, -.12, .08, K.wicker); gourd.scale.set(1, .8, 1);
     stick([.24, .79, -.1], [.08, .92, -.02], .012, K.wicker);
@@ -438,7 +442,7 @@ const BUILDERS = {
     const { box, cyl, group } = k;
     cyl(0, .19, 0, .35, .38, K.worn, k.g, 10, .39);
     for (const y of [.08, .3]) cyl(0, y, 0, .36 + y * .1, .04, K.dark, k.g, 10);
-    cyl(0, .33, 0, .37, .01, K.washWater, k.g, 10);
+    cyl(0, .386, 0, .38, .01, K.washWater, k.g, 10); // (on top, where it shows)
     const board = group(.14, .2, 0, 0, 0, -.42);
     box(0, .3, 0, .34, .64, .03, K.pale, board);
     for (let i = 0; i < 7; i++) box(0, .1 + i * .06, .02, .28, .025, .02, K.worn, board);

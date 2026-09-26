@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {deadwater,buildingPoint} from '../src/maps.js';
-import {interiorPolygons,projectVisionPolygon} from '../src/render/vision-polygons.js';
+import {deadwater,buildingPoint,maps} from '../src/maps.js';
+import {interiorPolygons,projectVisionPolygon,roomBox} from '../src/render/vision-polygons.js';
 import {interiorCameraHeight,CAMERA_TILT} from '../src/render/camera-framing.js';
 const contains=(polygon,p)=>{
   let yes=false;
@@ -33,4 +33,23 @@ test('moving near every room corner never mirrors vision across the camera',()=>
 test('edge-on doorways produce no degenerate visibility polygon',()=>{
   const room={x:0,z:0,w:8,d:8,doorWidth:2.6,doors:['front']};
   assert.equal(interiorPolygons(room,{x:0,z:4}).length,1);
+});
+test('the shroud never greys the room you are in: its box, floor to eaves, walls and trim, is clear on screen',()=>{
+  // (Stage 5 review, owner: the room's clear patch was laid at .7 m, so its upper
+  // walls, window heads and pulpit showed grey patches between the openings' cones.)
+  const rooms=[...deadwater.buildings,...Object.values(maps).filter(m=>m.id!=='deadwater').flatMap(m=>m.buildings||[])].filter(b=>!b.open);
+  assert.ok(rooms.length>20);
+  for(const room of rooms)for(const aspect of [.7,1.8]){
+    const camera=new THREE.PerspectiveCamera(40,aspect,.1,180),h=interiorCameraHeight(room,aspect),base=room.baseY||0,top=room.height||3;
+    camera.position.set(room.x,base+h,room.z+h*CAMERA_TILT);camera.lookAt(room.x,base,room.z);camera.updateMatrixWorld();
+    const faces=roomBox(room).map(p=>projectVisionPolygon(p,camera,1000,1000));
+    const onScreen=(x,y,z)=>{const v=new THREE.Vector3(x,y,z).project(camera);return {x:(v.x*.5+.5)*1000,y:(.5-v.y*.5)*1000,in:Math.abs(v.x)<1&&Math.abs(v.y)<1&&v.z<1};};
+    const out=.19+.08; // a wall's outer face and its trim
+    for(const y of [0,.7,top/2,top-.05])for(let k=-.5;k<=.5;k+=.125){
+      for(const [lx,lz] of [[k*room.w,room.d/2+out],[k*room.w,-room.d/2-out],[room.w/2+out,k*room.d],[-room.w/2-out,k*room.d]]){
+        const w=buildingPoint(room,lx,lz),p=onScreen(w.x,base+y,w.z);
+        if(p.in)assert.ok(faces.some(f=>contains(f,p)),`${room.id} ${lx.toFixed(2)},${lz.toFixed(2)} at ${y}`);
+      }
+    }
+  }
 });

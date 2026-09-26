@@ -19,11 +19,14 @@ import { dressingProblems, dressingContext, collidersOf, corners, gap, SET_PIECE
 import { spotProblems } from '../src/maps/hollow-wick-tree-rules.js';
 import { trunkRadius } from '../src/world/tree-kinds.js';
 import { spawnProblem } from '../src/net/map-spawns.js';
+import { roundMeets } from '../src/weapons/rifle.js';
+import { shotClear } from '../src/bots/robot-brain.js';
+import { TERRAIN } from '../src/config/gameplay.js';
 
 const map = maps['hollow-wick'], ground = groundFor(map);
 const pieces = HOLLOW_WICK_DRESSING;
 // Walked over: small or lying things (no collider at all).
-const LYING = ['slagHeap', 'harrow', 'scythe', 'coffinLid', 'tombLantern', 'eelPot', 'fireRing', 'deerCarcass'];
+const LYING = ['slagHeap', 'harrow', 'scythe', 'tombLantern', 'eelPot', 'fireRing', 'deerCarcass'];
 
 test('every dressing type is solid scenery with honest collider heights', () => {
   for (const [type, t] of Object.entries(DRESSING_TYPES)) {
@@ -42,9 +45,11 @@ test('every dressing type is solid scenery with honest collider heights', () => 
   assert.ok(height('whippingPost') >= 2.4 && height('pillory') >= 1.9);
   assert.equal(height('hayWagon'), 1.5);
   assert.ok(height('stocks') < .74 && height('diggersBarrow') < .74 && height('washTub') < .74, 'low pieces: rounds fly over');
-  // The boat's box is its dry half only (the bow end, +x).
+  for (const type of ['stocks', 'mountingBlock', 'plough', 'diggersBarrow', 'rowboat', 'washTub', 'cairn']) assert.equal(DRESSING_TYPES[type].lowTop, true, `${type}: lowTop (rifle.js roundMeets takes its own top)`);
+  // The boat's box is its dry part only: the bow end (+x) to just past the
+  // middle (the placement rules keep it out of the water).
   const [bx, , bw] = DRESSING_TYPES.rowboat.collisionBoxes[0];
-  assert.ok(bx - bw / 2 >= -.01 && bw < DRESSING_TYPES.rowboat.w * .55);
+  assert.ok(bx - bw / 2 >= -.5 && bx + bw / 2 <= DRESSING_TYPES.rowboat.w / 2 && bw < DRESSING_TYPES.rowboat.w * .62);
   // Hitching rails stop bodies, not rounds (a pole at waist height, open below).
   const rail = mapColliders(map).find(c => c.propId === 'hw-d-rail-tavern');
   assert.ok(rail.playerOnly && !rail.blocksSight && !rail.walkOver);
@@ -168,8 +173,9 @@ test('the models build: finite, plain colours only, few triangles, merged into t
 
 test('no new draws: the dressing only joins static batches its cells already had', async () => {
   // batch() merges the static root per 40 m cell by kind (plain or timber
-  // colours, casting or not, indexed or not, attributes): a key the map did
-  // not have before would be a new draw (and a new shadow draw).
+  // colours, indexed or not, attributes; casting or not no longer splits the
+  // static root's batches, mergeCasters, v0.980a): a key the map did not have
+  // before would be a new draw (and a new shadow draw).
   const keys = async withDressing => {
     const view = await standInView(), out = new Set();
     for (const b of map.buildings) view.makeBuilding(b);
@@ -180,10 +186,37 @@ test('no new draws: the dressing only joins static batches its cells already had
       if (!o.isMesh || Array.isArray(o.material) || o.material.map) return;
       const baked = view.bakeKind(o); o.geometry.computeBoundingSphere();
       const c = o.geometry.boundingSphere.center.clone().applyMatrix4(o.matrixWorld);
-      out.add(`${Math.floor(c.x / 40)},${Math.floor(c.z / 40)} ${baked ? 'baked-' + baked : o.material.type + o.material.color?.getHexString() + o.material.emissive?.getHexString()} ${o.castShadow} ${!!o.geometry.index} ${Object.keys(o.geometry.attributes).sort()}`);
+      out.add(`${Math.floor(c.x / 40)},${Math.floor(c.z / 40)} ${baked ? 'baked-' + baked : o.material.type + o.material.color?.getHexString() + o.material.emissive?.getHexString()} ${!!o.geometry.index} ${Object.keys(o.geometry.attributes).sort()}`);
     });
     return out;
   };
   const before = await keys(false), after = await keys(true);
   assert.deepEqual([...after].filter(k => !before.has(k)), [], 'batches the map did not have');
+});
+
+test('a level round flies over every knee-high piece (lowTop) on Hollow Wick, and robots count on it (v0.980a)', () => {
+  // (stage 5 review: a round took the washtub, the digger's barrow, the
+  // stocks and every chopping block, trough and headstone stump for 0.94 m
+  // of cover, so a body standing behind a knee-high tub could not be hit.)
+  const ground = groundFor(map), sim = { ground }, props = new Map(mapProps(map).map(p => [p.id, p]));
+  const low = mapColliders(map).filter(c => c.propId !== undefined && !c.playerOnly && !c.walkOver && (c.height ?? 2) < TERRAIN.roundHeight);
+  assert.ok(low.length >= 30);
+  for (const c of low) {
+    const type = props.get(c.propId).type;
+    assert.equal(c.lowTop, true, `${c.propId} (${type}) is lower than a round and marked lowTop`);
+    // Level rounds across it from four sides, each passing over its middle.
+    let over = 0;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const round = { flight: ground.flight(c.x - dx * 3, c.z - dz * 3, dx, dz, 8, ground.heightAt(c.x - dx * 3, c.z - dz * 3)) };
+      if (!roundMeets(sim, round, c, c.x, c.z, 3)) over++;
+    }
+    assert.ok(over >= 3, `${c.propId} (${type}): a round flies over from ${over} of 4 sides`);
+    // A robot's shot across it is not spoiled by it (bots/robot-brain.js shotClear).
+    assert.ok(shotClear([c], c.x - 3, c.z, c.x + 3, c.z), `${c.propId}: robots shoot over it`);
+  }
+  // Waist-high cover still meets rounds and spoils a robot's shot.
+  const pile = mapColliders(map).find(c => props.get(c.propId)?.type === 'stonePile');
+  const round = { flight: ground.flight(pile.x - 3, pile.z, 1, 0, 8, ground.heightAt(pile.x - 3, pile.z)) };
+  assert.equal(roundMeets(sim, round, pile, pile.x, pile.z, 3), true);
+  assert.equal(shotClear([pile], pile.x - 3, pile.z, pile.x + 3, pile.z), false);
 });

@@ -121,6 +121,17 @@ export function insideShield(sh, x, z) {
   return true;
 }
 
+// A deck's long way (`u`, a unit vector) and its middle, from its outline:
+// its ends are the short sides (simulation.js updateStance).
+const deckAxes = new WeakMap();
+function deckAxis(deck) {
+  let axis = deckAxes.get(deck); if (axis) return axis;
+  const [a, b, c] = deck.poly, ab = Math.hypot(b[0] - a[0], b[1] - a[1]), bc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+  const [p, q] = ab > bc ? [a, b] : [b, c], l = Math.hypot(q[0] - p[0], q[1] - p[1]);
+  axis = { u: { x: (q[0] - p[0]) / l, z: (q[1] - p[1]) / l }, cx: deck.poly.reduce((n, v) => n + v[0], 0) / deck.poly.length, cz: deck.poly.reduce((n, v) => n + v[1], 0) / deck.poly.length };
+  deckAxes.set(deck, axis); return axis;
+}
+
 export class Simulation {
   constructor(map) {
     this.dev = {}; this.map = map; this.colliders = mapColliders(map);
@@ -258,11 +269,28 @@ export class Simulation {
   // ground under it rises to the deck's top. Stepping off a deck's side drops
   // it into the stream. Only on maps with decks (p.below is never set on
   // any other).
+  // Its ends are shut underneath (owner, stage 5 review: you walked straight
+  // up out of the stream through the bridge's end): under a deck, where the
+  // ground comes within WADE.under of its top (the bridge's abutments), a body
+  // goes no further toward that end. It can still move across and back, so
+  // it slides along the abutment out from under a side and climbs the bank
+  // round the end.
   updateStance(p, previousX, previousZ) {
    const g = this.ground; if (g.flat || !g.decks.length) return;
-   const k = g.deckAt(p.x, p.z);
+   let k = g.deckAt(p.x, p.z);
    if (k < 0) { if (p.below) p.below = false; return; }
-   const top = g.decks[k].h;
+   let top = g.decks[k].h;
+   const under = g.deckAt(previousX, previousZ) !== k ? (p.below ? g.drawnHeightAt(previousX, previousZ) : g.heightAt(previousX, previousZ)) < top - WADE.step : p.below;
+   if (under && g.drawnHeightAt(p.x, p.z) > top - WADE.under) {
+    const { u, cx, cz } = deckAxis(g.decks[k]), dx = p.x - previousX, dz = p.z - previousZ, along = dx * u.x + dz * u.z;
+    if (along * ((p.x - cx) * u.x + (p.z - cz) * u.z) > 0) {
+     p.x -= along * u.x; p.z -= along * u.z;
+     const push = p.vx * u.x + p.vz * u.z; if (push * along > 0) { p.vx -= push * u.x; p.vz -= push * u.z; }
+     k = g.deckAt(p.x, p.z);
+     if (k < 0) { if (p.below) p.below = false; return; }
+     top = g.decks[k].h;
+    }
+   }
    if (g.deckAt(previousX, previousZ) !== k) p.below = (p.below ? g.drawnHeightAt(previousX, previousZ) : g.heightAt(previousX, previousZ)) < top - WADE.step;
    else if (p.below && g.drawnHeightAt(p.x, p.z) >= top - WADE.step) p.below = false;
   }

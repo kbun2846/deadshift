@@ -26,6 +26,8 @@ import { CropView } from '../world/crop-view.js';
 import { cropEntityVisible } from '../crops.js';
 import { InteriorVisibility } from './interior-visibility.js';
 import { lightBasis, snapShadowFocus, shadowFrame, shadowBoxOver, settleShadowBox, SHADOW_FIT } from './shadow-snap.js';
+import { castersOnlyInShadow } from './bake-colors.js';
+import { ditherFade, roofFade, WALL_FADE } from '../world/roof-fade.js';
 
 import { mergeTransformed } from './merge-transformed.js';
 
@@ -73,6 +75,12 @@ import { RIFLE_MUZZLE } from '../config/gameplay.js';
 // Longest the renderer will hold a frame back waiting for the GPU (gpuBusy).
 // Drawn after every other see-through thing: a faded roof's depth, then its colour.
 export const ROOF_PREPASS_ORDER = 50;
+// An opaque roof is drawn before every other opaque thing (v0.980a). Opaque
+// draws go by material, and the scenery's baked material is older than the
+// roofs', so every floor, table and hearth under a roof was shaded and then
+// painted over by it; drawn first, its depth turns them away before they are
+// shaded. The picture is the same (the depth test decides what shows).
+export const ROOF_OPAQUE_ORDER = -3;
 const FENCE_PATIENCE = 120;
 import { setExtremeSurfaces, tickExtremeSurfaces, setExtremeGround } from './extreme-surfaces.js';
 
@@ -217,7 +225,7 @@ export class WorldView {
     // is part of the batch key. Individual builders already opt their own
     // clutter out; this is the safety net for everything that did not.
     this.shadowBySize(this.static, .34);
-    this.batch(this.static);
+    this.batch(this.static, true, { mergeCasters: true });
     // These transforms never animate. Keep quality geometry, skip rebuilding its matrices.
     // The scene itself never moves; left on, it recomposes every frame and
     // forces all 3600 objects under it to recompute their world matrices.
@@ -571,8 +579,8 @@ export class WorldView {
     for (const roof of this.roofs) for (const m of roof.materials) { m.bumpMap = woodRelief; m.bumpScale = .035; m.roughness = .88; m.needsUpdate = true; }
     const timberColors = this.timberColors();
     for (const [color,m] of this.materials) if (timberColors.has(color) && !this.groundMaterials.has(m)) { m.bumpMap=woodRelief; m.bumpScale=.035; m.needsUpdate=true; }
-    const bakedTimber = this.bakedMaterials?.get('timber');
-    if (bakedTimber) { bakedTimber.bumpMap = woodRelief; bakedTimber.bumpScale = .035; bakedTimber.needsUpdate = true; }
+    // (The colonial shells, 'wall', are wood too: clapboard, boards and trim.)
+    for (const kind of ['timber', 'wall']) { const baked = this.bakedMaterials?.get(kind); if (baked) { baked.bumpMap = woodRelief; baked.bumpScale = .035; baked.needsUpdate = true; } }
     // Extreme: varied, pebbled ground and dust-weathered surfaces (shader only).
     const surfaces = [...(this.bakedMaterials?.values() || []), ...[...this.materials.values()].filter(m => !m.transparent && !this.groundMaterials.has(m)),
       ...this.roofs.flatMap(roof => roof.materials)];
@@ -640,18 +648,30 @@ export class WorldView {
   bakeKind(o) {
     const m = o.material, color = this.materialColors?.get(m);
     if (color === undefined || this.groundMaterials?.has(m) || m.transparent || m.vertexColors || o.geometry.attributes.color) return null;
+    // (A colonial building's shell, `wallFade`: one kind of its own, whose
+    // material opens round anyone standing behind it: world/roof-fade.js
+    // WALL_FADE. One more draw per cell with buildings in it.)
+    if (o.userData.wallFade) return 'wall';
     return this.timberColors().has(color) ? 'timber' : 'plain';
   }
   bakedMaterial(kind) {
     this.bakedMaterials ||= new Map();
-    if (!this.bakedMaterials.has(kind)) this.bakedMaterials.set(kind, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, metalness: 0, vertexColors: true }));
+    if (!this.bakedMaterials.has(kind)) {
+      const material = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, metalness: 0, vertexColors: true });
+      if (kind === 'wall') ditherFade(this, material, { key: 'colonial-wall-fade', ...WALL_FADE });
+      this.bakedMaterials.set(kind, material);
+    }
     return this.bakedMaterials.get(kind);
   }
   timberColors() {
     return this.timberColorSet ||= new Set(['#917655','#ad9470','#66543f','#9b8161','#b59971','#967b58','#ab8e65',...this.map.buildings.map(b=>b.color)]);
   }
 
-  batch(group, bake = true) {
+  // `mergeCasters` (the static scenery): what casts and what does not share
+  // a mesh (see below); otherwise they are merged apart, as before, because
+  // later steps rebuild those meshes (roofs' bakeColors, the props' batches)
+  // and would lose the split.
+  batch(group, bake = true, { mergeCasters = false } = {}) {
     group.updateMatrixWorld(true);
     const buckets = new Map();
     group.traverse(o => {
@@ -668,8 +688,9 @@ export class WorldView {
       // Body parts that death reactions remove on their own (a head, the legs)
       // merge only with parts of the same kind, and the merged mesh keeps the tag.
       const part = o.userData.deathPart || '';
-      const key = `${cell}-${part}-${baked ? 'baked-' + baked : o.material.uuid}-${o.castShadow}-${!!o.geometry.index}-${Object.keys(o.geometry.attributes).sort().join(',')}`;
-      if (!buckets.has(key)) buckets.set(key, { material: baked ? this.bakedMaterial(baked) : o.material, baked: !!baked, castShadow: o.castShadow, part, meshes: [] });
+      // (Casting or not is part of the key only without mergeCasters: v0.980a, see below.)
+      const key = `${cell}-${part}-${baked ? 'baked-' + baked : o.material.uuid}-${mergeCasters || o.castShadow}-${!!o.geometry.index}-${Object.keys(o.geometry.attributes).sort().join(',')}`;
+      if (!buckets.has(key)) buckets.set(key, { material: baked ? this.bakedMaterial(baked) : o.material, baked: !!baked, part, meshes: [] });
       buckets.get(key).meshes.push(o);
     });
     const inverse = group.matrixWorld.clone().invert(), local = new THREE.Matrix4();
@@ -678,8 +699,15 @@ export class WorldView {
     // parent's child list each time, and ground detail puts thousands of blades
     // under a single group -- quadratic, and a measurable slice of the load.
     const merged = new Set(), parents = new Set();
-    for (const { material, baked, castShadow, part, meshes } of buckets.values()) {
+    for (const { material, baked, part, meshes } of buckets.values()) {
       if (meshes.length < 2) continue;
+      // What casts and what does not (small details, shadowBySize) share one
+      // mesh, the casters first: the camera draws it once, and the shadow pass
+      // draws just the casters' part of it (castOnly/drawAll below). It was
+      // two meshes a cell, so two draws where one does (v0.980a).
+      meshes.sort((a, b) => b.castShadow - a.castShadow);
+      let castCount = 0, allCount = 0;
+      for (const m of meshes) { const n = m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count; allCount += n; if (m.castShadow) castCount += n; }
       // Written straight into the merged buffers; the clone-per-mesh path is
       // kept only for anything the direct merge declines.
       let combined = mergeTransformed(meshes.map(m => ({ geometry: m.geometry, matrix: new THREE.Matrix4().multiplyMatrices(inverse, m.matrixWorld), color: baked ? m.material.color : undefined })));
@@ -694,8 +722,10 @@ export class WorldView {
       }
       if (!combined) continue;
       combined.computeBoundingSphere();
-      const m = new THREE.Mesh(combined, material); m.castShadow = castShadow; m.receiveShadow = true;
+      const m = castersOnlyInShadow(new THREE.Mesh(combined, material), castCount, allCount); m.receiveShadow = true;
       if (part) m.userData.deathPart = part;
+      // (The walls' hole list is brought up to date before they are drawn, as the roofs': roof-fade.js.)
+      if (material === this.bakedMaterials?.get('wall')) m.onBeforeRender = roofFade(this).update;
       for (const original of meshes) { merged.add(original); if (original.parent) parents.add(original.parent); if (!original.geometry.userData.shared) original.geometry.dispose(); }
       group.add(m);
     }
@@ -1550,9 +1580,12 @@ export class WorldView {
     this.player.userData.gun.localToWorld(this.staticMuzzle);
     const cameraRate = this.motion ? 5.7 : 16;
     const cut = this.cameraCut; this.cameraCut = false;
-    // (An open shed, the forge, the horse sheds, the woodshed: `open`, is outdoors for the
-    // camera and the shroud; only its roof lifts over you. Stage 4 audit.)
-    const cameraRoom = sim.interior?.open ? null : sim.interior, blend = cut ? 1 : 1 - Math.exp(-cameraRate * dt);
+    // (An open shed, the forge, the horse sheds, the woodshed, is a room like
+    // any other for you inside it: the camera comes in and the shroud greys
+    // what its walls hide (owner, stage 5 review; the stage 4 audit had them
+    // outdoors). To everyone else it stays outdoors: its roof opens over
+    // whoever is in it (world/roof-fade.js).)
+    const cameraRoom = sim.interior, blend = cut ? 1 : 1 - Math.exp(-cameraRate * dt);
     const deathCamera=this.deathView?.active?this.deathView.cameraFrame(this.camera.aspect):null;
     // Online weapon pick: straight down on the pick spot from high above
     // (setPickView), before the death or room camera.
@@ -1630,7 +1663,7 @@ export class WorldView {
         roof.blended = blended;
         for (const m of roof.materials) { m.transparent = blended; m.needsUpdate = true; }
         for (const m of roof.prepass || []) m.visible = blended;
-        for (const m of roof.colour || []) m.renderOrder = blended ? ROOF_PREPASS_ORDER + 1 : 0;
+        for (const m of roof.colour || []) m.renderOrder = blended ? ROOF_PREPASS_ORDER + 1 : ROOF_OPAQUE_ORDER;
       }
       for (const m of roof.materials) { m.opacity = roof.opacity; m.depthWrite = roof.opacity > .98; }
       const shown = roof.opacity > .015;
@@ -1770,7 +1803,7 @@ export class WorldView {
     // Online: other players, already placed by the network session (main.js sets the list).
     // From indoors you only see out through doors and windows (the grey
     // shroud): anyone out there is hidden with it, not drawn over it.
-    const inside = sim.interior?.open ? null : sim.interior, indoors = inside ? p => {
+    const inside = sim.interior, indoors = inside ? p => {
       const dx = p.x - sim.player.x, dz = p.z - sim.player.z, l = Math.hypot(dx, dz) || 1;
       return [0, -.4, .4].some(o => sim.canAimAt(p.x - dz / l * o, p.z + dx / l * o));
     } : null;

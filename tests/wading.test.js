@@ -86,9 +86,14 @@ test('decks: onto them from their ends, under them from the water, off their sid
  // On under it and out the east side: back in the open stream.
  walk(u, 1, 0, 60);
  assert.ok(u.player.x > -12.5 && !u.player.below && u.wadeShare() > .5, `out at x ${u.player.x}`);
- // Walking south under it, the bank rises to its top at the far end: up on it.
+ // Walking south under it, the bank rises toward its far end: its abutment
+ // stops you under the deck (owner, stage 5 review: you walked straight up
+ // out through its end)...
  const v = sim([-14, 21]); v.player.below = true; walk(v, 0, 1, 150);
- assert.ok(v.player.z > 28.1 && !v.player.below, `out at z ${v.player.z}: below ${v.player.below}`);
+ assert.ok(v.player.below && v.player.z < 27 && ground.drawnHeightAt(v.player.x, v.player.z) <= 1.25 - WADE.under + .02, `stopped at z ${v.player.z}: below ${v.player.below}`);
+ // ...so you go out from under a side, sliding along it, and up the bank round the end.
+ walk(v, 1, 1, 200);
+ assert.ok(!v.player.below && v.player.x > -12.5 && v.player.z > 27, `round the end at ${v.player.x}, ${v.player.z}`);
  // Stepping off its side from the top: down into the water.
  const o = sim([-14, 22]); walk(o, 1, 0, 30);
  assert.ok(o.player.x > -12.5 && !o.player.below && o.standY() < 0 && o.wadeShare() > .5, `off the side at x ${o.player.x}: ${o.standY()}`);
@@ -186,4 +191,21 @@ test('a body that falls wading under a deck lies in the water there, not on the 
  // (On the deck, or anywhere on a flat map, nothing changes.)
  const top = sim([-14, 22]); top.events.length = 0; top.damagePlayer(9999, 'test');
  assert.equal(top.events.find(e => e.type === 'playerDeath').below, undefined);
+});
+
+test('under any deck, both ends are shut: you go no further than its abutments and leave from a side', () => {
+ for (const [k, deck] of ground.decks.entries()) {
+  const xs = deck.poly.map(p => p[0]), zs = deck.poly.map(p => p[1]), cx = xs.reduce((a, b) => a + b) / 4, cz = zs.reduce((a, b) => a + b) / 4;
+  const [a, b, c] = deck.poly, ab = Math.hypot(b[0] - a[0], b[1] - a[1]), bc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+  const [p, q] = ab > bc ? [a, b] : [b, c], l = Math.hypot(q[0] - p[0], q[1] - p[1]), ux = (q[0] - p[0]) / l, uz = (q[1] - p[1]) / l;
+  for (const way of [1, -1]) {
+   const s = sim([cx, cz]); s.player.below = true; walk(s, ux * way, uz * way, 200);
+   const pl = s.player, floor = ground.drawnHeightAt(pl.x, pl.z);
+   assert.ok(pl.below && ground.deckAt(pl.x, pl.z) === k, `${k} ${way}: out at ${pl.x.toFixed(2)}, ${pl.z.toFixed(2)} (below ${pl.below})`);
+   assert.ok(floor <= deck.h - WADE.under + .02, `${k} ${way}: up to ${floor.toFixed(2)} under a top at ${deck.h}`);
+   // Across: out from under its side, back in the open.
+   walk(s, uz, -ux, 80);
+   assert.ok(ground.deckAt(s.player.x, s.player.z) !== k && !s.player.below, `${k} ${way}: still under at ${s.player.x.toFixed(2)}, ${s.player.z.toFixed(2)}`);
+  }
+ }
 });

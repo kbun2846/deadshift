@@ -30,7 +30,7 @@ export class InteriorVisibility {
   update(sim) {
     if(this.lastRoom===sim.interior&&this.lastX===sim.player.x&&this.lastZ===sim.player.z)return;
     this.lastRoom=sim.interior;this.lastX=sim.player.x;this.lastZ=sim.player.z;
-    const b = sim.interior?.open ? null : sim.interior; this.count.value = 0; // (an open shed: nothing clipped)
+    const b = sim.interior; this.count.value = 0; // (an open shed too: renderer.js cameraRoom)
     if (!b) return;
     const polygons = interiorPolygons(b,sim.player).slice(0,10);
     this.count.value = polygons.length;

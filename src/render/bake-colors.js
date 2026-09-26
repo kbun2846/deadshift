@@ -14,9 +14,26 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // with `options.settings`. `options.pick`: bake only the parts it accepts.
 // Attributes every part has (uv for a bump map) are kept. Returns the merged
 // mesh, or null when there was nothing to merge.
+// A merged mesh whose first `userData.castCount` indices (vertices, if not
+// indexed) are the parts that cast shadows: three calls these round its draw
+// in the shadow pass (Object3D.onBeforeShadow/onAfterShadow), so the camera
+// draws it whole, once, and the shadow map gets only the casters (v0.980a).
+export function castOnly() { this.geometry.drawRange.count = this.userData.castCount; }
+export function drawAll() { this.geometry.drawRange.count = Infinity; }
+export function castersOnlyInShadow(mesh, castCount, total) {
+  mesh.castShadow = castCount > 0;
+  if (castCount > 0 && castCount < total) { mesh.userData.castCount = castCount; mesh.onBeforeShadow = castOnly; mesh.onAfterShadow = drawAll; }
+  return mesh;
+}
+
+// `options.castersFirst`: bake the casting and the non-casting parts into
+// one mesh, the casters first, drawn whole by the camera and only the
+// casters' part in the shadow pass (a roof: its shingles never cast).
 export function bakeColors(group, options = {}) {
   const parts = group.children.filter(child => child.isMesh && !child.children.length && !Array.isArray(child.material) && (!options.pick || options.pick(child)));
   if (parts.length < (options.material ? 1 : 2)) return null;
+  if (options.castersFirst) parts.sort((a, b) => b.castShadow - a.castShadow);
+  let castCount = 0, total = 0;
   const geometries = [], color = new THREE.Color();
   let kind = null;
   for (const mesh of parts) {
@@ -29,6 +46,7 @@ export function bakeColors(group, options = {}) {
     const colors = new Float32Array(g.attributes.position.count * 3);
     for (let i = 0; i < colors.length; i += 3) { colors[i] = color.r; colors[i + 1] = color.g; colors[i + 2] = color.b; }
     g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    total += g.attributes.position.count; if (mesh.castShadow) castCount += g.attributes.position.count;
     geometries.push(g);
     group.remove(mesh);
   }
@@ -38,6 +56,7 @@ export function bakeColors(group, options = {}) {
   const merged = new THREE.Mesh(mergeGeometries(geometries), material);
   geometries.forEach(g => g.dispose());
   merged.castShadow = parts.some(p => p.castShadow); merged.receiveShadow = parts.some(p => p.receiveShadow);
+  if (options.castersFirst) castersOnlyInShadow(merged, castCount, total);
   group.add(merged);
   return merged;
 }

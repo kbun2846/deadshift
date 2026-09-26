@@ -23,6 +23,11 @@
 import * as THREE from 'three';
 
 export const ATLAS_SIZE = 1024;
+// The straw's and the grain's colours, faded so an Amber hat or ring still
+// reads on them (tests/hollow-wick-look.test.js; stage 5 review: #c2a868 was
+// 9.7 from the Amber ring). Every other mark is browns, greys and blacks.
+export const STRAW_COLOURS = Object.freeze(['#9c8a58', '#9a8c64', '#8f7a48', '#a0936e']);
+export const GRAIN_COLOURS = Object.freeze(['#9c8a3c', '#9e8452', '#a39676', '#9b8f6e']);
 const CELL = 128, STRIP_W = 32;
 // Strips: x in px, full height (64 px a metre both ways: a rut seen from the
 // camera shrinks the same both ways, so one mip level suits it). Cells:
@@ -277,7 +282,7 @@ function paintAsh(ink, rnd, w, h, heap) {
 function straws(ink, rnd, count, where, aligned = 0) {
  for (let i = 0; i < count; i++) {
   const [x, y] = where(), a = aligned ? Math.PI / 2 + (rnd() - .5) * aligned : rnd() * TAU, l = 7 + rnd() * 11, bend = (rnd() - .5) * 2;
-  ink.line([[x - Math.cos(a) * l / 2, y - Math.sin(a) * l / 2], [x + bend, y], [x + Math.cos(a) * l / 2, y + Math.sin(a) * l / 2]], rnd() < .5 ? 1 : 1.5, pick(rnd, ['#a8925a', '#b59c5e', '#8f7a48', '#c2a868', '#9c8a58']), rnd() < .5 ? .8 : .95);
+  ink.line([[x - Math.cos(a) * l / 2, y - Math.sin(a) * l / 2], [x + bend, y], [x + Math.cos(a) * l / 2, y + Math.sin(a) * l / 2]], rnd() < .5 ? 1 : 1.5, pick(rnd, STRAW_COLOURS), rnd() < .5 ? .8 : .95);
  }
 }
 function paintStraw(ink, rnd, w, h, n) {
@@ -303,14 +308,14 @@ function paintStrawEdge(ink, rnd, w, h) {
 }
 function paintGrain(ink, rnd, w, h, fan) {
  // Meal dust under it, then kernels: mostly corn, some rye.
- ink.patch(rnd, w / 2, fan ? h * .3 : h / 2, w * .36, h * .3, '#b8a47a', .14, 8); ink.flush();
+ ink.patch(rnd, w / 2, fan ? h * .3 : h / 2, w * .36, h * .3, GRAIN_COLOURS[2], .14, 8); ink.flush();
  const where = fan ? () => [w * (.5 + (rnd() - .5) * (.3 + .6 * rnd())), Math.pow(rnd(), 1.5) * h * .88] : () => { const a = rnd() * TAU, d = Math.pow(rnd(), .7) * .4; return [w / 2 + Math.cos(a) * d * w, h / 2 + Math.sin(a) * d * h]; };
- for (let i = 0; i < 1100; i++) { const [x, y] = where(); ink.dot(x, y, 1.3 + rnd() * .9, pick(rnd, ['#b08a3c', '#b89a58', '#c2a268', '#9e8452', '#b08a3c']), .85); }
- for (let i = 0; i < 25; i++) { const [x, y] = where(); ink.blob(x, y, 2, 1, rnd() * 3, '#c9b27a', .6); }
+ for (let i = 0; i < 1100; i++) { const [x, y] = where(); ink.dot(x, y, 1.3 + rnd() * .9, pick(rnd, GRAIN_COLOURS), .85); }
+ for (let i = 0; i < 25; i++) { const [x, y] = where(); ink.blob(x, y, 2, 1, rnd() * 3, GRAIN_COLOURS[3], .6); }
  ink.flush();
 }
 function paintDribble(ink, rnd, w, h) {
- for (let i = 0; i < 240; i++) { const y = h * (.05 + rnd() * .9), x = w / 2 + (rnd() - .5) * w * .22 * (1 + Math.sin(y * .1)); if (Math.sin(y * .23) > .6) continue; ink.dot(x, y, 1.3 + rnd() * .8, pick(rnd, ['#b08a3c', '#b89a58', '#9e8452']), .85); }
+ for (let i = 0; i < 240; i++) { const y = h * (.05 + rnd() * .9), x = w / 2 + (rnd() - .5) * w * .22 * (1 + Math.sin(y * .1)); if (Math.sin(y * .23) > .6) continue; ink.dot(x, y, 1.3 + rnd() * .8, pick(rnd, GRAIN_COLOURS), .85); }
  ink.flush();
 }
 function paintChips(ink, rnd, w, h, n) {

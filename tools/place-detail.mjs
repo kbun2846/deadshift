@@ -72,7 +72,9 @@ const screens = []; for (let cx = Math.min(...xs) + 19; cx <= Math.max(...xs) - 
 const count = (list, [cx, cz]) => list.filter(([x, z]) => Math.abs(x - cx) <= 19 && Math.abs(z - cz) <= 13).length;
 const near = (x, z, r) => map.buildings.some(b => Math.hypot(b.x - x, b.z - z) < Math.max(b.w, b.d) / 2 + r);
 // (Solid pieces only: the breakables are their own list, maps/hollow-wick-breakables.js.)
-const KINDS = { open: ['stonePile', 'fieldBoulder', 'stonePile'], yard: ['choppingBlock', 'waterTrough', 'stonePile'] };
+const KINDS = { open: ['stonePile', 'fieldBoulder', 'stonePile'], yard: ['woodpile', 'choppingBlock', 'waterTrough', 'stonePile'] };
+const WOOD = mapProps(map).filter(p => /^(woodpile|cordwood)$/.test(p.type));
+const woodNear = (x, z) => [...WOOD, ...placed].some(p => (p.type === 'woodpile' || p.type === 'cordwood') && Math.hypot(p.x - x, p.z - z) < 4.5);
 // (Up to the plan's bar, 25 pieces in every screen: v0.975a; it stopped at 20.)
 for (let n = 0; n < 64; n++) {
  const list = pieceList(), worst = screens.map(s => [s, count(list, s)]).sort((a, b) => a[1] - b[1])[0];
@@ -81,7 +83,13 @@ for (let n = 0; n < 64; n++) {
  for (let tries = 0; tries < 400 && !done; tries++) {
   const r = 3 + random() * 12, a = random() * Math.PI * 2, x = Math.round((cx + Math.cos(a) * r) * 10) / 10, z = Math.round((cz + Math.sin(a) * r) * 10) / 10;
   if (!isPlayable(map, x, z, 1.5)) continue;
-  const kinds = near(x, z, 6) ? KINDS.yard : KINDS.open, type = kinds[Math.floor(random() * kinds.length)];
+  const kinds = near(x, z, 6) ? KINDS.yard : KINDS.open;
+  let type = kinds[Math.floor(random() * kinds.length)];
+  // (A chopping block only by wood to split, and a trough only on level
+  // ground, or a stone pile instead: stage 5 review, lone blocks in rings
+  // of fresh chips with no wood near, and a trough's puddle on a slope.)
+  if (type === 'choppingBlock' && !woodNear(x, z)) type = 'stonePile';
+  if (type === 'waterTrough') { const g = ground.gradientAt(x, z); if (Math.hypot(g.x, g.z) > .1) type = 'stonePile'; }
   const p = { type, id: `detail-${placed.length}`, x, z, angle: Math.round(random() * 628) / 100 };
   if (!problems(p).length) { placed.push(p); solids = solids.concat(collidersOf(p)); done = true; }
  }

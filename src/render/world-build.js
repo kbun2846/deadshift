@@ -529,11 +529,13 @@ export const WorldBuild = {
     this.batch(roof, false);
     // One material per roof, with each shade (panel, trim, three shingle tones)
     // carried per vertex: the roof drew once per shade (about five draws a
-    // building) and now draws twice (what casts shadows, and the shingles that
-    // don't), with the same picture. The shades only ever differed in colour:
+    // building), then twice (what casts shadows, and the shingles that don't),
+    // and now once, with the same picture. The shades only ever differed in colour:
     // setQuality gives every roof material the same roughness and bump map.
     const roofMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 1, transparent: true });
-    for (const casts of [true, false]) bakeColors(roof, { material: roofMaterial, pick: m => m.castShadow === casts });
+    // (One mesh since v0.980a: the shingles, which never cast, after the parts
+    // that do, and the shadow pass draws only those: bake-colors.js castersFirst.)
+    bakeColors(roof, { material: roofMaterial, castersFirst: true });
     roofMaterials.forEach(m => m.dispose()); roofMaterials.length = 0; roofMaterials.push(roofMaterial);
     // Thin raised roof layers should not produce shadow-map striping on each other.
     roof.traverse(m => { if (m.isMesh) m.receiveShadow = false; });
@@ -862,7 +864,7 @@ export const WorldBuild = {
     const halfWidth=halfHeight*this.camera.aspect;
     // (One frame object, reused: nothing allocated per frame.)
     const p = sim.player, frame = this.fogFrame ||= { focus: this.focus, player: { x: 0, z: 0, y: 0 }, aim: { x: 0, z: 0, y: 0 } };
-    frame.count = wisps; frame.interior = !!sim.interior && !sim.interior.open; frame.halfWidth = halfWidth; frame.halfHeight = halfHeight; frame.dt = dt; frame.elapsed = elapsed;
+    frame.count = wisps; frame.interior = !!sim.interior; frame.halfWidth = halfWidth; frame.halfHeight = halfHeight; frame.dt = dt; frame.elapsed = elapsed;
     frame.player.x = p.x; frame.player.z = p.z; frame.player.y = this.gy(p.x, p.z);
     frame.aim.x = p.aimPointX ?? p.x; frame.aim.z = p.aimPointZ ?? p.z; frame.aim.y = this.gy(frame.aim.x, frame.aim.z);
     this.fogSheets.update(frame);

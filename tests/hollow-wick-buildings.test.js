@@ -140,3 +140,17 @@ test('the colonial buildings build: finite geometry, one fading roof each, merge
   view.batch(view.static);
   assert.ok(triangles < 160000, `${triangles} triangles`);
 });
+
+test('an eave facing north runs on less (the camera looks from the south: its strip hid whoever stood there)', async () => {
+  const { eaveRun, EAVE } = await import('../src/world/colonial-buildings.js');
+  let north = 0;
+  for (const b of map.buildings.filter(b => b.roof && b.roof.kind !== 'mound')) for (const side of [1, -1]) {
+    const r = b.roof, a = b.angle || 0, lx = r.axis === 'z' ? side : 0, lz = r.axis === 'z' ? 0 : side, worldZ = -lx * Math.sin(a) + lz * Math.cos(a);
+    const run = eaveRun(b, side), long = r.kind === 'saltbox' && side < 0;
+    if (worldZ < -.5) { north++; assert.equal(run, EAVE.north + (long ? EAVE.saltboxNorth : 0), `${b.id} ${side}`); }
+    else assert.equal(run, EAVE.run + (long ? EAVE.saltbox : 0), `${b.id} ${side}`);
+    assert.ok(run <= .9 && run >= .2);
+  }
+  assert.ok(north >= 12, `${north} north eaves`);
+  assert.ok(EAVE.north < EAVE.run && EAVE.north + EAVE.saltboxNorth < EAVE.run + EAVE.saltbox);
+});

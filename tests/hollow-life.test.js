@@ -12,7 +12,7 @@ import v8 from 'node:v8';
 import vm from 'node:vm';
 import { maps, groundFor, mapColliders } from '../src/maps.js';
 import { PROP_TYPES, mapProps } from '../src/map-kit.js';
-import { LIFE_TYPES, PEN_INSIDE, GOAT, GoatMind, stepShutter, stepSign, SHUTTER, effigyPose, smokePuff, SMOKE, LIFE_DETAIL, gustAt, windAt } from '../src/world/hollow-life.js';
+import { LIFE_TYPES, PEN_INSIDE, GOAT, GoatMind, stepShutter, stepSign, SHUTTER, lifeOf, effigyPose, smokePuff, SMOKE, LIFE_DETAIL, gustAt, windAt } from '../src/world/hollow-life.js';
 import { HW_LIFE, LOOSE_SHUTTERS, SMOKING_CHIMNEYS } from '../src/maps/hollow-wick-life.js';
 import { lifeRules } from './hollow-life-rules.js';
 import { spawnProblem } from '../src/net/map-spawns.js';
@@ -177,6 +177,26 @@ test('the smoke rises from the flue, leans east, grows and fades; none on Potato
  assert.ok(LIFE_DETAIL.potato.step > LIFE_DETAIL.performance.step && LIFE_DETAIL.performance.step > LIFE_DETAIL.balanced.step);
 });
 
+test('the shutters and the sign step once to each time, whoever steps them first, and note their bangs and turns for the soundscape', () => {
+ const s = { angle: SHUTTER.rest, speed: 0, phase: 4.1, x: 20, z: 0, t: -Infinity, bang: 0, bangAt: -Infinity };
+ let bangs = 0, heard = -Infinity;
+ for (let t = 0; t < 120; t += 1 / 60) {
+  stepShutter(s, { t, dt: 1 / 60 }); const a = s.angle, v = s.speed;
+  stepShutter(s, { t, dt: 1 / 60 }); // the second caller in a frame: nothing moves
+  assert.equal(s.angle, a); assert.equal(s.speed, v);
+  if (s.bangAt !== heard) { heard = s.bangAt; bangs++; assert.equal(s.bangAt, t); assert.ok(s.bang > SHUTTER.knock); }
+ }
+ assert.ok(bangs >= 8, `${bangs} bangs in two minutes`);
+ const sign = { angle: 0, speed: 0, phase: 1.3, x: 20, z: 0, t: -Infinity, turn: 0, turnAt: -Infinity };
+ let turns = 0, wide = 0, seen = -Infinity;
+ for (let t = 0; t < 120; t += 1 / 60) { stepSign(sign, { t, dt: 1 / 60 }); if (sign.turnAt !== seen) { seen = sign.turnAt; turns++; if (sign.turn > .03) wide++; } }
+ assert.ok(turns > 30 && wide >= 3 && wide < turns / 2, `${turns} turns, ${wide} wide`);
+ // The life's stir (the soundscape's step) moves only those within reach, to the time given.
+ const life = lifeOf({}), near = { ...s, x: 5, z: 5, t: 10 }, far = { ...s, x: 90, z: 0, t: 10 };
+ life.shutters.push(near, far); life.stir(10.5, 0, 0, 45);
+ assert.equal(near.t, 10.5); assert.equal(far.t, 10);
+});
+
 test('built in a view: one mesh per part of the map in the static material, the static parts merged, rewritten without allocating', async () => {
  const THREE = await import('three');
  const { WorldView } = await import('../src/render/renderer.js');
@@ -198,6 +218,16 @@ test('built in a view: one mesh per part of the map in the static material, the 
  const lit = map.buildings.find(b => b.id === 'lit-cape'), flue = life.smoke.sources[0];
  assert.ok(life.smoke.mesh.isInstancedMesh && life.smoke.mesh.renderOrder > 51);
  assert.ok(Math.hypot(flue.x - lit.x, flue.z - lit.z) < 1 && flue.y > lit.baseY + lit.height + 2.5 && flue.y < lit.baseY + 7.5, `flue at ${flue.toArray()}`);
+ // Its roof lifting (you inside) takes the smoke with it; half lifted, half the smoke (stage 5 review).
+ {
+  const roof = view.roofs.find(r => r.id === 'lit-cape'), cam = new THREE.PerspectiveCamera();
+  life.smoke.update(cam, 50); const full = life.smoke.mesh.count, alpha = [...life.smoke.alpha.array.slice(0, full)];
+  assert.ok(full > 0);
+  roof.opacity = .5; life.smoke.update(cam, 50);
+  assert.equal(life.smoke.mesh.count, full); for (let i = 0; i < full; i++) assert.ok(Math.abs(life.smoke.alpha.array[i] - alpha[i] * .5) < 1e-6);
+  roof.opacity = 0; life.smoke.update(cam, 50); assert.equal(life.smoke.mesh.count, 0);
+  roof.opacity = 1;
+ }
  // Nothing that moves is left in the static root (it would be merged and never move).
  view.static.traverse(o => assert.ok(!o.userData.lifeSwing && !o.userData.lifeShutter, 'a marked part left behind'));
  // Frames: finite, the linens above the ground, the goat inside the pen.

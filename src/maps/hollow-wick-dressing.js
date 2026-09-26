@@ -33,11 +33,12 @@ export const HOLLOW_WICK_DRESSING = [
   // open forge.
   P('hitchingRail', 'rail-tavern', 27.9, -12.6, 0, { at: 'tavern' }),
   P('hitchingRail', 'rail-smithy', 18.8, 2.25, -q),
-  P('grindstone', 'grindstone', 18.9, 5.2, .15),
+  P('grindstone', 'grindstone', 18.9, 4.6, .15), // (off the retaining wall: a robot's lane, stage 5 review)
   P('slagHeap', 'slag', 36.2, 5.4, .3, { at: 'forge' }),
-  // The hay wagon drawn up beside the barn's big west doors (north of their
-  // apron, its tongue toward the street), waiting to be forked in.
-  P('hayWagon', 'hay-wagon', 45.3, -3.5, -q, { at: 'barn' }),
+  // The hay wagon drawn up against the barn's west wall, north of its big
+  // doors' apron, its tongue run out south along the wall toward them,
+  // waiting to be forked in.
+  P('hayWagon', 'hay-wagon', 45.9, -3.5, -q, { at: 'barn' }), // (drawn up against the barn: the lane to the gully wall is a robot's, stage 5 review)
   // Rain barrels under the eaves at three house corners, tucked against the
   // gable walls (the cape's and the rear houses' front corners).
   P('rainBarrel', 'barrel-cape', 45.331, -15.624, -.04, { at: 'cape' }),
@@ -46,7 +47,7 @@ export const HOLLOW_WICK_DRESSING = [
   // The farm: a plough left where it stopped and a harrow in the grass north
   // of the house; a scythe leaning on the pasture fence by the yard.
   // (Moved at the stage 5 merge: the goat's pen and the washing line took the yard.)
-  P('plough', 'plough', -46.85, 30.24, .5),
+  P('plough', 'plough', -46.3, 30, .5), // (hard by the terrace wall, not 0.9 m off it: no squeeze, stage 5 review)
   P('harrow', 'harrow', -40, 33.5, -.2),
   P('scythe', 'scythe', -50.35, 35.2, q, { on: [-50.8, 34.9] }),
   // --- The graveyard's edge and the hearse house ---
@@ -63,7 +64,7 @@ export const HOLLOW_WICK_DRESSING = [
   // an eel pot below the dam, its mouth in the stream; the washtub on the bank
   // below the farm; two spare millstones on the mill's east wall, past the
   // door and its grain.
-  P('rowboat', 'rowboat', 30.5, 27.2, -1.4, { bank: true }),
+  P('rowboat', 'rowboat', 30.58, 27.69, -1.4, { bank: true }), // (half a metre further up the bank, so its box reaches past the middle and stays dry)
   P('eelPot', 'eel-pot', 10.2, 23.8, -1.5, { bank: true }),
   P('washTub', 'wash-tub', -44, 25.8, .3),
   P('spareMillstones', 'millstones', 27.03, 16.06, q, { at: 'mill' }),

@@ -53,7 +53,7 @@ const w = (side, offset, width = 1, extra = {}) => ({ side, offset, width, ...ex
 const SPECS = {
   tavern: { height: 3.3, color: COLONIAL.clapboard, roofColor: COLONIAL.brownGrey, interiorStyle: 'colonial-tavern',
     roof: { kind: 'gable', axis: 'x', rise: 3.1 }, doors: ['front', 'back', 'left'],
-    chimneys: [{ at: -2.4, kind: 'brick', w: 1.2, d: 1 }, { over: 'hearth', kind: 'brick', w: 1.1, d: 1.4 }],
+    chimneys: [{ at: -2.4, kind: 'brick', w: 1.2, d: 1 }, { over: 'hearth', at: 5.35, across: 0, kind: 'brick', w: 1.1, d: 1.4 }],
     windows: [w('front', -3.2), w('front', 3.2), w('front', -5, 1, { boarded: true }), w('front', 5), w('back', -3.4), w('back', 3.4, 1, { boarded: true }),
       w('left', 3), w('right', -2), w('right', 2)],
     features: ['tavern-sign'], trim: '#6e5446' },
@@ -76,7 +76,7 @@ const SPECS = {
     roof: { kind: 'saltbox', axis: 'x', rise: 2.9 }, doors: ['front', 'back'], chimneys: [{ at: -.3, kind: 'stone', w: 1.5, d: 1.2 }],
     windows: [w('front', -3), w('front', 3), w('back', -2.8, 1, { boarded: true }), w('left', -1.5), w('right', 1.5)] },
   smithy: { height: 2.7, color: COLONIAL.grey, roofColor: COLONIAL.soot, interiorStyle: 'smithy',
-    roof: { kind: 'gable', axis: 'x', rise: 2.3 }, doors: ['back', 'left'], chimneys: [{ over: 'forge', kind: 'stone', w: 1.1, d: 1.1 }],
+    roof: { kind: 'gable', axis: 'x', rise: 2.3 }, doors: ['back', 'left'], chimneys: [{ over: 'forge', at: 3.35, across: -1.096, kind: 'stone', w: 1.1, d: 1.1 }],
     windows: [w('front', -1.8, 1, { boarded: true }), w('front', 1.8), w('back', 2.4)] },
   // The open forge shed beside the smithy: three wide open sides, solid only
   // against the smithy. Its hearth, anvil and tub are props (COLONIAL_TYPES).
@@ -129,14 +129,17 @@ export function hollowWickBuildings(pads) {
       ...(p.margin !== undefined && { padMargin: p.margin }), ...(p.blend !== undefined && { padBlend: p.blend }),
       label: '', doorWidth: 2.4, style: 'colonial', ...spec,
     };
-    if (b.chimneys?.some(c => c.over)) b.chimneys = b.chimneys.map(c => c.over ? stackOver(b, c) : c).filter(Boolean);
+    // (A stack `over` a piece carries its place, worked out by stackOver and
+    // checked equal by tests/colonial-interiors.test.js: working it out here
+    // laid out the rooms at import, 110-130 ms of every page load on every map.)
+    if (b.chimneys?.some(c => c.over && c.at === undefined)) b.chimneys = b.chimneys.map(c => c.over && c.at === undefined ? stackOver(b, c) : c).filter(Boolean);
     return b;
   });
 }
 
 // A chimney `over` a piece: `at` (along the ridge) and `across` (off it) in
 // the roof's frame, over that piece's flue, kept inside the walls.
-function stackOver(b, c) {
+export function stackOver(b, c) {
   const flue = flueOf(b, c.over);
   if (!flue) return null;
   const alongX = b.roof?.axis !== 'z', half = (alongX ? b.w : b.d) / 2 - c.w / 2 - .1, side = (alongX ? b.d : b.w) / 2 - c.d / 2 - .1;

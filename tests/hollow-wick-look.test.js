@@ -14,6 +14,7 @@ import { GROUND_LEAF_COLOURS } from '../src/world/leaf-carpet.js';
 import { TREE_DRIFT_COLOURS } from '../src/world/trees.js';
 import { DETAIL_KINDS } from '../src/world/terrain-details.js';
 import { BIT_COLOURS } from '../src/world/ground-marks.js';
+import { STRAW_COLOURS, GRAIN_COLOURS } from '../src/render/ground-marks-atlas.js';
 
 const hw = maps['hollow-wick'], look = mapLook(hw);
 // The look before stage 3 (a plain, bright daylight grey), for the brightness check.
@@ -96,10 +97,10 @@ test('the contrast maths: CIEDE2000 reference pairs and the tone map', () => {
  for (const v of C.acesFilmic([50, 50, 50])) assert.ok(v <= 1);
 });
 
-test('...and on the leaves that lie on it: the woods carpet, the trees\' drifts, the litter, the drifts by the walls', () => {
+test('...and on what lies on it: the woods carpet, the trees\' drifts, the litter, the ground marks\' leaves, straw, grain, chips and cinders', () => {
  // (map-ui audit: the carpet's maple yellow and ochre hid the Amber hat, its
  // darkest brown the rust coat. A leaf patch is the ground in the woods.)
- const leaves = [...new Set([...GROUND_LEAF_COLOURS, ...TREE_DRIFT_COLOURS, ...DETAIL_KINDS.leaves.colors, ...BIT_COLOURS.leaf])];
+ const leaves = [...new Set([...GROUND_LEAF_COLOURS, ...TREE_DRIFT_COLOURS, ...DETAIL_KINDS.leaves.colors, ...Object.values(BIT_COLOURS).flat(), ...STRAW_COLOURS, ...GRAIN_COLOURS])];
  assert.ok(leaves.length >= 6);
  for (const leaf of leaves) for (const [name, hex, kind, need] of THINGS()) {
   let low = Infinity;

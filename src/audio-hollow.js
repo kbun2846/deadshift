@@ -18,7 +18,11 @@
 //  - a faint scraping and digging by the open grave (graveyard-layout's
 //    `openGrave`), in runs, that stops when you come near and keeps still
 //    until you have gone (design: "a faint scraping or digging sound near
-//    the graveyard stops when you get close").
+//    the graveyard stops when you get close");
+//  - the loose shutters slamming against their walls in the gusts, and the
+//    tavern sign's iron hooks squealing at the end of a wide swing (their
+//    swing from world/hollow-life.js, stepped from here too so one behind
+//    you still bangs: `swings`).
 // The water (effects channel, from WaterEffects.onSound): wading steps and
 // dodges, splashes, a grenade's spout and plop; and a wetter footstep of your
 // own in the water (in place of the dry one).
@@ -48,6 +52,12 @@ export const HOLLOW_SOUND = Object.freeze({
   // runs apart; heard within `reach` m, faint; it stops within `near` m and
   // starts again only once you are `gone` m off and `wait` s have passed.
   dig: Object.freeze({ stroke: Object.freeze([1.4, 2.4]), run: Object.freeze([4, 9]), pause: Object.freeze([6, 16]), reach: 34, near: 11, gone: 20, wait: 25, volume: .05 }),
+  // The shutters and the sign: stepped within `reach` m of you; a slam as
+  // loud as the shutter met the wall hard, by the square (mostly knocks, now
+  // and then a slam; `slam` rad/s and over is full),
+  // carried a little further than most (`carry`: distance / carry into
+  // HEARING); the sign's squeal only past `squeal` rad out (full at `swing`).
+  swings: Object.freeze({ reach: 45, slam: 1.4, carry: 1.25, volume: .09, squeal: .03, swing: .07 }),
 });
 
 export const hasHollowSound = map => map?.id === 'hollow-wick';
@@ -77,7 +87,7 @@ export class HollowSound {
     this.started = false; this.indoors = false; this.last = { x: 0, z: 0 };
     this.clock = 0; this.nextMix = 0; this.nextGust = 3; this.nextRope = 2; this.nextBell = rangeOf(HOLLOW_SOUND.bellFirst);
     this.wheelAngle = 0; this.nextPaddle = 0; this.lastKind = {}; this.quietUntil = 0;
-    this.nextSilence = rangeOf(HOLLOW_SOUND.silenceFirst); this.onSilence = null;
+    this.nextSilence = rangeOf(HOLLOW_SOUND.silenceFirst); this.onSilence = null; this.swingsAt = NaN;
     // The open grave (graveyard data), where the digging is.
     const grave = map ? mapProps(map).find(p => p.type === 'openGrave') : null;
     this.digAt = grave ? [grave.x, grave.z] : null; this.nextStroke = rangeOf(HOLLOW_SOUND.dig.pause); this.strokesLeft = 0; this.digStopped = false; this.digStoppedAt = -1;
@@ -155,6 +165,7 @@ export class HollowSound {
     this.wheel(dt, player);
     this.bell(dt, player);
     this.dig(dt, player);
+    this.swings(player);
   }
 
   // Everything stops for a few seconds, then comes back (never in the quiet
@@ -193,6 +204,43 @@ export class HollowSound {
     this.noiseHit(.05, .2, level * .6, 'bandpass', 3400, 2.5);
     this.noiseHit(.62 + Math.random() * .2, .22, level * .8, 'lowpass', 500, .7, this.shots, 'brown');
     this.click(.6, .03, level * .35, 900);
+  }
+
+  // The loose shutters and the tavern's sign (world/hollow-life.js): stepped
+  // here as well as in the view, whichever comes first (lifeOf stir), so one
+  // behind you still bangs; every bang and wide swing's end since the last
+  // look plays where it is. (`now` on the view's clock, performance.now().)
+  swings(player, now = performance.now() / 1000) {
+    const life = this.view?.hollowLife, S = HOLLOW_SOUND.swings; if (!life?.stir) return;
+    const since = this.swingsAt; this.swingsAt = now;
+    life.stir(now, player.x, player.z, S.reach);
+    if (!(now - since < .5)) return; // (the first look, or back from a pause: nothing stale)
+    const inside = this.indoors ? .5 : 1;
+    for (let i = 0; i < life.shutters.length; i++) {
+      const s = life.shutters[i]; if (!(s.bangAt > since)) continue;
+      this.slam(this.levelAt(s.x, s.z, S.carry) * Math.min(1, (s.bang / S.slam) ** 2) * inside);
+    }
+    for (let i = 0; i < life.signs.length; i++) {
+      const s = life.signs[i]; if (!(s.turnAt > since) || !(s.turn > S.squeal)) continue;
+      this.squeal(this.levelAt(s.x, s.z) * Math.min(1, .3 + .7 * (s.turn - S.squeal) / (S.swing - S.squeal)) * inside);
+    }
+  }
+  // A loose shutter slamming against the wall: a dull wooden thump, the
+  // boards' hollow knock, the latch rattling after.
+  slam(level) {
+    if (level < .003) return;
+    const v = HOLLOW_SOUND.swings.volume * level;
+    this.noiseHit(0, .18, v, 'lowpass', 380 + Math.random() * 80, .9, this.shots, 'brown');
+    this.noiseHit(0, .1, v * .55, 'bandpass', 950 + Math.random() * 300, 6);
+    this.voice({ type: 'triangle', from: 180 + Math.random() * 40, to: 110, length: .14, volume: v * .3 });
+    for (let i = 0; i < 3; i++) this.click(.06 + i * (.035 + Math.random() * .02), .018, v * .22 * (1 - i * .3), 1600 + Math.random() * 900);
+  }
+  // The sign's iron hooks turning in their eyes: a thin, catching squeal.
+  squeal(level) {
+    if (level < .003) return;
+    const len = .28 + Math.random() * .22, f = 760 + Math.random() * 300;
+    this.voice({ type: 'sawtooth', from: f, to: f * (.8 + Math.random() * .12), length: len, volume: .012 * level, band: f * 1.5, Q: 7, wobble: 9 + Math.random() * 6 });
+    for (let i = 0; i < 7; i++) this.click(len * Math.sqrt(i / 7), .012, .03 * level, 2400 + Math.random() * 1400);
   }
 
   // A gust: a slow swell (1.5-3 s), the whistle rising over it, a fall.

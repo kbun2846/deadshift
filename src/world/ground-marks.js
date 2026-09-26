@@ -60,7 +60,7 @@ const SET_PIECE_REACH = { hangingTree: 4.2, skeletonLeaves: 1.6, skeletonSickle:
 // Colours of the raised bits (sRGB). Leaves: the woods' litter browns only
 // (never red: red on the ground reads as blood).
 export const BIT_COLOURS = Object.freeze({
- straw: ['#9c8752', '#a8925a', '#8a7646', '#94825a'],
+ straw: ['#9c8752', '#9c8a58', '#8a7646', '#94825a'], // (faded: #a8925a was 14 from the Amber hat)
  chip: ['#8e7a5c', '#806e56', '#766b5c', '#6e665a', '#655d52'],
  bark: ['#4a3f33', '#3b322c', '#54473a'],
  kindling: ['#7a6a52', '#6e5c46', '#665644'],
@@ -272,7 +272,7 @@ export function placeGroundMarks(ground, map) {
  };
  // Where a horse stood: churned mud, prints every way.
  const trample = (x, z, r, owner) => {
-  decal({ kind: 'mud', cell: 'mud-2', x, z, yaw: random() * Math.PI * 2, w: r * 2.3, l: r * 2, alpha: .8, tier: 1, owner });
+  decal({ kind: 'mud', cell: 'mud-2', x, z, yaw: random() * Math.PI * 2, w: r * 2.3, l: r * 2, alpha: .8, tier: 0, owner }); // (tier 0: Potato keeps the mud where horses stood)
   const n = Math.round(10 + r * 8);
   for (let i = 0; i < n; i++) {
    const a = random() * Math.PI * 2, d = Math.sqrt(random()) * r;
@@ -398,8 +398,12 @@ export function placeGroundMarks(ground, map) {
     const [x, z] = toWorld(p, (random() - .5) * .5, side * 1.05), [nx, nz] = dirWorld(p, 0, side), yaw = heading(nx, nz);
     if (rules.pointProblem(x + nx * 1.4, z + nz * 1.4) || rules.solids.some(c => c.propId !== p.id && inside({ x: x + nx * .8, z: z + nz * .8 }, c, .3))) continue;
     decal({ kind: 'mud', cell: 'mud-1', x: x + nx * .4, z: z + nz * .4, yaw, w: 2.8, l: 1.8, alpha: .85, tier: 1, owner: p.id });
-    decal({ kind: 'puddle', cell: puddleCell(), x, z, yaw: yaw + Math.PI / 2, w: .7, l: 1.5, tint: 1.08, tier: 0, layer: LAYER.puddles, owner: p.id });
-    decal({ kind: 'wet', cell: 'wet', x: x + nx * .5, z: z + nz * .5, yaw, w: 1.8, l: 1, alpha: .7, tier: 1, owner: p.id });
+    // (Standing water only on level ground: a puddle on a 1:4 slope, by a
+    // trough on the hillside, read as a painted tilt; stage 5 review.)
+    if (steep(x, z) <= .08 && steep(x + nx * .5, z + nz * .5) <= .08) {
+     decal({ kind: 'puddle', cell: puddleCell(), x, z, yaw: yaw + Math.PI / 2, w: .7, l: 1.5, tint: 1.08, tier: 0, layer: LAYER.puddles, owner: p.id });
+     decal({ kind: 'wet', cell: 'wet', x: x + nx * .5, z: z + nz * .5, yaw, w: 1.8, l: 1, alpha: .7, tier: 1, owner: p.id });
+    }
     // The beasts stood here to drink.
     trample(x + nx * 1.1, z + nz * 1.1, .8, p.id);
     break;

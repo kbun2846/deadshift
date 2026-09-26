@@ -8,6 +8,7 @@ import { localOpenings, buildingContains } from '../src/map-kit.js';
 import { NavGrid } from '../src/bots/nav-grid.js';
 import { RIFLE_MUZZLE } from '../src/config/gameplay.js';
 import { interiorCover } from '../src/world/detailed-interiors.js';
+import { stackOver } from '../src/maps/hollow-wick-buildings.js';
 import { COLONIAL_STYLES, isColonial, colonialCover, roomCheck, roomFrame, doorZones, windowZones, flueOf, separation, SNUG, BODY, HALF_WALL, WINDOW_CLEAR, WINDOW_REACH } from '../src/world/colonial-interiors.js';
 
 const SIDES = ['front', 'back', 'left', 'right'];
@@ -78,6 +79,12 @@ test("a hearth or forge stands under its chimney's stack", () => {
     }
   }
   for (const id of ['tavern', 'smithy']) assert.ok(ROOMS.find(b => b.id === id).chimneys.some(c => c.over), id);
+  // The stacks carry their places (not worked out at import, v0.980a): exactly
+  // what stackOver works out from the room today.
+  for (const b of ROOMS) for (const c of b.chimneys || []) if (c.over) {
+    const { at, across, ...spec } = c, worked = stackOver(b, spec);
+    assert.ok(Math.abs(worked.at - at) < 1e-9 && Math.abs(worked.across - across) < 1e-9, `${b.id}: its ${c.over}'s stack is at ${worked.at}, ${worked.across} now: write those into SPECS`);
+  }
 });
 
 test('pieces stand inside the walls, off each other, with heights, and doorways stay clear', () => {

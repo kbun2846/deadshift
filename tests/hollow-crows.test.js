@@ -15,6 +15,7 @@ import { CROWS, CrowFlock, crowPerches, seededRandom, HANGING_TREE_BUILT_IN, HAN
 import { hasCrows } from '../src/effects/crows.js';
 import { HollowSound, hasHollowSound, bedLevels, HOLLOW_SOUND } from '../src/audio-hollow.js';
 import { hollowAmbience } from '../src/hollow-ambience.js';
+import { lifeOf, SHUTTER } from '../src/world/hollow-life.js';
 
 const ground = groundFor(hollowWick), heightAt = (x, z) => ground.heightAt(x, z);
 const props = mapProps(hollowWick);
@@ -334,6 +335,32 @@ test('design additions: crows on the body pile, silent all at once, caws by the 
   spades.length = 0; run2(60, at(HOLLOW_SOUND.dig.reach + 10)); assert.equal(spades.length, 0);
   // The open grave is where the graveyard layout put it.
   const grave = props.find(p => p.type === 'openGrave'); assert.deepEqual(hs.digAt, [grave.x, grave.z]);
+});
+
+test('the loose shutters slam and the tavern sign squeals where they are, stepped even out of sight; nothing stale after a pause', () => {
+  const setup = () => {
+    const ctx = fakeContext(), sound = { context: ctx, enabled: true, buses: { ambient: node(), effects: node() }, noiseBuffer: {}, impactBuffer: {}, wind: node() };
+    const view = { waterFX: { field: { depthAt: () => -1 } } }, life = lifeOf(view);
+    const shutter = (x, z) => ({ angle: SHUTTER.rest, speed: 0, phase: 4.1, tilt: .1, x, z, t: -Infinity, bang: 0, bangAt: -Infinity });
+    const near = shutter(30, -20), far = shutter(200, 200);
+    life.shutters.push(near, far); life.signs.push({ angle: 0, speed: 0, phase: 1.3, x: 34, z: -24, t: -Infinity, turn: 0, turnAt: -Infinity });
+    const hs = new HollowSound(sound, { map: hollowWick, view }); hs.start(sound);
+    const slams = [], squeals = []; hs.slam = l => slams.push(l); hs.squeal = l => squeals.push(l);
+    const listen = (p, from, seconds) => { hs.last = p; for (let t = from; t < from + seconds; t += 1 / 30) hs.swings(p, t); };
+    return { hs, far, slams, squeals, listen };
+  };
+  const a = setup(); a.listen({ x: 30, z: -17 }, 0, 120);
+  assert.ok(a.slams.length >= 8 && a.slams.every(l => l > 0 && l <= 1), `${a.slams.length} slams`);
+  assert.ok(a.slams.some(l => l < .3) && a.slams.some(l => l > .5), 'mostly knocks, now and then a slam');
+  assert.ok(a.squeals.length >= 3 && a.squeals.every(l => l > 0 && l <= 1), `${a.squeals.length} squeals`);
+  assert.equal(a.far.t, -Infinity, 'beyond reach: never stepped');
+  // The same gusts heard from 35 m off: fainter.
+  const b = setup(); b.listen({ x: 30, z: 15 }, 0, 120);
+  const sum = l => l.reduce((n, v) => n + v, 0);
+  assert.equal(b.slams.length, a.slams.length); assert.ok(sum(b.slams) < sum(a.slams) * .5);
+  // Back from a pause (the sound off a while): what banged meanwhile is not played late.
+  const n = a.slams.length + a.squeals.length; a.hs.swings({ x: 30, z: -17 }, 400);
+  assert.equal(a.slams.length + a.squeals.length, n);
 });
 
 // A tiny stand-in for the Web Audio graph (enough to build and schedule).
