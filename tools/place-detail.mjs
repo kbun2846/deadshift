@@ -57,6 +57,12 @@ function problems(p) {
  for (const [x, z] of corners) { const g = ground.gradientAt(x, z); if (Math.hypot(g.x, g.z) > .34) { out.push('slope'); break; } }
  if (lineDistance(p.x, p.z, DRAG_TRAIL) < 2.5) out.push('drag trail');
  if (KEEP_CLEAR.some(([kx, kz, kr]) => Math.hypot(p.x - kx, p.z - kz) < kr + 1.2)) out.push('set piece');
+ // Not heaped together: 4.5 m from any other piece of this pass and from the
+ // map's own piles and boulders (a stone pile is a field's clearing, set by a
+ // wall or an edge, not rubble strewn about).
+ if ([...placed, ...map.props.filter(q => /^(stonePile|fieldBoulder|choppingBlock)$/.test(q.type))].some(q => q.id !== p.id && Math.hypot(q.x - p.x, q.z - p.z) < 4.5)) out.push('crowded');
+ // Never in (or hard against) a stalk patch: its stalks are sight cover, not a wall to hide one in.
+ if ((map.crops || []).some(f => corners.some(([x, z]) => Math.abs(x - f.x) < f.w / 2 + .8 && Math.abs(z - f.z) < f.d / 2 + .8))) out.push('stalks');
  return out;
 }
 // Pieces per screen, as detail-density.mjs counts them.
@@ -67,9 +73,10 @@ const count = (list, [cx, cz]) => list.filter(([x, z]) => Math.abs(x - cx) <= 19
 const near = (x, z, r) => map.buildings.some(b => Math.hypot(b.x - x, b.z - z) < Math.max(b.w, b.d) / 2 + r);
 // (Solid pieces only: the breakables are their own list, maps/hollow-wick-breakables.js.)
 const KINDS = { open: ['stonePile', 'fieldBoulder', 'stonePile'], yard: ['choppingBlock', 'waterTrough', 'stonePile'] };
-for (let n = 0; n < 24; n++) {
+// (Up to the plan's bar, 25 pieces in every screen: v0.975a; it stopped at 20.)
+for (let n = 0; n < 64; n++) {
  const list = pieceList(), worst = screens.map(s => [s, count(list, s)]).sort((a, b) => a[1] - b[1])[0];
- if (!worst || worst[1] >= 20) break;
+ if (!worst || worst[1] >= 25) break;
  const [[cx, cz]] = worst; let done = false;
  for (let tries = 0; tries < 400 && !done; tries++) {
   const r = 3 + random() * 12, a = random() * Math.PI * 2, x = Math.round((cx + Math.cos(a) * r) * 10) / 10, z = Math.round((cz + Math.sin(a) * r) * 10) / 10;

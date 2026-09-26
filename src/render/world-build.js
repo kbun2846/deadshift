@@ -20,6 +20,8 @@ import { HOLLOW_BREAKABLES, makeHollowBreakable } from '../world/hollow-breakabl
 import { ROADSIDE_TYPES, makeRoadside } from '../world/roadside.js';
 import { HOLLOW_TYPES, makeHollowProp } from '../world/hollow-props.js'; // (s2-props)
 import { GRAVE_TYPES, makeGrave } from '../world/graveyard.js'; // s2-graveyard
+import { LIFE_TYPES, makeLifeProp } from '../world/hollow-life.js'; // s5-life: the goat's pen, the washing line, the stick effigies
+import { DRESSING_TYPES, makeDressing } from '../world/hollow-dressing.js'; // s5-props
 import { freezeTransforms } from './frozen-transforms.js';
 import { DustDevils } from '../effects/dust-devils.js';
 import { ROOF_PREPASS_ORDER, CLUTTER_CLAY, CLUTTER_DARK, CLUTTER_SEAT, lerp, randomGenerator } from './renderer.js';
@@ -29,6 +31,7 @@ import { buildWaterMesh } from './water-mesh.js';
 import { buildCrossingDecks } from './crossing-decks.js';
 import { buildTerrainDetails } from '../world/terrain-details.js';
 import { buildLeaves } from '../effects/leaf-fx.js'; // s3-leaves
+import { buildGroundMarks } from './ground-marks-view.js'; // s5-ground: ruts, puddles, prints, scatter, leaf drifts
 import { FogSheets } from './fog-sheets.js';
 import { groundHeights } from './extreme-surfaces.js';
 
@@ -194,6 +197,7 @@ export const WorldBuild = {
     // the terrain mesh, so after it).
     buildTerrainDetails(this, this.ground, map);
     this.leafFX = buildLeaves(this, map); // s3-leaves: the woods' leaf carpet, falling and kicked-up leaves
+    this.groundMarks = buildGroundMarks(this, map); // s5-ground: marks on the ground (one draped mesh) and raised bits (one instanced mesh)
   },
 
   // A switch to a finer preset than the map loaded with rebuilds the ground's
@@ -619,7 +623,9 @@ export const WorldBuild = {
     else if (isColonialPart(p.type)) makeColonialPart(this, p, g); // s2-buildings
     else if (GRAVE_TYPES[p.type]) makeGrave(this, p, g); // s2-graveyard
     else if (HOLLOW_TYPES[p.type]) makeHollowProp(this, p, g); // (s2-props)
+    else if (LIFE_TYPES[p.type]) makeLifeProp(this, p, g); // s5-life (their moving parts join world/hollow-life.js's meshes)
     else if (HOLLOW_BREAKABLES[p.type]) makeHollowBreakable(this, p, g); // s2-breakables
+    else if (DRESSING_TYPES[p.type]) makeDressing(this, p, g); // s5-props: Hollow Wick's static dressing
     else if (p.type === 'barrel') {
       this.cylinder(0, .5, 0, .46, 1, '#9c7d58', g, 10, .41);
       for (const y of [.2, .77]) this.cylinder(0, y, 0, .465, .09, '#696c58', g, 10);
@@ -749,10 +755,13 @@ export const WorldBuild = {
     this.box(0, 0, .025, .22, .19, .35, '#9bd9ee', gun);
     this.box(0, .11, .04, .15, .045, .25, '#c1edfa', gun);
     this.box(0, 0, -.19, .13, .13, .2, '#568697', gun);
+    // (The two glowing rails share one material, so they merge into one draw,
+    // and throw no shadow: two slivers 16 mm wide were two more shadow draws.)
+    const railMaterial = new THREE.MeshBasicMaterial({color:'#bff6ff',toneMapped:false});
     for (const side of [-1, 1]) {
       this.box(side*.119, .012, .03, .025, .08, .22, '#4d8499', gun);
       const rail = this.box(side*.137, .015, .03, .016, .027, .18, '#bff6ff', gun);
-      rail.material = new THREE.MeshBasicMaterial({color:'#bff6ff',toneMapped:false});
+      rail.material = railMaterial; rail.castShadow = false;
     }
     const muzzle = this.cylinder(0, 0, -.267, .112, .115, '#f1ce54', gun, 8);
     muzzle.rotation.x = Math.PI/2;
@@ -853,7 +862,7 @@ export const WorldBuild = {
     const halfWidth=halfHeight*this.camera.aspect;
     // (One frame object, reused: nothing allocated per frame.)
     const p = sim.player, frame = this.fogFrame ||= { focus: this.focus, player: { x: 0, z: 0, y: 0 }, aim: { x: 0, z: 0, y: 0 } };
-    frame.count = wisps; frame.interior = !!sim.interior; frame.halfWidth = halfWidth; frame.halfHeight = halfHeight; frame.dt = dt; frame.elapsed = elapsed;
+    frame.count = wisps; frame.interior = !!sim.interior && !sim.interior.open; frame.halfWidth = halfWidth; frame.halfHeight = halfHeight; frame.dt = dt; frame.elapsed = elapsed;
     frame.player.x = p.x; frame.player.z = p.z; frame.player.y = this.gy(p.x, p.z);
     frame.aim.x = p.aimPointX ?? p.x; frame.aim.z = p.aimPointZ ?? p.z; frame.aim.y = this.gy(frame.aim.x, frame.aim.z);
     this.fogSheets.update(frame);

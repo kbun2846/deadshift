@@ -25,6 +25,9 @@ import { HW_PROPS, HW_CROPS, HW_GROUND_LAYERS } from './hollow-wick-props.js'; /
 import { hollowWickBuildings, hollowWickBuildingProps } from './hollow-wick-buildings.js'; // s2-buildings
 import { HOLLOW_WICK_BREAKABLES } from './hollow-wick-breakables.js'; // s2-breakables
 import { HOLLOW_WICK_DETAIL } from './hollow-wick-detail.js'; // stage 5 detail (tools/place-detail.mjs)
+import { HW_GROUND_MARKS } from './hollow-wick-ground-marks.js'; // s5-ground: ruts, puddles, prints, scatter, leaf drifts (world/ground-marks.js)
+import { HW_LIFE, withLife } from './hollow-wick-life.js'; // s5-life: the goat's pen, the washing line, the effigies; loose shutters and the lit house's smoke (withLife)
+import { HOLLOW_WICK_DRESSING } from './hollow-wick-dressing.js'; // s5-props: static period dressing
 
 const deg = Math.PI / 180;
 // Worked-out points are kept to the millimetre, so the map's numbers (and its
@@ -140,7 +143,7 @@ export const hollowWick = {
   ...HW_GROUND_LAYERS, // (s2-props: the body pile's reddish ground)
   // The mill dam's top: a walk of weathered stone, not the stream bed's mud
   // (it reads as a walkway across the water, not a strip of water).
-  { poly: [[13.2, 14.4], [14.8, 14.4], [14.8, 25.4], [13.2, 25.4]], colour: '#7b7466', feather: .15, mix: 1, noise: .25 },
+  { poly: [[13.1, 14.4], [14.9, 14.4], [14.9, 25.4], [13.1, 25.4]], colour: '#7b7466', feather: .15, mix: 1, noise: .25 },
  ],
  terrain: {
   bounds: [-96, -80, 86, 80],
@@ -182,7 +185,9 @@ export const hollowWick = {
    // The mill dam: stone faces across the stream (walls), laid over the
    // channel (overWater), its ends on the banks: you walk along its top.
    // (Its ends meet the banks steeply, so they don't fan out into the water.)
-   { id: 'dam', h: .75, poly: [[13.2, 14.4], [14.8, 14.4], [14.8, 25.4], [13.2, 25.4]], grade: 1.2, cliffs: [1, 3], overWater: true },
+   // (1.8 m wide: at 1.6 the robots' nav squares could not fit between its
+   // wall faces, so robots waded beside it instead: stage 4 audit.)
+   { id: 'dam', h: .75, poly: [[13.1, 14.4], [14.9, 14.4], [14.9, 25.4], [13.1, 25.4]], grade: 1.2, cliffs: [1, 3], overWater: true },
   ],
   // Knolls in the woods: deliberate crests for reverse-slope play.
   knolls: [{ x: -14, z: -52, r: 5, h: 1.4 }, { x: 0, z: -56, r: 4.5, h: 1.2 }, { x: -24, z: -56, r: 4, h: 1.5 }, { x: -52, z: -2, r: 4, h: 1.2 }],
@@ -252,11 +257,13 @@ export const hollowWick = {
   regions: [
    { poly: [[-90, 8], [90, 14], [90, 32], [-90, 26]], kinds: { tufts: 1.3, stalks: 1.6, leaves: 1.1 } },
    { poly: [[-12, 29], [95, 31], [95, 85], [-12, 85]], kinds: { tufts: 1.5, stalks: 2.4, leaves: .3, twigs: .5 } },
-   { poly: town, density: .45, kinds: { stones: .6, leaves: .6 } },
+   // (The town's yards: trodden grass at the edges, gravel, twigs and the
+   // village trees' leaves blown into drifts; map-ui audit: .45 read bare.)
+   { poly: town, density: 1.1, kinds: { tufts: .8, stones: 1.4, twigs: .9, leaves: 1.2, stalks: .5 } },
    ...WOODS.map(w => ({ poly: w.poly, kinds: { leaves: 3, twigs: 2.2, tufts: .35, stalks: .5 } })),
   ],
  },
- buildings: hollowWickBuildings(BUILDING_PADS) /* s2-buildings */, props: [...GRAVEYARD_PROPS, ...FIELD_WALLS /* s2-graveyard */, ...HW_PROPS /* s2-props */, ...hollowWickBuildingProps(BUILDING_PADS) /* s2-buildings */, ...HOLLOW_WICK_BREAKABLES /* s2-breakables: pumpkins, cider, apples, grain, coops, skeps, crocks, lanterns, cordwood, barrows */, ...HOLLOW_WICK_DETAIL /* stage 5: the sparse screens' fieldstone, boulders, blocks */], fences: [], crops: HW_CROPS, // (s2-props)
+ buildings: withLife(hollowWickBuildings(BUILDING_PADS)) /* s2-buildings; s5-life flags (maps/hollow-wick-life.js) */, props: [...GRAVEYARD_PROPS, ...FIELD_WALLS /* s2-graveyard */, ...HW_PROPS /* s2-props */, ...hollowWickBuildingProps(BUILDING_PADS) /* s2-buildings */, ...HOLLOW_WICK_BREAKABLES /* s2-breakables: pumpkins, cider, apples, grain, coops, skeps, crocks, lanterns, cordwood, barrows */, ...HOLLOW_WICK_DETAIL /* stage 5: the sparse screens' fieldstone, boulders, blocks */, ...HOLLOW_WICK_DRESSING /* s5-props: stocks, pillory, rails, wagon, bier, boat... */, ...HW_LIFE /* s5-life */], fences: [], crops: HW_CROPS, // (s2-props)
  // s2-spawns: bases, teamBases, ffaSpawns, noSpawn, pickView and targets.
  ...HW_SPAWNS,
  // s2-crossings: the crossings' and mill wheel's looks (render/crossing-decks.js).
@@ -265,5 +272,7 @@ export const hollowWick = {
  trees: HOLLOW_WICK_TREES,
  // s3-leaves: the woods' leaf carpet, falling and kicked leaves (world/leaf-carpet.js, effects/leaf-fx.js).
  leafLitter: { woods: WOODS },
+ // s5-ground: marks on the ground (world/ground-marks.js, render/ground-marks-view.js).
+ groundMarks: HW_GROUND_MARKS,
  zones: [], scenerySeed: 1790,
 };

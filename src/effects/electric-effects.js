@@ -223,7 +223,7 @@ export class ElectricEffects {
   }
   pulse(n, radius, life = .55, scatter = false) {
     const part = this.takePulse(), { mesh, core } = part;
-    mesh.position.set(n.x, .72 + (this.ground && !this.ground.flat ? this.ground.heightAt(n.x, n.z) : 0), n.z); mesh.scale.setScalar(.12); this.scene.add(mesh);
+    mesh.position.set(n.x, .72 + (this.ground && !this.ground.flat ? (this.floorAt || this.ground.heightAt.bind(this.ground))(n.x, n.z) : 0), n.z); mesh.scale.setScalar(.12); this.scene.add(mesh);
     core.position.copy(mesh.position); core.scale.setScalar(.06); this.scene.add(core);
     const rings = part.rings.slice(0, this.detail.rings).map((ring, i) => {
       ring.geometry = PULSE_RINGS[this.quality ? 64 : 40]; ring.scale.setScalar(radius * .15);
@@ -295,7 +295,8 @@ export class ElectricEffects {
         }
         const { a, b } = effect, dx = b.x - a.x, dz = b.z - a.z, length = Math.hypot(dx, dz) || 1;
         const lift = this.ground && !this.ground.flat ? this.ground : null;
-        const ay = a.y ?? (lift ? .76 + lift.heightAt(a.x, a.z) : .76), by = b.y ?? (lift ? .76 + lift.heightAt(b.x, b.z) : .76), intensity = effect.intensity || 1;
+        const floor = lift && (this.floorAt || ((x, z) => lift.heightAt(x, z)));
+        const ay = a.y ?? (lift ? .76 + floor(a.x, a.z) : .76), by = b.y ?? (lift ? .76 + floor(b.x, b.z) : .76), intensity = effect.intensity || 1;
         // (Hills: over a rise between its ends the arc bends up over the
         // ground instead of cutting through it, owner 2026-09-26.)
         let bent = false;

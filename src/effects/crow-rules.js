@@ -12,9 +12,13 @@
 //    sends them up: they take off away from it, circle, and land on another
 //    perch well away from everyone. A living player walking close does too
 //    (closer for a crow up on a roof than one on a post or on the ground).
-//  - After gunfire they are silent for CROWS.hush seconds (no idle caws).
-//  - After a death, 1-3 come down to the body after a while, hop and peck,
-//    and scatter when anyone comes near.
+//  - After gunfire they are silent for CROWS.hush seconds (no idle caws). Now
+//    and then they all go silent at once for a while (CROWS.silence), after a
+//    last few caws; and with the soundscape's own silences (quiet()).
+//  - After a death, 1-3 come down to the body after a while, with a few
+//    caws, hop and peck, and scatter when anyone comes near.
+//  - A couple of them sit on the body pile by the stream (design: "crows sit
+//    on it and fly off when someone comes near").
 //  - Now and then one to three fly over, high, without landing.
 //  - Fewer on Potato and Performance (CROWS.counts).
 
@@ -40,6 +44,11 @@ export const CROWS = Object.freeze({
   visit: Object.freeze({ delay: Object.freeze([7, 14]), count: Object.freeze([1, 3]), stay: Object.freeze([28, 50]), radius: Object.freeze([.55, 1.1]), near: 6 }),
   // Overhead crossings.
   flyoverEvery: Object.freeze([16, 38]), flyoverHeight: Object.freeze([11, 14]),
+  // All silent at once, now and then: how far apart (s) and for how long.
+  silence: Object.freeze([45, 110]), silent: Object.freeze([18, 35]),
+  // Perches crows are seated on first (the body pile's), up to this many
+  // crows; one short flies back to them every so often (s) once nobody is near.
+  favoured: 2, favouredEvery: Object.freeze([8, 20]), favouredWary: 25,
   // Crows this far from every player are moved (unseen) to a perch nearer the
   // action every `gatherEvery` s, so a few crows still fill the screen.
   gather: 30, gatherEvery: Object.freeze([5, 11]), gatherRing: Object.freeze([9, 22]),
@@ -83,6 +92,11 @@ export const HANGING_TREE_PERCHES = Object.freeze([
 ]);
 // (None left: the hanging tree's crows are all perches of the flock.)
 export const HANGING_TREE_BUILT_IN = Object.freeze([]);
+// The body pile (world/hollow-props.js bodyPile): the tops of the upper
+// bodies' torsos in the pile's frame, [x, z, layer, spotX, spotZ]: each body
+// is laid on the ground at its spot (hollow-props.js `spots`), a layer .24
+// up, and a lying body's torso top is .235 over that.
+export const BODY_PILE_PERCHES = Object.freeze([[-.05, .55, 2, -.1, .2], [.03, -.21, 1, .2, .1], [-1.23, -.09, 1, -.9, -.2], [1.35, -.13, 1, 1, -.1]]);
 
 // Every perch on a map: { x, y, z, yaw, kind, high, building?, propId? }.
 // `props`: mapProps(map) (the angles props actually stand at); `heightAt`:
@@ -144,6 +158,8 @@ export function crowPerches(map, props, heightAt) {
     } else if (p.type === 'hangingTree') {
       const base = heightAt(p.x, p.z);
       for (const [lx, ly, lz, yaw] of HANGING_TREE_PERCHES) { const [x, z] = turn(p.x, p.z, a, lx, lz); add(x, z, base + ly, a + yaw, 'branch', { high: true, propId: p.id }); }
+    } else if (p.type === 'bodyPile') {
+      BODY_PILE_PERCHES.forEach(([lx, lz, layer, sx, sz], i) => { const [x, z] = turn(p.x, p.z, a, lx, lz), [gx, gz] = turn(p.x, p.z, a, sx, sz); add(x, z, heightAt(gx, gz) + layer * .24 + .235, a + i * 1.7, 'pile', { propId: p.id, favoured: true }); });
     }
   }
   return out;
@@ -168,7 +184,8 @@ export class CrowFlock {
   // `indoorsAt(x, z)`: under a roof (no crow comes down to a body there).
   constructor(perches, { heightAt = () => 0, wetAt = () => false, indoorsAt = () => false, random = seededRandom(), quality = 'balanced' } = {}) {
     this.perches = perches; this.heightAt = heightAt; this.wetAt = wetAt; this.indoorsAt = indoorsAt; this.random = random; this.interior = null;
-    this.time = 0; this.hushUntil = -1; this.broken = new Set(); this.visits = [];
+    this.time = 0; this.hushUntil = -1; this.silentUntil = -1; this.broken = new Set(); this.visits = [];
+    this.nextSilence = range(random, CROWS.silence); this.nextFavoured = range(random, CROWS.favouredEvery); this.scaredOff = new Map();
     this.nextCaw = range(random, CROWS.caw); this.nextFlyover = range(random, CROWS.flyoverEvery); this.nextGather = range(random, CROWS.gatherEvery);
     this.onCall = null;
     const max = Math.max(...Object.values(CROWS.counts)) + Math.max(...Object.values(CROWS.flyovers));
@@ -206,11 +223,14 @@ export class CrowFlock {
   }
 
   // A crow sat straight on a free perch (at load, or when a preset adds crows).
-  // Spread over the map: a perch not within 5 m of another crow if possible.
+  // The favoured perches first (the body pile: up to CROWS.favoured crows),
+  // else spread over the map: a perch not within 5 m of another crow if possible.
   seat(c) {
     const taken = this.taken(), free = [];
     for (let i = 0; i < this.perches.length; i++) if (!taken.has(i) && this.usable(i)) free.push(i);
     if (!free.length) return;
+    const favoured = free.filter(i => this.perches[i].favoured);
+    if (favoured.length && [...taken].filter(i => this.perches[i]?.favoured).length < CROWS.favoured) return this.land(c, favoured[Math.floor(this.random() * favoured.length)]);
     let pick = free[Math.floor(this.random() * free.length)];
     for (let k = 0; k < 6; k++) {
       const i = free[Math.floor(this.random() * free.length)], p = this.perches[i];
@@ -227,13 +247,15 @@ export class CrowFlock {
   // every player and from the scare. Nearest acceptable to a wanted distance.
   pickPerch(x, z, players, scare, [near, far] = CROWS.settle) {
     const taken = this.taken(), want = range(this.random, [near, far]), options = [];
+    // (The favoured perches draw them back while fewer than CROWS.favoured sit there.)
+    const needFavoured = [...taken].filter(i => this.perches[i]?.favoured).length < CROWS.favoured;
     for (let i = 0; i < this.perches.length; i++) {
       if (taken.has(i) || !this.usable(i)) continue;
       const p = this.perches[i], d = Math.sqrt(dist2(p.x, p.z, x, z));
       if (d < near || d > far + 10) continue;
       if (players.some(q => dist2(p.x, p.z, q.x, q.z) < CROWS.keepAway ** 2)) continue;
       if (scare && dist2(p.x, p.z, scare.x, scare.z) < CROWS.keepAway ** 2) continue;
-      options.push([Math.abs(d - want) + this.random() * 4, i]);
+      options.push([Math.abs(d - want) + this.random() * 4 - (needFavoured && p.favoured ? 12 : 0), i]);
     }
     options.sort((a, b) => a[0] - b[0]);
     return options.length ? options[0][1] : -1;
@@ -247,6 +269,7 @@ export class CrowFlock {
     if (l < .01) { const a = this.random() * Math.PI * 2; ax = Math.cos(a); az = Math.sin(a); } else { ax /= l; az /= l; }
     const target = this.pickPerch(c.x, c.z, players, { x: sx, z: sz });
     const r = range(this.random, CROWS.circleRadius), cruise = range(this.random, CROWS.cruise);
+    if (c.perch >= 0) this.scaredOff.set(c.perch, this.time);
     c.state = 'flying'; c.visit = null; c.perch = -1;
     c.flight = {
       phase: 'rise', t: 0, perch: target, vx: ax * 3.5, vz: az * 3.5,
@@ -306,8 +329,11 @@ export class CrowFlock {
     if (IMPACTS.has(e.type)) this.scatter(x, z);
   }
 
+  // The soundscape falls silent (audio-hollow.js silences): the crows with it.
+  quiet(seconds) { this.silentUntil = Math.max(this.silentUntil, this.time + seconds); }
+
   reset() {
-    this.broken.clear(); this.visits.length = 0; this.hushUntil = -1;
+    this.broken.clear(); this.visits.length = 0; this.hushUntil = -1; this.silentUntil = -1; this.scaredOff.clear();
     for (const c of this.crows) this.retire(c);
     for (const c of this.crows) if (c.id < this.limit) this.seat(c);
   }
@@ -332,12 +358,21 @@ export class CrowFlock {
     this.runVisits(players);
     this.returns();
     this.gatherIn(dt, players);
+    this.favouredIn(dt, players);
     this.flyovers(dt, players);
-    // Idle caws, never in the hush after gunfire.
+    // Now and then they all fall silent at once, after a last few caws.
+    this.nextSilence -= dt;
+    if (this.nextSilence <= 0) {
+      this.nextSilence = range(this.random, CROWS.silence);
+      const sat = this.crows.filter(c => c.state === 'perched');
+      if (t >= this.hushUntil && t >= this.silentUntil) for (let k = 0; k < Math.min(3, sat.length); k++) { const c = sat[Math.floor(this.random() * sat.length)]; this.onCall?.('caw', c.x, c.y, c.z, 1 + Math.floor(this.random() * 2)); }
+      this.silentUntil = Math.max(this.silentUntil, t + range(this.random, CROWS.silent));
+    }
+    // Idle caws, never in the hush after gunfire nor in a silence.
     this.nextCaw -= dt;
     if (this.nextCaw <= 0) {
       this.nextCaw = range(this.random, CROWS.caw);
-      if (t >= this.hushUntil) {
+      if (t >= this.hushUntil && t >= this.silentUntil) {
         const sat = this.crows.filter(c => c.state === 'perched' || c.state === 'ground');
         if (sat.length) { const c = sat[Math.floor(this.random() * sat.length)]; this.onCall?.('caw', c.x, c.y, c.z, 1 + Math.floor(this.random() * 3)); }
       }
@@ -377,7 +412,8 @@ export class CrowFlock {
     if (!players.length) return;
     this.nextGather -= dt; if (this.nextGather > 0) return;
     this.nextGather = range(this.random, CROWS.gatherEvery);
-    const far = this.crows.filter(c => c.state === 'perched' && this.resident(c) && players.every(q => dist2(q.x, q.z, c.x, c.z) > CROWS.gather ** 2));
+    // (Never the body pile's: they stay with it.)
+    const far = this.crows.filter(c => c.state === 'perched' && this.resident(c) && !this.perches[c.perch].favoured && players.every(q => dist2(q.x, q.z, c.x, c.z) > CROWS.gather ** 2));
     if (!far.length) return;
     const c = far[Math.floor(this.random() * far.length)], me = players[0];
     const target = this.pickPerch(me.x, me.z, players, null, CROWS.gatherRing);
@@ -385,6 +421,22 @@ export class CrowFlock {
     const p = this.perches[target], b = Math.atan2(p.z - me.z, p.x - me.x);
     c.x = p.x + Math.cos(b) * 20; c.z = p.z + Math.sin(b) * 20; c.y = Math.max(p.y, this.heightAt(c.x, c.z)) + 7;
     c.state = 'flying'; c.perch = -1; c.flight = { phase: 'glide', t: 0, perch: target, sx: c.x, sy: c.y, sz: c.z }; c.beat = 1;
+  }
+
+  // Back to the body pile: while fewer than CROWS.favoured sit on it and
+  // nobody is near it, now and then the nearest idle crow flies over to it.
+  favouredIn(dt, players) {
+    this.nextFavoured -= dt; if (this.nextFavoured > 0) return;
+    this.nextFavoured = range(this.random, CROWS.favouredEvery);
+    const taken = this.taken(); if ([...taken].filter(i => this.perches[i]?.favoured).length >= CROWS.favoured) return;
+    // (Not straight back to where they were just scared off.)
+    const free = []; for (let i = 0; i < this.perches.length; i++) { const p = this.perches[i]; if (p.favoured && !taken.has(i) && this.usable(i) && this.time - (this.scaredOff.get(i) ?? -1e9) > CROWS.favouredWary && !players.some(q => dist2(p.x, p.z, q.x, q.z) < CROWS.keepAway ** 2)) free.push(i); }
+    if (!free.length) return;
+    const target = free[Math.floor(this.random() * free.length)], p = this.perches[target];
+    const idle = this.crows.filter(c => c.state === 'perched' && this.resident(c) && !this.perches[c.perch].favoured && !players.some(q => dist2(q.x, q.z, c.x, c.z) < 36)).sort((a, b) => dist2(a.x, a.z, p.x, p.z) - dist2(b.x, b.z, p.x, p.z));
+    const c = idle[0]; if (!c) return;
+    c.state = 'flying'; c.perch = -1; c.flight = { phase: 'glide', t: 0, perch: target, sx: c.x, sy: c.y + .6, sz: c.z }; c.beat = 1;
+    this.onCall?.('flap', c.x, c.y, c.z, 1);
   }
 
   // One to three high over the view, now and then, never landing.
@@ -456,7 +508,10 @@ export class CrowFlock {
       if (gnd) {
         c.x = tx; c.z = tz; c.y = ty; c.state = 'ground'; c.flight = null; c.perch = -1; c.pitch = 0;
         c.visit = { body: gnd.body, leave: this.time + range(this.random, CROWS.visit.stay), hop: range(this.random, [.6, 2]), peck: 0 };
-        c.yaw = Math.atan2(gnd.body.x - c.x, gnd.body.z - c.z); return;
+        c.yaw = Math.atan2(gnd.body.x - c.x, gnd.body.z - c.z);
+        // Down by the body with a few caws (design: "a few extra caws").
+        if (this.time >= this.silentUntil) this.onCall?.('caw', c.x, c.y, c.z, 1 + Math.floor(this.random() * 2));
+        return;
       }
       if (c.flyover || !this.resident(c)) { c.state = 'off'; c.flight = null; return; }
       // Flew off the map: back a while later on a perch somewhere quiet.

@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { maps, groundFor } from '../src/maps.js';
 import { WOODS } from '../src/maps/hollow-wick.js';
 import { insidePoly } from '../src/world/heightfield.js';
-import { placeLeafCarpet, litterField, LEAF_CARPET, GROUND_LEAF_COLOURS, CANOPY_ONLY, EDGE_OUT, TRACK, carpetPatchGeometry, looseLeafGeometry } from '../src/world/leaf-carpet.js';
+import { placeLeafCarpet, litterField, LEAF_CARPET, GROUND_LEAF_COLOURS, LITTER_BROWNS, CANOPY_ONLY, EDGE_OUT, TRACK, carpetPatchGeometry, looseLeafGeometry } from '../src/world/leaf-carpet.js';
 import { buildLeaves, LEAF_FX, LEAF_CAPACITY } from '../src/effects/leaf-fx.js';
 
 const wick = maps['hollow-wick'], ground = groundFor(wick);
@@ -43,7 +43,7 @@ test('the carpet lies only in and at the edge of the woods, off the paths, in gr
  }
  // Both woods carpeted, mostly litter browns.
  assert.ok(patches.some(p => p.wood === 0) && patches.some(p => p.wood === 1));
- const browns = patches.filter(p => ['#8a6a3e', '#7a5a34', '#6e4a2c'].includes(p.color)).length;
+ const browns = patches.filter(p => LITTER_BROWNS.includes(p.color)).length;
  assert.ok(browns / patches.length > .6, `browns ${browns / patches.length}`);
 });
 

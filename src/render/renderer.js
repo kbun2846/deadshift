@@ -13,7 +13,7 @@ import { PropInstances } from './prop-instances.js';
 import { makeRailways } from '../world/rail-depot.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mapProps, groundFor } from '../maps.js';
-import { groundY, hilly } from './ground-lift.js';
+import { groundY, floorY, hilly, UNDER_REACH } from './ground-lift.js';
 import { inside, RULES } from '../simulation.js';
 import { GRAPHICS, renderPixelRatio, isDemanding } from '../settings.js';
 import { ElectricEffects } from '../effects/electric-effects.js';
@@ -237,7 +237,7 @@ export class WorldView {
       const group = this.makeTarget(target.moving, target.kind); group.rotation.y = targetYaw(target.id); this.interiorVisibility.applyEntity(group); this.targets.set(target.id, group); this.scene.add(group);
     }
     this.robotGlow = glowMaterials(this); // robots' visor and bulb (bots/), for the warm-up
-    this.electric = new ElectricEffects(this.scene); this.electric.ground = this.ground; this.shots = new Map(); this.particles = []; this.rings = []; this.beams = new Map(); this.blasts = [];
+    this.electric = new ElectricEffects(this.scene); this.electric.ground = this.ground; this.electric.floorAt = (x, z) => groundY(this, x, z); this.shots = new Map(); this.particles = []; this.rings = []; this.beams = new Map(); this.blasts = [];
     this.smokeGeo = new THREE.IcosahedronGeometry(1, 0);
     this.beamGeo = new THREE.CylinderGeometry(1, 1, 1, 6);
     this.fxLight = new THREE.PointLight('#9bffe1', 0, 7, 2); this.scene.add(this.fxLight); this.fxLightLevel = 0;
@@ -276,7 +276,7 @@ export class WorldView {
     this.dustTrail = new DustTrail(this.scene); this.dustTrail.ground = this.ground;
     // Sparks, embers, smoke, flashes, shock rings and grit over every weapon,
     // blast, fire and footstep (effects-detail.js). Counts scale per preset.
-    this.fx = new DetailFX(this.scene); this.fx.ground = this.ground;
+    this.fx = new DetailFX(this.scene); this.fx.ground = this.ground; this.fx.floorAt = (x, z) => groundY(this, x, z); // (hills: under a deck with its wader)
     // Where two floating orbs arc to each other, both ends flash and spit.
     this.electric.onContact = (a, b) => { for (const end of [a, b]) this.fx.electric(end.x, .72, end.z, .45, { ring: false }); };
     this.birds = new Birds(this.scene, { off: map.birds === false }); this.birds.lean = sunLean(this.sunOffset);
@@ -378,6 +378,20 @@ export class WorldView {
 
   // The ground's height at (x, z): 0 on a flat map.
   gy(x, z) { return groundY(this, x, z); }
+  // Hills, decks: is (x, z) inside a deck's outline with the body nearest it
+  // (you or another player within UNDER_REACH m) wading under that deck?
+  // Then what is made there is drawn under it (ground-lift.js groundY). Only
+  // asked while somebody is under a deck (you: playerUnder; the others:
+  // remote.anyUnder), so it costs nothing the rest of the time.
+  underNear(x, z) {
+    if (!this.playerUnder && !this.remote?.anyUnder) return false;
+    const g = this.ground; if (!g?.decks?.length || g.deckAt(x, z) < 0) return false;
+    let best = UNDER_REACH * UNDER_REACH, under = false;
+    const me = this.player?.position;
+    if (me) { const d = (me.x - x) ** 2 + (me.z - z) ** 2; if (d < best) { best = d; under = !!this.playerUnder; } }
+    for (const a of this.remote?.avatars?.values() || []) { const p = a.root.position, d = (p.x - x) ** 2 + (p.z - z) ** 2; if (d < best) { best = d; under = !!a.under; } }
+    return under;
+  }
   // Hills: lay `object` on the ground's slope at (x, z), turned `yaw` about
   // the ground's normal (a print, a mark, a pool of blood).
   tiltToGround(object, x, z, yaw = 0) {
@@ -1122,7 +1136,7 @@ export class WorldView {
     }
     if (e.type === 'impactMark') this.surfaceMarks.enqueue('bullet',e);
     // A launched orb's path, lit for a moment (effects/orb-beams.js).
-    if ((e.type === 'impactMark' || e.type === 'pointImpact') && Number.isFinite(e.fromX)) this.orbBeams.add(e.fromX, e.fromZ, e.x, e.z);
+    if ((e.type === 'impactMark' || e.type === 'pointImpact') && Number.isFinite(e.fromX)) this.orbBeams.add(e.fromX, e.fromZ, e.x, e.z, this.underNear(e.fromX, e.fromZ));
     if (e.type === 'seed') this.burst(e.x, e.z, 2, 'hit');
     if (e.type === 'launch') {
       this.burst(e.x, e.z, 9, 'dust');
@@ -1248,7 +1262,8 @@ export class WorldView {
     const arcGeometry = new THREE.BufferGeometry(); arcGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(17 * 3), 3));
     const arc = new THREE.Line(arcGeometry, new THREE.LineBasicMaterial({ color: '#d1fff6', transparent: true, opacity: .8, depthWrite: false, toneMapped: false }));
     arc.frustumCulled = false; this.scene.add(arc);
-    this.beams.set(path.id, { core, halo, arc, seed: path.id, startX: path.x, startZ: path.z, endX: path.x, endZ: path.z, width, age: 0, finished: false });
+    const under = this.shots.get(path.id)?.userData.under ?? this.underNear(path.x, path.z);
+    this.beams.set(path.id, { core, halo, arc, seed: path.id, startX: path.x, startZ: path.z, endX: path.x, endZ: path.z, width, age: 0, finished: false, under });
   }
 
   breakProp(e) {
@@ -1394,7 +1409,7 @@ export class WorldView {
     const line = this.tubeLine ||= new Float32Array(RINGS * 3), T = this.tubeT ||= new THREE.Vector3(), N1 = this.tubeN1 ||= new THREE.Vector3(), N2 = this.tubeN2 ||= new THREE.Vector3();
     for (let i = 0; i < RINGS; i++) {
       const t = i / (RINGS - 1), x = lerp(b.startX, b.endX, t), z = lerp(b.startZ, b.endZ, t);
-      line[i * 3] = x; line[i * 3 + 1] = .72 + this.gy(x, z); line[i * 3 + 2] = z;
+      line[i * 3] = x; line[i * 3 + 1] = .72 + (b.under ? floorY(this, x, z, true) : this.gy(x, z)); line[i * 3 + 2] = z;
     }
     const positions = mesh.geometry.attributes.position, flat = Math.hypot(b.endX - b.startX, b.endZ - b.startZ) < 1e-4;
     for (let i = 0; i < RINGS; i++) {
@@ -1425,7 +1440,7 @@ export class WorldView {
       }
       // Scratch vectors: one per beam per frame otherwise.
       // (Hills: from the ground under one end to the ground under the other.)
-      const y0 = this.gy(b.startX, b.startZ), y1 = this.gy(b.endX, b.endZ);
+      const y0 = b.under ? floorY(this, b.startX, b.startZ, true) : this.gy(b.startX, b.startZ), y1 = b.under ? floorY(this, b.endX, b.endZ, true) : this.gy(b.endX, b.endZ);
       const delta = BEAM_DELTA.set(b.endX - b.startX, y1 - y0, b.endZ - b.startZ), length = delta.length();
       const opacity = 1 - Math.max(0, b.age - .1) / .52;
       const arcPoints = b.arc.geometry.attributes.position;
@@ -1435,7 +1450,7 @@ export class WorldView {
         const jitter = Math.sin(i * 37.1 + b.seed * 11 + Math.floor(this.effectTime * 24) * 7.3);
         const offset = jitter * envelope * Math.min(.12, length * .04);
         const ax = lerp(b.startX, b.endX, t) + px * offset, az = lerp(b.startZ, b.endZ, t) + pz * offset;
-        arcPoints.setXYZ(i, ax, .74 + offset * .45 + this.gy(ax, az), az);
+        arcPoints.setXYZ(i, ax, .74 + offset * .45 + (b.under ? floorY(this, ax, az, true) : this.gy(ax, az)), az);
       }
       arcPoints.needsUpdate = true; b.arc.material.opacity = Math.max(0, opacity * .8); b.arc.visible = length > .05;
       // Hills: the core and halo bend over the ground as the arc does (one
@@ -1535,7 +1550,9 @@ export class WorldView {
     this.player.userData.gun.localToWorld(this.staticMuzzle);
     const cameraRate = this.motion ? 5.7 : 16;
     const cut = this.cameraCut; this.cameraCut = false;
-    const cameraRoom = sim.interior, blend = cut ? 1 : 1 - Math.exp(-cameraRate * dt);
+    // (An open shed, the forge, the horse sheds, the woodshed: `open`, is outdoors for the
+    // camera and the shroud; only its roof lifts over you. Stage 4 audit.)
+    const cameraRoom = sim.interior?.open ? null : sim.interior, blend = cut ? 1 : 1 - Math.exp(-cameraRate * dt);
     const deathCamera=this.deathView?.active?this.deathView.cameraFrame(this.camera.aspect):null;
     // Online weapon pick: straight down on the pick spot from high above
     // (setPickView), before the death or room camera.
@@ -1682,12 +1699,12 @@ export class WorldView {
         const trail = new THREE.Mesh(this.trailGeo, this.trailMaterial); g.add(trail);
         const electricGeometry = new THREE.BufferGeometry(); electricGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(7 * 6 * 2 * 3), 3));
         const electricity = new THREE.LineSegments(electricGeometry, this.orbElectricMaterial); g.add(electricity);
-        g.userData = { orb, trail, electricity, aura }; this.shots.set(s.id, g); this.scene.add(g);
+        g.userData = { orb, trail, electricity, aura, under: this.underNear(s.x, s.z) }; this.shots.set(s.id, g); this.scene.add(g);
       }
       // Match player interpolation without changing collision simulation authority.
       const behind = Math.min(s.age, (1 - alpha) / 60);
       const ox = s.x - s.vx * behind, oz = s.z - s.vz * behind;
-      g.position.set(ox, .72 + (s.launched ? 0 : Math.sin(elapsed * 4 + s.id) * .055) + this.gy(ox, oz), oz);
+      g.position.set(ox, .72 + (s.launched ? 0 : Math.sin(elapsed * 4 + s.id) * .055) + (g.userData.under ? floorY(this, ox, oz, true) : this.gy(ox, oz)), oz);
       g.rotation.y = Math.atan2(s.vx, s.vz); g.scale.setScalar(s.hex ? 2 : 1);
       if(s.hex){
         const t=Math.min(1,s.age/.18),arrival=1-(1-t)**3;
@@ -1753,7 +1770,7 @@ export class WorldView {
     // Online: other players, already placed by the network session (main.js sets the list).
     // From indoors you only see out through doors and windows (the grey
     // shroud): anyone out there is hidden with it, not drawn over it.
-    const inside = sim.interior, indoors = inside ? p => {
+    const inside = sim.interior?.open ? null : sim.interior, indoors = inside ? p => {
       const dx = p.x - sim.player.x, dz = p.z - sim.player.z, l = Math.hypot(dx, dz) || 1;
       return [0, -.4, .4].some(o => sim.canAimAt(p.x - dz / l * o, p.z + dx / l * o));
     } : null;

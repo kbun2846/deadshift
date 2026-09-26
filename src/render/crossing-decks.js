@@ -305,9 +305,14 @@ export function updateCrossingDecks(view, sim, dt) {
  if (view.damSpill) view.damSpill.material.map.offset.y -= dt * .9;
  if (view.millWheel) updateMillWheel(view.millWheel, dt);
  if (!view.deckMeshes?.length) return;
- const p = sim.player, under = p.below ? view.ground.deckAt(p.x, p.z) : -1;
+ // The decks someone is under: you, and anyone else the view draws wading
+ // under one (a robot or another player: stage 4 audit, robots fought from
+ // under the bridge unseen; one the view hides gives nothing away).
+ const p = sim.player, under = view.decksUnder ||= new Set(); under.clear();
+ if (p.below) under.add(view.ground.deckAt(p.x, p.z));
+ if (view.remote?.anyUnder) for (const a of view.remote.avatars.values()) if (a.under && a.root.visible && a.root.parent) under.add(view.ground.deckAt(a.root.position.x, a.root.position.z));
  for (const d of view.deckMeshes) {
-  const want = d.index === under ? SEE_THROUGH : 1;
+  const want = under.has(d.index) ? SEE_THROUGH : 1;
   if (d.fade === want) continue;
   d.fade = want > d.fade ? Math.min(want, d.fade + dt * 4) : Math.max(want, d.fade - dt * 4);
   // (Every part of a crossing is in its one mesh, so it all fades together.)

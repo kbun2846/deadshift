@@ -122,6 +122,14 @@ export const WarmUp = {
           try { this.renderer.render(this.scene, this.camera); }
           finally { this.scene.overrideMaterial = null; ao._restoreVisibility(); }
         }
+        // And its strained denoise (setLight(true): fewer samples, its own
+        // program), drawn once here rather than built mid-game the first time
+        // the frame rate drops (map-ui audit). The material keeps both.
+        if (ao?.pdMaterial && ao._fsQuad && this.post.setLight && !this.post.light) {
+          this.post.setLight(true);
+          try { this.renderer.setRenderTarget(ao.pdRenderTarget); ao._fsQuad.material = ao.pdMaterial; ao._fsQuad.render(this.renderer); }
+          finally { this.post.setLight(false); }
+        }
       }
       catch (error) { if (import.meta.env?.DEV) console.warn("warm-up", error); /* A warm-up failure is not a reason to refuse to start. */ }
       finally {

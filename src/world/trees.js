@@ -17,13 +17,17 @@
 // drawn, so it costs no extra draws.
 import * as THREE from 'three';
 import { TREE_KINDS, STUMP_RADIUS } from './tree-kinds.js';
+import { roofFade, ditherFade, LIMB_FADE } from './roof-fade.js';
 
 const TRUNK = '#231d1a', BARK = '#3b322c', STUMP_TOP = '#4a3f36', ROOT_EARTH = '#3a3026';
 // Canopies only (never on the ground: red there reads as blood).
 const MAPLE_YELLOW = '#c49a3a', BURNT_ORANGE = '#c0612b', OCHRE = '#b8923c', RUST = '#a4552a', RED = '#8e2f22';
 const WOODS_LEAVES = [[MAPLE_YELLOW, .3], [BURNT_ORANGE, .25], [OCHRE, .2], [RUST, .17], [RED, .08]];
-const LITTER = ['#8a6a3e', '#7a5a34', '#6e4a2c'];
-const CARPET = ['#c0612b', '#b08a3c'];
+const LITTER = ['#8a6a3e', '#7a5a34', '#5a4632'];
+const CARPET = ['#c0612b', '#94803e'];
+// Everything the trees lay on the ground (their drifts and beds): readable
+// under a body like the leaf carpet (tests/hollow-wick-look.test.js).
+export const TREE_DRIFT_COLOURS = Object.freeze([...LITTER, ...CARPET]);
 export const FADE_SLOTS = 8;
 
 // A small seeded generator per tree, from its position (the same tree every
@@ -264,6 +268,18 @@ export function buildTrees(view, map) {
  view.batch(group);
  group.traverse(o => { o.matrixAutoUpdate = false; o.updateMatrix(); });
  group.updateMatrixWorld(true);
+ // The limbs thin out over anyone standing under them, like the canopies
+ // (stage 4 audit: a body north of the fork maple's trunk vanished under its
+ // limbs); the trunks' feet stay solid (world/roof-fade.js ditherFade). Their
+ // own copies of the scenery's materials (in view.bakedMaterials, so the
+ // presets treat them as the rest: Extreme's weathering), one program.
+ const limbMaterials = new Map(), { update } = roofFade(view);
+ group.traverse(o => {
+  if (!o.isMesh || Array.isArray(o.material)) return;
+  let m = limbMaterials.get(o.material);
+  if (!m) { m = o.material.clone(); ditherFade(view, m, { key: 'tree-limb-fade', ...LIMB_FADE }); limbMaterials.set(o.material, m); (view.bakedMaterials ||= new Map()).set(`tree-limbs-${limbMaterials.size}`, m); }
+  o.material = m; o.onBeforeRender = update;
+ });
  const material = canopyMaterial(), geometry = new THREE.IcosahedronGeometry(1, 0), matrix = new THREE.Matrix4(), colour = new THREE.Color();
  const q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3();
  const meshes = [];

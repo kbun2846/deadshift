@@ -36,7 +36,7 @@
 //    rather than chasing across the map, goes first for whoever is hurting
 //    you, and stands between you and them when you are nearly dead.
 // Nothing here touches the DOM or three.js.
-import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER } from '../config/gameplay.js';
+import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER, WADE } from '../config/gameplay.js';
 import { collidersAlong } from '../world/collider-grid.js';
 import { segmentBox } from '../simulation.js';
 import { makeProfile, stepMood } from './robot-profile.js';
@@ -357,6 +357,12 @@ export class RobotBrain {
    if (!shotClear(sim.colliders, p.x, p.z, known.x, known.z, .04, sim.ground)) {
     // No clear shot from here: the nearest place that has one, at a range
     // the weapon likes (round the side of their cover), else toward them.
+    // (Stage 4 audit: a spot whose centre had a line, reached, where the
+    // robot's own standing place had none, held it there a minute doing
+    // nothing. Arrived and still blocked: that spot is no good for a while,
+    // look again. Hills maps only, so Deadwater replays exactly as before:
+    // tests/golden-flat.test.js.)
+    if (!sim.ground.flat && this.shotSpot && Math.hypot(this.shotSpot.x - p.x, this.shotSpot.z - p.z) < .6) { this.markBadSpot(this.shotSpot); this.shotSpot = null; this.shotSpotAt = -1e9; }
     const s = this.shotSpot;
     if ((!s || this.time - this.shotSpotAt > 1.2 || Math.hypot(s.forX - known.x, s.forZ - known.z) > 2.5) && this.afford('search')) {
      const found = this.findShotSpot(known, style);
@@ -481,6 +487,21 @@ export class RobotBrain {
   return { x: p.x + (this.random() - .5) * 6, z: p.z + (this.random() - .5) * 6 };
  }
 
+ // A shot spot that let it down (reached, and no line from where it stood):
+ // passed over for a few seconds (findShotSpot).
+ markBadSpot(c) { (this.badSpots ||= new Map()).set(`${Math.round(c.x * 4)},${Math.round(c.z * 4)}`, this.time + 4); }
+ isBadSpot(c) { const b = this.badSpots; if (!b?.size) return false; const k = `${Math.round(c.x * 4)},${Math.round(c.z * 4)}`, until = b.get(k); if (until === undefined) return false; if (until < this.time) { b.delete(k); return false; } return true; }
+ // Hills: a place in the stream (wet) costs more the deeper it is, and one
+ // under a deck in the water is no place to stand and fight (stage 4 audit:
+ // robots hid and fought from under the bridge). Infinity: skip it.
+ wetCost(c) {
+  const g = this.sim.ground; if (!g || g.flat) return 0;
+  const k = g.decks?.length ? g.deckAt(c.x, c.z) : -1, floor = g.drawnHeightAt(c.x, c.z);
+  if (k >= 0 && g.decks[k].h - floor > WADE.step) return Infinity;
+  const depth = g.waterDepthAt(c.x, c.z, floor);
+  return depth > 0 ? 3 * Math.min(1, depth / WADE.depth) : 0;
+ }
+
  // Cover from `enemy`: the nearest spot by walking distance that the enemy
  // cannot shoot, not too close to them, preferring a little room round it.
  findCover(enemy) {
@@ -497,7 +518,7 @@ export class RobotBrain {
    if (fromEnemy < 4) continue;
    // An ally hides near you, not across the map.
    if (this.leader && Math.hypot(c.x - this.leader.x, c.z - this.leader.z) > 12) continue;
-   const score = walk + Math.max(0, 9 - fromEnemy) * 1.5 - Math.min(3, nav.clearance[i]) * .3;
+   const score = walk + Math.max(0, 9 - fromEnemy) * 1.5 - Math.min(3, nav.clearance[i]) * .3 + this.wetCost(c);
    if (score >= bestScore) continue;
    if (shotClear(this.sim.colliders, enemy.x, enemy.z, c.x, c.z, .3, this.sim.ground)) continue;
    bestScore = score; best = c;
@@ -508,7 +529,7 @@ export class RobotBrain {
  // A place to shoot `enemy` from: the nearest by walking distance with a
  // clear line to them, at a range the weapon likes. Same flood as cover.
  findShotSpot(enemy, style) {
-  const p = this.sim.player, nav = this.nav, reach = nav.flood(p.x, p.z, 12), lead = this.leader;
+  const p = this.sim.player, nav = this.nav, reach = nav.flood(p.x, p.z, 12), lead = this.leader, hills = !this.sim.ground?.flat;
   const mid = (style.near + style.far) / 2;
   let best = null, bestScore = Infinity;
   for (const [i, walk] of reach) {
@@ -518,8 +539,10 @@ export class RobotBrain {
    const c = nav.centre(i), d = Math.hypot(c.x - enemy.x, c.z - enemy.z);
    if (d > style.reach || d < style.near * .6) continue;
    if (lead && Math.hypot(c.x - lead.x, c.z - lead.z) > 12) continue;
+   // (Hills: not where it stands now, nor a spot that just let it down.)
+   if (hills && (Math.hypot(c.x - p.x, c.z - p.z) < .6 || this.isBadSpot(c))) continue;
    // A flanker wants an angle on them, not the same line it was on.
-   let score = walk + Math.abs(d - mid) * .35;
+   let score = walk + Math.abs(d - mid) * .35 + this.wetCost(c);
    const flank = this.fight?.kind === 'close' ? Math.max(this.pf.flank, .7) : this.pf.flank;
    if (flank) {
     const ax = p.x - enemy.x, az = p.z - enemy.z, bx = c.x - enemy.x, bz = c.z - enemy.z;
@@ -530,6 +553,8 @@ export class RobotBrain {
    // An ally keeps out of your line of fire.
    if (lead && this.inLine(lead, c.x, c.z)) continue;
    if (!shotClear(this.sim.colliders, c.x, c.z, enemy.x, enemy.z, .1, this.sim.ground)) continue;
+   // (Hills: a clear line from anywhere it may stop: it arrives within 0.35 m.)
+   if (hills && ![[.3, 0], [-.3, 0], [0, .3], [0, -.3]].every(([ox, oz]) => shotClear(this.sim.colliders, c.x + ox, c.z + oz, enemy.x, enemy.z, .1, this.sim.ground))) continue;
    bestScore = score; best = c;
   }
   return best;

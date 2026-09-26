@@ -83,7 +83,7 @@ export const Vision = {
   },
 
   updateInteriorVision(sim) {
-    const room = sim.interior;
+    const room = sim.interior?.open ? null : sim.interior; // (an open shed is outdoors: no shroud)
     const visionDisplay = room ? 'block' : 'none';
     // Gated the same way the crop overlay beside it is: writing an unchanged
     // display value still invalidates style on every frame.

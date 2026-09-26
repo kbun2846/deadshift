@@ -14,15 +14,24 @@
 //    alarm calls and wing claps when they scatter (effects/crow-rules.js);
 //  - the rope creaking on the hanging tree (about -4, -24), in time with its sway;
 //  - the mill wheel's slow creak (a quarter turn apart) and its paddles slapping;
-//  - now and then a single bell toll from the meetinghouse belfry (rare).
+//  - now and then a single bell toll from the meetinghouse belfry (rare);
+//  - a faint scraping and digging by the open grave (graveyard-layout's
+//    `openGrave`), in runs, that stops when you come near and keeps still
+//    until you have gone (design: "a faint scraping or digging sound near
+//    the graveyard stops when you get close").
 // The water (effects channel, from WaterEffects.onSound): wading steps and
 // dodges, splashes, a grenade's spout and plop; and a wetter footstep of your
 // own in the water (in place of the dry one).
 // Silences: gunfire (anyone's, if heard) ducks the beds and the one-shots at
 // once; they come back slowly. The crows keep quiet a while (CROWS.hush).
+// And now and then everything simply stops for a few seconds (design: "all
+// ambient sound cuts out for a few seconds now and then"): the beds and the
+// placed sounds fall away, hold, and come back; `onSilence(seconds)` tells
+// the crows (hollow-ambience.js), who stay quiet a little longer.
 import { HEARING, hearingLevel } from './audio.js';
 import { GUNFIRE } from './effects/crow-rules.js';
 import { WOODS } from './maps/hollow-wick.js';
+import { mapProps } from './map-kit.js';
 
 export const HOLLOW_SOUND = Object.freeze({
   wind: .05, gust: Object.freeze([6, 15]), whistle: .012,
@@ -33,6 +42,12 @@ export const HOLLOW_SOUND = Object.freeze({
   bell: Object.freeze([95, 210]), bellFirst: Object.freeze([35, 80]),
   // The duck: how far down, how long held, how slowly back (time constant, s).
   duck: .16, hold: 1.6, recover: 3.2,
+  // Silences: how far apart (s), the first, how long; how low it all goes.
+  silence: Object.freeze([70, 160]), silenceFirst: Object.freeze([45, 100]), silent: Object.freeze([3, 6]), silentLevel: .02,
+  // The digging by the open grave: a stroke every so often in a run of a few,
+  // runs apart; heard within `reach` m, faint; it stops within `near` m and
+  // starts again only once you are `gone` m off and `wait` s have passed.
+  dig: Object.freeze({ stroke: Object.freeze([1.4, 2.4]), run: Object.freeze([4, 9]), pause: Object.freeze([6, 16]), reach: 34, near: 11, gone: 20, wait: 25, volume: .05 }),
 });
 
 export const hasHollowSound = map => map?.id === 'hollow-wick';
@@ -62,6 +77,10 @@ export class HollowSound {
     this.started = false; this.indoors = false; this.last = { x: 0, z: 0 };
     this.clock = 0; this.nextMix = 0; this.nextGust = 3; this.nextRope = 2; this.nextBell = rangeOf(HOLLOW_SOUND.bellFirst);
     this.wheelAngle = 0; this.nextPaddle = 0; this.lastKind = {}; this.quietUntil = 0;
+    this.nextSilence = rangeOf(HOLLOW_SOUND.silenceFirst); this.onSilence = null;
+    // The open grave (graveyard data), where the digging is.
+    const grave = map ? mapProps(map).find(p => p.type === 'openGrave') : null;
+    this.digAt = grave ? [grave.x, grave.z] : null; this.nextStroke = rangeOf(HOLLOW_SOUND.dig.pause); this.strokesLeft = 0; this.digStopped = false; this.digStoppedAt = -1;
   }
 
   // Built with the audio graph (audio.js start): Deadwater's desert wind is
@@ -94,7 +113,10 @@ export class HollowSound {
     loop(sound.impactBuffer, .35).connect(this.weirBand); this.weirBand.connect(this.weirGain); this.weirGain.connect(this.duck);
   }
 
-  reset() { this.quietUntil = 0; if (this.duck) this.duck.gain.setTargetAtTime(1, this.ctx.currentTime, .3); }
+  reset() {
+    this.quietUntil = 0; this.nextSilence = rangeOf(HOLLOW_SOUND.silenceFirst); this.digStopped = false; this.strokesLeft = 0;
+    if (this.duck) { this.duck.gain.cancelScheduledValues(this.ctx.currentTime); this.duck.gain.setTargetAtTime(1, this.ctx.currentTime, .3); }
+  }
 
   get live() { const s = this.sound; return this.started && s.enabled && s.context?.state === 'running'; }
 
@@ -128,9 +150,49 @@ export class HollowSound {
       this.windGain.gain.setTargetAtTime(HOLLOW_SOUND.wind * inside * (1 + gust * 1.6), now, .8);
     }
     this.gusts(dt, now);
+    this.silences(dt, now);
     this.rope(dt, player);
     this.wheel(dt, player);
     this.bell(dt, player);
+    this.dig(dt, player);
+  }
+
+  // Everything stops for a few seconds, then comes back (never in the quiet
+  // after gunfire: that is its own). The crows are told (onSilence).
+  silences(dt, now) {
+    this.nextSilence -= dt; if (this.nextSilence > 0) return;
+    this.nextSilence = rangeOf(HOLLOW_SOUND.silence);
+    if (this.clock < this.quietUntil) return;
+    const hold = rangeOf(HOLLOW_SOUND.silent), g = this.duck.gain;
+    g.cancelScheduledValues(now); g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(HOLLOW_SOUND.silentLevel, now + .6);
+    g.setTargetAtTime(1, now + .6 + hold, .9);
+    this.quietUntil = this.clock + .6 + hold + 2;
+    this.onSilence?.(hold + 6);
+  }
+
+  // The digging: a spade's scrape into earth and the dull fall of what it
+  // throws, in runs, faint, by the open grave. It stops dead when you come
+  // within `near`, and stays stopped until you have gone.
+  dig(dt, player) {
+    const D = HOLLOW_SOUND.dig; if (!this.digAt) return;
+    const d = Math.hypot(player.x - this.digAt[0], player.z - this.digAt[1]);
+    if (d < D.near) { if (!this.digStopped) { this.digStopped = true; this.strokesLeft = 0; } this.digStoppedAt = this.clock; return; }
+    if (this.digStopped) { if (d < D.gone || this.clock - this.digStoppedAt < D.wait) return; this.digStopped = false; this.nextStroke = rangeOf(D.pause); }
+    this.nextStroke -= dt; if (this.nextStroke > 0) return;
+    if (this.strokesLeft <= 0) this.strokesLeft = Math.round(rangeOf(D.run));
+    this.strokesLeft--;
+    this.nextStroke = this.strokesLeft > 0 ? rangeOf(D.stroke) : rangeOf(D.pause);
+    if (d > D.reach || this.clock < this.quietUntil) return;
+    this.spade(fade(d, D.near, 7) * D.volume * (this.indoors ? .5 : 1));
+  }
+  spade(level) {
+    if (level < .002) return;
+    // The blade into the dirt: a gritty scrape rising; then the throw landing.
+    this.noiseHit(0, .28, level, 'bandpass', 2200, 1.6);
+    this.noiseHit(.05, .2, level * .6, 'bandpass', 3400, 2.5);
+    this.noiseHit(.62 + Math.random() * .2, .22, level * .8, 'lowpass', 500, .7, this.shots, 'brown');
+    this.click(.6, .03, level * .35, 900);
   }
 
   // A gust: a slow swell (1.5-3 s), the whistle rising over it, a fall.

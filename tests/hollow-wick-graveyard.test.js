@@ -127,3 +127,35 @@ test('about 40% of the graveyard cover is solid; hard cover near every standing 
  // leaves no room for cover on them.)
  assert.ok(worstAll.d <= 5.2, `${worstAll.x},${worstAll.z} is ${worstAll.d.toFixed(2)} m from hard cover`);
 });
+
+test('the field walls keep off every other prop and the stalk patches, and walls never double up (stage 4 audit)', async () => {
+ const { settle } = await import('../src/world/settle.js');
+ const own = new Set([...GRAVEYARD_PROPS, ...FIELD_WALLS]), others = map.props.filter(p => !own.has(p));
+ const solid = mapColliders({ ...map, buildings: [], trees: null, fences: [], crossings: null, props: others }).filter(c => !c.walkOver && !c.terrainEdge);
+ const gap = (x, z, c) => { const a = c.angle || 0, cs = Math.cos(a), sn = Math.sin(a), dx = x - c.x, dz = z - c.z; return Math.hypot(Math.max(0, Math.abs(dx * cs - dz * sn) - (c.localW ?? c.w) / 2), Math.max(0, Math.abs(dx * sn + dz * cs) - (c.localD ?? c.d) / 2)); };
+ for (const w of FIELD_WALLS) {
+  const [len] = footprint(w), c = Math.cos(w.angle || 0), s = Math.sin(w.angle || 0);
+  for (let t = -len / 2; t <= len / 2 + 1e-6; t += .5) {
+   const x = w.x + t * c, z = w.z - t * s;
+   for (const o of solid) assert.ok(gap(x, z, o) > .2, `${w.type} at ${w.x},${w.z} runs into ${o.propId}`);
+   for (const f of map.crops || []) assert.ok(Math.abs(x - f.x) > f.w / 2 + .5 || Math.abs(z - f.z) > f.d / 2 + .5, `${w.type} at ${w.x},${w.z} in ${f.id}`);
+  }
+ }
+ // No two walls (the layout's or anyone's) overlap or run side by side within 1 m.
+ // (Walls meeting at a corner, a plot's, are fine: only near-parallel pairs count.)
+ const walls = map.props.filter(p => /^fieldWall\d?$/.test(p.type));
+ const parallel = (a, b) => { const d = Math.abs(((a.angle || 0) - (b.angle || 0)) % Math.PI); return Math.min(d, Math.PI - d) < .35; };
+ for (let i = 0; i < walls.length; i++) for (let j = i + 1; j < walls.length; j++) {
+  const a = walls[i], b = walls[j], la = footprint(a)[0], lb = footprint(b)[0];
+  if (!parallel(a, b)) continue;
+  const ca = Math.cos(a.angle || 0), sa = Math.sin(a.angle || 0), cb = Math.cos(b.angle || 0), sb = Math.sin(b.angle || 0);
+  let close = 0;
+  for (let t = -la / 2; t <= la / 2 + 1e-6; t += .5) for (let u = -lb / 2; u <= lb / 2 + 1e-6; u += .5) if (Math.hypot(a.x + t * ca - b.x - u * cb, a.z - t * sa - b.z + u * sb) < 1) close++;
+  assert.ok(close < 2, `walls at ${a.x},${a.z} and ${b.x},${b.z} double up`);
+ }
+ // A flat-based piece settles to the low side of a slope (world/settle.js), never lifts, nothing on the flat.
+ const slopeAt = [-38.9, -7.5], g = { position: { y: ground.heightAt(...slopeAt) } }, view = { ground };
+ const drop = settle(view, { x: slopeAt[0], z: slopeAt[1], angle: 0 }, g, 2, 1);
+ assert.ok(drop >= 0 && g.position.y <= ground.heightAt(...slopeAt));
+ assert.equal(settle({ ground: { flat: true } }, { x: 0, z: 0 }, { position: { y: 0 } }, 2, 1), 0);
+});

@@ -25,11 +25,13 @@ const run = (f, seconds, players = [{ x: -10, z: -2 }], interior = null) => { fo
 
 test('crows perch on real roofs, chimneys, the belfry, stones, posts, walls and branches', () => {
   const kinds = new Set(perches.map(p => p.kind));
-  for (const k of ['ridge', 'chimney', 'belfry', 'headstone', 'tomb', 'post', 'wall', 'branch']) assert.ok(kinds.has(k), `no ${k} perches`);
+  for (const k of ['ridge', 'chimney', 'belfry', 'headstone', 'tomb', 'post', 'wall', 'branch', 'pile']) assert.ok(kinds.has(k), `no ${k} perches`);
   const byId = new Map(props.map(p => [p.id, p])), buildings = new Map(hollowWick.buildings.map(b => [b.id, b]));
   for (const p of perches) {
     assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z));
-    assert.ok(ground.bankDistance(p.x, p.z) >= 0, `${p.kind} perch in the stream at ${p.x},${p.z}`);
+    // (The body pile lies down the bank, its lower bodies in the water: its crows sit on the upper ones, dry.)
+    if (p.kind === 'pile') assert.ok(p.y > ground.waterAt(p.x, p.z) + .3 && p.y - ground.heightAt(p.x, p.z) < 1, `pile perch at ${p.y}`);
+    else assert.ok(ground.bankDistance(p.x, p.z) >= 0, `${p.kind} perch in the stream at ${p.x},${p.z}`);
     if (p.building) {
       const b = buildings.get(p.building), a = b.angle || 0;
       // In the building's frame, over its footprint (the belfry cap overhangs a little), at its roof's top.
@@ -74,7 +76,8 @@ test('fewer crows on Potato and Performance; a preset change adds or removes the
 });
 
 test('a shot, blast or impact within 6 m scatters them; further off does not', () => {
-  const f = flockOf(), c = f.crows.find(o => o.state === 'perched'), other = () => f.crows.filter(o => o !== c && o.state === 'perched');
+  // (Not one of the body pile's: they go back to it after a while.)
+  const f = flockOf(), c = f.crows.find(o => o.state === 'perched' && !f.perches[o.perch].favoured), other = () => f.crows.filter(o => o !== c && o.state === 'perched');
   // An impact just outside the radius: stays.
   f.event({ type: 'rifleImpact', x: c.x + CROWS.scatter + .3, z: c.z });
   assert.equal(c.state, 'perched');
@@ -288,6 +291,49 @@ test('audio.js hooks: Hollow Wick replaces the desert wind, ducks on gunfire, we
   for (const k of ['caw', 'alarm', 'flap', 'land']) hs.crow(k, 3, 5, 3, 2);
   hs.toll(.5);
   for (let t = 0; t < 30; t += 1 / 60) hs.update({ x: -4, z: -22 }, t);
+});
+
+test('design additions: crows on the body pile, silent all at once, caws by the dead; the silences and the digging by the open grave', () => {
+  // Two crows sit on the body pile from the start; scattered, they come back to it.
+  const f = flockOf('balanced'), onPile = () => f.crows.filter(c => c.state === 'perched' && f.perches[c.perch].kind === 'pile');
+  assert.equal(onPile().length, CROWS.favoured);
+  const pile = props.find(p => p.type === 'bodyPile');
+  run(f, .2, [{ x: pile.x + 1, z: pile.z }]);
+  assert.equal(onPile().length, 0, 'someone comes near: they go');
+  run(f, 90, [{ x: pile.x + 40, z: pile.z - 30 }]);
+  assert.ok(onPile().length >= 1, 'back on the pile once nobody is near');
+  // Now and then all of them fall silent at once, after a last few caws.
+  const g = flockOf('extreme', 11), caws = []; g.onCall = (kind) => { if (kind === 'caw') caws.push(g.time); };
+  run(g, 400, [{ x: 500, z: 500 }]);
+  const gaps = caws.slice(1).map((t, i) => t - caws[i]);
+  assert.ok(Math.max(...gaps) >= CROWS.silent[0] - .5, `longest quiet ${Math.max(...gaps).toFixed(1)} s`);
+  // The soundscape's silences quiet them too.
+  caws.length = 0; g.quiet(20); const from = g.time; run(g, 19, [{ x: 500, z: 500 }]);
+  assert.equal(caws.filter(t => t > from).length, 0);
+  // Down by a body with a few caws.
+  const v = flockOf('balanced'), heard = []; v.onCall = (kind) => heard.push([kind, v.crows.filter(c => c.state === 'ground').length]);
+  v.event({ type: 'playerDeath', x: -2, z: -12 }); run(v, CROWS.visit.delay[1] + 8, [{ x: 30, z: -4 }]);
+  assert.ok(heard.some(([kind, down]) => kind === 'caw' && down >= 1), 'no caw at the body');
+  // The soundscape: everything drops away now and then, and the crows are told.
+  const ctx = fakeContext(), sound = { context: ctx, enabled: true, buses: { ambient: node(), effects: node() }, noiseBuffer: {}, impactBuffer: {}, wind: node() };
+  const hs = new HollowSound(sound, { map: hollowWick, view: { waterFX: { field: { depthAt: () => -1 } } } });
+  hs.start(sound); let told = 0; hs.onSilence = s => { told = s; };
+  const spades = []; hs.spade = level => spades.push([hs.clock, level]);
+  const [gx, gz] = hs.digAt, at = d => ({ x: gx + d, z: gz });
+  let t = 0; const run2 = (seconds, p) => { for (const end = t + seconds; t < end; t += .1) hs.update(p, t); };
+  run2(HOLLOW_SOUND.silenceFirst[1] + 5, at(20));
+  assert.ok(hs.duck.gain.events.includes(HOLLOW_SOUND.silentLevel), 'no silence');
+  assert.ok(told > HOLLOW_SOUND.silent[0], 'the crows not told');
+  // The digging: heard from 20 m, faintly; it stops when you come close...
+  assert.ok(spades.length >= 3 && spades.every(([, l]) => l > 0 && l <= HOLLOW_SOUND.dig.volume), `${spades.length} strokes`);
+  spades.length = 0; run2(60, at(5)); assert.equal(spades.length, 0, 'digging with you standing over it');
+  // ...and stays still until you are well off and a while has passed.
+  run2(HOLLOW_SOUND.dig.wait - 2, at(HOLLOW_SOUND.dig.gone + 5)); assert.equal(spades.length, 0, 'started again at once');
+  run2(90, at(HOLLOW_SOUND.dig.gone + 5)); assert.ok(spades.length > 0, 'never started again');
+  // Beyond its reach, nothing.
+  spades.length = 0; run2(60, at(HOLLOW_SOUND.dig.reach + 10)); assert.equal(spades.length, 0);
+  // The open grave is where the graveyard layout put it.
+  const grave = props.find(p => p.type === 'openGrave'); assert.deepEqual(hs.digAt, [grave.x, grave.z]);
 });
 
 // A tiny stand-in for the Web Audio graph (enough to build and schedule).

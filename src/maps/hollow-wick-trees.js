@@ -166,7 +166,7 @@ export const STREAM_TREES = trees('willow', [
  [-54.58, 23.79, 1.15, 5.71],
  [35.76, 30.2, 1.08, 1.24],
  [19.53, 28.61, 0.86, 1.06],
- [28.03, 29.3, 1.15, 0.91],
+ [28.01, 30.1, 1.13, 1.01],
 ]);
 // The fork's big maple (the orange leaf carpet lies under it).
 export const FORK_MAPLE = trees('maple', [

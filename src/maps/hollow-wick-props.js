@@ -86,7 +86,7 @@ export const HW_PROPS = [
  // The field's west edge, where the terrace comes down to it.
  ...fence('splitRail', 'field-west', [[-10.6, 37], [-10.3, 42.5], [-10, 48.8]], [[5.2, 7.6]]),
  // --- The south terrace: the farm, its yard and pasture, the woodshed ---
- { type: 'haystack', id: 'haystack', x: -36, z: 46.2 },
+ { type: 'haystack', id: 'haystack', x: -35.6, z: 46.6 }, // (off the farm's wall: stage 4 audit, a pocket robots could not reach)
  { type: 'woodpile', id: 'woodpile-farm', x: -48.8, z: 38.6, angle: mm(Math.PI / 2) },
  { type: 'choppingBlock', id: 'block-farm', x: -47.6, z: 36.6 },
  { type: 'woodpile', id: 'woodpile-shed', x: -19.2, z: 43.4, angle: .05 },
@@ -100,12 +100,12 @@ export const HW_PROPS = [
  { type: 'markerStone', id: 'fork-marker', x: -7.5, z: -4.6, angle: .2 },
  { type: 'stonePile', id: 'fork-stones', x: -16.4, z: 2.4, angle: .4 },
  { type: 'fieldBoulder', id: 'fork-boulder', x: -4.6, z: 4.8, angle: 1.1 },
- { type: 'fieldWall', id: 'fork-wall', x: -13.4, z: -10.4, angle: .12 },
- { type: 'fieldWall', id: 'fork-wall-west', x: -19.6, z: -3.4, angle: 1.45 },
+ // (The fork's broken walls are the graveyard layout's 'fork' runs: two walls
+ // of its own here stood through them, stage 4 audit.)
  { type: 'stonePile', id: 'fork-stones-2', x: -6.4, z: -7.6, angle: 2 },
  { type: 'fieldBoulder', id: 'fork-boulder-2', x: -14.6, z: 4.2, angle: .3 },
  // --- The green and the town's yards ---
- { type: 'wellSweep', id: 'well', x: 19.6, z: -2.6, angle: 2.64 },
+ { type: 'wellSweep', id: 'well', x: 19.6, z: -2.6, angle: 3.1 }, // (turned so its counterweight stone, now solid, lies off the road)
  { type: 'waterTrough', id: 'trough-green', x: 21.6, z: -5.2, angle: -.2 },
  { type: 'woodpile', id: 'woodpile-lane', x: 14.2, z: -.6, angle: .1 },
  { type: 'choppingBlock', id: 'block-lane', x: 16.3, z: -1.5 },
@@ -122,7 +122,7 @@ export const HW_PROPS = [
  { type: 'dragTrail', id: 'drag-trail', x: DRAG_TRAIL[0][0], z: DRAG_TRAIL[0][1], angle: 0, points: DRAG_TRAIL },
  { type: 'bodyPile', id: 'body-pile', x: -45.8, z: 14.6, angle: -.08 },
  { type: 'skeletonLeaves', id: 'skeleton-woods', x: -9, z: -55, angle: -.7 },
- { type: 'rockingChair', id: 'rocking-chair', x: 15.1, z: -19.3, angle: 0, stoop: true },
+ { type: 'rockingChair', id: 'rocking-chair', x: 15.1, z: -19.3, angle: 0, stoop: true, lift: .18 }, // (on the gambrel's stoop: its top is 0.18 m up)
 ];
 
 // The ground round the body pile, tinted slightly reddish (ground-layers.js).

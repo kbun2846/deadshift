@@ -156,7 +156,9 @@ export class DetailFX {
   // ground's height is added where it is drawn (so floors, bounces and
   // landings need no change). Callers holding a world height (a gun's muzzle)
   // take the ground off first. `ground` is set by the view; null: flat.
-  this.ground = null;
+  // `floorAt(x, z)`, when the view sets it: the ground as it draws effects
+  // (ground-lift.js groundY: under a deck with a body wading there).
+  this.ground = null; this.floorAt = null;
   this.clearZone = { value: new THREE.Vector2(1e5, 1e5) }; // set each frame to the player's position
   const glowMap = softTexture(128);
   const hex = new THREE.RingGeometry(.9, 1, 6); hex.rotateX(-Math.PI / 2);
@@ -353,7 +355,7 @@ export class DetailFX {
   if (!this.on) return;
   const t = this.time, damp = k => Math.exp(-k * dt);
   const { spark, ember, puff, glow, ring, hexRing, pillar, chunk, streak } = this.pools;
-  const ground = this.ground && !this.ground.flat ? this.ground : null, base = ground ? (x, z) => ground.heightAt(x, z) : () => 0;
+  const ground = this.ground && !this.ground.flat ? this.ground : null, base = ground ? this.floorAt || ((x, z) => ground.heightAt(x, z)) : () => 0;
 
   let n = 0;
   for (const p of spark.items) {

@@ -26,6 +26,8 @@ import { bakeColors } from '../render/bake-colors.js';
 import { ROOF_PREPASS_ORDER } from '../render/renderer.js';
 import { makeDetailedInterior } from './detailed-interiors.js';
 import { COLONIAL_TYPES } from './colonial-parts.js';
+import { takeLifeParts } from './hollow-life.js'; // s5-life: loose shutters, the tavern's sign, chimney smoke
+import { fadeRoofMaterial, fadeRoofMeshes } from './roof-fade.js';
 
 export const isColonialPart = type => !!COLONIAL_TYPES[type];
 
@@ -156,6 +158,17 @@ export function makeColonialBuilding(view, b) {
         doorway(view, b, g, roof, side, piece, rand, onSide, trim, doorTop);
       }
     }
+    // A door shut and barred from within (`shutDoors`, s5-interiors: the
+    // farm's back door): plank leaf, battens and frame on the outer face, no
+    // opening and no stoop (the interior draws its bar).
+    for (const d of (b.shutDoors || []).filter(d => d.side === side)) {
+      const a = alongOf(side, d.offset || 0), dw = d.width || 1, top = Math.min(2.05, e - .35);
+      onSide(g, side, a, top / 2, T / 2 + .03, dw, top, .04, PLANK_DARK);
+      for (let k = -1; k <= 1; k += 2) onSide(g, side, a + k * dw / 4, top / 2, T / 2 + .055, .02, top - .08, .02, PLANK);
+      for (const y of [.35, top - .4]) onSide(g, side, a, y, T / 2 + .06, dw - .1, .12, .03, PLANK);
+      for (const s of [-1, 1]) onSide(g, side, a + s * (dw / 2 + .05), top / 2, T / 2 + .04, .12, top, .1, trim);
+      onSide(g, side, a, top + .08, T / 2 + .05, dw + .34, .16, .12, trim);
+    }
     // Shuttered-shut windows are plain wall behind closed plank shutters.
     for (const o of (b.windows || []).filter(o => o.side === side && o.boarded)) {
       const a = alongOf(side, o.offset);
@@ -216,7 +229,8 @@ export function makeColonialBuilding(view, b) {
     // The gable ends: the wall carried up under the roof, clapboarded.
     for (const sx of [-1, 1]) gable(view, b, roof, rb, profile, sx * L / 2, e, sx, board);
   }
-  for (const c of b.chimneys || []) chimney(b, rb, c, heightAt, e, rand);
+  const smoke = []; // s5-life: the tops of flues that smoke (a chimney's `smoke`), in the building's frame
+  for (const c of b.chimneys || []) { const [x, y, z] = chimney(b, rb, c, heightAt, e, rand); if (c.smoke) smoke.push(new THREE.Vector3(x * cy + z * sy, y, -x * sy + z * cy)); }
 
   // --- Special pieces ----------------------------------------------------
   const features = b.features || [];
@@ -245,6 +259,10 @@ export function makeColonialBuilding(view, b) {
   // --- The roof's fade (as world-build.js makeBuilding) --------------------
   g.position.set(b.x, baseY, b.z); g.rotation.y = angle;
   roof.position.set(b.x, baseY, b.z); roof.rotation.y = angle;
+  // s5-life: the parts marked to move (a loose shutter, the tavern's sign)
+  // leave the static group, and smoking flues start their smoke
+  // (world/hollow-life.js).
+  takeLifeParts(view, g, smoke.map(v => g.localToWorld(v)));
   registerRoof(view, b, roof);
 
   // The interior (the interiors builder's styles; detailed-interiors.js):
@@ -328,6 +346,7 @@ function chimney(b, rb, c, heightAt, e, rand) {
   rb(c.at, top - .1, across, c.w + .16, .18, c.d + .16, c.kind === 'stone' ? STONES[2] : '#5a372c');
   const flues = c.w > 1.25 ? [-c.w / 4, c.w / 4] : [0];
   for (const f of flues) rb(c.at + f, top + .01, across, Math.min(.36, c.w / 2 - .12), .02, c.d - .4, '#141312');
+  return [c.at + flues[0], top + .01, across]; // s5-life: the first flue's top, in the roof's frame (where smoke leaves)
 }
 
 // The tomb vault's roof: a turf mound banked over it, with a few stones.
@@ -363,8 +382,18 @@ function sash(view, b, g, side, piece, rand, onSide, trim) {
     for (let k = -1; k <= 1; k++) if (k !== c) onSide(g, side, a + k * wd / 3, (y0 + y1) / 2, -.03, wd / 3 - .02, y1 - y0 - .03, .015, glass);
   }
   if (rand() < .45) { // one shutter left, hanging off a hinge
-    const s = rand() < .5 ? -1 : 1;
-    onSide(g, side, a + s * (wd / 2 + .28), (SILL + HEAD) / 2 - .05, o + .1, wd / 2 + .02, HEAD - SILL - .05, .05, shade(trim, .62), 0, s * (.08 + rand() * .12));
+    const s = rand() < .5 ? -1 : 1, tilt = s * (.08 + rand() * .12);
+    // (s5-life: a `loose` window's shutter is the moving one below instead.)
+    if (!piece.opening.loose) onSide(g, side, a + s * (wd / 2 + .28), (SILL + HEAD) / 2 - .05, o + .1, wd / 2 + .02, HEAD - SILL - .05, .05, shade(trim, .62), 0, tilt);
+  }
+  // s5-life: a loose shutter (`loose`: the side it hangs on, -1 or 1) swings
+  // in the wind from its one top hinge. Only its hinge is marked here; the
+  // shutter is built and moved by world/hollow-life.js (takeLifeParts).
+  if (piece.opening.loose) {
+    const s = piece.opening.loose, [x, z] = sidePoint(b, side, a + s * (wd / 2 + .09), o + .1), hinge = new THREE.Group();
+    hinge.position.set(x, HEAD - .075, z); hinge.rotation.y = TURN[side];
+    hinge.userData.lifeShutter = { s, width: wd / 2 + .02, height: HEAD - SILL - .05, colour: shade(trim, .62) };
+    g.add(hinge);
   }
 }
 
@@ -409,9 +438,12 @@ function doorway(view, b, g, roof, side, piece, rand, onSide, trim, doorTop) {
   if (tower || portico || b.finish === 'boards' || b.roof?.kind === 'mound') return;
   // The stoop: a plank step, and a shed hood over the door (in the roof
   // group: it lifts with the roof when you stand in the doorway).
-  const stoop = sidePoint(b, side, a, o + .55);
+  // (`stoopRun[side]`: the step runs on that far past the door's +along side:
+  // the gambrel's, where the rocking chair sits.)
+  const run = b.stoopRun?.[side] || 0, stoop = sidePoint(b, side, a + run / 2, o + .55);
   const ry = TURN[side];
-  const step = view.box(stoop[0], .09, stoop[1], wd + .7, .18, 1.0, PLANK, g); step.rotation.y = ry;
+  const step = view.box(stoop[0], .09, stoop[1], wd + .7 + run, .18, 1.0, PLANK, g); step.rotation.y = ry;
+  for (let k = 1; k <= Math.floor(run / .5); k++) { const [x, z] = sidePoint(b, side, a + (wd + .7) / 2 + k * .5 - .25, o + .55); const l = view.box(x, .185, z, .02, .01, .96, PLANK_DARK, g); l.rotation.y = ry; }
   for (let k = -2; k <= 2; k++) { const [x, z] = sidePoint(b, side, a + k * (wd + .5) / 5, o + .55); const l = view.box(x, .185, z, .02, .01, .96, PLANK_DARK, g); l.rotation.y = ry; }
   const [x, z] = sidePoint(b, side, a, o + .42);
   const hood = view.box(x, doorTop + .4, z, wd + .9, .08, .9, shade(b.roofColor, .95), roof); hood.rotation.set(.34, ry, 0, 'YXZ');
@@ -485,8 +517,12 @@ function tavernSign(view, b, g, box) {
   const x = -4.1, z0 = b.d / 2 + T / 2, y = 2.85;
   box(g, x, y, z0 + .6, .06, .06, 1.2, IRON);
   const brace = box(g, x, y - .35, z0 + .35, .04, .04, .9, IRON); brace.rotation.x = .75;
-  for (const dx of [-.33, .33]) box(g, x + dx, y - .17, z0 + .95, .02, .3, .02, IRON);
-  const sign = new THREE.Group(); sign.position.set(x, y - .72, z0 + .95); sign.rotation.x = -.38; g.add(sign);
+  // s5-life: the sign and its two hooks hang in their own group from the arm
+  // (its pivot), which world/hollow-life.js takes out of the static merge and
+  // swings in the wind.
+  const hang = new THREE.Group(); hang.position.set(x, y, z0 + .95); hang.userData.lifeSwing = 'sign'; g.add(hang);
+  for (const dx of [-.33, .33]) box(hang, dx, -.17, 0, .02, .3, .02, IRON);
+  const sign = new THREE.Group(); sign.position.set(0, -.72, 0); sign.rotation.x = -.38; hang.add(sign);
   view.box(0, 0, 0, .95, .78, .05, '#2a2622', sign);
   for (const [dx, dy, w, h] of [[0, .41, 1.01, .05], [0, -.41, 1.01, .05], [.49, 0, .05, .83], [-.49, 0, .05, .83]]) view.box(dx, dy, .01, w, h, .06, '#6e5446', sign);
   view.box(0, -.27, .03, .36, .06, .02, '#8b8a80', sign); // the dish
@@ -516,7 +552,9 @@ function registerRoof(view, b, roof) {
   roof.updateMatrixWorld(true);
   view.batch(roof, false);
   const roofMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 1, transparent: true });
+  fadeRoofMaterial(view, roofMaterial); // (stage 4: never hides a character standing outside under it: world/roof-fade.js)
   for (const casts of [true, false]) bakeColors(roof, { material: roofMaterial, pick: m => m.castShadow === casts });
+  fadeRoofMeshes(view, roof);
   roof.traverse(m => { if (m.isMesh) m.receiveShadow = false; });
   const casters = []; roof.traverse(m => { if (m.isMesh && m.castShadow) casters.push(m); });
   const depthOnly = view.roofDepthMaterial ||= new THREE.MeshBasicMaterial({ colorWrite: false, transparent: true, depthWrite: true });

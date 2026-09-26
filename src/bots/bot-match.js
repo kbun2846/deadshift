@@ -46,7 +46,7 @@ import { ROBOT_SLOT, ALLY_SLOT, ROBOT_SKINS, isAllySlot } from './robot-model.js
 import { makeProfile } from './robot-profile.js';
 import { openSpot } from '../net/spawn-points.js';
 // s2-spawns: authored bases and FFA points (Hollow Wick).
-import { hasAuthoredSpawns, baseSpot, ffaSpot } from '../net/map-spawns.js';
+import { hasAuthoredSpawns, baseSpot, ffaSpot, spawnProblem } from '../net/map-spawns.js';
 import { SIDE_COLOURS } from '../config/match.js';
 import { Squads } from './squad.js';
 
@@ -122,7 +122,7 @@ export class BotMatch {
   if (authored) { this.putAt(bot, main, authored); return; }
   if (this.teamSpawn && this.placeWithTeam(bot, main)) return;
   const scattered = this.apart && (openSpot(this.map, main.colliders, { random: this.random, others, space: this.apart, tries: 600 }) || openSpot(this.map, main.colliders, { random: this.random, others, space: this.apart * .6, tries: 400 }));
-  const at = scattered || this.spot(main.player, near, far) || (near > 10 && openSpot(this.map, main.colliders, { random: this.random, others: [main.player], space: near })) || this.map.spawn;
+  const at = scattered || this.spot(main.player, near, far, main.colliders) || (near > 10 && openSpot(this.map, main.colliders, { random: this.random, others: [main.player], space: near })) || this.map.spawn;
   bot.sim.respawn(at, bot.id); bot.sim.player.team = bot.team; this.hand(bot.sim, main);
   const hp = main.dev?.robotHealth; if (hp) bot.sim.player.hp = bot.sim.player.maxHp = hp;
   bot.prev = { x: at.x, z: at.z }; bot.alive = true; bot.respawnIn = 0;
@@ -136,9 +136,14 @@ export class BotMatch {
   if (!hasAuthoredSpawns(this.map) || !this.apart) return null;
   if (this.baseSpawn && this.map.bases?.length) {
    const ids = this.map.teamBases?.[2] || [], id = ids[team === YOU_TEAM ? 0 : 1], base = this.map.bases.find(b => b.id === id);
-   if (base) return baseSpot(this.map, main.colliders, base, { others, random: this.random });
+   // (Not in sight of a living enemy while another point will do: map-spawns.js.)
+   const enemies = [...(team !== YOU_TEAM && main.player.hp > 0 && !main.player.dead ? [main.player] : []), ...this.living().filter(b => b.team !== team).map(b => b.sim.player)];
+   if (base) return baseSpot(this.map, main.colliders, base, { others, enemies, random: this.random });
   }
-  return ffaSpot(this.map, main.colliders, { others, random: this.random, space: this.apart });
+  // (The last few FFA points used sit out a turn: map-spawns.js ffaSpot.)
+  const at = ffaSpot(this.map, main.colliders, { others, random: this.random, space: this.apart, recent: this.recentSpawns ||= [] });
+  if (at) { this.recentSpawns.push(at); if (this.recentSpawns.length > 3) this.recentSpawns.shift(); }
+  return at;
  }
  // You, at the start of a SOLO game and after a death (main.js): your base or
  // an FFA point, as the robots. Null on other maps.
@@ -160,7 +165,7 @@ export class BotMatch {
   // Beside its side, but never on top of the other side (a mate in a close fight).
   const far = Math.max(this.apart, 26) * .6, clear = p => foes.every(f => Math.hypot(f.x - p.x, f.z - p.z) >= far);
   let at = null;
-  for (let i = 0; anchor && i < 4 && !at; i++) { const s = this.spot(anchor, 2.5, 6); if (s && clear(s)) at = s; }
+  for (let i = 0; anchor && i < 4 && !at; i++) { const s = this.spot(anchor, 2.5, 6, main.colliders); if (s && clear(s)) at = s; }
   if (!at) {
    at = openSpot(this.map, main.colliders, { random: this.random, others: foes, space: Math.max(this.apart, 26), tries: 600 });
   }
@@ -176,15 +181,19 @@ export class BotMatch {
  respawnAt(bot, main) { if (bot.team === YOU_TEAM) this.place(bot, main, 4, 9); else this.place(bot, main, ...this.enemyRange); }
 
  // An open spot between `near` and `far` metres from `from`, reachable on foot.
- spot(from, near, far) {
+ spot(from, near, far, colliders = null) {
   const nav = this.nav;
   if (!nav) return null;
+  // (Hills maps: the spawn rules too, not only an open nav square: stage 4
+  // audit, dev-tool robots came in in the water, on steep banks, in the
+  // graveyard and once in the tavern.)
+  const rules = colliders && this.map.terrain ? (x, z) => !spawnProblem(this.map, colliders, x, z) : () => true;
   // Open squares are cheap to test; the route (the costly part) only for
   // the few that pass, with a capped search.
   for (let k = 0, routes = 0; k < 120 && routes < 6; k++) {
    const a = this.random() * Math.PI * 2, d = near + this.random() * (far - near);
    const x = from.x + Math.cos(a) * d, z = from.z + Math.sin(a) * d, i = nav.cellOf(x, z);
-   if (i < 0 || !nav.open[i] || nav.clearance[i] < 2) continue;
+   if (i < 0 || !nav.open[i] || nav.clearance[i] < 2 || !rules(x, z)) continue;
    // Not on top of another robot either (an ally's spot is next to you anyway).
    if (near > 10 && this.living().some(b => Math.hypot(b.sim.player.x - x, b.sim.player.z - z) < 12)) continue;
    routes++;

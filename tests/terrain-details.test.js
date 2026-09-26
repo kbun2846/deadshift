@@ -14,7 +14,7 @@ import { buildTerrainMesh } from '../src/render/terrain-mesh.js';
 import { inside } from '../src/simulation.js';
 import { placeTerrainDetails, buildTerrainDetails, detailClearance, DETAIL_KINDS, DETAIL_KIND_NAMES, DETAIL_TIERS, MAX_SLOPE } from '../src/world/terrain-details.js';
 
-const LITTER = ['#8a6a3e', '#7a5a34', '#6e4a2c'];
+const LITTER = ['#8a6a3e', '#7a5a34', '#5a4632'];
 const all = pieces => DETAIL_KIND_NAMES.flatMap(name => pieces[name].map(p => ({ ...p, kind: name })));
 const segDist = (x, z, [ax, az], [bx, bz]) => { const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz))); return Math.hypot(ax + dx * t - x, az + dz * t - z); };
 const lineDist = (x, z, pts) => Math.min(...pts.slice(1).map((p, i) => segDist(x, z, pts[i], p)));

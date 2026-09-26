@@ -45,7 +45,7 @@ export const DETAIL_KINDS = {
  stones: { per100: 2.2, colors: ['#7f7b72', '#5f5c56', '#6c6860'], lie: 1, sink: 0, size: [.06, .15], clump: .6 },
  twigs: { per100: 2.6, colors: ['#3b322c', '#4a3e33', '#54473a'], lie: 1, sink: 0, size: [.26, .5], clump: .8 },
  stalks: { per100: 2.4, colors: ['#6b6448', '#7a6a4a', '#5e5640'], lie: .5, sink: .03, size: [.32, .55], clump: 1.3 },
- leaves: { per100: 11, colors: ['#8a6a3e', '#7a5a34', '#6e4a2c'], lie: 1, sink: 0, size: [.85, 1.25], clump: 1.6 },
+ leaves: { per100: 11, colors: ['#8a6a3e', '#7a5a34', '#5a4632'], lie: 1, sink: 0, size: [.85, 1.25], clump: 1.6 },
 };
 export const DETAIL_KIND_NAMES = Object.keys(DETAIL_KINDS);
 // The groups, lowest preset first, and the share of each kind in each.

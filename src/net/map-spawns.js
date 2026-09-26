@@ -18,10 +18,17 @@
 import { groundFor, buildingContains } from '../maps.js';
 import { isPlayable } from '../playable-area.js';
 import { insidePoly } from '../world/heightfield.js';
+import { onScreenOf } from '../render/camera-framing.js';
+import { segmentBox } from '../simulation.js';
 
 export const SPAWN_CLEAR = 1;      // metres from a spawn to the nearest collider
 export const SPAWN_SLOPE = .3;     // steepest ground (rise per metre) to spawn on
 export const BASE_GAP = 1.6;       // teammates at a base: a body apart
+// A base point this close to a living enemy, or in their sight (on their
+// screen, over the ground, with no building wall between: that stops every
+// round), is passed over while another will do (stage 4 audit: base A sits on
+// the main street, and every respawn landed in view of an enemy standing there).
+export const BASE_SAFE = 12;
 const SLOPE_RING = [[0, 0], [.5, 0], [-.5, 0], [0, .5], [0, -.5]];
 
 export const hasAuthoredSpawns = map => !!(map?.bases?.length || map?.ffaSpawns?.length);
@@ -64,12 +71,34 @@ export function teamBase(map, team, sides) {
  const id = ids?.[i]; return id ? map.bases.find(b => b.id === id) || null : null;
 }
 
-// A spot at `base` for a body: one of its points nobody is on (random), or
-// a sampled open spot within 7 m of its centre, or its first point.
-export function baseSpot(map, colliders, base, { others = [], random = Math.random, gap = BASE_GAP } = {}) {
+// Can a living enemy at `e` see or shoot (x, z)? Within BASE_SAFE, or on
+// their screen with the ground and the buildings' walls clear between.
+export function exposedTo(map, colliders, e, x, z) {
+ const dx = x - e.x, dz = z - e.z;
+ if (Math.hypot(dx, dz) < BASE_SAFE) return true;
+ const ground = groundFor(map);
+ if (!onScreenOf(e.aspect || 16 / 9, dx, dz, ground.heightAt(x, z) - ground.heightAt(e.x, e.z))) return false;
+ if (!ground.flat && !ground.sightClear(e.x, e.z, x, z)) return false;
+ return !colliders.some(b => b.buildingId && !b.playerOnly && segmentBox(e.x, e.z, x, z, b, 0) !== null);
+}
+
+// A spot at `base` for a body: one of its points nobody is on (random),
+// preferring those no living enemy (`enemies`) can see or reach; when every
+// point is exposed, the FFA point nearest the base that is not (within 30 m);
+// else an exposed point, a sampled open spot within 7 m of its centre, or its
+// first point.
+export function baseSpot(map, colliders, base, { others = [], enemies = [], random = Math.random, gap = BASE_GAP } = {}) {
  if (!base) return null;
  const free = pt => others.every(o => Math.hypot(o.x - pt.x, o.z - pt.z) >= gap);
  const good = base.points.filter(pt => free(pt) && !spawnProblem(map, colliders, pt.x, pt.z));
+ const safe = pt => !enemies.some(e => exposedTo(map, colliders, e, pt.x, pt.z));
+ const hidden = enemies.length ? good.filter(safe) : good;
+ if (hidden.length) { const pt = hidden[Math.floor(random() * hidden.length)]; return { x: pt.x, z: pt.z }; }
+ if (enemies.length) {
+  const alt = (map.ffaSpawns || []).filter(pt => free(pt) && safe(pt) && Math.hypot(pt.x - base.x, pt.z - base.z) < 30 && !spawnProblem(map, colliders, pt.x, pt.z))
+   .sort((a, b) => Math.hypot(a.x - base.x, a.z - base.z) - Math.hypot(b.x - base.x, b.z - base.z))[0];
+  if (alt) return { x: alt.x, z: alt.z };
+ }
  if (good.length) { const pt = good[Math.floor(random() * good.length)]; return { x: pt.x, z: pt.z }; }
  for (let k = 0; k < 200; k++) {
   const a = random() * Math.PI * 2, d = 1 + random() * 6, x = base.x + Math.cos(a) * d, z = base.z + Math.sin(a) * d;
@@ -78,19 +107,24 @@ export function baseSpot(map, colliders, base, { others = [], random = Math.rand
  return { x: base.points[0].x, z: base.points[0].z };
 }
 
-// An FFA point `space` metres from everyone in `others`, preferring one the
-// ground hides from all of them (random among the best). Null when no
+// An FFA point `space` metres from everyone in `others` (a screen away: off
+// every screen), half the time one the ground hides from all of them too
+// (stage 4 audit: always taking a hidden one, when there was one, put a third
+// of all respawns at the one point behind Church Hill), leaving out the last
+// few used (`recent`, [{x, z}], when the caller keeps them). Null when no
 // authored point is that far from everyone (the caller then samples).
 // `skip(x, z)`: points to leave out (the weapon-pick view's ground).
-export function ffaSpot(map, colliders, { others = [], random = Math.random, space = 26, skip = null } = {}) {
+export function ffaSpot(map, colliders, { others = [], random = Math.random, space = 26, skip = null, recent = null } = {}) {
  const ground = groundFor(map), far = [], hidden = [];
  for (const pt of map.ffaSpawns || []) {
   if (skip?.(pt.x, pt.z) || spawnProblem(map, colliders, pt.x, pt.z)) continue;
+  if (recent?.some(r => r.x === pt.x && r.z === pt.z)) continue;
   if (!others.every(o => Math.hypot(o.x - pt.x, o.z - pt.z) >= space)) continue;
   far.push(pt);
   if (others.every(o => !ground.sightClear(pt.x, pt.z, o.x, o.z))) hidden.push(pt);
  }
- const pool = hidden.length ? hidden : far;
+ if (!far.length && recent?.length) return ffaSpot(map, colliders, { others, random, space, skip });
+ const pool = hidden.length && (random() < .5 || hidden.length === far.length) ? hidden : far;
  if (!pool.length) return null;
  const pt = pool[Math.floor(random() * pool.length)];
  return { x: pt.x, z: pt.z };

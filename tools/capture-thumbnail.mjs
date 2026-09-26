@@ -23,8 +23,9 @@ await page.waitForTimeout(10000);
 if (process.env.NOPOST) await page.evaluate(() => { window.__noPost = true; });
 if (process.env.NOAO) await page.evaluate(() => { window.__noAO = true; });
 if (process.env.NOBLOOM) await page.evaluate(() => { window.__noBloom = true; });
+if (process.env.SPOT) await page.evaluate(([x, z, height]) => { window.__spot = { x, z, height }; }, process.env.SPOT.split(',').map(Number));
 const dataUrl = await page.evaluate(() => {
- const { view, sim, map } = window.__capture, shot = map.thumbnail || map.card?.thumbnail || map.spawn; // (s3-look: a card's spot)
+ const { view, sim, map } = window.__capture, shot = window.__spot || map.thumbnail || map.card?.thumbnail || map.spawn; // (s3-look: a card's spot; SPOT=x,z,height tries another)
  sim.dev = { ...sim.dev, ghost: true };
  view.setPickView({ x: shot.x, z: shot.z, height: shot.height || 44 });
  for (let i = 0; i < 3; i++) { view.sun.shadow.needsUpdate = true; view.update(sim, 1 / 60, false, 0, sim.player, 1); }
@@ -43,7 +44,8 @@ const dataUrl = await page.evaluate(() => {
  }
  const best = 0;
  window.__vulture = vulture ? { x: vulture.x, y: vulture.y, z: vulture.z, best } : null;
- for (const o of [view.player, view.motes, ...view.tumbleweeds, ...(view.fx?.meshes || []), ...(view.particlePool || [])]) if (o) o.visible = false;
+ // (Nor the practice targets: a dev-only map's range is not the map.)
+ for (const o of [view.player, view.motes, ...view.tumbleweeds, ...(view.fx?.meshes || []), ...(view.particlePool || []), ...(view.targets?.values() || [])]) if (o) o.visible = false;
  if (window.__noPost) { view.savedPost = view.post; view.post = null; }
  if (window.__noAO) view.post.ao.enabled = false;
  if (window.__noBloom) view.post.bloom.enabled = false;
@@ -56,6 +58,8 @@ mkdirSync('src/assets/thumbnails', { recursive: true });
 const png = `/tmp/thumbnail-${mapId}.png`;
 writeFileSync(png, Buffer.from(dataUrl.split(',')[1], 'base64'));
 await browser.close();
+// DRY=1: only the raw capture (/tmp/thumbnail-<map>.png), for trying spots.
+if (process.env.DRY) { console.log('wrote ' + png); process.exit(0); }
 // 920 x 1140 captured (Extreme's 2x); shipped at 690 x 855 (enough for a 3x phone), WebP.
 execFileSync('python3', ['-c', `
 from PIL import Image, ImageFilter

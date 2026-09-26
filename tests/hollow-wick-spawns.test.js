@@ -114,6 +114,8 @@ test('robots can walk from every base to the others and to the summit', () => {
  }
  // Across the fallen log: open squares all along it.
  for (let z = 16.5; z <= 26.5; z += 1) { const x = -31.3 - (z - 15.75) / 11.25 * 1.3; assert.ok(nav.isOpen(x, z), 'the log at z ' + z); }
+ // Along the mill dam's top (stage 4 audit: 1.6 m between its wall faces left no square a robot fits in).
+ for (let z = 16.25; z <= 24.75; z += .5) assert.ok(nav.isOpen(13.75, z) || nav.isOpen(14.25, z), 'the dam at z ' + z);
 });
 
 test('practice targets: 6, 10, 14 and 20 m from the green, one 2.5 m above and one below a standing spot', () => {
@@ -191,4 +193,32 @@ test('a 2V2 of robots on Hollow Wick runs 60 simulated seconds: they move and fi
  const stats = [...arena.seats.values()].reduce((a, s) => a + s.stats.dealt, 0);
  assert.ok(shots > 0, 'they fired');
  assert.ok(stats > 0 || damage > 0, 'someone was hurt');
+});
+
+test('stage 4 audit: a respawn at a base keeps out of a living enemy\'s sight; FFA respawns spread out', async () => {
+ const { exposedTo, BASE_SAFE } = await import('../src/net/map-spawns.js');
+ const map = maps['hollow-wick'], colliders = mapColliders(map), A = map.bases.find(b => b.id === 'A');
+ // Base A's points are off the main street's road.
+ const road = map.terrain.paths.find(p => p.id === 'main-east');
+ const segDist = (x, z, a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], L = dx * dx + dz * dz; let t = L ? ((x - a[0]) * dx + (z - a[1]) * dz) / L : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(x - a[0] - dx * t, z - a[1] - dz * t); };
+ for (const pt of A.points) assert.ok(road.points.slice(1).every((q, i) => segDist(pt.x, pt.z, road.points[i], q) >= road.width / 2), `A point ${pt.x},${pt.z} on the road`);
+ // An enemy standing in the base: never a point in their sight while another will do.
+ let random = 0; const seq = () => (random = (random * 9301 + 49297) % 233280) / 233280;
+ for (const enemy of [{ x: 33, z: -7 }, { x: 26, z: -12 }, { x: 40, z: -15 }]) {
+  for (let k = 0; k < 40; k++) {
+   const at = baseSpot(map, colliders, A, { enemies: [enemy], random: seq });
+   const anySafe = A.points.some(pt => !exposedTo(map, colliders, enemy, pt.x, pt.z)) || map.ffaSpawns.some(pt => Math.hypot(pt.x - A.x, pt.z - A.z) < 30 && !exposedTo(map, colliders, enemy, pt.x, pt.z));
+   if (anySafe) assert.ok(!exposedTo(map, colliders, enemy, at.x, at.z), `respawn at ${at.x},${at.z} in sight of ${enemy.x},${enemy.z}`);
+  }
+ }
+ assert.ok(exposedTo(map, colliders, { x: 33, z: -7 }, 34, -6) && BASE_SAFE >= 10);
+ // FFA: the last points used sit out, so respawns do not all come in at one hidden point.
+ const recent = [], counts = new Map(); random = 7;
+ for (let k = 0; k < 60; k++) {
+  const at = ffaSpot(map, colliders, { others: [{ x: 0, z: 0 }], random: seq, space: 26, recent });
+  assert.ok(at && !recent.some(r => r.x === at.x && r.z === at.z));
+  recent.push(at); if (recent.length > 3) recent.shift();
+  counts.set(`${at.x},${at.z}`, (counts.get(`${at.x},${at.z}`) || 0) + 1);
+ }
+ assert.ok(Math.max(...counts.values()) <= 15, `one point took ${Math.max(...counts.values())} of 60`);
 });

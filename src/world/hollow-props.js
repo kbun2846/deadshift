@@ -15,6 +15,7 @@
 // below gives the ground's height at any local point relative to that, so
 // long pieces (fences, the pile, the trail) follow the slope.
 import * as THREE from 'three';
+import { settle } from './settle.js';
 
 // Collision boxes are [x, z, w, d, height] in the prop's own frame (height:
 // the map-kit hook; rounds stop at low cover only at their own height).
@@ -28,7 +29,8 @@ export const HOLLOW_TYPES = {
  haystack: { w: 3.4, d: 3.4, health: null, blocksSight: true, collisionBoxes: [[0, 0, 2.3, 2.9, 2.8], [0, 0, 2.9, 2.3, 2.8]] },
  woodpile: { w: 2.6, d: 1.1, health: null, collisionBoxes: [[0, 0, 2.5, .95, 1.2]] },
  choppingBlock: { w: .7, d: .7, health: null, collisionBoxes: [[0, 0, .55, .55, .6]] },
- wellSweep: { w: 6.4, d: 2.2, health: null, collisionBoxes: [[0, 0, 1.9, 1.9, .9], [3, 0, .32, .32, 2.9]] },
+ // (The counterweight stone on the ground at the pole's short end is solid too.)
+ wellSweep: { w: 6.4, d: 2.2, health: null, collisionBoxes: [[0, 0, 1.9, 1.9, .9], [3, 0, .32, .32, 2.9], [4.95, 0, .7, .7, .6]] },
  waterTrough: { w: 2.2, d: .8, health: null, collisionBoxes: [[0, 0, 2.1, .7, .7]] },
  railFence: { w: 3, d: .3, health: null, collisionBoxes: [[0, 0, 3, .24, 1.1]] },
  splitRail: { w: 3, d: .8, health: null, collisionBoxes: [[0, 0, 3, .6, 1.1]] },
@@ -38,7 +40,8 @@ export const HOLLOW_TYPES = {
  markerStone: { w: .5, d: .35, health: null, collisionBoxes: [[0, 0, .45, .3, .95]] },
  reeds: { w: 2.8, d: 1, health: null, blocksSight: true, screen: true, walkOver: true, collisionBoxes: [[0, 0, 2.4, .7, .5]] },
  orchardTree: { w: 1, d: 1, health: null, collisionBoxes: [[0, 0, .4, .4, 3]] },
- hangingTree: { w: 2, d: 2, health: null, blocksSight: true, collisionBoxes: [[0, 0, 1, 1, 4]] },
+ hangingTree: { w: 2, d: 2, health: null, blocksSight: true, collisionBoxes: [[0, 0, 1, 1, 4], [2.6, .15, .5, .5, 1.9]] },
+ // (The hanged man hangs low enough to walk into: a box under him, stage 4 audit.)
  // (Its collider covers the heap up the bank; the bodies below it lie in the water.)
  bodyPile: { w: 4.6, d: 2.8, health: null, collisionBoxes: [[0, -1.2, 4.2, 1.5, 1.1]] },
  rockingChair: { w: .9, d: .9, health: null, collisionBoxes: [[0, 0, .7, .75, 1.1]] },
@@ -80,7 +83,10 @@ export function makeHollowProp(view, p, g) {
  };
  const builder = BUILDERS[p.type];
  builder?.({ view, p, g, random, lift, world, box, cyl, rock, stick, base });
+ // Flat-based pieces settle to the low side of a slope (world/settle.js).
+ if (SETTLE.has(p.type)) settle(view, p, g, HOLLOW_TYPES[p.type].w * (p.scale || 1), HOLLOW_TYPES[p.type].d * (p.scale || 1));
 }
+const SETTLE = new Set(['stonePile', 'fieldBoulder', 'markerStone', 'choppingBlock', 'waterTrough', 'cornShock', 'haystack', 'cornCrib', 'oxCart']);
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -234,10 +240,20 @@ const BUILDERS = {
   for (let i = 0; i < 14; i++) for (const z of [-.8, .8]) box(-1.55 + i * .24, 1.45, z, .12, 1.9, .05, i % 4 ? C.woodGrey : C.wood);
   for (let i = 0; i < 7; i++) for (const x of [-1.6, 1.6]) box(x, 1.45, -.72 + i * .24, .05, 1.9, .12, i % 3 ? C.woodGrey : C.wood);
   for (const z of [-.8, .8]) box(0, 2.42, z, 3.3, .1, .08, C.woodDark);
-  // Gable roof, a few shingles gone.
-  for (const side of [-1, 1]) { const r = box(0, 2.72, side * .52, 3.6, .08, 1.22, C.shingle); r.rotation.x = side * .55; }
+  // Gable roof in shingle courses, weathered, moss along one eave, and a few
+  // shingles gone on the front: a dark hole over two bare laths (stage 4
+  // audit: a flat black slab with a yellow patch on it read as a placeholder).
+  for (const side of [-1, 1]) {
+   const plane = new THREE.Group(); plane.position.set(0, 2.72, side * .52); plane.rotation.x = side * .55; k.g.add(plane);
+   box(0, 0, 0, 3.6, .08, 1.22, '#4a4540', plane);
+   for (let i = 0; i < 5; i++) box(0, .045, (i - 2) * .24, 3.58, .02, .12, ['#3a3632', '#44403a', '#3e3a35'][i % 3], plane);
+   if (side < 0) box(-.4, .058, -.52, 2.2, .02, .12, C.moss, plane);
+   else {
+    box(.8, .01, -.05, .56, .1, .42, '#1c1714', plane);
+    for (const z of [-.14, .08]) box(.8, .07, z, .6, .03, .04, C.woodGrey, plane);
+   }
+  }
   box(0, 3.04, 0, 3.64, .08, .12, C.woodDark);
-  box(.8, 2.74, .5, .5, .09, .4, C.corn).rotation.x = .55;
   box(-1.8, 2.3, 0, .06, .5, 1.5, C.woodGrey);
  },
  // A round stack on a pole, loose hay round its foot, a fork left in it.
@@ -295,13 +311,19 @@ const BUILDERS = {
   box(-.05, 1.36, 0, .34, .03, .04, C.iron);
   for (let i = 0; i < 4; i++) { const st = rock(1.2 + random() * .4, .05, -.9 + random() * 1.8, .14, C.stoneDark); st.scale.y = .4; }
  },
- // A hollowed log trough on two blocks.
+ // A hollowed log trough on two blocks, open on top, dark water standing in
+ // it below the rim (stage 4 audit: a closed log with the water inside it
+ // read from above as a bench).
  waterTrough(k) {
-  const { cyl, box } = k;
+  const { box } = k;
   for (const x of [-.75, .75]) box(x, .12, 0, .3, .24, .6, C.stoneDark);
-  const log = cyl(0, .45, 0, .34, 2.1, C.logMid, k.g, 7); log.rotation.z = Math.PI / 2;
-  box(0, .72, 0, 1.9, .04, .42, '#262c2c');
-  box(-1.06, .45, 0, .04, .5, .5, C.logEnd);
+  box(0, .31, 0, 2.06, .14, .5, C.logBark);                            // the log's round underside
+  box(0, .42, 0, 2.02, .1, .6, C.logMid);                              // its floor
+  for (const z of [-.27, .27]) { box(0, .6, z, 2.02, .3, .1, C.logMid); box(0, .76, z, 2.02, .03, .1, C.logEnd); }
+  for (const x of [-.98, .98]) { box(x, .6, 0, .08, .3, .46, C.logMid); box(x, .76, 0, .08, .03, .46, C.logEnd); }
+  box(0, .66, 0, 1.86, .02, .44, '#262c2c');                            // the water
+  box(.4, .675, .05, .5, .004, .2, '#3f4a4a');                          // its sheen
+  box(-.55, .672, -.08, .12, .01, .08, C.leaf[0]);                     // a leaf on it
  },
  // One panel of a post-and-rail fence: a post at its start (and at its end
  // on a run's last panel), three rails post to post over the ground, now and
@@ -339,10 +361,12 @@ const BUILDERS = {
   for (let i = 0; i < 4; i++) rock(-1.5 + random() * 3, lift(0, .7) + .1, .7 + random() * .3, .2 + random() * .08, C.stoneDark);
   box(.6, lift(.6, 0) + 1.04, .05, .34, .04, .26, C.moss);
  },
+ // (Kept square to the prop and inside its 1.9 x 1.4 m collider: a random
+ // turn let the big rock stand 0.3 m outside it, stage 4 audit.)
  fieldBoulder(k) {
   const { rock, box } = k;
-  const big = rock(0, .35, 0, 1.0, C.stone, k.g, .72); big.scale.x = 1.05;
-  rock(.7, .2, .45, .5, C.stoneDark, k.g, .7);
+  const big = rock(0, .35, 0, 1.0, C.stone, k.g, .72); big.scale.set(.98, .72, .7); big.rotation.y = 0;
+  rock(.45, .2, .28, .4, C.stoneDark, k.g, .7);
   box(-.1, .72, .05, .7, .05, .5, C.lichen).rotation.y = .4;
   box(.3, .62, -.3, .4, .05, .3, C.moss);
  },

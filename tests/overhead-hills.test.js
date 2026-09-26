@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { maps, buildingPoint } from '../src/maps.js';
+import { maps, buildingPoint, mapProps, groundFor } from '../src/maps.js';
 import { overheadMapSVG } from '../src/ui/overhead-map.js';
 import { OVERHEAD_HILLS, channelOutline, overheadFrame } from '../src/ui/overhead-hills.js';
 import { playableOutline } from '../src/playable-area.js';
@@ -45,8 +45,18 @@ test("Hollow Wick's overhead map shows the stream, paths, decks, buildings, fenc
   assert.ok(svg.includes(`${Math.round(c.x * 100) / 100},${Math.round(c.z * 100) / 100}`), b.id);
  }
  assert.equal(count(svg, `fill="${OVERHEAD_HILLS.pad}"`), hw.buildings.length);
- // The woods: every tree's crown; the North and West Woods' floors (ground layers).
- assert.equal(count(svg, '<circle'), hw.trees.trees.length + (t.knolls?.length || 0) + 2);
+ // The woods: every tree's crown, and every tree that is a prop (the hanging
+ // tree, the orchard); the North and West Woods' floors (ground layers).
+ const treeProps = mapProps(hw).filter(p => /Tree$/.test(p.type));
+ assert.ok(treeProps.some(p => p.type === 'hangingTree'));
+ assert.equal(count(svg, '<circle'), hw.trees.trees.length + treeProps.length + (t.knolls?.length || 0) + 2);
+ // Every ground edge (bank, wall, cliff) as a line, and the levels built over
+ // the water (the dam's walkway) as solid ground.
+ const edges = groundFor(hw).edges || [];
+ assert.ok(edges.length > 10);
+ assert.equal(count(svg, '<line x1='), edges.length);
+ for (const l of (t.levels || []).filter(l => l.overWater)) assert.ok(svg.includes(`<polygon points="${l.poly.map(q => q.map(r2).join(',')).join(' ')}"/>`), l.id);
+ assert.ok((t.levels || []).some(l => l.overWater));
  assert.ok(hw.trees.trees.filter(tr => tr.kind === 'woods').length > 50);
  // The player.
  assert.ok(svg.includes('cx="-10" cy="-2"'));

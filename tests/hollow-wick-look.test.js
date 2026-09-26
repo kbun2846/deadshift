@@ -10,6 +10,10 @@ import { bakeHillShade, heightsOf } from '../src/render/hill-shade.js';
 import * as C from '../src/render/look-contrast.js';
 import { TEAMS } from '../src/config/match.js';
 import { PLAYER_COLOURS } from '../src/remote-players.js';
+import { GROUND_LEAF_COLOURS } from '../src/world/leaf-carpet.js';
+import { TREE_DRIFT_COLOURS } from '../src/world/trees.js';
+import { DETAIL_KINDS } from '../src/world/terrain-details.js';
+import { BIT_COLOURS } from '../src/world/ground-marks.js';
 
 const hw = maps['hollow-wick'], look = mapLook(hw);
 // The look before stage 3 (a plain, bright daylight grey), for the brightness check.
@@ -61,13 +65,15 @@ test('the dusk comes from the light, not darker ground: the ground is as bright 
  assert.ok(g[1] / s[1] > .6, 'shade keeps over 60% of the light');
 });
 
+const THINGS = () => [
+ ['blood (a splat: unlit)', '#8c1c2a', 'unlit', C.READABLE.accent],
+ ['blood (gore: lit)', '#8c1c2a', 'lit', C.READABLE.accent],
+ ...TEAMS.flatMap(t => [[t.name + ' hat', t.hat, 'lit', C.READABLE.accent], [t.name + ' ring', t.ring, 'lit', C.READABLE.accent]]),
+ ...PLAYER_COLOURS.map((p, i) => [`coat ${i} ${p.coat}`, p.coat, 'lit', C.READABLE.coat]),
+];
+
 test('blood, the team colours and player coats stand out on every Hollow Wick ground, in sun and shade', () => {
- const things = [
-  ['blood (a splat: unlit)', '#8c1c2a', 'unlit', C.READABLE.accent],
-  ['blood (gore: lit)', '#8c1c2a', 'lit', C.READABLE.accent],
-  ...TEAMS.flatMap(t => [[t.name + ' hat', t.hat, 'lit', C.READABLE.accent], [t.name + ' ring', t.ring, 'lit', C.READABLE.accent]]),
-  ...PLAYER_COLOURS.map((p, i) => [`coat ${i} ${p.coat}`, p.coat, 'lit', C.READABLE.coat]),
- ];
+ const things = THINGS();
  const worst = [];
  for (const [name, hex, kind, need] of things) {
   let low = Infinity, at = null;
@@ -88,4 +94,16 @@ test('the contrast maths: CIEDE2000 reference pairs and the tone map', () => {
  // ACES keeps black black and never passes white.
  assert.deepEqual(C.acesFilmic([0, 0, 0]).map(v => Math.round(v * 1e4)), [0, 0, 0]);
  for (const v of C.acesFilmic([50, 50, 50])) assert.ok(v <= 1);
+});
+
+test('...and on the leaves that lie on it: the woods carpet, the trees\' drifts, the litter, the drifts by the walls', () => {
+ // (map-ui audit: the carpet's maple yellow and ochre hid the Amber hat, its
+ // darkest brown the rust coat. A leaf patch is the ground in the woods.)
+ const leaves = [...new Set([...GROUND_LEAF_COLOURS, ...TREE_DRIFT_COLOURS, ...DETAIL_KINDS.leaves.colors, ...BIT_COLOURS.leaf])];
+ assert.ok(leaves.length >= 6);
+ for (const leaf of leaves) for (const [name, hex, kind, need] of THINGS()) {
+  let low = Infinity;
+  for (const sun of [1, .5, 0]) low = Math.min(low, C.difference(kind === 'unlit' ? C.unlitOnScreen(hex, look) : C.litOnScreen(hex, look, sun), C.litOnScreen(C.hexLinear(leaf), look, sun)));
+  assert.ok(low >= need, `${name} is only ${low.toFixed(1)} from the leaf ${leaf}; needs ${need}`);
+ }
 });

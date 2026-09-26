@@ -13,7 +13,7 @@
 // and rail fences, the decks over the water (bridge, log, footbridge), the
 // buildings turned as they stand on their pads, the trees' crowns (the
 // woods read as a mass of them), the irregular fence, and you.
-import { buildingPoint, mapProps } from '../maps.js';
+import { buildingPoint, mapProps, groundFor } from '../maps.js';
 import { playableOutline } from '../playable-area.js';
 
 export const OVERHEAD_HILLS = Object.freeze({
@@ -72,6 +72,13 @@ export function hillsOverheadMapSVG(map, view, player) {
   });
  });
  const trees = map.trees?.trees || [];
+ // (Stage 4 audit: the map left out the dam's walk, most retaining walls,
+ // the hanging tree and the orchard.) Every wall the ground has (the spec's
+ // edges and each level's cliff runs, with the gaps where paths cross), the
+ // walks laid over the water, and the trees that are props.
+ const edges = groundFor(map).edges || [];
+ const overWater = (terrain.levels || []).filter(l => l.overWater);
+ const treeProps = mapProps(map).filter(p => /Tree$/.test(p.type));
  const building = b => {
   const corner = (m) => pts([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, c]) => buildingPoint(b, a * (b.w / 2 + m), c * (b.d / 2 + m))));
   const ridgeAlongX = b.roof?.axis ? b.roof.axis === 'x' : b.w >= b.d;
@@ -89,11 +96,12 @@ export function hillsOverheadMapSVG(map, view, player) {
     <g fill="none" stroke="${C.ford}" stroke-linecap="butt">${(terrain.fords || []).map(f => `<polyline stroke-width="${f.width}" stroke-dasharray=".6 .5" points="${pts(f.points)}"/>`).join('')}</g>
     <g fill="none" stroke="${C.trail}" stroke-width=".7" stroke-dasharray="1.4 1" stroke-linecap="round" opacity=".75">${paths.filter(p => p.colourMix === 0).map(p => `<polyline points="${pts(p.points)}"/>`).join('')}</g>
     <g fill="none" stroke="${C.path}" stroke-linejoin="round" stroke-linecap="round">${paths.filter(p => p.colourMix !== 0).map(p => `<polyline stroke-width="${p.width}" points="${pts(p.points)}"/>`).join('')}</g>
-    <g fill="none" stroke="${C.wall}" stroke-width=".55" stroke-linecap="round">${(terrain.edges || []).map(e => `<polyline points="${pts(e.points)}"/>`).join('')}</g>
+    <g fill="${C.wall}" stroke="${C.deckEdge}" stroke-width=".3">${overWater.map(l => `<polygon points="${pts(l.poly)}"/>`).join('')}</g>
+    <g fill="none" stroke="${C.wall}" stroke-width=".55" stroke-linecap="round">${edges.map(e => `<line x1="${fmt(e.ax)}" y1="${fmt(e.az)}" x2="${fmt(e.bx)}" y2="${fmt(e.bz)}"/>`).join('')}</g>
     <g>${wallPieces.join('')}</g>
     <g fill="${C.deck}" stroke="${C.deckEdge}" stroke-width=".35">${(terrain.decks || []).map(k => `<polygon points="${pts(k.poly)}"/>`).join('')}</g>
     <g>${map.buildings.map(building).join('')}</g>
-    <g stroke-width=".3">${trees.map(t => `<circle cx="${fmt(t.x)}" cy="${fmt(t.z)}" r="${fmt(1.9 * (t.s || 1))}" fill="${t.kind === 'woods' ? C.tree : C.treeOther}" stroke="${t.kind === 'woods' ? C.treeEdge : C.fence}" opacity=".82"/>`).join('')}</g>
+    <g stroke-width=".3">${trees.map(t => `<circle cx="${fmt(t.x)}" cy="${fmt(t.z)}" r="${fmt(1.9 * (t.s || 1))}" fill="${t.kind === 'woods' ? C.tree : C.treeOther}" stroke="${t.kind === 'woods' ? C.treeEdge : C.fence}" opacity=".82"/>`).join('')}${treeProps.map(t => t.type === 'hangingTree' ? `<circle cx="${fmt(t.x)}" cy="${fmt(t.z)}" r="2.6" fill="#2a2220" stroke="#5a3a30" opacity=".9"/>` : `<circle cx="${fmt(t.x)}" cy="${fmt(t.z)}" r="1.3" fill="${C.treeOther}" stroke="${C.fence}" opacity=".82"/>`).join('')}</g>
     </g>
     <polygon points="${perimeter}" fill="none" stroke="${C.fenceLine}" stroke-width=".8" stroke-linejoin="round" opacity=".95"/>
     ${player ? `<circle cx="${fmt(player.x)}" cy="${fmt(player.z)}" r="3.8" fill="#a8e2ff" opacity=".18"/><circle cx="${fmt(player.x)}" cy="${fmt(player.z)}" r="1.65" fill="#c7efff" stroke="#203844" stroke-width=".65"/>` : ''}

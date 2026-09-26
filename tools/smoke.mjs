@@ -13,6 +13,8 @@
 // about frame rate on a real GPU.
 import { chromium } from 'playwright';
 import { parseArgs, resolveSpot, judgeWalk, PRESETS, SPOTS } from './terrain-spots.mjs';
+// (A loaded machine loads slowly: SMOKE_TIMEOUT seconds, default 240.)
+const LOAD_TIMEOUT = (+process.env.SMOKE_TIMEOUT || 240) * 1000;
 const { flags } = parseArgs(process.argv.slice(2));
 const port = flags.port || process.env.PORT || 5173, base = `http://127.0.0.1:${port}`;
 const b = await chromium.launch({ args: ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
@@ -26,7 +28,7 @@ for (const [q,w,map] of runs) {
  const errs=[]; p.on('pageerror',e=>errs.push('PE '+e.message)); p.on('console',m=>{if(['error','warning'].includes(m.type()))errs.push(m.type()+' '+m.text().slice(0,160))});
  await p.addInitScript(q=>localStorage.setItem('deadshift-settings',JSON.stringify({quality:q})),q);
  await p.goto(`${base}/?play=1&weapon=${w}&map=${map}&capture=thumbnail`);
- await p.waitForFunction(()=>document.body.classList.contains('playing'),null,{timeout:60000});
+ await p.waitForFunction(()=>document.body.classList.contains('playing'),null,{timeout:LOAD_TIMEOUT});
  // shoot/move a bit
  await p.keyboard.down('KeyW'); await p.keyboard.down('Space'); await p.waitForTimeout(2500); await p.keyboard.up('Space'); await p.keyboard.up('KeyW');
  await p.keyboard.press('KeyE'); await p.waitForTimeout(2500);
@@ -52,7 +54,7 @@ async function walk(map) {
  p.on('console', m => { if (m.type() === 'error') errs.push('error ' + m.text().slice(0, 160)); else if (m.type() === 'warning') warns.push(m.text().slice(0, 160)); });
  await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q })), PRESETS[0]);
  await p.goto(`${base}/?play=1&weapon=static&map=${map}&capture=thumbnail`);
- await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: 90000 });
+ await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: LOAD_TIMEOUT });
  if (spot) await p.evaluate(s => { const { sim, view } = window.__capture; Object.assign(sim.player, { x: s.x, z: s.z, vx: 0, vz: 0 }); view.cameraCut = true; }, spot);
  // Sample every frame: where the sim has you, where the view draws you, the ground there.
  await p.evaluate(() => {

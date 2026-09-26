@@ -76,9 +76,8 @@ test('no pockets: every bit of floor a robot fits on is reachable from a door, a
     const colliders = mapColliders(map), nav = new NavGrid(map, colliders), spawns = interiorSpawns(map, colliders);
     for (const b of map.buildings) {
       const [door] = doorsOf(b), reach = nav.flood(door.x, door.z, 80);
-      // (Colonial rooms keep a player-sized body's reach, checked on a finer
-      // grid in tests/colonial-interiors.test.js; the robots' half-metre
-      // squares can shut a narrow way round a piece there.)
+      // (Colonial rooms: their robots' reach on this same grid, from every
+      // doorway, is tested in tests/colonial-interiors.test.js.)
       if (laidOut(b)) for (let i = 0; i < nav.open.length; i++) if (nav.open[i] && buildingContains(b, nav.centre(i)))
         assert.ok(reach.has(i), `${map.id} ${b.id}: open floor at ${JSON.stringify(nav.centre(i))} cannot be reached`);
       // (A spawn's own square can be shut by the grid's rounding; the square

@@ -12,6 +12,7 @@
 // sets the group on the ground) in the map's dull palette, a few boxes and
 // cylinders each, merged by the prop batches like every other breakable.
 import * as THREE from 'three';
+import { settle } from './settle.js';
 
 export const HOLLOW_BREAKABLES = Object.freeze({
   pumpkin: { w: .8, d: .8, health: 5 },
@@ -147,14 +148,15 @@ export function makeHollowBreakable(view, p, g) {
     cyl(x, 1.49, 0, .015, .1, HB.tinDark, 4);
   } else if (t === 'cordwood') {
     // Split cordwood between two stakes, three rows, the ends showing pale
-    // split faces, and a chopping block with a few splits beside it.
+    // split faces, and a couple of splits dropped in front (lying flat: the
+    // chopping block it had stood outside its collider, stage 4 audit).
     for (let row = 0; row < 3; row++) for (let i = 0; i < 6 - row; i++) {
       const z = (i - (5 - row) / 2) * .13, y = .09 + row * .16;
       const log = cyl(0, y, z, .085, 1.5 - row * .1, i % 2 ? HB.bark : '#5a4a3c', 5); log.rotation.z = Math.PI / 2; log.rotation.x = i * .9;
       const end = cyl((1.5 - row * .1) / 2 + .005, y, z, .08, .01, HB.split, 5); end.rotation.z = Math.PI / 2; end.rotation.x = i * .9;
     }
     for (const x of [-.82, .82]) for (const z of [-.42, .42]) box(x, .45, z, .07, .9, .07, HB.woodDark);
-    cyl(-.6, .2, .72, .19, .4, HB.split, 8);
+    for (const [x, a] of [[-.5, .5], [.35, -.3]]) { const s = box(x, .05, .56, .5, .09, .12, HB.split); s.rotation.y = a; }
   } else if (t === 'squashBarrow') {
     // A wooden wheelbarrow (a solid plank wheel, a splayed tray, two long
     // handles and legs) heaped with squash in three colours.
@@ -170,4 +172,9 @@ export function makeHollowBreakable(view, p, g) {
       s.scale.x = i % 2 ? 1.4 : 1;
     }
   }
+  // The data's size (a big pumpkin, a small one): map-kit scales the collider
+  // by it too (stage 4 audit: it was never drawn).
+  if (p.scale && p.scale !== 1) g.scale.setScalar(p.scale);
+  // Settled to the low side of a slope (world/settle.js).
+  const T = HOLLOW_BREAKABLES[t]; if (T) settle(view, p, g, T.w * (p.scale || 1), T.d * (p.scale || 1));
 }

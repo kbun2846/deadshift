@@ -12,6 +12,8 @@ export function hollowAmbience(map, view, sound) {
   const voice = hasHollowSound(map) && sound ? (sound.hollow = new HollowSound(sound, { map, view })) : null;
   // The crows' calls are placed sounds; the water's are too.
   if (crows && voice) crows.onCall = (kind, x, y, z, n) => voice.crow(kind, x, y, z, n);
+  // When everything falls silent, the crows do too (and a while longer).
+  if (crows && voice) voice.onSilence = seconds => crows.flock.quiet(seconds);
   if (voice && view?.waterFX) view.waterFX.onSound = (kind, x, z, strength) => voice.water(kind, x, z, strength);
   const players = [];
   return {

@@ -7,6 +7,8 @@
 export const HOLLOW_WICK_CARD = Object.freeze({
  // Short, quiet, wrong: something happened here.
  line: 'Supper is still on the table. Nobody came home.',
- // Over the terraced slope: the town's edge, the fork, the stream and the mill.
- thumbnail: Object.freeze({ x: 10, z: 4, height: 44 }),
+ // Over the meetinghouse and its burying ground: the steeple, the graves, the
+ // turf-roofed tomb and the hearse house (map-ui audit: the old spot, over the
+ // fork, showed the practice targets and none of the landmarks).
+ thumbnail: Object.freeze({ x: -30, z: -14, height: 44 }),
 });

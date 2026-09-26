@@ -32,7 +32,7 @@ export const HOLLOW_WICK_BREAKABLES = [
   // Base A (the town yard): light cover.
   P('grainSacks', 25.6, -5.2, .3), P('ciderKeg', 34.6, -4.3, -.2),
   // The barn's south end: squash, pumpkins, sacks waiting to go up.
-  P('squashBarrow', 50.5, 7.6, .1), P('pumpkin', 53, 7.4), P('pumpkin', 53.8, 7.9, 0, { scale: .8 }), P('grainSacks', 47.5, 7.7, -.2),
+  P('squashBarrow', 50.5, 8.3, .1), P('pumpkin', 53, 8.2), P('pumpkin', 53.8, 7.9, 0, { scale: .8 }), P('grainSacks', 47.5, 7.7, -.2),
   // The mill's east end: grain waiting to be ground, sacks of meal.
   P('grainSacks', 28.2, 15.4, q), P('grainSacks', 31.6, 16, q + .2),
   // The fork: a crate of apples and pumpkins left at the roadside, cider.
@@ -46,8 +46,11 @@ export const HOLLOW_WICK_BREAKABLES = [
   // crocks by the kitchen end, a barrow and pumpkins by the south door's
   // corner, cider for the harvest.
   P('chickenCoop', -35.4, 43.1, q), P('appleCrate', -36, 38.8, q), P('appleCrate', -34.1, 41.6, q + .15),
-  P('beeSkep', -47.4, 39.7), P('beeSkep', -48.7, 40.6), P('beeSkep', -48.5, 42),
-  P('stoneware', -47.6, 43.8, q), P('cordwood', -48.8, 35.1, q),
+  // (The skeps and crocks stand in the middle of the way between the west
+  // wall and the pasture fence, 1.7 m clear of each: a gap a body fits but a
+  // robot's nav does not left a pocket robots could not reach, stage 4 audit.)
+  P('beeSkep', -48.35, 40.35), P('beeSkep', -48.35, 41.45), P('beeSkep', -48.35, 42.55),
+  P('stoneware', -48.05, 43.6, q), P('cordwood', -48.8, 35.1, q),
   P('squashBarrow', -43, 48.2, .15), P('pumpkin', -39.6, 48.3), P('pumpkin', -38.8, 48.9, 0, { scale: .85 }), P('pumpkin', -38.3, 48, 0, { scale: 1.15 }),
   P('ciderKeg', -49.5, 41.6, q),
   // The woodshed: cordwood stacked at both ends.
@@ -67,4 +70,16 @@ export const HOLLOW_WICK_BREAKABLES = [
   P('pumpkin', 11.5, 46.5, 0, { scale: 1.2 }), P('pumpkin', 12.5, 47.1, 0, { scale: .8 }),
   P('pumpkin', -9.2, 39.8, 0, { scale: .9 }), P('pumpkin', -8.5, 41.1, 0, { scale: 1.1 }),
   P('squashBarrow', 5.8, 39.7, .6),
+  // (Stage 4 audit: the hollow and the old orchard had stretches with none.)
+  // The crossings: a lantern and a crate at the bridge's north approach,
+  // grain at the log's north end and a lantern at its south, crocks left by
+  // the ford, a lantern and a keg at the footbridge's ends.
+  P('tinLantern', -16, 13.2), P('appleCrate', -16.8, 12.88, .3),
+  P('grainSacks', -30.84, 13.18, .2), P('tinLantern', -35.03, 27.47),
+  P('stoneware', -4.5, 28.6, .4),
+  P('tinLantern', 43, 17.6), P('ciderKeg', 38.56, 30.17, .3),
+  // The old orchard: two crates of windfalls nobody carried in.
+  P('appleCrate', 3, -34, .2), P('appleCrate', 3.5, -35.6, -.3),
+  // Cordwood cut at the woods' edges (the North Woods by the back trail, the West Woods).
+  P('cordwood', -3.18, -39.38, .1), P('cordwood', -44, -31, 1.3),
 ].map((p, i) => ({ id: `hw-b${i}`, ...p }));

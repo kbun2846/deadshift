@@ -1,4 +1,4 @@
-// Hollow Wick's rooms (stage 2, s2-interiors): the furniture of a New England
+// Hollow Wick's rooms (stage 2, s2-interiors; stage 5, s5-interiors): the furniture of a New England
 // village about 1790-1820, left as it was the day everyone stopped.
 //
 // Two halves, like detailed-interiors.js (which dispatches here on the
@@ -13,12 +13,17 @@
 // Layouts are written as wishes, not coordinates set in stone: each piece has
 // a list of spots (its first choice, then fallbacks), and a spot is taken only
 // if it stays inside the walls, clear of every doorway (1.2 m in from the
-// door, the door's width plus 0.2 m each side), clear of the pieces already
-// placed, and leaves the room walkable (roomCheck: a 1.4 m walkway joining
-// every door, one connected floor a body can reach from them, and every
-// reachable spot within a couple of metres of the walkway). So the same layout
-// works whichever walls the building's doors are in, and a piece with no
-// spot left is simply not there.
+// door, the door's width plus 0.2 m each side) and of every open window's
+// strip (s5-interiors: windowZones, so rounds fly through a window as sight
+// does), clear of the pieces already placed, and leaves the room walkable
+// (roomCheck: a 1.4 m walkway joining every door, one connected floor a body
+// can reach from them, every reachable spot within a couple of metres of the
+// walkway, and no nook a robot fits in cut off). So the same layout works
+// whichever walls the building's doors are in, and a piece with no spot left
+// is simply not there.
+//
+// The six houses each tell their own story (s5-interiors): SPECS `variant`
+// picks the layout (HOUSES) and the things left in it (houseStory).
 import * as THREE from 'three';
 
 export const COLONIAL_STYLES = new Set(['colonial-house', 'colonial-lit-house', 'colonial-tavern', 'meetinghouse',
@@ -29,10 +34,22 @@ export const isColonial = b => COLONIAL_STYLES.has(b?.interiorStyle);
 export const HALF_WALL = .19;
 export const DOOR_CLEAR = 1.2;      // nothing this far in from a door
 export const DOOR_SIDE = .2;        // ... nor this far past its jambs
+// Open windows (neither boarded nor a fallen wall) keep a strip clear as well
+// (s5-interiors): the window's width plus WINDOW_SIDE each side, WINDOW_CLEAR
+// in from the wall, and its middle WINDOW_LANE on to WINDOW_REACH, so a round
+// fired straight through a window flies 1.5 m past the wall line (the wall's
+// middle) before it can meet a piece. Sight and rounds pass alike.
+export const WINDOW_SIDE = .1;
+export const WINDOW_CLEAR = .9;
+export const WINDOW_LANE = .4;
+export const WINDOW_REACH = 1.35;
 export const WALKWAY = 1.4;         // a clear walkway this wide from every door
 export const WALK_REACH = 1.0;      // (checkGrids)
 export const WALK_SHARE = .6;
 export const BODY = .38;            // RULES.radius (config/gameplay.js)
+// A robot's body on its nav grid (bots/nav-grid.js: RULES.radius + .08): all
+// the floor it fits on must be reachable from a door as well.
+export const NAV_BODY = .46;
 const GAP = .03;                    // pieces stand this far off a wall
 // A gap between two pieces (or a piece and a wall) close to a body's width
 // is where a body jams: keep every gap out of this band.
@@ -47,19 +64,35 @@ export function roomFrame(b) {
   const dw = b.doorWidth || 2.6;
   const doors = [...(b.doors || ['front']).map(side => ({ side, offset: 0, width: dw })),
     ...(b.openings || []).map(o => ({ side: o.side, offset: o.offset || 0, width: o.width || dw }))];
-  return { W, D, w: b.w, d: b.d, doors, dw, id: String(b.id || ''), windows: b.windows || [] };
+  return { W, D, w: b.w, d: b.d, doors, dw, id: String(b.id || ''), windows: b.windows || [], variant: b.variant || null };
+}
+
+// A keep-clear rectangle `depth` in from a side, `span` wide about `offset`
+// along it (local frame: { x, z, w, d, side }).
+function sideZone(W, D, side, offset, span, depth) {
+  return side === 'front' ? { side, x: offset, z: D - depth / 2, w: span, d: depth }
+    : side === 'back' ? { side, x: offset, z: -D + depth / 2, w: span, d: depth }
+    : side === 'left' ? { side, x: -W + depth / 2, z: offset, w: depth, d: span }
+    : { side, x: W - depth / 2, z: offset, w: depth, d: span };
 }
 
 // Inside-the-door keep-clear rectangles, local frame: { x, z, w, d, side }.
 export function doorZones(b) {
   const { W, D, doors } = roomFrame(b);
-  return doors.map(({ side, offset: o, width }) => {
-    const span = width + 2 * DOOR_SIDE;
-    return side === 'front' ? { side, x: o, z: D - DOOR_CLEAR / 2, w: span, d: DOOR_CLEAR }
-      : side === 'back' ? { side, x: o, z: -D + DOOR_CLEAR / 2, w: span, d: DOOR_CLEAR }
-      : side === 'left' ? { side, x: -W + DOOR_CLEAR / 2, z: o, w: DOOR_CLEAR, d: span }
-      : { side, x: W - DOOR_CLEAR / 2, z: o, w: DOOR_CLEAR, d: span };
-  });
+  return doors.map(({ side, offset, width }) => sideZone(W, D, side, offset, width + 2 * DOOR_SIDE, DOOR_CLEAR));
+}
+
+// Inside every open window: its strip and the lane down its middle
+// ({ x, z, w, d, side, window: true }; two per window).
+export function windowZones(b) {
+  const { W, D, windows } = roomFrame(b), out = [];
+  for (const win of windows) {
+    if (win.boarded || win.collapsed) continue;
+    const offset = win.offset || 0;
+    out.push({ ...sideZone(W, D, win.side, offset, (win.width || 1) + 2 * WINDOW_SIDE, WINDOW_CLEAR), window: true },
+      { ...sideZone(W, D, win.side, offset, WINDOW_LANE, WINDOW_REACH), window: true });
+  }
+  return out;
 }
 
 // Signed separation of two rectangles: negative when they overlap.
@@ -131,8 +164,9 @@ function flood(grid, seeds, limit = Infinity) {
 // passed in already marked (the resolver keeps them up to date piece by
 // piece). The walkway must join every door and run through the room: at
 // least WALK_SHARE of the floor a body can stand on lies within WALK_REACH
-// of it.
-function checkGrids(body, walk) {
+// of it. And a robot (`bot`, NAV_BODY round) reaches all the floor it fits
+// on from the doors: no nook it could stand in but never route to.
+function checkGrids(body, walk, bot) {
   // (A doorway narrower than the walkway, a shed's back door, needs a body
   // through it but no walkway.)
   const doors = body.frame.doors, wide = doors.filter(d => d.width / 2 > walk.r);
@@ -149,12 +183,19 @@ function checkGrids(body, walk) {
   let close = 0; for (let k = 0; k < near.length; k++) if (near[k] >= 0) close++;
   const share = close / Math.max(1, free);
   if (share < WALK_SHARE) return { ok: false, why: 'the walkway does not run through the room (' + share.toFixed(2) + ')', share };
+  if (bot) {
+    const got = flood(bot, doors.flatMap(d => doorSeeds(bot, d)));
+    for (let k = 0; k < got.length; k++) if (!bot.blocked[k] && got[k] < 0) return { ok: false, why: 'a nook a robot fits in cannot be reached', share };
+  }
   return { ok: true, share };
 }
+function grids(frame) {
+  return [makeGrid(frame, BODY), makeGrid(frame, Math.min(WALKWAY / 2, frame.dw / 2 - .05)), makeGrid(frame, NAV_BODY)];
+}
 export function roomCheck(b, pieces) {
-  const frame = roomFrame(b), body = makeGrid(frame, BODY), walk = makeGrid(frame, Math.min(WALKWAY / 2, frame.dw / 2 - .05));
-  for (const p of pieces) { markPiece(body, p, 1); markPiece(walk, p, 1); }
-  return checkGrids(body, walk);
+  const all = grids(roomFrame(b));
+  for (const p of pieces) for (const g of all) markPiece(g, p, 1);
+  return checkGrids(...all);
 }
 
 // --- layouts ----------------------------------------------------------------
@@ -192,24 +233,30 @@ const LAYOUTS = {
   'colonial-tavern': f => {
     const { W, D } = f, { back, front, left, right, free } = spotsFor(f), h = f.height;
     return [
-      { kind: 'hearth', h, spots: [left(0, 2.8, 1.2), right(0, 2.8, 1.2), back(-W + 2, 2.8, 1.2), front(-W + 2, 2.8, 1.2)] },
-      { kind: 'barCage', h: 1.2, spots: [back(W - GAP - 1.25, 2.5, 2.3), back(-W + GAP + 1.25, 2.5, 2.3), front(W - GAP - 1.25, 2.5, 2.3)] },
+      { kind: 'hearth', h, spots: [left(0, 2.8, 1.2), right(0, 2.8, 1.2), back(-W + 2, 2.8, 1.2), front(-W + 2, 2.8, 1.2), back(W - 2, 2.8, 1.2), front(W - 2, 2.8, 1.2)] },
+      // (Shallower where a side window wants its corner clear.)
+      { kind: 'barCage', h: 1.2, spots: [back(W - GAP - 1.25, 2.5, 2.3), back(W - GAP - 1.25, 2.5, 1.65), back(-W + GAP + 1.25, 2.5, 2.3), back(-W + GAP + 1.25, 2.5, 1.65), front(W - GAP - 1.25, 2.5, 2.3), back(0, 2.5, 2.3), front(0, 2.5, 2.3), back(-.6, 2.5, 1.65), back(-W + GAP + .87, 1.74, 1.2), back(W - GAP - .87, 1.74, 1.2)] },
       // The high-backed settle turned to the fire.
-      { kind: 'settle', h: 1.3, need: near('hearth', 2.6), spots: [free(-W + 2.6, 0, 1.9, .5, PI / 2), free(W - 2.6, 0, 1.9, .5, -PI / 2), free(-W + 2, -D + 2.6, 1.9, .5, 0), free(-W + 2, D - 2.6, 1.9, .5, PI)] },
-      { kind: 'caskRack', h: 1.1, spots: [back(-W + 1.3, 2, .8), front(-W + 1.3, 2, .8), back(1.9, 2, .8)] },
+      { kind: 'settle', h: 1.3, need: near('hearth', 2.6), spots: [free(-W + 2.6, 0, 1.9, .5, PI / 2), free(W - 2.6, 0, 1.9, .5, -PI / 2), free(-W + 2, -D + 2.6, 1.9, .5, 0), free(-W + 2, D - 2.6, 1.9, .5, PI), free(W - 2, -D + 2.6, 1.9, .5, 0), free(W - 2, D - 2.6, 1.9, .5, PI)] },
+      { kind: 'caskRack', h: 1.1, spots: [back(-W + 1.3, 2, .8), left(-D + GAP + 1, 2, .8), right(-D + GAP + 1, 2, .8), front(-W + 1.3, 2, .8), back(1.9, 2, .8)] },
       ...[[-W + 2.6, D - 1.6], [W - 2.8, D - 2.1], [1.4, -.4], [-2.1, -D + 1.3], [-W + 2.4, -D + 1.3]]
         .map(([x, z], i) => ({ kind: 'tavernTable', h: .8, seat: i, spots: [free(x, z, 1.5, 1.4), free(x, z - .6, 1.5, 1.4), free(x + .6, z, 1.5, 1.4)] })),
-      { kind: 'cupboard', h: 1.9, spots: [right(D - 1.5, 1.2, .5), left(D - 1.5, 1.2, .5), front(W - 2, 1.2, .5)] },
+      { kind: 'cupboard', h: 1.9, spots: [right(D - 1.5, 1.2, .6), left(D - 1.5, 1.2, .6), front(W - 2, 1.2, .6), front(-W + 1.3, 1.2, .6), back(-W + 1.3, 1.2, .6)] },
     ];
   },
   meetinghouse: f => {
     const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
     const pews = [];
     const rows = [D - 2.06, 0, -D + 2.06];
-    for (const s of [-1, 1]) for (const [a, b] of [[1.0, 3.0], [4.0, W - GAP]]) for (const z of rows)
-      pews.push({ kind: 'pew', h: 1.0, spots: [free(s * (a + b) / 2, z, b - a, 1.3, 0)] });
+    // (1.25 m between the pews either side of the side aisles, room for a
+    // robot's squares; an outer pew under a side window stands in a little
+    // and stops short of the window's strip.)
+    for (const s of [-1, 1]) for (const [a, b] of [[1.0, 2.75], [4.0, W - GAP]]) for (const z of rows) {
+      const short = W - WINDOW_CLEAR - .02, zin = z - Math.sign(z) * .12;
+      pews.push({ kind: 'pew', h: 1.0, spots: [free(s * (a + b) / 2, z, b - a, 1.3, 0), ...(b > short ? [free(s * (a + short) / 2, zin, short - a, 1.3, 0)] : [])] });
+    }
     return [
-      { kind: 'pulpit', h: 2.0, spots: [back(0, 2.0, 1.3), left(0, 2.0, 1.3), right(0, 2.0, 1.3), front(0, 2.0, 1.3), back(-W + 2.5, 2.0, 1.3)] },
+      { kind: 'pulpit', h: 2.0, spots: [back(0, 2.0, 1.3), left(0, 2.0, 1.3), right(0, 2.0, 1.3), front(0, 2.0, 1.3), back(-W + 2.5, 2.0, 1.3), back(3.7, 2.0, 1.3), back(-3.7, 2.0, 1.3)] },
       { kind: 'communionTable', h: .8, spots: placed => around(placed, 'pulpit', [.8, 1.0], [0], 1.3, .6) },
       ...pews,
     ];
@@ -218,23 +265,24 @@ const LAYOUTS = {
     const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
     return [
       // The forge and its great bellows are one brick-and-leather mass.
-      { kind: 'forge', h: 1.0, spots: [back(-W + 1.33, 2.6, 1.2), back(W - 1.33, 2.6, 1.2), left(-D + 1.33, 2.6, 1.2), right(-D + 1.33, 2.6, 1.2), front(-W + 1.33, 2.6, 1.2), back(-W + 1.13, 2.2, 1.15), back(W - 1.13, 2.2, 1.15), front(-W + 1.13, 2.2, 1.15)] },
+      // (Along a side wall, off a back window's strip, when the corners are taken.)
+      { kind: 'forge', h: 1.0, spots: [back(-W + 1.33, 2.6, 1.2), back(W - 1.33, 2.6, 1.2), left(-D + 1.33, 2.6, 1.2), right(-D + 1.33, 2.6, 1.2), right(-.55, 2.6, 1.15), left(-.55, 2.6, 1.15), front(-W + 1.33, 2.6, 1.2), back(-W + 1.13, 2.2, 1.15), back(W - 1.13, 2.2, 1.15), front(-W + 1.13, 2.2, 1.15)] },
       // The anvil a stride out from the fire, the quench tub at the smith's elbow.
       { kind: 'anvil', h: .8, spots: placed => around(placed, 'forge', [1.1, 1.35], [0, .5, -.5, 1, -1], .8, .45) },
       { kind: 'tub', h: .6, spots: placed => around(placed, 'anvil', [-.1, .4], [1.3, -1.3, 1.6, -1.6], .7, .7) },
-      { kind: 'workbench', h: .9, spots: [back(W - 1.2, 2, .6), right(-D + 1.1, 2, .6), front(W - 1.2, 2, .6), left(D - 1.1, 2, .6), front(-W + 1.2, 2, .6)] },
-      { kind: 'charcoal', h: .7, spots: [front(W - .6, 1, .9), front(-W + .6, 1, .9), back(W - .6, 1, .9)] },
+      { kind: 'workbench', h: .9, spots: [back(W - 1.2, 2, .6), right(-D + 1.1, 2, .6), front(W - 1.2, 2, .6), left(D - 1.1, 2, .6), front(-W + 1.2, 2, .6), back(-W + 1.2, 2, .6)] },
+      { kind: 'charcoal', h: .7, spots: [front(W - .6, 1, .9), front(-W + .6, 1, .9), back(W - .6, 1, .9), back(-W + .6, 1, .9)] },
     ];
   },
   gristmill: f => {
     const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
     return [
       { kind: 'hurst', h: 1.2, spots: [free(-1.4, .1, 2.2, 2.6), free(1.4, .1, 2.2, 2.6), free(0, .1, 2.2, 2.6), free(-1.4, -.2, 2.2, 2.4)] },
-      { kind: 'bin', h: 1.2, spots: [back(W - 2.2, 1.2, .8), back(-W + 1.8, 1.2, .8), left(-D + 1, 1.2, .8)] },
-      { kind: 'sacks', h: .9, spots: [back(W - .75, 1.4, 1), front(W - .75, 1.4, 1), front(-W + .75, 1.4, 1), back(-W + .75, 1.4, 1)] },
-      { kind: 'bolter', h: 1.1, spots: [front(W - 1.9, 1.9, .8), right(-.2, 1.9, .8), front(-W + 1.9, 1.9, .8), left(.8, 1.9, .8)] },
+      { kind: 'bin', h: 1.2, spots: [back(W - 2.2, 1.2, .8), back(-W + 1.8, 1.2, .8), left(-D + 1, 1.2, .8), back(1.87, 1.1, .8), back(-1.87, 1.1, .8), right(D - 1, 1.2, .8), front(W - 1.2, 1.2, .8)] },
+      { kind: 'sacks', h: .9, spots: [back(W - .75, 1.4, 1), front(W - .75, 1.4, 1), front(-W + .75, 1.4, 1), back(-W + .75, 1.4, 1), right(D - .75, 1.4, 1)] },
+      { kind: 'bolter', h: 1.1, spots: [front(W - 1.9, 1.9, .8), right(-.2, 1.9, .8), front(-W + 1.9, 1.9, .8), left(.8, 1.9, .8), front(.9, 1.9, .8), front(W - 2.9, 1.9, .8)] },
       // A spare runner stone stood on edge against a wall, waiting to be dressed.
-      { kind: 'spareStone', h: 1.3, spots: [left(-D + 1.2, 1.3, .4), back(-W + 1.2, 1.3, .4), right(D - 1.2, 1.3, .4), front(-W + 1.2, 1.3, .4), back(0, 1.3, .4)] },
+      { kind: 'spareStone', h: 1.3, spots: [left(-D + 1.2, 1.3, .4), back(-W + 1.2, 1.3, .4), right(D - 1.2, 1.3, .4), left(D - .8, 1.3, .4), right(-D + .8, 1.3, .4), front(-W + 1.2, 1.3, .4), back(0, 1.3, .4), front(-.6, 1.3, .4)] },
     ];
   },
   barn: f => {
@@ -242,67 +290,189 @@ const LAYOUTS = {
     const bay = (2 * W) / 4, pieces = [];
     for (let i = 0; i < 4; i++) pieces.push({ kind: 'manger', h: .9, spots: [back(-W + bay * (i + .5), bay - .16, .55)] });
     for (let i = 1; i < 4; i++) pieces.push({ kind: 'stallBoard', h: 1.4, spots: [free(-W + bay * i, -D + GAP + 1.3, .12, 2.6)] });
-    const third = (2 * W - .2) / 3;
-    for (let i = 0; i < 3; i++) pieces.push({ kind: 'hayMow', h: 1.8, part: i, spots: [front(-W + GAP + third * (i + .5) + i * .07, third - .04, 2.4)] });
+    // The mow heaped against the south end either side of its low window
+    // (1.24 m of floor left at the window; shallower by a side window).
+    const run = W - GAP - .62;
+    for (const [i, s] of [[0, -1], [1, 1]]) pieces.push({ kind: 'hayMow', h: 1.8, part: i, spots: [front(s * (.62 + run / 2), run, 2.4), front(s * (.62 + run / 2), run, 2.26)] });
     pieces.push({ kind: 'grainChest', h: .8, spots: [left(D - 3.2, 1.2, .6), left(-D + 3.6, 1.2, .6), free(W - .33, D - 3.2, 1.2, .6, -PI / 2)] });
     return pieces;
   },
   shed: f => f.id.includes('hearse') ? hearseLayout(f) : woodshedLayout(f),
   'horse-sheds': f => {
-    const { W, D } = f, { back, free } = spotsFor(f), pieces = [];
-    for (const x of [-4, -2, 2, 4]) pieces.push({ kind: 'stallBoard', h: 1.5, spots: [free(x, -D + GAP + .55, .12, 1.1)] });
-    pieces.push({ kind: 'chaise', h: 1.1, spots: [free(3, -D + GAP + .55, 1.6, 1.1), free(-3, -D + GAP + .55, 1.6, 1.1)] });
-    for (const [a, b] of [[-W, -4.06], [-3.94, -2.06], [-1.94, 1.94], [2.06, 3.94], [4.06, W]])
-      pieces.push({ kind: 'manger', h: .9, spots: [back((a + b) / 2, b - a - .1, .4)] });
+    const { W, D } = f, { front, free } = spotsFor(f), pieces = [];
+    // The four bays open on the back: the stall boards stand between them
+    // against the closed front wall, leaving 1.4 m of floor along the open
+    // side; a manger at the head of each stall and the old chaise backed into
+    // the end bay (either end: the room is mirrored by its id).
+    for (const x of [-3, 0, 3]) pieces.push({ kind: 'stallBoard', h: 1.5, spots: [free(x, D - GAP - .55, .12, 1.1, PI), free(x, D - GAP - .5, .12, 1.0, PI)] });
+    pieces.push({ kind: 'chaise', h: 1.1, spots: [free(4.4, D - GAP - .55, 1.6, 1.1, PI), free(-4.4, D - GAP - .55, 1.6, 1.1, PI)] });
+    for (const [a, b] of [[-W, -3.06], [-2.94, -.06], [.06, 2.94], [3.06, W]]) pieces.push({ kind: 'manger', h: .9, spots: [front((a + b) / 2, b - a - .1, .4)] });
     return pieces;
   },
   tomb: f => {
-    const { W, D } = f, { back, left, right, free } = spotsFor(f);
+    const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
     return [
       { kind: 'coffinShelf', h: 1.3, spots: [left(-D + GAP + .9, 1.8, .75), left(D - GAP - .9, 1.8, .75)] },
-      { kind: 'coffinShelf', h: 1.3, spots: [right(-D + GAP + .9, 1.8, .75), right(D - GAP - .9, 1.8, .75)] },
+      { kind: 'coffinShelf', h: 1.3, spots: [right(-D + GAP + .9, 1.8, .75), right(D - GAP - .9, 1.8, .75), front(-W + GAP + .9, 1.8, .75), front(W - GAP - .9, 1.8, .75)] },
       // One fallen from its shelf, lid off, empty.
       { kind: 'floorCoffin', h: .45, spots: [back(0, 1.8, .55), free(0, D - GAP - .275, 1.8, .55)] },
+      // A child's coffin on a stone plinth.
+      { kind: 'plinthCoffin', h: .7, spots: [front(-.1, 1.1, .5), front(.3, 1.1, .5), back(-.3, 1.1, .5), left(D - GAP - .6, 1.1, .5), right(D - GAP - .6, 1.1, .5), left(-D + GAP + .6, 1.1, .5)] },
     ];
   },
 };
 
-function houseLayout(f, lit) {
-  const { W, D } = f, { back, front, left, right, free } = spotsFor(f), h = f.height;
+// The hearse house: the parish bier with a coffin on it in a back corner
+// (either corner: the room is mirrored), a coffin stood on end, the pall
+// chest.
+function hearseLayout(f) {
+  const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
   return [
-    // The centre chimney: the kitchen hearth opens to the back (the hall).
-    // (Its mouth faces the front: the camera looks from the south.)
-    { kind: 'chimney', h, spots: [free(0, -.35, 2.2, 1.7, 0), free(0, -.1, 2.2, 1.5, 0)] },
-    ...(lit ? [{ kind: 'litTable', h: .8, spots: [[1, 1, 1.5], [-1, 1, 1.5], [1, -1, 1.5], [-1, -1, 1.5], [1, 1, 1.2], [-1, 1, 1.2], [1, -1, 1.2], [-1, -1, 1.2]].map(([sx, sz, in_]) => free(sx * (W - 1.2), sz * (D - in_), 1.4, 1.2, sz > 0 ? PI : 0)) }] : []),
-    { kind: 'trestle', h: .8, spots: [free(-W + 1.8, -D + 1.1, 1.8, 1.5), free(-W + .9, -D + 1, 1.8, 1.5, PI / 2), free(W - 1.8, -D + 1.1, 1.8, 1.5), free(-W + 1.8, D - 1.5, 1.8, 1.5), free(-W + 1.2, 0, 1.8, 1.5, PI / 2)] },
-    { kind: 'dresser', h: 1.9, spots: [back(W - 1.4, 1.5, .5), back(-W + 1.4, 1.5, .5), right(-D + 1.2, 1.5, .5), left(-D + 1.2, 1.5, .5)] },
-    { kind: 'bed', h: .6, spots: [front(W - 1, 1.9, 1.35), front(-W + 1, 1.9, 1.35), right(D - 1.5, 1.9, 1.35), left(D - 1.5, 1.9, 1.35)] },
-    { kind: 'chest', h: .6, need: near('bed', 2.2), spots: [free(W - .83, D - 1.95, 1, .5, PI), free(-W + .83, D - 1.95, 1, .5, PI), free(W - 2.3, D - .28, 1, .5, PI), free(-W + 2.3, D - .28, 1, .5, PI), free(W - 2, D - .3, 1, .5, PI)] },
-    { kind: 'spinningWheel', h: .9, spots: [free(2.1, -1.1, .9, .5), free(-2.1, -1.1, .9, .5), free(2.2, 1.2, .9, .5), free(-2.2, 1.2, .9, .5)] },
-    { kind: 'tableSet', h: .8, spots: [free(-W + 1.3, D - 1.2, 1.3, 1.2), free(W - 1.3, D - 1.2, 1.3, 1.2), free(-W + 1.3, .3, 1.3, 1.2), free(W - 1.3, .3, 1.3, 1.2)] },
-    { kind: 'cupboard', h: 1.9, spots: [left(-.3, 1.2, .5), right(-.3, 1.2, .5), front(-W + 1, 1.2, .5), back(-W + 1, 1.2, .5)] },
-    ...(lit ? [] : [{ kind: 'cradle', h: .6, spots: [free(-2.2, -.1, .9, .5), free(2.2, -.1, .9, .5), free(-2.2, 1.3, .9, .5)] }]),
+    { kind: 'bier', h: 1.0, spots: [back(-W + GAP + 1.05, 2.1, .7), back(W - GAP - 1.05, 2.1, .7), back(0, 2.4, .8), front(0, 2.4, .8), left(0, 2.4, .8), right(0, 2.4, .8)] },
+    { kind: 'coffinUpright', h: 1.9, spots: [back(W - GAP - .25, .5, .42), back(-W + GAP + .25, .5, .42), left(D - GAP - .3, .5, .42), right(D - GAP - .3, .5, .42)] },
+    { kind: 'pallChest', h: .6, spots: [back(.8, .6, .5), back(-.8, .6, .5), left(-.3, .6, .5), right(-.3, .6, .5), front(-W + GAP + .3, .6, .5), front(W - GAP - .3, .6, .5)] },
   ];
 }
 function woodshedLayout(f) {
   const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
   return [
-    { kind: 'woodpile', h: 1.3, spots: [left(0, 2 * D - 2 * GAP, .75), back(-W + .55, 1, .75), front(-W + .55, 1, .75)] },
-    { kind: 'woodpile', h: 1.3, spots: [right(0, 2 * D - 2 * GAP, .75), back(W - .55, 1, .75), front(W - .55, 1, .75)] },
-    { kind: 'sawbuck', h: .9, spots: [free(0, -D + .8, 1.1, .5), free(0, D - .8, 1.1, .5), free(-.2, 0, 1.1, .5, PI / 2)] },
-    { kind: 'block', h: .5, spots: [free(1.1, 0, .55, .55), free(-1.1, 0, .55, .55), free(1.1, -D + .6, .55, .55)] },
-  ];
-}
-function hearseLayout(f) {
-  const { W, D } = f, { back, front, left, right } = spotsFor(f);
-  return [
-    { kind: 'bier', h: 1.0, spots: [back(0, 2.4, .8), front(0, 2.4, .8), left(0, 2.4, .8), right(0, 2.4, .8)] },
-    { kind: 'coffinStack', h: .9, spots: [right(0, 1.9, .6), left(0, 1.9, .6), back(W - .7, 1.2, .6), front(W - .7, 1.2, .6)] },
+    // The long stack along a side wall's back half, a short one opposite.
+    { kind: 'woodpile', h: 1.3, spots: [left(-D + GAP + 1.2, 2.36, .75), right(-D + GAP + 1.2, 2.36, .75), left(0, 2 * D - 2 * GAP, .75), back(-W + .55, 1, .75), front(-W + .55, 1, .75)] },
+    { kind: 'woodpile', h: 1.3, spots: [right(0, 1.2, .75), left(0, 1.2, .75), right(0, 2 * D - 2 * GAP, .75), back(W - .55, 1, .75), front(W - .55, 1, .75)] },
+    { kind: 'sawbuck', h: .9, spots: [free(0, -D + .8, 1.1, .5), free(0, D - .8, 1.1, .5), free(-.2, 0, 1.1, .5, PI / 2), free(-.4, -.2, 1.1, .5), free(.3, .3, 1.1, .5, PI / 2)] },
+    { kind: 'block', h: .5, spots: [free(1.1, 0, .55, .55), free(-1.1, 0, .55, .55), free(1.1, -D + .6, .55, .55), free(-.9, .5, .55, .55), free(.9, .5, .55, .55)] },
   ];
 }
 
-// Houses differ from each other: some are the mirror image of the next.
+// --- the houses: each its own story (s5-interiors) ---------------------------
+// Every house keeps its centre chimney (the stack on its roof is over it);
+// SPECS `variant` picks what the room was and what was left in it. Spots are
+// written for the house's own doors and windows first, then every wall as a
+// fallback, so a variant still lays out whatever doors it is given.
+function houseLayout(f, lit) {
+  return (HOUSES[f.variant] || HOUSES.hall)(f, lit);
+}
+const centreChimney = f => ({ kind: 'chimney', h: f.height, spots: [[0, -.35, 2.2, 1.7, 0], [0, -.1, 2.2, 1.5, 0]] });
+// A piece's L x T spot against every wall: each end of the wall and its middle.
+function everyWall(f, L, T, sides = ['back', 'right', 'left', 'front']) {
+  const { W, D } = f, s = spotsFor(f), out = [];
+  for (const side of sides) {
+    const run = (side === 'back' || side === 'front' ? W : D) - GAP - L / 2;
+    if (run >= 0) for (const a of [-run, run, 0, -run / 2, run / 2]) out.push(s[side](a, L, T));
+  }
+  return out;
+}
+const HOUSES = {
+  // The one-room hall (a house given no story): the old layout.
+  hall: (f, lit) => {
+    const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
+    return [
+      centreChimney(f),
+      ...(lit ? [{ kind: 'litTable', h: .8, spots: [[1, 1, 1.5], [-1, 1, 1.5], [1, -1, 1.5], [-1, -1, 1.5], [1, 1, 1.2], [-1, 1, 1.2], [1, -1, 1.2], [-1, -1, 1.2]].map(([sx, sz, in_]) => free(sx * (W - 1.2), sz * (D - in_), 1.4, 1.2, sz > 0 ? PI : 0)) }] : []),
+      { kind: 'trestle', h: .8, spots: [free(-W + 1.8, -D + 1.1, 1.8, 1.5), free(-W + .9, -D + 1, 1.8, 1.5, PI / 2), free(W - 1.8, -D + 1.1, 1.8, 1.5), free(-W + 1.8, D - 1.5, 1.8, 1.5), free(-W + 1.2, 0, 1.8, 1.5, PI / 2)] },
+      { kind: 'dresser', h: 1.9, spots: [back(W - 1.4, 1.5, .6), back(-W + 1.4, 1.5, .6), right(-D + 1.2, 1.5, .6), left(-D + 1.2, 1.5, .6)] },
+      { kind: 'bed', h: .6, spots: [front(W - 1, 1.9, 1.35), front(-W + 1, 1.9, 1.35), right(D - 1.5, 1.9, 1.35), left(D - 1.5, 1.9, 1.35)] },
+      { kind: 'chest', h: .6, need: near('bed', 2.2), spots: [free(W - .83, D - 1.95, 1, .5, PI), free(-W + .83, D - 1.95, 1, .5, PI), free(W - 2.3, D - .28, 1, .5, PI), free(-W + 2.3, D - .28, 1, .5, PI), free(W - 2, D - .3, 1, .5, PI)] },
+      { kind: 'spinningWheel', h: .9, spots: [free(2.1, -1.1, .9, .5), free(-2.1, -1.1, .9, .5), free(2.2, 1.2, .9, .5), free(-2.2, 1.2, .9, .5)] },
+      { kind: 'tableSet', h: .8, spots: [free(-W + 1.3, D - 1.2, 1.3, 1.2), free(W - 1.3, D - 1.2, 1.3, 1.2), free(-W + 1.3, .3, 1.3, 1.2), free(W - 1.3, .3, 1.3, 1.2)] },
+      { kind: 'cupboard', h: 1.9, spots: [left(-.3, 1.2, .6), right(-.3, 1.2, .6), front(-W + 1, 1.2, .6), back(-W + 1, 1.2, .6)] },
+      ...(lit ? [] : [{ kind: 'cradle', h: .7, spots: [free(-2.2, -.1, 1.0, .6), free(2.2, -.1, 1.0, .6), free(-2.2, 1.3, 1.0, .6)] }]),
+    ];
+  },
+
+  // A laying-out room (the lit cape): the coffin on two chairs in the back
+  // corner, candles burnt down round it, the mourners' chairs in a row facing
+  // it, the looking-glass over it covered; the watchers' supper left on a
+  // table, its chair knocked over; the deathbed stripped to its ropes.
+  'laying-out': f => {
+    const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
+    return [
+      centreChimney(f),
+      { kind: 'coffinChairs', h: .95, spots: [back(-W + GAP + 1.15, 2.3, 1.0), back(W - GAP - 1.15, 2.3, 1.0), ...everyWall(f, 2.3, 1.0)] },
+      { kind: 'chairRow', h: 1.05, spots: placed => around(placed, 'coffinChairs', [.45, .55, .7], [0, .15, -.15, .3, -.3], 2.0, .5) },
+      { kind: 'litTable', h: .8, spots: [free(-1.65, 1.2, 1.3, 1.2, PI), free(1.65, 1.2, 1.3, 1.2, PI), free(-1.8, 1.35, 1.3, 1.2, PI), free(1.8, 1.35, 1.3, 1.2, PI), free(-2.3, -.2, 1.3, 1.2, 0), free(2.3, -.2, 1.3, 1.2, 0), ...everyWall(f, 1.3, 1.2)] },
+      { kind: 'bed', stripped: true, h: .6, spots: [right(1.0, 1.9, 1.2), left(-.2, 1.9, 1.2), right(-.2, 1.9, 1.2), ...everyWall(f, 1.9, 1.2)] },
+      { kind: 'chest', h: .6, spots: [back(W - GAP - 1.2, 1.0, .5), ...everyWall(f, 1.0, .5)] },
+    ];
+  },
+
+  // A weaver's room (the cape): the big four-post loom with its cloth half
+  // woven, the great wool wheel, baskets of fleece, a linen chest and the bed.
+  weaver: f => {
+    const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
+    return [
+      centreChimney(f),
+      { kind: 'loom', h: 2.0, spots: [back(W - GAP - .85, 1.7, 1.7), back(-W + GAP + .85, 1.7, 1.7), front(W - GAP - .85, 1.7, 1.7), front(-W + GAP + .85, 1.7, 1.7), ...everyWall(f, 1.7, 1.7)] },
+      { kind: 'greatWheel', h: 1.45, spots: [free(-2.6, 1.35, 1.6, .6), free(2.6, 1.35, 1.6, .6), free(-2.6, -1.9, 1.6, .6), free(2.6, -1.9, 1.6, .6), ...everyWall(f, 1.6, .6)] },
+      { kind: 'woolBaskets', h: .65, spots: [right(-.55, 1.3, .6), left(.55, 1.3, .6), front(W - GAP - 1.3, 1.3, .6), ...everyWall(f, 1.3, .6)] },
+      { kind: 'chest', h: .6, spots: [back(-W + GAP + .43, .85, .5), ...everyWall(f, .85, .5)] },
+      { kind: 'bed', h: .6, spots: [left(.1, 1.9, 1.35), right(-.1, 1.9, 1.35), ...everyWall(f, 1.9, 1.35)] },
+    ];
+  },
+
+  // A kitchen (the saltbox; its lean-to was the kitchen): supper half cooked
+  // in the kettle on the crane, the dough trough, the churn and the salting
+  // tub, the work table with apples half pared, the dresser, the wood box.
+  kitchen: f => {
+    const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
+    return [
+      { ...centreChimney(f), stew: true },
+      { kind: 'doughTrough', h: .85, spots: [right(-1.2, 1.3, .55), left(-1.2, 1.3, .55), ...everyWall(f, 1.3, .55)] },
+      { kind: 'dresser', h: 1.9, spots: [back(-2.9, 1.5, .6), back(2.9, 1.5, .6), ...everyWall(f, 1.5, .6)] },
+      { kind: 'churnTub', h: 1.1, spots: [right(1.0, 1.2, .6), left(-2.2, 1.2, .6), ...everyWall(f, 1.2, .6)] },
+      { kind: 'trestle', h: .8, spots: [free(-3.0, -.5, 1.8, 1.5, PI / 2), free(3.0, -.5, 1.8, 1.5, PI / 2), free(-3.0, .3, 1.8, 1.5, PI / 2), free(3.0, .3, 1.8, 1.5, PI / 2), ...everyWall(f, 1.8, 1.5)] },
+      { kind: 'woodbox', h: .6, spots: [free(-1.5, 1.05, .9, .5), free(1.5, 1.05, .9, .5), free(-1.6, .9, .9, .5), free(1.6, .9, .9, .5), ...everyWall(f, .9, .5)] },
+    ];
+  },
+
+  // A nursery (saltbox-2): the rope bed with the trundle pulled out from
+  // under it, the cradle left rocked to one side, the sampler in its frame,
+  // the blanket chest.
+  nursery: f => {
+    const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
+    return [
+      centreChimney(f),
+      { kind: 'trundleBed', h: .6, spots: [left(.15, 1.9, 2.1), right(-.15, 1.9, 2.1), ...everyWall(f, 1.9, 2.1)] },
+      { kind: 'cradle', h: .75, spots: [free(-.6, 1.3, 1.1, .66), free(.6, 1.3, 1.1, .66), free(-2.0, 1.6, 1.1, .66), free(2.0, 1.6, 1.1, .66), free(2.1, -1.8, 1.1, .66), free(-2.1, -1.8, 1.1, .66), ...everyWall(f, 1.1, .66)] },
+      { kind: 'samplerStand', h: 1.0, spots: [back(2.2, .7, .45), back(-2.2, .7, .45), ...everyWall(f, .7, .45)] },
+      { kind: 'chest', h: .6, spots: [back(W - GAP - .6, 1.0, .5), back(-W + GAP + .6, 1.0, .5), ...everyWall(f, 1.0, .5)] },
+    ];
+  },
+
+  // A parlour laid for the whole family (the gambrel): the long table set,
+  // every chair pushed back as if they all rose at once, the family Bible shut
+  // at the head, a candle stub; the court cupboard, the blanket chest.
+  parlour: f => {
+    const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
+    return [
+      centreChimney(f),
+      { kind: 'longTable', h: 1.05, spots: [free(-W + GAP + 1.05, -.5, 3.0, 2.1, PI / 2), free(W - GAP - 1.05, .5, 3.0, 2.1, -PI / 2), free(-W + GAP + 1.05, 0, 3.0, 2.1, PI / 2), free(W - GAP - 1.05, 0, 3.0, 2.1, -PI / 2), ...everyWall(f, 3.0, 2.1),
+        // (A shorter table in a back corner when doors take the long walls.)
+        back(-W + GAP + 1.25, 2.5, 1.75), back(W - GAP - 1.25, 2.5, 1.75), front(-W + GAP + 1.25, 2.5, 1.75), front(W - GAP - 1.25, 2.5, 1.75)] },
+      { kind: 'cupboard', h: 1.9, court: true, spots: [right(1.2, 1.5, .6), left(1.2, 1.5, .6), ...everyWall(f, 1.5, .6)] },
+      { kind: 'chest', h: .6, spots: [back(2.8, 1.0, .5), back(-2.8, 1.0, .5), ...everyWall(f, 1.0, .5)] },
+    ];
+  },
+
+  // The farm: the root cellar's trapdoor thrown open, grain sacks, the tools
+  // on their rack, the butchering table with its stained cloth.
+  farm: f => {
+    const { W, D } = f, { back, front, left, right, free } = spotsFor(f);
+    return [
+      centreChimney(f),
+      { kind: 'cellarHatch', h: .95, spots: [free(-1.9, 1.3, 1.1, 1.25), free(1.9, 1.3, 1.1, 1.25), free(-2.9, -1.95, 1.1, 1.25), free(2.9, -1.95, 1.1, 1.25), ...everyWall(f, 1.1, 1.25)] },
+      { kind: 'butcherTable', h: .95, spots: [back(W - GAP - .8 - .38, 1.6, .8), back(-W + GAP + .8 + .38, 1.6, .8), ...everyWall(f, 1.6, .8)] },
+      { kind: 'toolRack', h: 1.9, spots: [left(-1.3, 1.8, .35), right(-1.3, 1.8, .35), ...everyWall(f, 1.8, .35)] },
+      { kind: 'sacks', h: .9, spots: [back(-W + GAP + .57, 1.14, .9), back(W - GAP - .57, 1.14, .9), left(-D + GAP + .57, 1.14, .9), ...everyWall(f, 1.14, .9)] },
+    ];
+  },
+};
+
+// Rooms of one kind differ from each other: some are the mirror image of the
+// next. (Not a house with a story of its own, `variant`: each of those is
+// laid out for its own walls.)
 function mirrored(f) {
+  if (f.variant) return false;
   let n = 0; for (const c of f.id) n = (n * 31 + c.charCodeAt(0)) >>> 0;
   return n % 2 === 1;
 }
@@ -311,10 +481,10 @@ const cache = new Map();
 export function colonialCover(b, debug) {
   if (!isColonial(b)) return [];
   const f = { ...roomFrame(b), height: Math.max(2.4, (b.height || 3) - .05) };
-  const key = JSON.stringify([b.interiorStyle, f.id, f.w, f.d, f.doors, f.dw, f.windows, f.height]);
+  const key = JSON.stringify([b.interiorStyle, f.variant, f.id, f.w, f.d, f.doors, f.dw, f.windows, f.height]);
   if (!debug && cache.has(key)) return cache.get(key);
-  const zones = doorZones(b), flip = mirrored(f) ? -1 : 1;
-  const body = makeGrid(f, BODY), walk = makeGrid(f, Math.min(WALKWAY / 2, f.dw / 2 - .05));
+  const zones = [...doorZones(b), ...windowZones(b)], flip = mirrored(f) ? -1 : 1;
+  const all = grids(f);
   const placed = [];
   for (const entry of LAYOUTS[b.interiorStyle](f)) {
     const { spots, need, ...rest } = entry;
@@ -326,19 +496,33 @@ export function colonialCover(b, debug) {
       const wallGaps = [f.W - Math.abs(p.x) - w / 2, f.D - Math.abs(p.z) - d / 2];
       if (wallGaps.some(snug)) { why('snug to a wall'); continue; }
       const zone = zones.find(zone => separation(zone, p) < 0);
-      if (zone) { why('in the ' + zone.side + ' doorway'); continue; }
+      if (zone) { why(zone.window ? 'in front of the ' + zone.side + ' window' : 'in the ' + zone.side + ' doorway'); continue; }
       const other = placed.find(q => { const g = separation(q, p); return g < 0 || snug(g); });
       if (other) { why('against ' + other.kind + ' ' + separation(other, p).toFixed(2)); continue; }
       if (need && !need(p, placed)) { why('not near what it needs'); continue; }
-      markPiece(body, p, 1); markPiece(walk, p, 1);
-      const check = checkGrids(body, walk);
-      if (!check.ok) { why(check.why); markPiece(body, p, -1); markPiece(walk, p, -1); continue; }
+      for (const g of all) markPiece(g, p, 1);
+      const check = checkGrids(...all);
+      if (!check.ok) { why(check.why); for (const g of all) markPiece(g, p, -1); continue; }
       placed.push(p); break;
     }
   }
   const out = placed.map(p => Object.freeze(p));
   if (!debug) cache.set(key, out);
   return out;
+}
+
+// Where the fire's smoke goes up (s5-interiors): the flue of the room's
+// placed hearth, forge or centre chimney, in the building's own frame, or
+// null. The building's shell stands a chimney listed `over: <kind>` here, so
+// the stack outside is always over the fire inside, whichever wall the
+// layout put it against.
+export function flueOf(b, kind) {
+  const p = colonialCover(b).find(q => q.kind === kind);
+  if (!p) return null;
+  const r = p.rot || 0, turned = Math.abs(Math.sin(r)) > .5, L = turned ? p.d : p.w, T = turned ? p.w : p.d;
+  // The flue in the piece's own frame (models: L along x, the back at -T/2).
+  const fl = L * .58, [lx, lz] = kind === 'forge' ? [-L / 2 + fl / 2, -T / 2 + .3] : [0, -T / 4];
+  return { x: p.x + lx * Math.cos(r) + lz * Math.sin(r), z: p.z - lx * Math.sin(r) + lz * Math.cos(r) };
 }
 
 // --- models ------------------------------------------------------------------
@@ -348,8 +532,13 @@ const C = {
   ash: '#57544f', soot: '#2f2d2a', straw: '#a8925a', hay: '#9c8a55', hayDark: '#857448', cloth: '#6a6258', linen: '#a59a84',
   wool: '#b3a88f', dust: '#8a8274', grime: '#625849', rot: '#4b4a2e', mould: '#5d6444', bone: '#d8ccb0', leather: '#5a4232', meal: '#b5ab96',
   floorA: '#5f5242', floorB: '#665846', floorC: '#58493a', earth: '#4a4136', cinder: '#35312c', flag: '#67645d',
+  // (s5-interiors: the houses' own things; muted, of the period.)
+  pit: '#1b1916', salt: '#d3cec1', stain: '#4a2d25', wax: '#c8bb99', russet: '#5a3b2e', herb: '#6b6a46', apple: '#6f4a2a',
+  crock: '#8a8577', redware: '#7a4a33', madder: '#7a4038', indigo: '#434a57', corn: '#9a7a3c', pine: '#9a876a', herbPale: '#7f7d52', flour: '#cfc8b8',
 };
 const AMBER = '#d9a24a';
+// The top of the floor boards: what lies on the floor lies here.
+const FLOOR = .08;
 
 // The one light-coloured thing in a dark house: a lantern's candle and its
 // pierced tin glowing amber (emissive: no new light). Also the smithy's banked
@@ -358,6 +547,11 @@ function glow(view, colour, strength) {
   const store = view.colonialGlow ||= new Map(), key = colour + strength;
   if (!store.has(key)) store.set(key, new THREE.MeshStandardMaterial({ color: colour, emissive: colour, emissiveIntensity: strength, roughness: 1 }));
   return store.get(key);
+}
+// A flat quad lying on the floor (two triangles; a box would be twelve).
+function flat(view, x, y, z, w, d, colour, parent) {
+  const m = view.mesh(new THREE.PlaneGeometry(w, d).rotateX(-PI / 2), colour, x, y, z, parent);
+  m.castShadow = false; return m;
 }
 
 export function makeColonialInterior(view, b) {
@@ -368,7 +562,7 @@ export function makeColonialInterior(view, b) {
   const rand = () => { seed = Math.imul(seed ^ seed >>> 15, 2246822507) + 0x6d2b79f5 | 0; return ((seed ^ seed >>> 13) >>> 0) / 4294967296; };
   const box = (x, y, z, w, h, d, c, parent = g) => view.box(x, y, z, w, h, d, c, parent);
   const cyl = (x, y, z, r, h, c, parent = g, seg = 8, top = r) => view.cylinder(x, y, z, r, h, c, parent, seg, top);
-  const ctx = { view, g, f, b, rand, box, cyl };
+  const ctx = { view, g, f, b, rand, box, cyl, pieces };
   floor(ctx);
   for (const p of pieces) {
     const s = new THREE.Group(); s.position.set(p.x, 0, p.z); s.rotation.y = p.rot || 0; g.add(s);
@@ -380,18 +574,19 @@ export function makeColonialInterior(view, b) {
   extras(ctx, pieces);
 }
 
-// Floors and the dust on them.
-function floor({ f, b, rand, box }) {
-  const { W, D } = f, style = b.interiorStyle;
+// Floors and the dust on them. (Flat quads: the boards' 1 cm sides never
+// showed from above, and each box was ten triangles more.)
+function floor({ f, b, rand, view, g }) {
+  const { W, D } = f, style = b.interiorStyle, quad = (x, y, z, w, d, c) => flat(view, x, y + .005, z, w, d, c, g);
   const flags = style === 'tomb', dirt = style === 'smithy' || style === 'shed' || style === 'horse-sheds';
   if (flags) {
     for (let x = -W; x < W - .05; x += .8) for (let z = -D, row = 0; z < D - .05; z += .7, row++) {
       const w = Math.min(.76, W - x - .02), d = Math.min(.66, D - z - .02);
-      box(x + w / 2 + .01, .075, z + d / 2 + .01, w, .02, d, rand() < .5 ? C.flag : C.stoneDark);
+      quad(x + w / 2 + .01, .08, z + d / 2 + .01, w, d, rand() < .5 ? C.flag : C.stoneDark);
     }
   } else if (dirt) {
-    box(0, .072, 0, 2 * W, .01, 2 * D, C.earth);
-    for (let i = 0; i < 14; i++) { const c = box((rand() - .5) * 2 * (W - .3), .079, (rand() - .5) * 2 * (D - .3), .08 + rand() * .2, .005, .06 + rand() * .15, rand() < .5 ? C.cinder : C.grime); c.rotation.y = rand() * PI; }
+    quad(0, .072, 0, 2 * W, 2 * D, C.earth);
+    for (let i = 0; i < 14; i++) { const c = quad((rand() - .5) * 2 * (W - .3), .0795, (rand() - .5) * 2 * (D - .3), .08 + rand() * .2, .06 + rand() * .15, rand() < .5 ? C.cinder : C.grime); c.rotation.y = rand() * PI; }
   }
   if (!flags && !dirt) {
     // Wide pine boards, the way they were laid: along the building's length.
@@ -400,11 +595,11 @@ function floor({ f, b, rand, box }) {
       const d = Math.min(.44, D - z - .01);
       for (let x = -W, n = 0; x < W - .02; n++) {
         const len = Math.min(1.6 + ((row * 7 + n * 3) % 5) * .7, W - x);
-        if (!barn || Math.abs(z) < 2.2) box(x + len / 2, .074, z + d / 2 + .005, len - .015, .012, d, [C.floorA, C.floorB, C.floorC][(row + n) % 3]);
+        if (!barn || Math.abs(z) < 2.2) quad(x + len / 2, .074, z + d / 2 + .005, len - .015, d, [C.floorA, C.floorB, C.floorC][(row + n) % 3]);
         x += len;
       }
     }
-    if (barn) box(0, .071, 0, 2 * W, .01, 2 * D, C.earth);
+    if (barn) quad(0, .071, 0, 2 * W, 2 * D, C.earth);
   }
   // Grey dust where nobody has walked, heaviest along the walls.
   const flour = style === 'gristmill';
@@ -412,29 +607,30 @@ function floor({ f, b, rand, box }) {
     const side = i % 4, t = (rand() - .5) * 2;
     const x = side < 2 ? t * (W - .5) : (side === 2 ? -1 : 1) * (W - .35 - rand() * .5);
     const z = side < 2 ? (side === 0 ? -1 : 1) * (D - .35 - rand() * .5) : t * (D - .5);
-    const d = box(x, .083, z, .3 + rand() * .5, .003, .2 + rand() * .3, flour ? C.meal : C.grime); d.rotation.y = rand() * .6;
+    const d = quad(x, .0825, z, .3 + rand() * .5, .2 + rand() * .3, flour ? C.meal : C.grime); d.rotation.y = rand() * .6;
   }
 }
 
 // Small things with no collider: left mid-task, dropped, never tidied.
-function extras({ f, b, rand, box, cyl, view, g }, pieces) {
-  const { W, D } = f, style = b.interiorStyle;
+function extras(ctx, pieces) {
+  const { f, b, rand, box, cyl, view, g } = ctx, { W, D } = f, style = b.interiorStyle;
   const clear = (x, z, r = .4) => Math.abs(x) < W - r && Math.abs(z) < D - r && pieces.every(p => separation(p, { x, z, w: 2 * r, d: 2 * r }) > 0)
     && doorZones(b).every(zone => separation(zone, { x, z, w: 2 * r, d: 2 * r }) > 0);
   const spot = (tries = 30, r = .4) => { for (let i = 0; i < tries; i++) { const x = (rand() - .5) * 2 * (W - r), z = (rand() - .5) * 2 * (D - r); if (clear(x, z, r)) return [x, z]; } return null; };
   const house = style === 'colonial-house' || style === 'colonial-lit-house';
-  if (house || style === 'colonial-tavern') {
+  // (A house with a story of its own dresses itself: houseStory, below.)
+  const hall = house && !HOUSES[f.variant];
+  if (hall || style === 'colonial-tavern') {
     // A ladder-back chair left facing the wall.
     const at = spot(); if (at) { const c = new THREE.Group(); c.position.set(at[0], 0, at[1]); c.rotation.y = rand() * PI * 2; g.add(c); chair(view, c, C.wood); }
     // A pewter mug rolled under things, a broom dropped across the boards.
     const m = spot(20, .2); if (m) { const mug = cyl(m[0], .12, m[1], .06, .12, C.pewter); mug.rotation.z = PI / 2; }
-    const br = spot(20, .6); if (br) { const s = box(br[0], .1, br[1], 1.2, .03, .03, C.worn); s.rotation.y = rand() * PI; box(br[0] + Math.cos(-s.rotation.y) * .6, .1, br[1] + Math.sin(-s.rotation.y) * .6, .12, .06, .28, C.straw).rotation.y = s.rotation.y; }
+    const br = spot(20, .6); if (br) broom(ctx, g, br[0], br[1], rand() * PI);
   }
-  if (house) {
-    // Eerie, and of the period (owner: "eerie horror movies, colonial New
-    // England, Puritan"): a corn-husk doll face down on the boards, a pair of
-    // buckled shoes set side by side as if someone stepped out of them, and
-    // scratches in the floor by the hearth, all walk-over.
+  if (hall) {
+    // A corn-husk doll face down on the boards, a pair of buckled shoes set
+    // side by side as if someone stepped out of them, and scratches in the
+    // floor by the hearth, all walk-over.
     const d = spot(20, .3);
     if (d) {
       const doll = new THREE.Group(); doll.position.set(d[0], .08, d[1]); doll.rotation.y = rand() * PI * 2; g.add(doll);
@@ -442,17 +638,10 @@ function extras({ f, b, rand, box, cyl, view, g }, pieces) {
       box(0, .025, -.08, .2, .03, .14, C.cloth, doll);
       for (const sx of [-1, 1]) box(sx * .09, .02, .04, .12, .025, .03, C.hay, doll).rotation.y = sx * .5;
     }
-    const sh = spot(20, .3);
-    if (sh) {
-      const pair = new THREE.Group(); pair.position.set(sh[0], .08, sh[1]); pair.rotation.y = rand() * PI * 2; g.add(pair);
-      for (const sx of [-.07, .07]) { box(sx, .035, 0, .09, .07, .26, C.black, pair); box(sx, .075, -.02, .07, .012, .05, C.pewter, pair); }
-    }
-    const hearth = pieces.find(p => p.kind === 'chimney');
-    if (hearth) for (let i = 0; i < 5; i++) {
-      const x = hearth.x - .5 + i * .22 + (rand() - .5) * .05, z = hearth.z + hearth.d / 2 + .35 + rand() * .12;
-      if (clear(x, z, .15)) box(x, .082, z, .012, .003, .3 + rand() * .15, C.black).rotation.y = .12 + (rand() - .5) * .1;
-    }
+    const sh = spot(20, .3); if (sh) shoes(ctx, g, sh[0], sh[1], rand() * PI * 2, 1);
+    scratches(ctx, pieces, clear);
   }
+  if (house && HOUSES[f.variant]) houseStory(ctx, pieces, clear, spot);
   if (style === 'colonial-tavern') {
     // A tankard on its side in a dried stain, and a long clay pipe dropped by it.
     const t = spot(20, .5);
@@ -468,13 +657,13 @@ function extras({ f, b, rand, box, cyl, view, g }, pieces) {
     // wall from the south-tilted camera, so it stands on a candlestand just
     // inside, and the window's opening glows faintly amber (seen from the
     // street); with no window it stands by the front wall.
-    const win = f.windows.find(w => !w.boarded) || f.windows[0];
+    const win = f.windows.find(w => w.lit) || f.windows.find(w => !w.boarded) || f.windows[0];
     const side = win?.side || 'front', off = win ? win.offset : W * .5, inset = .55;
     const across = side === 'front' || side === 'back', sign = side === 'back' || side === 'left' ? -1 : 1;
     const x = across ? off : sign * (W - inset), z = across ? sign * (D - inset) : off;
     // (Something already stands there: the lantern sits on it instead.)
     const under = pieces.find(p => separation(p, { x, z, w: .4, d: .4 }) < 0);
-    if (!under) { cyl(x, .35, z, .03, .7, C.dark); cyl(x, .72, z, .16, .03, C.dark); cyl(x, .02, z, .18, .04, C.dark); }
+    if (!under) { cyl(x, .38, z, .03, .64, C.dark); cyl(x, .72, z, .16, .03, C.dark); cyl(x, FLOOR + .02, z, .18, .04, C.dark); }
     const l = new THREE.Group(); l.position.set(x, under ? Math.min(under.h, 1.4) + .01 : .735, z); l.scale.setScalar(1.3); g.add(l);
     lantern(view, l, true);
     const pool = view.mesh(new THREE.CircleGeometry(.9, 12), glow(view, '#6a4a22', .45), x, .082, z, g); pool.rotation.x = -PI / 2; pool.castShadow = false;
@@ -524,6 +713,385 @@ function extras({ f, b, rand, box, cyl, view, g }, pieces) {
   }
 }
 
+// --- the houses' stories (s5-interiors) ---------------------------------------
+// Each house's own walk-over things: what was being done, and one or two
+// eerie touches, different in every house. Sized to read from the room camera
+// (about 18 m up): nothing that matters is smaller than a hand, and the pale
+// things (linen, salt, meal, wool, pewter) carry it against the dark boards.
+// Wall pieces (peg rails, shelves, a covered glass, a barred door) go where
+// the wall is free: not across a doorway or an open window, not behind a
+// piece standing taller than them, and the back wall first (its face is the
+// one the camera sees).
+function houseStory(ctx, pieces, clear, spot) {
+  const { f, rand, view, g } = ctx, { W, D } = f, find = kind => pieces.find(p => p.kind === kind);
+  const chimney = find('chimney'), mouthZ = chimney ? chimney.z + chimney.d / 2 : .5;
+  const used = [], onWall = (side, y, len, prefer = 0) => { const at = wallSpot(f, pieces, side, y, len, prefer, used); if (at) used.push(at); return at; };
+  switch (f.variant) {
+    case 'laying-out': {
+      // The looking-glass over the coffin, covered with a cloth.
+      const coffin = find('coffinChairs'), glassAt = onWall('back', 1.15, .8, coffin ? coffin.x : -W / 2) || onWall('right', 1.15, .8) || onWall('left', 1.15, .8);
+      if (glassAt) coveredGlass(ctx, glassAt);
+      // The dead man's buckled shoes set side by side by the mourners' chairs.
+      const row = find('chairRow') || coffin;
+      if (row) for (const [x, z] of [[row.x + row.w / 2 + .3, row.z], [row.x - row.w / 2 - .3, row.z], [row.x, row.z + row.d / 2 + .3]]) if (clear(x, z, .2)) { shoes(ctx, g, x, z, .2, 1.25); break; }
+      // A daisy wheel burnt with a candle into the lintel over the back door.
+      const door = f.doors.find(d => d.side === 'back') || f.doors[0];
+      if (door) lintelMark(ctx, door);
+      break;
+    }
+    case 'kitchen': {
+      // Herbs and dried apples hung from a beam over the work table.
+      const table = find('trestle');
+      herbBeam(ctx, table ? table.x : -W / 2, table ? table.z : 0);
+      const shelf = onWall('back', 1.45, 1.1) || onWall('right', 1.45, 1.4) || onWall('left', 1.45, 1.1);
+      if (shelf) crockShelf(ctx, shelf);
+      const pegs = onWall('back', 1.6, .7, W) || onWall('left', 1.6, .7);
+      if (pegs) pegRail(ctx, pegs, ['skillet', 'ladle', 'gridiron'].slice(0, Math.max(1, Math.floor(pegs.len / .25))));
+      // Meal spilled by the trough, and bare footprints in it leading to the
+      // hearth, where they stop.
+      footprints(ctx, find('churnTub') || find('doughTrough'), mouthZ, clear);
+      // A jug broken on the boards by the dresser.
+      const by = find('dresser'), at = by ? [by.x + .3, by.z + by.d / 2 + .55] : spot(20, .4);
+      if (at && clear(at[0], at[1], .35)) shards(ctx, at[0], at[1]);
+      const br = spot(20, .6); if (br) broom(ctx, g, br[0], br[1], rand() * PI);
+      break;
+    }
+    case 'weaver': {
+      // A cloak still on the peg rail, skeins of yarn hung by it.
+      const pegs = onWall('back', 1.7, .95, W / 2) || onWall('left', 1.7, .95) || onWall('right', 1.7, .95);
+      if (pegs) pegRail(ctx, pegs, ['cloak', 'skein', 'skein']);
+      // The warping board on a wall, yarn zigzagged across its pegs.
+      const board = onWall('left', 1.05, 1.2, 0) || onWall('back', 1.05, 1.2) || onWall('right', 1.05, 1.2);
+      if (board) warpingBoard(ctx, board);
+      // A skein wound round a chair back, by the wheel.
+      const wheel = find('greatWheel'), near = wheel ? [wheel.x + (wheel.x < 0 ? .3 : -.3), wheel.z + (wheel.z < 0 ? -.75 : .75)] : null;
+      const at = near && clear(near[0], near[1], .35) ? near : spot(30, .35);
+      if (at) skeinChair(ctx, at[0], at[1], wheel ? Math.atan2(wheel.x - at[0], wheel.z - at[1]) : rand() * PI);
+      // Scratches in the boards before the hearth.
+      scratches(ctx, pieces, clear);
+      break;
+    }
+    case 'parlour': {
+      // The pewter on its plate shelf; the whole family's hats still on the pegs.
+      const shelf = onWall('back', 1.45, 2.0, -W / 2) || onWall('right', 1.45, 1.6);
+      if (shelf) plateShelf(ctx, shelf);
+      const pegs = onWall('back', 1.75, 2.0, W / 2) || onWall('left', 1.75, 1.6) || onWall('right', 1.75, 1.6);
+      if (pegs) pegRail(ctx, pegs, ['hat', 'cap', 'bonnet', 'hat', 'cap', 'bonnet', 'cap', 'hat'].slice(0, Math.max(3, Math.floor(pegs.len / .28))));
+      // A line of salt poured across the back threshold (the one the camera sees).
+      const door = f.doors.find(d => d.side === 'back') || f.doors[0];
+      if (door) saltLine(ctx, door);
+      break;
+    }
+    case 'nursery': {
+      // Children's marks scratched low on the wall.
+      const low = onWall('back', .45, 1.2, -W / 2) || onWall('right', .45, 1.2) || onWall('left', .45, 1.2);
+      if (low) childMarks(ctx, low);
+      // Little frocks and caps on the peg rail; the porringer on a shelf.
+      const pegs = onWall('back', 1.6, 1.2, W / 2) || onWall('right', 1.6, 1.2) || onWall('left', 1.6, 1.2);
+      if (pegs) pegRail(ctx, pegs, ['frock', 'cap', 'frock', 'coat']);
+      const shelf = onWall('left', 1.4, 1.0) || onWall('right', 1.4, 1.0) || onWall('back', 1.4, 1.0);
+      if (shelf) crockShelf(ctx, shelf, true);
+      // The rag poppet face down by the cradle; three pairs of little shoes by the door.
+      const cradle = find('cradle'), pp = cradle ? [cradle.x + cradle.w / 2 + .35, cradle.z + .15] : null;
+      const at = pp && clear(pp[0], pp[1], .3) ? pp : spot(30, .3);
+      if (at) poppet(ctx, at[0], at[1], .6 + rand());
+      const door = f.doors.find(d => d.side === 'back') || f.doors[0];
+      if (door) littleShoes(ctx, door, clear);
+      break;
+    }
+    case 'farm': {
+      // The door barred from the inside (the shell draws it shut outside: SPECS shutDoors).
+      const shut = ctx.b.shutDoors?.[0], back = shut ? { side: shut.side, along: shut.offset || 0, len: shut.width || 1 } : barredDoorSpot(f, pieces);
+      if (back) barredDoor(ctx, back);
+      // Seed corn hung from the pegs; a hook over the butchering table.
+      const pegs = onWall('right', 1.7, 1.2) || onWall('back', 1.7, 1.2) || onWall('left', 1.7, 1.2);
+      if (pegs) pegRail(ctx, pegs, ['corn', 'corn', 'lantern', 'corn']);
+      const table = find('butcherTable'); if (table) meatHooks(ctx, table);
+      // A slop bucket kicked over; a lantern set down by the open cellar.
+      const bk = table ? [table.x - table.w / 2 - .5, table.z + table.d / 2 + .45] : null;
+      const at = bk && clear(bk[0], bk[1], .35) ? bk : spot(30, .35);
+      if (at) slopBucket(ctx, at[0], at[1], rand() * PI);
+      const hatch = find('cellarHatch');
+      if (hatch) { const lx = hatch.x + hatch.w / 2 + .25, lz = hatch.z + .2; if (clear(lx, lz, .15)) { const l = new THREE.Group(); l.position.set(lx, FLOOR, lz); g.add(l); lantern(view, l, false); } }
+      break;
+    }
+  }
+}
+
+// Where a wall piece `len` long can hang at height y on `side`: the free run
+// nearest `prefer` (along the side: x on the front and back, z on the sides),
+// clear of doorways and open windows and of pieces standing against that wall
+// taller than y. { side, along, len } or null.
+function wallSpot(f, pieces, side, y, len, prefer = 0, used = []) {
+  const { W, D } = f, across = side === 'back' || side === 'front', half = across ? W : D;
+  let runs = [[-half + .12, half - .12]];
+  const cut = (a, b) => { runs = runs.flatMap(([p, q]) => [[p, Math.min(q, a)], [Math.max(p, b), q]]).filter(([p, q]) => q - p > .05); };
+  for (const d of f.doors) if (d.side === side) cut(d.offset - d.width / 2 - .15, d.offset + d.width / 2 + .15);
+  for (const w of f.windows) if (w.side === side && !w.boarded) cut(w.offset - (w.width || 1) / 2 - .12, w.offset + (w.width || 1) / 2 + .12);
+  for (const p of pieces) {
+    if (p.h < y - .12) continue;
+    const off = side === 'back' ? p.z - p.d / 2 + D : side === 'front' ? D - p.z - p.d / 2 : side === 'left' ? p.x - p.w / 2 + W : W - p.x - p.w / 2;
+    if (off > .5) continue;
+    const [a, b] = across ? [p.x - p.w / 2, p.x + p.w / 2] : [p.z - p.d / 2, p.z + p.d / 2];
+    cut(a - .05, b + .05);
+  }
+  // (Nor across another wall piece at about the same height.)
+  for (const u of used) if (u.side === side && Math.abs(u.y - y) < 1.1) cut(u.along - u.len / 2 - .1, u.along + u.len / 2 + .1);
+  let best = null;
+  for (const [a, b] of runs) {
+    if (b - a < len) continue;
+    const c = Math.max(a + len / 2, Math.min(b - len / 2, prefer));
+    if (!best || Math.abs(c - prefer) < Math.abs(best.along - prefer)) best = { side, along: c, len, y };
+  }
+  return best;
+}
+// A group on a wall's inner face at `along`: its x runs along the wall (left
+// to right as seen from the room), z out into the room, y up from the floor.
+function wallGroup({ f, g }, { side, along }) {
+  const w = new THREE.Group(), { W, D } = f;
+  if (side === 'back') { w.position.set(along, 0, -D); }
+  else if (side === 'front') { w.position.set(along, 0, D); w.rotation.y = PI; }
+  else if (side === 'left') { w.position.set(-W, 0, along); w.rotation.y = PI / 2; }
+  else { w.position.set(W, 0, along); w.rotation.y = -PI / 2; }
+  g.add(w); return w;
+}
+
+// A peg rail with things hung on it. Kinds: cloak, hat, cap, bonnet, skein,
+// frock, coat, skillet, ladle, gridiron, corn, lantern.
+function pegRail(ctx, at, things) {
+  const { view } = ctx, w = wallGroup(ctx, at), y = at.y, bx = (x, yy, z, a, b, c, k) => view.box(x, yy, z, a, b, c, k, w);
+  bx(0, y, .03, at.len, .09, .05, C.dark);
+  const n = things.length, step = at.len / n;
+  things.forEach((kind, i) => {
+    const x = -at.len / 2 + step * (i + .5);
+    bx(x, y + .01, .09, .03, .03, .1, C.dark);
+    if (kind === 'cloak') {
+      // A cloak still on its peg: the hood, the fall of cloth to the knee.
+      bx(x, y - .1, .08, .26, .2, .12, C.russet); bx(x, y - .62, .1, .5, .86, .06, C.russet);
+      bx(x - .12, y - .62, .13, .12, .84, .03, C.black).rotation.z = .04; bx(x + .14, y - .7, .12, .1, .7, .03, C.black).rotation.z = -.05;
+    } else if (kind === 'hat') {
+      bx(x, y - .12, .12, .34, .03, .2, C.black); bx(x, y - .05, .11, .2, .14, .16, C.black);
+    } else if (kind === 'cap') {
+      bx(x, y - .14, .1, .2, .24, .08, C.linen); bx(x, y - .28, .1, .24, .05, .09, C.wool);
+    } else if (kind === 'bonnet') {
+      bx(x, y - .16, .11, .28, .26, .12, C.straw); bx(x, y - .34, .11, .05, .22, .02, C.cloth);
+    } else if (kind === 'skein') {
+      const s = view.mesh(new THREE.TorusGeometry(.12, .035, 3, 10), (i % 2) ? C.wool : C.madder, x, y - .16, .1, w); s.scale.set(.6, 1.2, 1);
+    } else if (kind === 'frock') {
+      bx(x, y - .3, .08, .28, .5, .05, i % 2 ? C.indigo : C.linen); bx(x, y - .1, .08, .34, .08, .05, C.linen);
+    } else if (kind === 'coat') {
+      bx(x, y - .3, .08, .3, .52, .06, C.cloth); bx(x, y - .12, .08, .4, .08, .06, C.cloth);
+    } else if (kind === 'skillet') {
+      const pan = view.cylinder(x, y - .3, .06, .14, .04, C.iron, w, 8); pan.rotation.x = PI / 2; bx(x, y - .08, .06, .03, .24, .02, C.iron);
+    } else if (kind === 'ladle') {
+      bx(x, y - .2, .06, .025, .4, .02, C.pewter); view.cylinder(x, y - .42, .08, .06, .04, C.pewter, w, 6, .04);
+    } else if (kind === 'gridiron') {
+      for (let k = 0; k < 4; k++) bx(x - .09 + k * .06, y - .28, .06, .015, .34, .015, C.iron); bx(x, y - .12, .06, .24, .02, .02, C.iron); bx(x, y - .44, .06, .24, .02, .02, C.iron);
+    } else if (kind === 'corn') {
+      // Seed corn braided by its husks.
+      for (let k = 0; k < 4; k++) { const ear = view.cylinder(x + (k % 2 - .5) * .09, y - .2 - k * .12, .1, .035, .2, k % 2 ? C.corn : C.redware, w, 6, .025); ear.rotation.z = (k % 2 - .5) * .5; }
+      bx(x, y - .08, .1, .12, .1, .05, C.straw);
+    } else if (kind === 'lantern') {
+      const l = new THREE.Group(); l.position.set(x, y - .52, .12); w.add(l); lantern(view, l, false);
+    }
+  });
+}
+// A shelf of crocks and jugs (a nursery's: the porringer, a horn cup, a rattle).
+function crockShelf(ctx, at, small) {
+  const { view } = ctx, w = wallGroup(ctx, at), y = at.y, bx = (x, yy, z, a, b, c, k) => view.box(x, yy, z, a, b, c, k, w), cy = (x, yy, z, r, h, k, seg = 8, top = r) => view.cylinder(x, yy, z, r, h, k, w, seg, top);
+  bx(0, y, .12, at.len, .04, .24, C.worn);
+  for (const x of [-1, 1]) { const br = bx(x * (at.len / 2 - .12), y - .1, .1, .04, .2, .1, C.dark); br.rotation.x = .5; }
+  const n = Math.max(2, Math.floor(at.len / .26));
+  for (let i = 0; i < n; i++) {
+    const x = -at.len / 2 + .18 + i * (at.len - .36) / Math.max(1, n - 1);
+    if (small) {
+      if (i % 3 === 0) { cy(x, y + .05, .12, .09, .05, C.pewter, 8, .1); bx(x + .11, y + .065, .12, .06, .012, .03, C.pewter); }
+      else if (i % 3 === 1) { const horn = view.mesh(new THREE.ConeGeometry(.045, .13, 6), C.bone, x, y + .09, .12, w); horn.rotation.x = PI; }
+      else { cy(x, y + .04, .12, .015, .08, C.worn, 5); view.mesh(new THREE.DodecahedronGeometry(.045), C.worn, x, y + .1, .12, w); }
+    } else {
+      const k = i % 3, colour = k === 1 ? C.redware : C.crock;
+      cy(x, y + .1 + k * .02, .12, .08 - k * .01, .18 + k * .04, colour, 8, .065 - k * .01);
+      cy(x, y + .2 + k * .04, .12, .05, .03, C.linen, 6);
+    }
+  }
+}
+// The pewter plates stood on a plate shelf, tankards between them.
+function plateShelf(ctx, at) {
+  const { view } = ctx, w = wallGroup(ctx, at), y = at.y, bx = (x, yy, z, a, b, c, k) => view.box(x, yy, z, a, b, c, k, w), cy = (x, yy, z, r, h, k, seg = 8, top = r) => view.cylinder(x, yy, z, r, h, k, w, seg, top);
+  for (const yy of [y, y + .42]) { bx(0, yy, .1, at.len, .035, .2, C.worn); bx(0, yy + .05, .19, at.len, .03, .015, C.dark); }
+  const n = Math.max(3, Math.floor(at.len / .3));
+  for (let i = 0; i < n; i++) {
+    const x = -at.len / 2 + .2 + i * (at.len - .4) / (n - 1);
+    const pl = cy(x, y + .16, .07, .13, .02, C.pewter, 10); pl.rotation.x = PI / 2 - .25;
+    if (i % 2) cy(x + .15, y + .48, .1, .05, .11, C.pewter, 8); else { const pl2 = cy(x, y + .56, .07, .1, .02, C.pewter, 10); pl2.rotation.x = PI / 2 - .25; }
+  }
+}
+// The looking-glass on the wall with a linen cloth hung over it.
+function coveredGlass(ctx, at) {
+  const { view } = ctx, w = wallGroup(ctx, at), y = at.y, bx = (x, yy, z, a, b, c, k) => view.box(x, yy, z, a, b, c, k, w);
+  bx(0, y + .45, .025, .56, .92, .04, C.dark);
+  bx(0, y + .92, .05, .66, .05, .08, C.dark);
+  // The cloth: over the top, down the face, longer on one side, a fold.
+  bx(.02, y + .48, .07, .64, .96, .02, C.linen); bx(-.26, y + .08, .075, .16, .32, .02, C.linen).rotation.z = .1;
+  bx(.1, y + .5, .085, .05, .8, .01, C.wool).rotation.z = .04;
+}
+// A beam across the room over the table (walls to wall) with herbs hung to
+// dry in bunches, strings of dried apple rings and a braid of onions.
+function herbBeam(ctx, x0, z0) {
+  const { view, g, f } = ctx, { D } = f, y = 2.25, bx = (x, yy, z, a, b, c, k) => view.box(x, yy, z, a, b, c, k, g);
+  bx(x0, y, 0, .16, .14, 2 * D, C.dark);
+  for (let i = 0; i < 9; i++) {
+    const z = z0 - 1.35 + i * .34, kind = i % 3;
+    bx(x0, y - .12, z, .01, .1, .01, C.straw);
+    if (kind === 0) { const bunch = view.mesh(new THREE.ConeGeometry(.12, .36, 5), i % 2 ? C.herbPale : C.herb, x0, y - .32, z, g); bunch.rotation.z = PI; }
+    else if (kind === 1) for (let k = 0; k < 5; k++) view.cylinder(x0, y - .18 - k * .07, z, .055, .025, k % 2 ? C.meal : C.straw, g, 6);
+    else { for (let k = 0; k < 3; k++) view.mesh(new THREE.DodecahedronGeometry(.05), C.straw, x0 + (k % 2 - .5) * .04, y - .2 - k * .08, z, g); }
+  }
+}
+// The warping board: a frame of pegs with the warp yarn wound across it.
+function warpingBoard(ctx, at) {
+  const { view } = ctx, w = wallGroup(ctx, at), y = at.y, L = at.len, H = .85, bx = (x, yy, z, a, b, c, k) => view.box(x, yy, z, a, b, c, k, w);
+  for (const x of [-1, 1]) bx(x * (L / 2 - .04), y + H / 2, .04, .06, H, .05, C.dark);
+  for (const yy of [0, H]) bx(0, y + yy, .04, L, .06, .05, C.dark);
+  for (let k = 0; k < 4; k++) for (const x of [-1, 1]) bx(x * (L / 2 - .04), y + .15 + k * .2, .09, .03, .03, .08, C.dark);
+  for (let k = 0; k < 4; k++) { const run = bx(0, y + .15 + k * .2 + .1, .1, L - .1, .015, .015, C.madder); run.rotation.z = (k % 2 ? -1 : 1) * .2 / (L / 2); }
+  for (let k = 0; k < 3; k++) { const run = bx(0, y + .25 + k * .2, .105, L - .1, .012, .012, C.wool); run.rotation.z = (k % 2 ? 1 : -1) * .2 / (L / 2); }
+}
+// A beam over the butchering table with two iron hooks.
+function meatHooks({ view, g, f }, table) {
+  const y = 2.1, bx = (x, yy, z, a, b, c, k) => view.box(x, yy, z, a, b, c, k, g);
+  const x0 = Math.max(-f.W, table.x - table.w / 2 - .2), x1 = Math.min(f.W, table.x + table.w / 2 + .2);
+  bx((x0 + x1) / 2, y, table.z, x1 - x0, .14, .14, C.dark);
+  for (const dx of [-.4, .35]) { bx(table.x + dx, y - .2, table.z, .012, .3, .012, C.iron); view.mesh(new THREE.TorusGeometry(.06, .012, 3, 8, PI * 1.4), C.iron, table.x + dx, y - .4, table.z, g).rotation.z = PI * .8; }
+}
+// A shut plank door on the inside of a wall, barred across in iron brackets.
+function barredDoorSpot(f, pieces) {
+  for (const side of ['back', 'left', 'right', 'front']) {
+    if (f.doors.some(d => d.side === side)) continue;
+    const at = wallSpot(f, pieces, side, .05, 1.3, 0);
+    if (at) return at;
+  }
+  return null;
+}
+function barredDoor(ctx, at) {
+  const { view } = ctx, w = wallGroup(ctx, at), bx = (x, yy, z, a, b, c, k) => view.box(x, yy, z, a, b, c, k, w);
+  for (let k = 0; k < 4; k++) bx(-.36 + k * .24, 1.0, .02, .23, 2.0, .04, k % 2 ? '#5a4a3a' : '#46392d');
+  for (const y of [.35, 1.65]) bx(0, y, .05, .96, .12, .03, '#46392d');
+  bx(0, 2.07, .03, 1.2, .14, .06, C.dark); for (const x of [-1, 1]) bx(x * .55, 1.0, .03, .1, 2.1, .06, C.dark);
+  for (const y of [.5, 1.5]) bx(-.3, y, .075, .5, .05, .02, C.iron);
+  // The bar in its brackets.
+  for (const x of [-.62, .62]) { bx(x, 1.05, .08, .08, .2, .12, C.iron); }
+  bx(0, 1.12, .12, 1.5, .14, .1, C.worn);
+}
+function lintelMark(ctx, door) {
+  const { view, f } = ctx, top = Math.min(2.15, f.height + .05 - .3), at = { side: door.side, along: door.offset };
+  const w = wallGroup(ctx, at), bx = (x, yy, z, a, b, c, k) => view.box(x, yy, z, a, b, c, k, w);
+  // The lintel beam inside the doorway's head, and on it a daisy wheel
+  // burnt in with a candle's flame (a mark against what might come in).
+  bx(0, top + .16, .05, door.width + .5, .3, .08, C.dark);
+  const y = top + .16, disc = view.cylinder(0, y, .095, .15, .01, C.soot, w, 12); disc.rotation.x = PI / 2;
+  view.mesh(new THREE.TorusGeometry(.1, .008, 3, 14), C.black, 0, y, .1, w);
+  for (let k = 0; k < 6; k++) { const a = k * PI / 3, petal = bx(Math.sin(a) * .05, y + Math.cos(a) * .05, .1, .018, .1, .006, C.black); petal.rotation.z = -a; }
+}
+// A line of salt poured across the inside of a threshold.
+function saltLine(ctx, door) {
+  const { f, view, g, rand } = ctx, { W, D } = f, n = 7, span = door.width - .2;
+  for (let k = 0; k < n; k++) {
+    const t = -span / 2 + (k + .5) * span / n, inset = .22 + (rand() - .5) * .04, thick = .06 + rand() * .03;
+    const [x, z, rot] = door.side === 'front' ? [door.offset + t, D - inset, 0] : door.side === 'back' ? [door.offset + t, -D + inset, 0] : door.side === 'left' ? [-W + inset, door.offset + t, PI / 2] : [W - inset, door.offset + t, PI / 2];
+    const s = view.box(x, FLOOR + .006, z, span / n + .03, .012, thick, C.salt, g); s.rotation.y = rot + (rand() - .5) * .06;
+  }
+}
+// Meal spilled from the trough, and bare footprints in it walking to the
+// hearth; they stop at the ashes.
+function footprints(ctx, by, mouthZ, clear) {
+  const { view, g, f } = ctx, side = by && by.x < 0 ? -1 : 1;
+  let sx = side * Math.min(2.6, f.W - 1.2), sz = Math.min(f.D - 1.5, mouthZ + 1.2);
+  if (by && clear(by.x - side * (by.w / 2 + .5), by.z + .3, .3)) { sx = by.x - side * (by.w / 2 + .5); sz = by.z + .3; }
+  const spill = flat(view, sx, FLOOR + .003, sz, .7, .5, C.flour, g); spill.rotation.y = .4;
+  flat(view, sx + .2, FLOOR + .004, sz + .25, .3, .2, C.flour, g).rotation.y = 1.1;
+  const ex = 0, ez = mouthZ + .35, n = 7, dx = ex - sx, dz = ez - sz, yaw = Math.atan2(dx, dz);
+  for (let i = 1; i <= n; i++) {
+    const t = i / (n + .3), lr = i % 2 ? 1 : -1, px = sx + dx * t + Math.cos(yaw) * lr * .09, pz = sz + dz * t - Math.sin(yaw) * lr * .09;
+    const foot = new THREE.Group(); foot.position.set(px, FLOOR + .004, pz); foot.rotation.y = yaw; g.add(foot);
+    const fade = i > n - 2 ? C.meal : C.flour;
+    flat(view, 0, 0, -.03, .085, .16, fade, foot); flat(view, 0, 0, .075, .07, .06, fade, foot);
+    for (let k = 0; k < 4; k++) flat(view, -.03 + k * .02, 0, .13 - Math.abs(k - 1.5) * .008, .016, .022, fade, foot);
+  }
+}
+// A jug fallen and broken: redware shards and a pale plate in pieces.
+function shards({ view, g, rand }, x, z) {
+  for (let i = 0; i < 9; i++) {
+    const a = rand() * PI * 2, r = .05 + rand() * .3, big = i < 3;
+    const s = view.box(x + Math.cos(a) * r, FLOOR + .012, z + Math.sin(a) * r * .7, big ? .14 : .07, .02, big ? .09 : .05, i % 3 ? C.redware : C.linen, g);
+    s.rotation.y = rand() * PI; s.rotation.z = (rand() - .5) * .3;
+  }
+  const handle = view.mesh(new THREE.TorusGeometry(.05, .014, 3, 8, PI), C.redware, x + .18, FLOOR + .02, z - .05, g); handle.rotation.x = -PI / 2;
+}
+// A bucket kicked over, the slops run out across the boards.
+function slopBucket({ view, g }, x, z, yaw) {
+  const b = new THREE.Group(); b.position.set(x, FLOOR, z); b.rotation.y = yaw; g.add(b);
+  const pail = view.cylinder(0, .16, 0, .15, .32, C.wood, b, 8, .17); pail.rotation.z = PI / 2;
+  view.cylinder(-.06, .16, 0, .175, .03, C.iron, b, 8).rotation.z = PI / 2;
+  const handle = view.mesh(new THREE.TorusGeometry(.16, .01, 3, 8, PI), C.iron, .05, .16, 0, b); handle.rotation.y = PI / 2;
+  flat(view, .45, .004, .02, .6, .42, C.grime, b).rotation.y = .3;
+  flat(view, .78, .005, -.08, .3, .2, C.grime, b).rotation.y = -.4;
+}
+// A rag poppet lying face down, arms out.
+function poppet({ view, g }, x, z, yaw) {
+  const p = new THREE.Group(); p.position.set(x, FLOOR, z); p.rotation.y = yaw; p.scale.setScalar(1.35); g.add(p);
+  const bx = (xx, y, zz, a, b, c, k) => view.box(xx, y, zz, a, b, c, k, p);
+  bx(0, .03, 0, .14, .06, .2, C.cloth);            // the body in a faded frock
+  bx(0, .035, .16, .12, .07, .11, C.linen);        // the head, face down
+  bx(0, .07, .17, .13, .02, .1, C.dark);           // yarn hair
+  for (const s of [-1, 1]) { bx(s * .12, .025, .05, .13, .04, .045, C.linen).rotation.y = s * .35; bx(s * .05, .02, -.17, .05, .035, .15, C.linen).rotation.y = s * .15; }
+}
+// Little shoes in pairs by the door, set straight against the wall.
+function littleShoes({ view, g, f }, door, clear) {
+  const { W, D } = f, sides = { front: [0, 1], back: [0, -1], left: [-1, 0], right: [1, 0] }[door.side];
+  for (const dir of [1, -1]) {
+    const t0 = door.offset + dir * (door.width / 2 + .35);
+    const at = k => { const t = t0 + dir * k * .24; return sides[0] ? [sides[0] * (W - .2), t] : [t, sides[1] * (D - .2)]; };
+    if (![0, 1, 2].every(k => clear(...at(k), .12))) continue;
+    for (let k = 0; k < 3; k++) { const [x, z] = at(k); shoes({ view, box: (...a) => view.box(...a) }, g, x, z, sides[0] ? PI / 2 : 0, .55 + k * .08); }
+    return;
+  }
+}
+// Children's marks scratched low on a wall: tallies and a crooked row.
+function childMarks(ctx, at) {
+  const { view } = ctx, w = wallGroup(ctx, at), y = at.y, bx = (x, yy, z, a, b, c, k) => view.box(x, yy, z, a, b, c, k, w);
+  let x = -at.len / 2 + .1;
+  for (let grp = 0; grp < 4; grp++) {
+    for (let k = 0; k < 4; k++) bx(x + k * .035, y + (grp % 2) * .06, .006, .01, .12, .004, C.wool);
+    bx(x + .05, y + (grp % 2) * .06, .007, .16, .01, .004, C.wool).rotation.z = .5;
+    x += .24;
+  }
+  for (let k = 0; k < 6; k++) bx(-at.len / 2 + .12 + k * .17, y - .2 + (k % 2) * .03, .006, .08, .01, .004, C.wool).rotation.z = (k % 3 - 1) * .6;
+}
+// A chair with a skein of yarn wound round its back, as a swift.
+function skeinChair({ view, g }, x, z, yaw) {
+  const c = new THREE.Group(); c.position.set(x, 0, z); c.rotation.y = yaw; g.add(c); chair(view, c, C.wood);
+  const skein = view.mesh(new THREE.TorusGeometry(.22, .035, 3, 12), C.wool, 0, .85, -.19, c); skein.scale.set(1, .55, 1);
+  view.box(.12, .47, .05, .3, .012, .012, C.wool, c).rotation.y = .5;
+}
+// Buckled shoes set side by side (scale: 1 a man's, less a child's).
+function shoes({ view }, g, x, z, yaw, k) {
+  const pair = new THREE.Group(); pair.position.set(x, FLOOR, z); pair.rotation.y = yaw; pair.scale.setScalar(k); g.add(pair);
+  for (const sx of [-.08, .08]) { view.box(sx, .04, 0, .1, .08, .28, C.black, pair); view.box(sx, .085, -.03, .08, .015, .06, C.pewter, pair); view.box(sx, .05, .12, .08, .06, .06, C.black, pair); }
+}
+function broom({ view }, g, x, z, yaw) {
+  const s = view.box(x, .1, z, 1.2, .03, .03, C.worn, g); s.rotation.y = yaw;
+  view.box(x + Math.cos(-yaw) * .6, .1, z + Math.sin(-yaw) * .6, .12, .06, .28, C.straw, g).rotation.y = yaw;
+}
+// Scratches in the boards before the hearth, as if something was dragged, or clawed.
+function scratches({ view, g, rand }, pieces, clear) {
+  const hearth = pieces.find(p => p.kind === 'chimney');
+  if (hearth) for (let i = 0; i < 5; i++) {
+    const x = hearth.x - .5 + i * .22 + (rand() - .5) * .05, z = hearth.z + hearth.d / 2 + .35 + rand() * .12;
+    if (clear(x, z, .15)) view.box(x, .082, z, .012, .003, .3 + rand() * .15, C.black, g).rotation.y = .12 + (rand() - .5) * .1;
+  }
+}
+
 // --- the pieces ------------------------------------------------------------
 // Each draws in its own frame: L along x, T along z, the back at -T/2
 // (against the wall), the front (+z) facing into the room.
@@ -553,26 +1121,59 @@ function plate(ctx, s, x, y, z, food) {
   if (food) for (let i = 0; i < 3; i++) ctx.view.mesh(new THREE.DodecahedronGeometry(.045 + i * .01), i ? C.rot : C.mould, x - .04 + i * .04, y + .04, z + (i % 2) * .03, s).scale.y = .5;
 }
 
+// A door left ajar on its hinge at hx (its free edge toward -x), swung out
+// no further than `reach` in front of its case.
+function ajar(view, s, hx, y, z, width, height, reach, colour) {
+  const h = new THREE.Group(); h.position.set(hx, 0, z); h.rotation.y = Math.min(.5, Math.asin(Math.max(0, Math.min(1, reach / width)))); s.add(h);
+  view.box(-width / 2, y, .01, width, height, .02, colour, h);
+}
+// A chair knocked over (on its side, or on its back), lying on the boards
+// with its middle at (x, z).
+function fallenChair(view, parent, x, z, yaw, onSide) {
+  const inner = new THREE.Group(); chair(view, inner, C.wood);
+  if (onSide) inner.rotation.set(0, 0, PI / 2 - .06); else inner.rotation.set(-PI / 2 + .1, 0, 0);
+  inner.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(inner), c = box.getCenter(new THREE.Vector3());
+  inner.position.set(-c.x, FLOOR - box.min.y, -c.z);
+  const outer = new THREE.Group(); outer.position.set(x, 0, z); outer.rotation.y = yaw; outer.add(inner); parent.add(outer);
+  return outer;
+}
+// A rope bed centred at z0: posts, rails, the rope lattice; the tick, the
+// bolster and a quilt thrown back, or (stripped) the bare ropes and a sheet
+// folded at the foot.
+function ropeBed(bx, L, T, z0, rand, stripped) {
+  for (const x of [-1, 1]) for (const z of [-1, 1]) bx(x * (L / 2 - .05), .32, z0 + z * (T / 2 - .05), .09, .64, .09, C.dark);
+  for (const z of [-1, 1]) bx(0, .34, z0 + z * (T / 2 - .05), L - .1, .08, .06, C.wood);
+  for (const x of [-1, 1]) bx(x * (L / 2 - .05), .34, z0, .06, .08, T - .1, C.wood);
+  const n = stripped ? 9 : 6, m = stripped ? 6 : 4;
+  for (let i = 0; i < n; i++) bx(-L / 2 + .2 + i * (L - .4) / (n - 1), .36, z0, stripped ? .025 : .015, .015, T - .15, C.straw);
+  for (let i = 0; i < m; i++) bx(0, .362, z0 - T / 2 + .2 + i * (T - .4) / (m - 1), L - .15, .015, stripped ? .025 : .015, C.straw);
+  if (stripped) { bx(L / 2 - .32, .4, z0, .34, .07, T * .45, C.linen); return; }
+  bx(-.15, .45, z0 - .1, L - .6, .12, T - .4, C.linen);
+  bx(-L / 2 + .3, .55, z0, .35, .1, T - .5, C.wool);
+  const quilt = bx(.3, .5, z0 + .18, L * .5, .05, T * .5, C.cloth); quilt.rotation.x = -.2; quilt.rotation.y = (rand() - .5) * .2;
+}
+
 const MODELS = {
   chimney(ctx) { hearthModel(ctx, true); },
   hearth(ctx) { hearthModel(ctx, false); },
 
   trestle(ctx) { trestleModel(ctx); },
 
-  litTable({ bx, cy, L, T, s, view }) {
-    // A place laid for one: the plate of food gone to mould, a cup, a knife,
-    // the candle burnt to a stub, the chair shoved back. The other chair lies
-    // on its back beside the table, as if someone stood up all at once.
-    const tw = L - .35, td = T - .5;
-    bx(0, .76, -.15, tw, .05, td, C.worn);
-    for (const x of [-1, 1]) for (const z of [-1, 1]) bx(x * (tw / 2 - .07), .38, -.15 + z * (td / 2 - .07), .06, .74, .06, C.dark);
-    bx(0, .79, -.05, .55, .01, .4, C.linen);
-    plate({ view }, s, 0, .79, 0, true);
-    cy(.3, .845, -.05, .045, .11, C.pewter);
-    bx(-.22, .8, .02, .18, .01, .025, C.iron);
-    candlestick({ view }, s, -.3, .785, -.35, .12);
-    const c = new THREE.Group(); c.position.set(.05, 0, T / 2 - .25); c.rotation.y = PI + .35; s.add(c); chair(view, c, C.wood);
-    const down = new THREE.Group(); down.position.set(L / 2 + .35, .23, -.2); down.rotation.set(-PI / 2 + .1, .5, 0); s.add(down); chair(view, down, C.wood);
+  litTable({ bx, cy, L, T, s, view, open }) {
+    // A place laid for one (the watchers' supper): the plate of food gone to
+    // mould, a cup, a knife, the candle burnt to a stub. The chair lies
+    // knocked over in front of the table, as if someone stood up all at once
+    // (on the room side of the table's own footprint, resting on the boards).
+    const tw = Math.min(1.0, L - .3), td = .62, tz = -T / 2 + td / 2 + .04;
+    bx(0, .76, tz, tw, .05, td, C.worn);
+    for (const x of [-1, 1]) for (const z of [-1, 1]) bx(x * (tw / 2 - .07), .38, tz + z * (td / 2 - .07), .06, .74, .06, C.dark);
+    bx(0, .79, tz, .55, .01, .4, C.linen);
+    plate({ view }, s, 0, .79, tz + .05, true);
+    cy(.3, .845, tz, .045, .11, C.pewter);
+    bx(-.22, .8, tz + .07, .18, .01, .025, C.iron);
+    candlestick({ view }, s, -.3, .785, tz - .2, .12);
+    fallenChair(view, s, open * .05, T / 2 - .26, open > 0 ? .1 : PI - .1, true);
   },
 
   tableSet({ bx, cy, L, T, s, view, rand }) {
@@ -583,17 +1184,9 @@ const MODELS = {
     candlestick({ view }, s, .25, .785, -.15, .3);
   },
 
-  bed({ bx, L, T, rand }) {
-    // A rope bed: low posts, the rope lattice showing where the tick has slid off.
-    for (const x of [-1, 1]) for (const z of [-1, 1]) bx(x * (L / 2 - .05), .32, z * (T / 2 - .05), .09, .64, .09, C.dark);
-    for (const z of [-1, 1]) bx(0, .34, z * (T / 2 - .05), L - .1, .08, .06, C.wood);
-    for (const x of [-1, 1]) bx(x * (L / 2 - .05), .34, 0, .06, .08, T - .1, C.wood);
-    for (let i = 0; i < 6; i++) bx(-L / 2 + .2 + i * (L - .4) / 5, .36, 0, .015, .015, T - .15, C.straw);
-    for (let i = 0; i < 4; i++) bx(0, .36, -T / 2 + .25 + i * (T - .5) / 3, L - .15, .015, .015, C.straw);
-    bx(-.15, .45, -.1, L - .6, .12, T - .4, C.linen);
-    bx(-L / 2 + .3, .55, 0, .35, .1, T - .5, C.wool);
-    const quilt = bx(.3, .5, .35, L * .55, .05, T * .6, C.cloth); quilt.rotation.x = -.35; quilt.rotation.y = rand() * .3;
-  },
+  // A rope bed: low posts, the rope lattice showing where the tick has slid
+  // off (`stripped`: the deathbed, its tick burnt, the bare ropes).
+  bed({ bx, L, T, rand, p }) { ropeBed(bx, L, T, 0, rand, p.stripped); },
 
   chest({ bx, L, T }) {
     bx(0, .28, 0, L, .5, T, C.dark);
@@ -603,23 +1196,32 @@ const MODELS = {
     bx(.15, .53, .1, .5, .06, .3, C.cloth).rotation.z = .2;
   },
 
+  // (s5-interiors: the case stands at the back of its footprint, so the door
+  // left ajar swings out inside it: nothing drawn where a body walks.)
   dresser({ bx, cy, L, T, view, s }) {
-    bx(0, .45, 0, L, .9, T, C.wood);
-    bx(0, .92, 0, L + .05, .04, T + .04, C.worn);
+    const body = Math.min(.45, T - .12), fz = -T / 2 + body, door = Math.min(.6, L / 2 - .12);
+    bx(0, .45, -T / 2 + body / 2, L, .9, body, C.wood);
+    bx(0, .92, -T / 2 + body / 2 + .02, L + .04, .04, body + .04, C.worn);
     bx(0, 1.4, -T / 2 + .1, L, .96, .2, C.dark);
     for (const y of [1.25, 1.6]) bx(0, y, -T / 2 + .19, L - .08, .03, .18, C.worn);
     for (let i = 0; i < 4; i++) { const pl = cy(-L / 2 + .3 + i * .32, 1.36, -T / 2 + .18, .12, .02, C.pewter, 10); pl.rotation.x = PI / 2 - .2; }
     for (let i = 0; i < 3; i++) cy(-L / 2 + .35 + i * .45, 1.68, -T / 2 + .2, .05, .12, i === 1 ? C.linen : C.pewter);
-    for (const x of [-.35, .35]) bx(x, .45, T / 2 + .005, .6, .7, .02, C.dark);
-    const door = bx(.35 + .05, .45, T / 2 + .2, .6, .7, .02, C.dark); door.rotation.y = -1.1; door.position.x = .67;
+    bx(-L / 4, .45, fz + .01, door, .7, .02, C.dark);
+    bx(L / 4, .45, fz - .005, door - .04, .66, .01, C.soot);
+    ajar(view, s, L / 4 + door / 2, .45, fz + .01, door, .7, T / 2 - fz - .02, C.dark);
   },
 
-  cupboard({ bx, L, T }) {
-    bx(0, .95, 0, L, 1.9, T, C.dark);
-    bx(0, 1.92, 0, L + .06, .06, T + .06, C.wood);
-    bx(-L / 4, .95, T / 2 + .01, L / 2 - .06, 1.6, .02, C.wood);
-    const door = bx(L / 2 - .02, .95, T / 2 + .25, .02, 1.6, .5, C.wood); door.rotation.y = .5;
-    bx(L / 4 - .1, 1.3, 0, .2, .2, .2, C.pewter);
+  cupboard({ bx, L, T, s, view, p, cy }) {
+    const body = Math.min(.45, T - .12), bz = -T / 2 + body / 2, fz = -T / 2 + body, door = L / 2 - .06;
+    bx(0, .95, bz, L, 1.9, body, C.dark);
+    bx(0, 1.92, bz, L + .06, .06, body + .06, C.wood);
+    bx(-L / 4, .95, fz + .01, door, 1.6, .02, C.wood);
+    bx(L / 4, .95, fz - .005, door - .04, 1.56, .01, C.soot);
+    for (const y of [.6, 1.25]) bx(L / 4, y, fz - .1, door - .06, .03, .18, C.worn);
+    bx(L / 4 - .08, 1.36, fz - .1, .18, .2, .16, C.pewter);
+    ajar(view, s, L / 2 - .03, .95, fz + .01, door, 1.6, T / 2 - fz - .02, C.wood);
+    // (A court cupboard: its pewter set out on top.)
+    if (p.court) for (let i = 0; i < 3; i++) { const pl = cy(-L / 2 + .3 + i * .45, 2.08, bz, .13, .02, C.pewter, 10); pl.rotation.x = PI / 2 - .3; }
   },
 
   spinningWheel({ bx, cy, L, T, s, view }) {
@@ -637,13 +1239,18 @@ const MODELS = {
     bx(-.2, .07, .12, .35, .025, .08, C.worn);
   },
 
-  cradle({ bx, L, T, view, s }) {
-    for (const z of [-1, 1]) { const rocker = view.mesh(new THREE.TorusGeometry(.35, .025, 4, 8, PI * .6), C.dark, 0, .38, z * (T / 2 - .06), s); rocker.rotation.z = PI + PI * .2; }
-    bx(0, .32, 0, L - .15, .05, T - .1, C.wood);
-    for (const z of [-1, 1]) bx(0, .44, z * (T / 2 - .05), L - .15, .25, .03, C.wood);
-    bx(-L / 2 + .09, .5, 0, .03, .38, T - .1, C.wood);
-    bx(L / 2 - .09, .42, 0, .03, .22, T - .1, C.wood);
-    bx(-.1, .37, 0, .45, .04, T - .2, C.linen);
+  // The cradle, left rocked over to one side on its rockers, as if a hand had
+  // only just let go of it; the little quilt half out over its side.
+  cradle({ L, T, view, s }) {
+    const c = new THREE.Group(); c.position.y = FLOOR; c.rotation.x = .15; s.add(c);
+    const b = (x, y, z, w, h, d, k) => view.box(x, y, z, w, h, d, k, c), cw = T - .18;
+    for (const x of [-1, 1]) { const rocker = view.mesh(new THREE.TorusGeometry(.4, .025, 3, 8, PI / 2), C.dark, x * (L / 2 - .14), .425, 0, c); rocker.rotation.set(0, PI / 2, -3 * PI / 4); }
+    b(0, .22, 0, L - .15, .05, cw, C.pale);
+    for (const z of [-1, 1]) b(0, .34, z * (cw / 2 - .015), L - .15, .25, .03, C.pale);
+    b(-L / 2 + .09, .42, 0, .03, .42, cw, C.pale); b(-L / 2 + .2, .62, 0, .24, .03, cw, C.worn);
+    b(L / 2 - .09, .32, 0, .03, .22, cw, C.pale);
+    b(-.05, .27, 0, L - .45, .05, cw - .06, C.linen); b(-L / 2 + .3, .31, 0, .2, .06, cw - .14, C.wool);
+    const quilt = b(.1, .33, cw / 2 - .02, .4, .025, .26, C.cloth); quilt.rotation.x = .9;
   },
 
   settle({ bx, L, T }) {
@@ -814,9 +1421,11 @@ const MODELS = {
   },
 
   sacks({ view, s, L, T }) {
+    // (A short heap, the farm's, keeps its sacks inside its own footprint.)
+    const short = L < 1.3, step = short ? (L - .66) / 2 : .42;
     for (let i = 0; i < 5; i++) {
-      const sack = view.mesh(new THREE.CylinderGeometry(.24, .28, .62, 7), i === 4 ? C.linen : C.meal, -L / 2 + .3 + (i % 3) * .42, i < 3 ? .3 : .75, (i < 3 ? -.12 : .05) + (i % 2) * .15, s);
-      sack.rotation.z = PI / 2; sack.rotation.y = i * .4; sack.scale.x = .8;
+      const sack = view.mesh(new THREE.CylinderGeometry(.24, .28, .62, 7), i === 4 ? C.linen : C.meal, -L / 2 + (short ? .33 : .3) + (i % 3) * step, i < 3 ? .3 : .75, (i < 3 ? -.12 : .05) + (i % 2) * (short ? .1 : .15), s);
+      sack.rotation.z = PI / 2; sack.rotation.y = short ? (i % 3 - 1) * .12 : i * .4; sack.scale.x = .8;
     }
   },
 
@@ -869,7 +1478,8 @@ const MODELS = {
     bx(0, .75, 0, L - .45, .35, .8, C.black);
     bx(0, 1.0, -.25, L - .45, .4, .1, C.black);
     const hood = view.mesh(new THREE.CylinderGeometry(.5, .5, L - .5, 8, 1, true, 0, PI), C.leather, 0, 1.05, -.1, s); hood.rotation.z = PI / 2;
-    for (const x of [-.35, .35]) { const shaft = bx(x, .35, T / 2 + .1, .05, .05, 1.0, C.worn); shaft.rotation.x = .6; }
+    // (The shafts rest on the floor inside the chaise's own footprint.)
+    for (const x of [-.35, .35]) { const shaft = bx(x, .35, T / 2 - .43, .05, .05, 1.0, C.worn); shaft.rotation.x = .6; }
   },
 
   woodpile({ bx, cy, L, T, s }) {
@@ -885,9 +1495,9 @@ const MODELS = {
   sawbuck({ bx, cy, L, T, s }) {
     for (const x of [-1, 1]) for (const r of [-.5, .5]) { const leg = bx(x * (L / 2 - .15), .45, 0, .05, 1.0, .05, C.dark); leg.rotation.x = r; }
     bx(0, .35, 0, L - .2, .04, .04, C.dark);
-    const log = cy(0, .82, 0, .12, L + .3, C.wood, 6); log.rotation.z = PI / 2;
+    const log = cy(0, .82, 0, .12, L - .1, C.wood, 6); log.rotation.z = PI / 2;
     bx(.1, .82, 0, .02, .26, .26, C.pale);
-    const saw = bx(.1, .98, .05, .02, .3, .6, C.iron); saw.rotation.x = .3;
+    const saw = bx(.1, .98, .05, .02, .3, .42, C.iron); saw.rotation.x = .3;
   },
 
   block({ bx, cy, p }) {
@@ -896,6 +1506,248 @@ const MODELS = {
     cy(0, .505, 0, .25, .01, C.pale, 8);
     const axe = bx(.05, .7, 0, .04, .5, .04, C.worn); axe.rotation.z = .5; bx(-.05, .52, 0, .15, .1, .03, C.iron);
     for (let i = 0; i < 4; i++) bx(.35 + i * .06, .1, -.2 + i * .12, .2, .06, .08, C.pale).rotation.y = i;
+  },
+
+  // --- the houses' own pieces (s5-interiors) ---------------------------------
+  // A laying-out: the coffin across two chairs set seat to seat (their backs
+  // at its head and foot), its lid slid a hand's width askew, a pewter plate of
+  // salt on it; a tall candlestick at each corner burnt down to its socket,
+  // wax run down the stems, one still alight.
+  coffinChairs({ bx, cy, L, T, s, view }) {
+    const cl = 1.85, half = cl / 2, top = .47;
+    for (const sx of [-1, 1]) { const c = new THREE.Group(); c.position.set(sx * (half - .14), 0, 0); c.rotation.y = -sx * PI / 2; s.add(c); chair(view, c, C.dark); }
+    bx(0, top + .17, 0, cl, .32, .38, C.pine); bx(-cl * .15, top + .17, 0, cl * .5, .32, .5, C.pine);
+    const lid = bx(-cl * .06, top + .35, .04, cl * .92, .04, .48, C.worn); lid.rotation.y = .06;
+    bx(half - .08, top + .335, -.02, .12, .01, .28, C.soot);
+    cy(-.4, top + .38, .03, .12, .02, C.pewter, 8); cy(-.4, top + .4, .03, .08, .04, C.salt, 7, .03);
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz], i) => {
+      const x = sx * (L / 2 - .1), z = sz * (T / 2 - .1), stub = .025 + (i % 3) * .025;
+      cy(x, FLOOR + .02, z, .09, .04, C.iron, 6); cy(x, .47, z, .022, .82, C.iron, 5); cy(x, .89, z, .07, .02, C.iron, 6);
+      cy(x, .9 + stub / 2, z, .03, stub, C.wax, 6);
+      bx(x + .03, .83, z, .02, .12, .02, C.wax); bx(x - .02, .86, z + .03, .02, .06, .02, C.wax);
+      if (i === 1) { const flame = view.mesh(new THREE.ConeGeometry(.02, .07, 5), glow(view, AMBER, .9), x, .9 + stub + .04, z, s); flame.castShadow = false; }
+    });
+  },
+  // The mourners' chairs in a row, facing the coffin.
+  chairRow({ L, s, view }) {
+    const n = Math.max(2, Math.round(L / .5));
+    for (let i = 0; i < n; i++) { const c = new THREE.Group(); c.position.set(-L / 2 + .25 + i * (L - .5) / (n - 1), 0, 0); c.rotation.y = ((i * 5) % 3 - 1) * .07; s.add(c); chair(view, c, i % 2 ? C.dark : C.wood); }
+  },
+  // The four-post loom: the warp wound on the back beam and running forward
+  // through the harnesses and the reed, the cloth half woven on the breast
+  // beam, the shuttle left lying on it, the treadles, the weaver's bench.
+  loom({ bx, cy, L, T, s, view }) {
+    const P = .09, back = -T / 2 + .06, front = T / 2 - .45, bench = T / 2 - .15, span = L - .6;
+    for (const x of [-1, 1]) for (const z of [back, front]) bx(x * (L / 2 - P / 2), 1.0, z, P, 2.0, P, C.dark);
+    for (const x of [-1, 1]) { bx(x * (L / 2 - P / 2), 1.96, (back + front) / 2, P, P, front - back + P, C.dark); bx(x * (L / 2 - P / 2), .24, (back + front) / 2, .07, .07, front - back, C.dark); }
+    bx(0, 1.96, back, L, P, P, C.dark); bx(0, 1.96, front, L, P, P, C.dark);
+    const wb = cy(0, .8, back + .12, .1, L - .22, C.wood, 8); wb.rotation.z = PI / 2;
+    const wy = cy(0, .8, back + .12, .135, span + .1, C.wool, 8); wy.rotation.z = PI / 2;
+    bx(0, .86, front, L - .1, .1, .12, C.wood);
+    const cb = cy(0, .5, front - .06, .12, span, C.linen, 8); cb.rotation.z = PI / 2;
+    const reed = back + (front - back) * .52;
+    for (let i = 0; i < 14; i++) bx(-span / 2 + i * span / 13, .91, (back + .12 + reed) / 2, .014, .01, reed - back - .12, C.wool);
+    for (const [z, y] of [[reed - .2, 1.14], [reed - .11, 1.02]]) {
+      bx(0, y + .22, z, span + .08, .03, .03, C.dark); bx(0, y - .22, z, span + .08, .03, .03, C.dark);
+      for (const x of [-1, 1]) bx(x * (span / 2 + .04), y, z, .03, .47, .03, C.dark);
+    }
+    for (const x of [-1, 1]) { const arm = bx(x * (L / 2 - .16), 1.4, reed, .05, 1.1, .05, C.worn); arm.rotation.x = -.06; }
+    bx(0, .96, reed, L - .3, .13, .05, C.worn);
+    bx(0, .905, (reed + front) / 2, span, .012, front - reed - .06, C.linen);
+    for (const k of [.3, .62]) bx(0, .912, reed + .03 + (front - reed - .06) * k, span, .004, .05, C.madder);
+    bx(.22, .93, (reed + front) / 2 + .03, .32, .035, .07, C.worn);
+    for (let i = 0; i < 4; i++) bx(-.3 + i * .2, .1, (reed + front) / 2, .06, .04, (front - back) * .55, C.dark);
+    bx(0, .5, bench, L - .45, .05, .26, C.worn);
+    for (const x of [-1, 1]) bx(x * (L / 2 - .35), .25, bench, .05, .5, .2, C.dark);
+  },
+  // The great wheel for wool: the big wheel on its post at one end of the
+  // slanted bench, the spindle at the other, the band between them, rolags
+  // of carded wool waiting on the bench.
+  greatWheel({ bx, cy, L, s, view }) {
+    const wx = -L / 2 + .45, r = .48, wy = .95, sx = L / 2 - .3;
+    const bench = bx(0, .6, 0, L - .1, .06, .26, C.worn); bench.rotation.z = -.05;
+    for (const [x, z] of [[-L / 2 + .15, -.1], [-L / 2 + .15, .1], [L / 2 - .15, 0]]) bx(x, .31, z, .05, .62, .05, C.dark);
+    bx(wx, .8, 0, .08, .34, .08, C.dark);
+    view.mesh(new THREE.TorusGeometry(r, .036, 3, 16), C.worn, wx, wy, 0, s);
+    for (let i = 0; i < 4; i++) bx(wx, wy, 0, .025, 2 * r - .04, .025, C.pale).rotation.z = i * PI / 4;
+    cy(wx, wy, 0, .05, .12, C.dark, 6).rotation.x = PI / 2;
+    bx(sx, .76, 0, .14, .18, .1, C.dark); bx(sx + .12, .83, 0, .28, .012, .012, C.iron);
+    cy(sx + .18, .83, 0, .045, .1, C.wool, 6).rotation.z = PI / 2;
+    const dx = sx - wx, dy = .83 - (wy + r - .03), band = bx((wx + sx) / 2, (wy + r - .03 + .83) / 2, 0, Math.hypot(dx, dy), .008, .008, C.linen);
+    band.rotation.z = Math.atan2(dy, dx);
+    for (let i = 0; i < 3; i++) cy(-.05 + i * .15, .66, .05, .03, .24, C.wool, 5).rotation.z = PI / 2 + .1 * i;
+  },
+  // Baskets heaped with fleece, one tipped over and its carded wool spilled.
+  woolBaskets({ cy, L, T, s, view }) {
+    for (const [x, k] of [[-L / 2 + .3, 0], [-L / 2 + .86, 1]]) {
+      cy(x, .21, 0, .24, .42, C.straw, 9, .28);
+      for (const y of [.12, .32]) cy(x, y, 0, .27 + y * .05, .035, C.hayDark, 9);
+      for (let i = 0; i < 3; i++) view.mesh(new THREE.DodecahedronGeometry(.13 - i * .02), (i + k) % 2 ? C.linen : C.wool, x + (i - 1) * .08, .47 + (i % 2) * .05, (i % 2 - .5) * .1, s).scale.y = .7;
+    }
+    const tip = cy(L / 2 - .27, FLOOR + .25, -.08, .21, .38, C.straw, 9, .25); tip.rotation.z = PI / 2 - .12;
+    for (let i = 0; i < 3; i++) cy(L / 2 - .5 + i * .1, FLOOR + .03, .12 + (i % 2) * .06, .03, .24, C.wool, 5).rotation.set(0, .6 + i * .5, PI / 2);
+  },
+  // The dough trough on splayed legs, its lid slid half off, the dough risen
+  // over the rim and gone to a grey crust.
+  doughTrough({ bx, L, T, s, view }) {
+    for (const x of [-1, 1]) for (const z of [-1, 1]) { const leg = bx(x * (L / 2 - .14), .3, z * (T / 2 - .1), .06, .62, .06, C.dark); leg.rotation.z = -x * .08; leg.rotation.x = z * .08; }
+    bx(0, .6, 0, L - .2, .06, T - .24, C.wood);
+    for (const z of [-1, 1]) { const side = bx(0, .72, z * (T / 2 - .09), L - .1, .24, .04, C.wood); side.rotation.x = z * .2; }
+    for (const x of [-1, 1]) bx(x * (L / 2 - .06), .72, 0, .04, .24, T - .14, C.worn);
+    bx(-.1, .8, 0, L - .45, .09, T - .26, C.meal);
+    view.mesh(new THREE.DodecahedronGeometry(.13), C.meal, -L / 2 + .3, .86, .02, s).scale.set(1.3, .5, 1);
+    for (let i = 0; i < 3; i++) bx(-.35 + i * .22, .848, (i % 2 - .5) * .08, .16, .004, .012, C.grime).rotation.y = .5 + i;
+    const lid = bx(L / 4, .87, 0, L * .5, .03, T - .06, C.worn); lid.rotation.z = -.05;
+  },
+  // The butter churn with its dasher, and the salting tub, its lid board
+  // pushed aside, the weight stone left on it, pork in the brine.
+  churnTub({ bx, cy, L, s, view }) {
+    const cx = -L / 2 + .22, tx = L / 2 - .33;
+    cy(cx, .42, 0, .16, .84, C.wood, 8, .13);
+    for (const y of [.14, .44, .74]) cy(cx, y, 0, .168 - y * .035, .03, C.iron, 8);
+    cy(cx, .855, 0, .135, .03, C.worn, 8); cy(cx, 1.0, 0, .02, .3, C.worn, 5); bx(cx, 1.14, 0, .14, .025, .025, C.worn);
+    cy(tx, .27, 0, .27, .54, C.wood, 10, .29);
+    for (const y of [.1, .42]) cy(tx, y, 0, .285 + y * .02, .035, C.iron, 10);
+    cy(tx, .525, 0, .27, .01, C.grime, 10);
+    for (let i = 0; i < 3; i++) bx(tx - .1 + i * .1, .535, (i % 2 - .5) * .12, .12, .04, .1, C.bone).rotation.y = i;
+    const lid = bx(tx + .02, .585, .02, .5, .03, .44, C.worn); lid.rotation.z = .1; lid.rotation.y = .25; lid.position.x = tx + .06;
+    view.mesh(new THREE.DodecahedronGeometry(.08), C.stone, tx + .1, .64, .04, s).scale.y = .7;
+  },
+  // The wood box by the hearth, split wood heaped in it.
+  woodbox({ bx, cy, L, T }) {
+    bx(0, .04, 0, L, .08, T, C.dark);
+    for (const z of [-1, 1]) bx(0, .26, z * (T / 2 - .02), L, .44, .04, C.dark);
+    for (const x of [-1, 1]) bx(x * (L / 2 - .02), .26, 0, .04, .44, T - .04, C.dark);
+    for (let i = 0; i < 7; i++) { const log = cy(-L / 2 + .15 + (i % 4) * (L - .3) / 3, .32 + Math.floor(i / 4) * .12, (i % 2 - .5) * .12, .07, T - .12, i % 3 ? C.wood : C.pale, 3); log.rotation.x = PI / 2; log.rotation.y = (i % 3) * .1; }
+  },
+  // The rope bed with the trundle pulled half out from under it: a low frame
+  // on little wheels, its thin tick and a small quilt thrown back.
+  trundleBed({ bx, cy, L, T, rand }) {
+    const bd = 1.35, bz = -T / 2 + bd / 2;
+    ropeBed(bx, L, bd, bz, rand, false);
+    const tz = T / 2 - .38, tl = L - .35, tb = .8;
+    bx(0, .2, tz - .2, tl, .1, tb + .3, C.wood);
+    bx(0, .27, tz, tl - .1, .05, tb - .08, C.straw);
+    bx(.25, .305, tz + .04, tl * .45, .03, tb - .16, C.cloth);
+    bx(-tl / 2 + .22, .31, tz, .26, .06, .36, C.linen);
+    for (const x of [-1, 1]) cy(x * (tl / 2 - .08), FLOOR + .06, T / 2 - .09, .06, .03, C.dark, 6).rotation.x = PI / 2;
+  },
+  // A sampler in its frame on a stand, tipped toward the room: a border of
+  // cross-stitch, a band of diamonds, a little tree; no letters.
+  samplerStand({ bx, L, T, s, view }) {
+    bx(0, FLOOR + .025, 0, L - .1, .05, .08, C.dark); bx(0, FLOOR + .025, 0, .08, .05, T - .06, C.dark);
+    bx(0, .46, -.04, .05, .74, .05, C.dark);
+    const fr = new THREE.Group(); fr.position.set(0, .82, .02); fr.rotation.x = -1.0; s.add(fr);
+    const b2 = (x, y, w, h, k, z = .012) => view.box(x, y, z, w, h, .006, k, fr);
+    view.box(0, 0, 0, .58, .46, .025, C.dark, fr); b2(0, 0, .52, .4, C.linen);
+    for (let i = 0; i < 12; i++) { const t = -.23 + i * .042; b2(t, .17, .03, .03, i % 2 ? C.madder : C.mould, .016); b2(t, -.17, .03, .03, i % 2 ? C.mould : C.madder, .016); }
+    for (let i = 0; i < 7; i++) { const t = -.12 + i * .04; b2(-.24, t, .03, .03, C.indigo, .016); b2(.24, t, .03, .03, C.indigo, .016); }
+    for (const [dx, dy] of [[0, .09], [-.03, .06], [.03, .06], [0, .03], [-.12, .06], [.12, .06]]) b2(dx, dy, .025, .025, C.madder, .017);
+    b2(0, -.07, .016, .1, C.dark, .017);
+    for (const [dx, dy] of [[0, -.01], [-.03, -.04], [.03, -.04], [-.05, -.07], [.05, -.07]]) b2(dx, dy, .025, .025, C.mould, .018);
+  },
+  // The long table laid for the whole family: a linen board cloth, a pewter
+  // plate and cup at every place (the food gone to mould), the loaf on its
+  // board, the family Bible shut at the head beside a candle burnt to a stub;
+  // every chair pushed back as if they all rose at once, two knocked over.
+  longTable({ bx, cy, L, T, s, view }) {
+    const tl = L - .5, tw = .9;
+    bx(0, .76, 0, tl, .05, tw, C.worn);
+    for (const x of [-1, 0, 1]) for (const z of [-1, 1]) bx(x * (tl / 2 - .1), .37, z * (tw / 2 - .08), .07, .74, .07, C.dark);
+    bx(0, .787, 0, tl - .12, .008, tw - .14, C.linen);
+    const n = tl > 2.2 ? 4 : 3, xs = i => -tl / 2 + .55 + i * (tl - 1.0) / (n - 1);
+    let k = 0;
+    for (let i = 0; i < n; i++) for (const z of [-1, 1]) {
+      const x = xs(i), pz = z * .25;
+      cy(x, .8, pz, .12, .015, C.pewter, 8);
+      if (k % 3 !== 1) view.mesh(new THREE.DodecahedronGeometry(.05), k % 2 ? C.rot : C.mould, x, .82, pz, s).scale.y = .45;
+      const cup = cy(x + .14, .845, z * .34, .04, .1, C.pewter, 6);
+      if (k === 5) { cup.rotation.z = PI / 2; cup.position.y = .83; bx(x + .24, .792, z * .34, .2, .003, .1, C.grime); }
+      k++;
+    }
+    cy(tl / 2 - .2, .8, 0, .12, .015, C.pewter, 8);
+    bx(0, .8, 0, .4, .025, .22, C.wood); view.mesh(new THREE.DodecahedronGeometry(.11), C.pale, 0, .86, 0, s).scale.set(1.5, .65, 1);
+    // The Bible, shut: black boards, the page edges pale, a clasp.
+    const hx = -tl / 2 + .22;
+    bx(hx, .797, 0, .24, .014, .32, C.black); bx(hx + .006, .821, 0, .22, .036, .3, C.linen); bx(hx, .845, 0, .24, .014, .32, C.black);
+    bx(hx - .116, .821, 0, .014, .06, .32, C.black); bx(hx + .12, .821, 0, .012, .05, .06, C.pewter);
+    candlestick({ view }, s, hx + .08, .79, .3, .1);
+    // The chairs, pushed back from both sides and the ends.
+    k = 0;
+    for (let i = 0; i < n; i++) for (const z of [-1, 1]) {
+      const x = xs(i) + ((k * 3) % 5 - 2) * .04, push = Math.min(.08 + ((k * 7) % 5) * .05, T / 2 - tw / 2 - .56), yaw = ((k * 5) % 7 - 3) * .07;
+      if (k === 2 || k === 5) fallenChair(view, s, x, z * (T / 2 - .26), z > 0 ? 0 : PI, true);
+      else { const c = new THREE.Group(); c.position.set(x, 0, z * (tw / 2 + .22 + push)); c.rotation.y = (z > 0 ? PI : 0) + yaw; s.add(c); chair(view, c, k % 3 ? C.wood : C.dark); }
+      k++;
+    }
+    for (const [x, r] of [[-L / 2 + .26, PI / 2 + .5], [L / 2 - .26, -PI / 2 - .3]]) { const c = new THREE.Group(); c.position.set(x, 0, .1); c.rotation.y = r; s.add(c); chair(view, c, C.dark); }
+  },
+  // The root cellar's trapdoor thrown open: the hole's dark mouth with the
+  // ladder going down, its frame, the plank leaf standing open on its hinges
+  // (its battens and ring toward the room).
+  cellarHatch({ bx, L, T, s, view }) {
+    const hz = -T / 2 + .2, hole = T - .3, zc = hz + hole / 2;
+    flat(view, 0, FLOOR + .004, zc, L - .2, hole - .12, C.pit, s);
+    for (const z of [hz + .04, hz + hole - .04]) bx(0, FLOOR + .01, z, L - .1, .03, .08, C.dark);
+    for (const x of [-1, 1]) bx(x * (L / 2 - .09), FLOOR + .01, zc, .08, .03, hole, C.dark);
+    for (const x of [-.28, .28]) bx(x, FLOOR + .006, zc + .08, .05, .012, hole - .4, C.cinder);
+    for (let i = 0; i < 3; i++) bx(0, FLOOR + .008, zc - .15 + i * .22, .62 - i * .04, .012, .05, i ? C.cinder : C.worn);
+    const leaf = new THREE.Group(); leaf.position.set(0, FLOOR, hz); leaf.rotation.x = -.16; s.add(leaf);
+    view.box(0, .45, .02, L - .18, .9, .05, C.worn, leaf);
+    for (const y of [.18, .72]) view.box(0, y, .06, L - .32, .1, .04, C.dark, leaf);
+    const brace = view.box(0, .45, .065, .08, .62, .03, C.dark, leaf); brace.rotation.z = .8;
+    view.mesh(new THREE.TorusGeometry(.05, .01, 3, 8), C.iron, 0, .55, .09, leaf);
+  },
+  // Tools on a plank rack against the wall: the scythe hung along it, the
+  // flail and a sickle on pegs, the fork, the hay rake and the spade leaning.
+  toolRack({ bx, L, T, s, view }) {
+    const wz = -T / 2 + .04;
+    for (const x of [-1, 1]) bx(x * (L / 2 - .06), .95, wz, .07, 1.9, .05, C.dark);
+    for (const y of [1.2, 1.75]) bx(0, y, wz + .01, L, .1, .04, C.dark);
+    for (let i = 0; i < 5; i++) bx(-L / 2 + .25 + i * (L - .5) / 4, 1.75, wz + .06, .03, .03, .1, C.dark);
+    bx(0, 1.62, wz + .09, L - .3, .035, .035, C.worn).rotation.z = .05;
+    for (let i = 0; i < 4; i++) { const blade = bx(-L / 2 + .35 + i * .21, 1.52 - i * i * .012, wz + .1, .22, .05, .008, C.iron); blade.rotation.z = -.12 * i; }
+    bx(-.32, 1.28, wz + .1, .035, .9, .035, C.worn); bx(-.26, .78, wz + .1, .03, .45, .03, C.pale).rotation.z = .3;
+    view.mesh(new THREE.TorusGeometry(.14, .012, 3, 8, PI * 1.2), C.iron, .42, 1.42, wz + .1, s).rotation.z = -.6;
+    bx(.5, 1.27, wz + .1, .03, .14, .03, C.worn);
+    for (const [x, kind] of [[-.66, 'fork'], [.12, 'rake'], [.66, 'spade']]) {
+      const t = new THREE.Group(); t.position.set(x, FLOOR - .03, T / 2 - .06); t.rotation.x = -Math.asin((T - .16) / 1.75); s.add(t);
+      const b = (xx, y, a, h, c, k) => view.box(xx, y, 0, a, h, c, k, t);
+      b(0, .88, .035, 1.7, .035, C.worn);
+      if (kind === 'fork') for (const dx of [-.06, 0, .06]) b(dx, 1.8, .014, .22, .014, C.iron);
+      if (kind === 'rake') { b(0, 1.72, .5, .05, .05, C.worn); for (let i = 0; i < 7; i++) b(-.22 + i * .073, 1.64, .012, .12, .012, C.pale); }
+      if (kind === 'spade') { b(0, .16, .2, .28, .025, C.iron); b(0, 1.74, .16, .04, .04, C.worn); }
+    }
+  },
+  // A heavy plank table, a linen cloth over it stained dark brown, the
+  // cleaver left on it, the gambrel stick, a bucket under it.
+  butcherTable({ bx, cy, L, T }) {
+    for (const x of [-1, 1]) for (const z of [-1, 1]) bx(x * (L / 2 - .12), .42, z * (T / 2 - .1), .12, .84, .12, C.dark);
+    for (const z of [-1, 1]) bx(0, .2, z * (T / 2 - .1), L - .24, .06, .06, C.dark);
+    bx(0, .88, 0, L, .08, T, C.worn);
+    bx(-.1, .925, 0, L - .45, .01, T - .08, C.linen);
+    bx(-.1, .8, T / 2 - .02, L - .45, .24, .012, C.linen);
+    for (const [x, z, w, d, r] of [[-.25, .05, .45, .3, .3], [.1, -.1, .3, .22, 1.1], [-.45, .2, .2, .14, .7], [.2, .22, .16, .1, 2]]) bx(x, .932, z, w, .004, d, C.stain).rotation.y = r;
+    bx(-.3, .76, T / 2 - .012, .2, .16, .004, C.stain);
+    bx(.55, .95, .08, .22, .02, .13, C.iron); bx(.7, .95, .12, .16, .035, .035, C.dark);
+    bx(.08, .95, -.24, .7, .045, .045, C.worn);
+    cy(.15, .15, 0, .15, .3, C.wood, 8, .17); cy(.15, .22, 0, .172, .025, C.iron, 8);
+  },
+  // (The tomb) a child's coffin on a stone plinth.
+  plinthCoffin({ bx, L, T }) {
+    bx(0, .15, 0, L, .3, T, C.stone);
+    coffin(bx, 0, .3, 0, L - .15, T - .1, false);
+  },
+  // (The hearse house) a coffin stood on end in the corner, waiting.
+  coffinUpright({ bx, L, T }) {
+    bx(0, .93, 0, L - .04, 1.86, T - .12, C.worn); bx(0, 1.35, 0, L, .5, T - .12, C.worn);
+    bx(0, .93, T / 2 - .04, L - .1, 1.8, .03, C.wood);
+    bx(0, 1.87, 0, L - .04, .03, T - .12, C.dark);
+  },
+  // (The hearse house) the pall chest, the black pall folded on its lid.
+  pallChest({ bx, L, T }) {
+    bx(0, .27, 0, L, .5, T, C.dark); bx(0, .53, 0, L + .02, .04, T + .02, C.wood);
+    bx(-.04, .58, .02, L - .12, .06, T - .12, C.black); bx(.12, .62, .04, L - .3, .03, T - .2, C.black);
   },
 
   bier({ bx, L, T }) {
@@ -953,6 +1805,18 @@ function hearthModel({ bx, cy, L, T, p, view, s }, stack) {
   const arm = bx(cx + .35, 1.1, T / 2 - deep / 2 + .05, .75, .035, .035, C.iron); arm.rotation.y = -.5;
   bx(cx + .6, .9, T / 2 - deep / 2 + .25, .015, .4, .015, C.iron);
   cy(cx + .6, .62, T / 2 - deep / 2 + .25, .16, .22, C.black, 8, .13);
+  if (p.stew) {
+    // (The kitchen) supper left half cooked: the stew in the kettle gone to a
+    // skin, the ladle still in it, the spider in the ashes with its bread
+    // burnt black, the pot lid dropped on the hearthstone.
+    const kx = cx + .6, kz = T / 2 - deep / 2 + .25;
+    cy(kx, .735, kz, .125, .012, '#4a3526', 8);
+    for (let i = 0; i < 4; i++) bx(kx - .06 + i * .04, .745, kz + (i % 2 - .5) * .06, .035, .02, .035, i % 2 ? C.meal : C.apple);
+    const ladle = bx(kx + .06, .84, kz - .02, .02, .02, .34, C.pewter); ladle.rotation.x = .9;
+    cy(.28, .13, T / 2 - deep / 2 + .12, .13, .04, C.black, 8); bx(.44, .13, T / 2 - deep / 2 + .12, .2, .02, .03, C.black);
+    view.mesh(new THREE.DodecahedronGeometry(.08), C.soot, .28, .17, T / 2 - deep / 2 + .12, s).scale.y = .5;
+    const lid = cy(-.45, .1, T / 2 + .25, .15, .02, C.black, 8); lid.rotation.z = .12;
+  }
   candlestick({ view }, s, L / 2 - .3, 1.29, T / 2 + .06, .4);
   bx(-L / 2 + .3, 1.34, T / 2 + .06, .2, .08, .1, C.pewter);
   const gun = bx(0, 1.55, T / 2 + .02, 1.5, .05, .04, C.dark); gun.rotation.z = .03; bx(-.62, 1.54, T / 2 + .02, .3, .09, .05, C.wood);

@@ -7,7 +7,7 @@
 // ground under it, so it bends over a rise instead of cutting through it
 // (owner, 2026-09-26).
 import * as THREE from 'three';
-import { groundY, hilly } from '../render/ground-lift.js';
+import { groundY, floorY, hilly } from '../render/ground-lift.js';
 
 export const BEAM_LIFE = .32;
 const CAPACITY = 480, PIECE = 1.5, COLOUR = new THREE.Color('#bfeaff'), X_AXIS = new THREE.Vector3(1, 0, 0);
@@ -23,11 +23,12 @@ export class OrbBeams {
   view.scene.add(this.mesh);
  }
 
- // A beam from (fromX, fromZ) to (x, z).
- add(fromX, fromZ, x, z) {
+ // A beam from (fromX, fromZ) to (x, z); `under`: fired by someone wading
+ // under a deck (hills), so it runs over the ground under it.
+ add(fromX, fromZ, x, z, under = false) {
   const length = Math.hypot(x - fromX, z - fromZ); if (!(length > .2)) return;
   if (this.list.length >= CAPACITY) this.list.shift();
-  this.list.push({ fromX, fromZ, x, z, length, age: 0 });
+  this.list.push({ fromX, fromZ, x, z, length, age: 0, under });
  }
 
  update(dt) {
@@ -50,9 +51,10 @@ export class OrbBeams {
    // Hills: from over the ground it left to over the ground it landed on,
    // over the ground between.
    const pieces = Math.min(16, Math.max(1, Math.ceil(b.length / PIECE)));
-   let ax = b.fromX, az = b.fromZ, ay = .72 + groundY(view, ax, az);
+   const floor = b.under ? (x, z) => floorY(view, x, z, true) : (x, z) => groundY(view, x, z);
+   let ax = b.fromX, az = b.fromZ, ay = .72 + floor(ax, az);
    for (let i = 1; i <= pieces && n < CAPACITY; i++) {
-    const t = i / pieces, bx = b.fromX + (b.x - b.fromX) * t, bz = b.fromZ + (b.z - b.fromZ) * t, by = .72 + groundY(view, bx, bz);
+    const t = i / pieces, bx = b.fromX + (b.x - b.fromX) * t, bz = b.fromZ + (b.z - b.fromZ) * t, by = .72 + floor(bx, bz);
     const length = Math.hypot(bx - ax, by - ay, bz - az);
     this.p.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
     this.q.setFromUnitVectors(X_AXIS, this.dir.set(bx - ax, by - ay, bz - az).normalize());

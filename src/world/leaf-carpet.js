@@ -27,10 +27,13 @@ import * as THREE from 'three';
 import { insidePoly } from './heightfield.js';
 import { detailClearance } from './terrain-details.js';
 
-export const LITTER_BROWNS = ['#8a6a3e', '#7a5a34', '#6e4a2c'];
+// (The darkest is a wet, rotting brown, and the canopies' yellow and ochre lie
+// faded on the ground: a fresh #6e4a2c hid the rust coat, and #c49a3a and
+// #b8923c the Amber hat, in the woods: tests/hollow-wick-look.test.js.)
+export const LITTER_BROWNS = ['#8a6a3e', '#7a5a34', '#5a4632'];
 // The canopies' colours that may lie on the ground (in the carpet, and a
 // falling or kicked leaf that has landed).
-export const CANOPY_GROUND = ['#c49a3a', '#c0612b', '#b8923c'];
+export const CANOPY_GROUND = ['#9c8a3c', '#c0612b', '#8e7a3a'];
 // Canopy only: they may fall, but never lie on the ground.
 export const CANOPY_ONLY = ['#a4552a', '#8e2f22'];
 export const GROUND_LEAF_COLOURS = [...LITTER_BROWNS, ...CANOPY_GROUND];

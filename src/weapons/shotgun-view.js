@@ -6,7 +6,7 @@ import {SHOTGUN} from './shotgun.js';
 import {segmentBox} from '../simulation.js';
 import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { NO_FX } from '../effects/effects-detail.js';
-import { groundY, hilly, glide, roundFlight } from '../render/ground-lift.js';
+import { groundY, floorY, hilly, glide, roundFlight } from '../render/ground-lift.js';
 const SHELL_SMOKE=new THREE.Color('#c9c0ae'),PELLET_TRAIL=new THREE.Color('#ffe6b0');
 const SHELL_REST=.058;
 export class ShotgunView{
@@ -50,7 +50,7 @@ export class ShotgunView{
    this.model.userData.shells.forEach((shell,i)=>{shell.visible=!s.reload||reload<.20||reload>.40+i*.18;shell.position.z=.112+(s.reload&&reload>.40&&reload<.8?Math.max(0,.16-(reload-.40-i*.18)*.7):0);});
    this.view.rifleView.pose.update(sim,s.aiming?1:0,0,kick);
    this.flash.visible=sim.time-this.lastShot<.10+(this.charge||0)*.055;this.flash.scale.setScalar(1.2+(this.charge||0)*1.25);
-   if(reload>.18&&!this.ejected){this.ejected=true;for(let i=0;i<this.toEject;i++)this.shells.push({born:sim.time,x:sim.player.x,y:.8,z:sim.player.z,vy:1.6+Math.random()*.5,vx:-sim.player.aimX*(1+Math.random())+sim.player.aimZ*(i?1:-1),vz:-sim.player.aimZ*(1+Math.random())-sim.player.aimX*(i?1:-1),angle:Math.random()*6.28,tumble:0,tumbleRate:9+Math.random()*8,roll:0,resting:false,bounced:0,smokeClock:0});}
+   if(reload>.18&&!this.ejected){this.ejected=true;for(let i=0;i<this.toEject;i++)this.shells.push({born:sim.time,under:!!sim.player.below,x:sim.player.x,y:.8,z:sim.player.z,vy:1.6+Math.random()*.5,vx:-sim.player.aimX*(1+Math.random())+sim.player.aimZ*(i?1:-1),vz:-sim.player.aimZ*(1+Math.random())-sim.player.aimX*(i?1:-1),angle:Math.random()*6.28,tumble:0,tumbleRate:9+Math.random()*8,roll:0,resting:false,bounced:0,smokeClock:0});}
   }
   this.pressure.update(sim,dt,this.view.qualityName);
   this.shells=this.shells.filter(s=>sim.time>=s.born&&sim.time-s.born<30).slice(-60);let i=0;
@@ -79,7 +79,7 @@ export class ShotgunView{
    const settle=s.resting?1:0;
    // Airborne it tumbles; at rest it lies along the ground, rolled about its own axis.
    this.dummy.rotation.set(Math.PI/2+(1-settle)*s.tumble,s.angle,settle*s.roll+(1-settle)*s.tumble*.4);
-   this.dummy.position.set(s.x,s.y+groundY(this.view, s.x,s.z),s.z);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();this.casings.setMatrixAt(i,this.dummy.matrix);this.shellCaps.setMatrixAt(i++,this.dummy.matrix);
+   this.dummy.position.set(s.x,s.y+floorY(this.view, s.x,s.z,s.under),s.z);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();this.casings.setMatrixAt(i,this.dummy.matrix);this.shellCaps.setMatrixAt(i++,this.dummy.matrix);
    if(age>0&&!s.bounced){
     // A short swept segment follows the arc until the first landing.
     this.direction.set(s.vx*.065,s.vy*.065,s.vz*.065);const length=this.direction.length();

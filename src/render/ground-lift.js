@@ -2,7 +2,13 @@
 // under (x, z) as a view sees it. 0 on a flat map, and 0 for a view with no
 // ground at all (the tests' stand-in views), so every effect can add it
 // without asking which kind of map it is on.
-export const groundY = (view, x, z) => view?.ground && !view.ground.flat ? view.ground.heightAt(x, z) : 0;
+// Decks (a bridge, the log): what a body wading underneath one makes (a
+// casing, smoke, sparks, an orb, blood) is drawn down there with it, not on
+// the deck's top. `view.underNear(x, z)` (renderer.js) says whether (x, z)
+// is inside a deck's outline with the body nearest it (within UNDER_REACH)
+// under that deck; it is only asked while somebody is under one.
+export const UNDER_REACH = 2.5;
+export const groundY = (view, x, z) => view?.ground && !view.ground.flat ? (view.underNear?.(x, z) ? view.ground.drawnHeightAt(x, z) : view.ground.heightAt(x, z)) : 0;
 // The floor under something that may lie under a deck (a body that died
 // wading under a bridge: `below`): the drawn ground there, not the deck's top.
 export const floorY = (view, x, z, below) => view?.ground && !view.ground.flat ? (below ? view.ground.drawnHeightAt(x, z) : view.ground.heightAt(x, z)) : 0;

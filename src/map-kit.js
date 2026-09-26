@@ -8,6 +8,8 @@ import { HOLLOW_BREAKABLES } from './world/hollow-breakables.js'; // s2-breakabl
 import { COLONIAL_TYPES } from './world/colonial-parts.js'; // s2-buildings
 import { GRAVE_TYPES } from './world/graveyard.js'; // s2-graveyard
 import { HOLLOW_TYPES } from './world/hollow-props.js'; // (s2-props: Hollow Wick's open-ground pieces)
+import { LIFE_TYPES } from './world/hollow-life.js'; // s5-life: the goat's pen, the washing line, the stick effigies
+import { DRESSING_TYPES } from './world/hollow-dressing.js'; // s5-props: Hollow Wick's static dressing
 import { solidFurniture } from './world/room-furniture.js'; // dw-furniture: all furniture solid
 import { FLAT, groundFromBaked, edgeCollider } from './world/heightfield.js';
 import { BAKED_TERRAIN } from './maps/terrain/index.js';
@@ -37,7 +39,9 @@ export const PROP_TYPES = Object.freeze({
   ...ROADSIDE_TYPES, ...RAIL_TYPES,
   ...COLONIAL_TYPES, // s2-buildings: Hollow Wick's portico and forge parts
   ...GRAVE_TYPES, // s2-graveyard
+  ...LIFE_TYPES, // s5-life (world/hollow-life.js)
   ...HOLLOW_TYPES, // (s2-props)
+  ...DRESSING_TYPES, // s5-props: stocks, pillory, hitching rails, the bier, the rowboat... (world/hollow-dressing.js)
   ...HOLLOW_BREAKABLES, // s2-breakables: Hollow Wick's breakables
   // Breakable scenery shares one low health so a single orb clears it on the way
   // through. They are dressing and light cover, never a damage sponge that eats

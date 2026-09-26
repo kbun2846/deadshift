@@ -42,7 +42,8 @@ export const HW_BASES = [
  // A, the town yard: east of the yard wall (x 27.4) that screens it from the
  // green, north of the smithy, the main street along its north side.
  { id: 'A', name: 'town yard', x: 30, z: -4.5, poly: [[28.6, -11], [38.2, -11], [38.2, -4.2], [28.6, -4.2]],
-  points: [p(30, -6), p(32, -5.5), p(34, -6), p(36, -5.5), p(30, -8.5), p(32.5, -8.5), p(35, -8.5), p(37, -7.5)] },
+  // (Its south row off the main street's 4 m road, z -8 and up: stage 4 audit.)
+  points: [p(30, -6), p(32, -5.5), p(34, -6), p(36, -5.5), p(30.8, -7.5), p(33, -7.6), p(35, -7.6), p(37, -7.5)] },
  // B, the graveyard foot: the strip between the horse sheds (which screen it
  // from the summit) and the North Woods' south-west edge.
  { id: 'B', name: 'graveyard foot', x: -30, z: -41.5, poly: [[-34.5, -48.2], [-26.5, -48.2], [-26.3, -41], [-28.6, -40.6], [-34.5, -46]],

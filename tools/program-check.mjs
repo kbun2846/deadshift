@@ -13,7 +13,8 @@ const p = await b.newPage({ viewport: { width: 640, height: 400 } });
 const errs = []; p.on('pageerror', e => errs.push(e.message));
 await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q })), q);
 await p.goto(`http://127.0.0.1:${port}/?play=1&weapon=${w}&map=${map}&capture=thumbnail`);
-await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: 90000 });
+// (A loaded machine loads slowly: PC_TIMEOUT seconds, default 240.)
+await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: (+process.env.PC_TIMEOUT || 240) * 1000 });
 await p.waitForTimeout(q === 'extreme' ? 8000 : 3000); // Extreme's passes load late
 await p.evaluate(() => {
   const r = window.__capture.view.renderer, link = WebGL2RenderingContext.prototype.linkProgram, draw = r.renderBufferDirect;

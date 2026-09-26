@@ -111,6 +111,8 @@ export class RemotePlayers {
  // `sees(p)`: can the local player see them (null: everyone is in view).
  update(players, time, dt = 0, pools = [], sees = null) {
   for (const avatar of this.avatars.values()) avatar.seen = false;
+  // (Anyone wading under a deck: the view then draws what is made near them under it too.)
+  let anyUnder = false;
   for (const p of players) {
    let avatar = this.avatars.get(p.id);
    // A new side repaints by rebuilding; not a damaged robot's (its armour
@@ -131,6 +133,7 @@ export class RemotePlayers {
    // (Up on the deck again, as its ground rises to within a step of the top.)
    const g = this.view.ground, deck = avatar.under && !p.below ? g.deckAt(p.x, p.z) : -1;
    avatar.under = !!(p.below || (deck >= 0 && g.drawnHeightAt(p.x, p.z) < g.decks[deck].h - WADE.step));
+   if (avatar.under) anyUnder = true;
    const y = avatar.under ? g.drawnHeightAt(p.x, p.z) : groundY(this.view, p.x, p.z);
    avatar.y = avatar.y === undefined || !(dt > 0) || y >= avatar.y - .25 ? y : Math.max(y, avatar.y - 9 * dt);
    avatar.root.position.set(p.x, avatar.y, p.z);
@@ -148,6 +151,7 @@ export class RemotePlayers {
    if (avatar.stains && dt > 0) avatar.stains.set(avatar.wading.update(p.x, p.z, p.vx, p.vz, dt, pools, this.view.drops, this.view.map));
   }
   for (const [id, avatar] of this.avatars) if (!avatar.seen) this.remove(id);
+  this.anyUnder = anyUnder;
  }
 
  // A body for a corpse (remote-corpses.js): this slot's avatar, not in the

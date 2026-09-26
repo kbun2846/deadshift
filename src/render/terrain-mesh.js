@@ -196,7 +196,13 @@ function finish(texture) {
 // Boxes into the view's static group, so they batch like every other wall.
 export function buildRetainingWalls(view, ground, look = {}) {
  const face = look.wallFace || '#6a665c', cap = look.wallCap || '#8b8a80', dark = look.wallDark || '#5f5c56';
- let piece = 0;
+ // The cap is laid as flat stones of their own lengths, widths and tones (the
+ // cap's, two darker, one gone green with moss), not one pale kerb: from the
+ // camera above, a wall's cap is most of what shows of it (v0.975a).
+ const tone = (k, mix = null) => { const c = new THREE.Color(cap).multiplyScalar(k); if (mix) c.lerp(new THREE.Color(mix[0]), mix[1]); return '#' + c.getHexString(); };
+ const caps = [cap, tone(.9), tone(.82), tone(.86, [look.wallMoss || '#5d6647', .45]), tone(.9)];
+ let piece = 0, seed = 1790;
+ const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
  for (const e of ground.edges) {
   const steps = Math.max(1, Math.ceil((e.length + e.extend * 2) / .9));
   const span = (e.length + e.extend * 2) / steps, angle = Math.atan2(e.ux, e.uz);
@@ -211,8 +217,16 @@ export function buildRetainingWalls(view, ground, look = {}) {
    const height = top - bottom; if (height < .12) continue;
    const stone = view.box(x, bottom + height / 2, z, thick, height, span + .02, piece++ % 3 === 1 ? dark : face);
    stone.rotation.y = angle;
-   const capping = view.box(x, top + .04, z, thick + .08, .1, span + .03, cap);
-   capping.rotation.y = angle;
+   // Two or three cap stones along the piece, each a little narrower than
+   // the cap's full width (thick + 0.06, inside the collider), set off its
+   // line, a touch higher or lower and turned a hair.
+   for (let at = -span / 2 - .015; at < span / 2 - .02;) {
+    let len = .3 + rand() * .5; if (span / 2 + .015 - (at + len) < .22) len = span / 2 + .015 - at;
+    const w = thick + .06 - rand() * .1, off = (rand() - .5) * (thick + .06 - w), mid = along + at + len / 2;
+    const stoneCap = view.box(e.ax + e.ux * mid + e.nx * (out + off), top + .03 + rand() * .03, e.az + e.uz * mid + e.nz * (out + off), w, .08 + rand() * .04, len - .025, caps[Math.floor(rand() * caps.length)]);
+    stoneCap.rotation.y = angle + (rand() - .5) * .05;
+    at += len;
+   }
   }
  }
 }

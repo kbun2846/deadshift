@@ -5,7 +5,7 @@ import { RiflePose } from './rifle-pose.js';
 import { RIFLE_QUALITY, CASING_CAPACITY, casingPose } from './rifle-quality.js';
 import { NO_FX } from '../effects/effects-detail.js';
 import { RIFLE, RIFLE_MUZZLE, TERRAIN } from '../config/gameplay.js';
-import { groundY, hilly, roundFlight, flightRise } from '../render/ground-lift.js';
+import { groundY, floorY, hilly, roundFlight, flightRise } from '../render/ground-lift.js';
 const UP=new THREE.Vector3(0,1,0);
 const BULLET_GLOW=new THREE.Color('#ffd98a'),SURGE_GLOW=new THREE.Color('#f2f8ff'),PORT_SMOKE=new THREE.Color('#bdb5a2');
 function disposeObject(root){const materials=new Set();root.traverse(o=>{o.geometry?.dispose();if(o.material)materials.add(o.material);});materials.forEach(m=>m.dispose());}
@@ -14,7 +14,7 @@ export class RifleView{
  constructor(view){
   this.view=view;this.gun=view.player.userData.gun;this.staticParts=[...this.gun.children];
   this.pose=new RiflePose(view.player);
-  this.effects=[];this.lastTime=0;this.flashTime=0;this.particles=[];this.aimBlend=0;this.wasAiming=false;this.aimStarted=-10;
+  this.effects=[];this.magUnder=new WeakMap();this.lastTime=0;this.flashTime=0;this.particles=[];this.aimBlend=0;this.wasAiming=false;this.aimStarted=-10;
   this.dummy=new THREE.Object3D();this.direction=new THREE.Vector3();this.origin=new THREE.Vector3();this.glides=new WeakMap();
   this.brass=new THREE.MeshLambertMaterial({color:'#b49a58',flatShading:true});this.steel=new THREE.MeshLambertMaterial({color:'#39403c'});
   this.bulletMat=new THREE.MeshBasicMaterial({color:'#ffffff',toneMapped:false});
@@ -78,9 +78,10 @@ export class RifleView{
   this.flashTime=sim.time+.075;this.flash.rotation.z=Math.random()*Math.PI*2;this.flash.scale.setScalar(.85+Math.random()*.3);
   this.origin.set(.1,.01,.02);this.gun.localToWorld(this.origin);
   const backward=1+Math.random()*.8,sideways=.9+Math.random()*.9;
-  // (Hills: a casing's y is kept above the ground, like every other effect.)
-  const ground=groundY(this.view, this.origin.x,this.origin.z);
-  this.effects.push({born:sim.time,x:this.origin.x,y:this.origin.y-ground,z:this.origin.z,
+  // (Hills: a casing's y is kept above the ground, like every other effect;
+  // wading under a deck, the ground under it, where it falls: `under`.)
+  const under=!!p.below,ground=floorY(this.view, this.origin.x,this.origin.z,under);
+  this.effects.push({born:sim.time,under,x:this.origin.x,y:this.origin.y-ground,z:this.origin.z,
    rx:Math.random()*Math.PI,ry:Math.random()*Math.PI*2,rz:Math.random()*Math.PI,
    vx:-p.aimX*backward-p.aimZ*sideways,vz:-p.aimZ*backward+p.aimX*sideways,vy:1.2+Math.random()*.9,
    spinX:(Math.random()-.5)*28,spinZ:(Math.random()-.5)*28,landingAngle:Math.random()*Math.PI*2});
@@ -147,10 +148,10 @@ export class RifleView{
    if(e.seenX!==sim.player.x||e.seenZ!==sim.player.z||sim.time>=(e.checkAt||0)){
     e.visible=this.visible(sim,pose.x,pose.z);e.seenX=sim.player.x;e.seenZ=sim.player.z;e.checkAt=sim.time+.15;
    }
-   if(e.visible)this.place(this.casings,count++,pose.x,pose.y+groundY(view, pose.x,pose.z),pose.z,pose.rx,pose.ry,pose.rz);
+   if(e.visible)this.place(this.casings,count++,pose.x,pose.y+floorY(view, pose.x,pose.z,e.under),pose.z,pose.rx,pose.ry,pose.rz);
   }
   this.effects.length=kept;this.casings.count=count;count=0;
-  for(const m of sim.magazines){if(count>=24||!this.visible(sim,m.x,m.z))continue;this.place(this.magazines,count++,m.x,.025+Math.max(0,.6-4.9*m.age*m.age)+groundY(view, m.x,m.z),m.z,0,m.angle,0,1);}
+  for(const m of sim.magazines){if(count>=24||!this.visible(sim,m.x,m.z))continue;const under=this.magUnder.get(m)??(this.magUnder.set(m,!!sim.player.below),!!sim.player.below);this.place(this.magazines,count++,m.x,.025+Math.max(0,.6-4.9*m.age*m.age)+floorY(view, m.x,m.z,under),m.z,0,m.angle,0,1);}
   this.magazines.count=count;
   let sparks=0,smoke=0;kept=0;
   for(const p of this.particles){

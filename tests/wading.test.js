@@ -139,6 +139,41 @@ test('a body pushed into a deck\'s outline from the water stays under it; orbs a
  assert.equal(o.drainEvents().some(e => e.type === 'wall'), false, 'an orb stopped at the deck');
 });
 
+test('what a wader makes under a deck is drawn under it with them, and nobody else is', async () => {
+ const { groundY, floorY, UNDER_REACH } = await import('../src/render/ground-lift.js');
+ const { WorldView } = await import('../src/render/renderer.js');
+ const { OrbBeams } = await import('../src/effects/orb-beams.js');
+ const THREE = await import('three');
+ const at = [-14, 22], k = ground.deckAt(...at), top = ground.heightAt(...at), bed = ground.drawnHeightAt(...at);
+ assert.ok(k >= 0 && top > bed + .5, 'a deck well over the water');
+ // A stand-in view with the renderer's own rule: you, and another player.
+ const other = { root: { position: new THREE.Vector3(100, 0, 100) }, under: false };
+ const view = { ground, playerUnder: false, player: { position: new THREE.Vector3(...[at[0], bed, at[1]]) }, remote: { anyUnder: false, avatars: new Map([['p', other]]) } };
+ view.underNear = WorldView.prototype.underNear;
+ // Nobody under: the deck's top, as before.
+ assert.equal(groundY(view, at[0] + 1, at[1]), top);
+ // You wading under it: what is made by you (a casing, smoke, an orb) is down with you...
+ view.playerUnder = true;
+ assert.equal(groundY(view, at[0] + 1, at[1]), ground.drawnHeightAt(at[0] + 1, at[1]));
+ // ...not what is further off, nor anything outside the deck (the same ground there anyway).
+ const far = [at[0], at[1] + UNDER_REACH + .5];
+ if (ground.deckAt(...far) >= 0) assert.equal(groundY(view, ...far), ground.heightAt(...far));
+ // Someone up on the deck by you: what they make stays on the deck.
+ other.root.position.set(at[0] + 1.2, top, at[1]); other.under = false;
+ assert.equal(groundY(view, at[0] + 1.3, at[1]), top, 'up on the planks with them');
+ // Another player wading under it (you elsewhere).
+ view.playerUnder = false; view.player.position.set(200, 0, 200); other.under = true; view.remote.anyUnder = true;
+ assert.equal(groundY(view, at[0] + 1.3, at[1]), ground.drawnHeightAt(at[0] + 1.3, at[1]));
+ // An orb's streak keeps the side it was fired from all along.
+ view.scene = new THREE.Scene();
+ const beams = new OrbBeams(view); beams.add(at[0], at[1], at[0] + 1.4, at[1], true); beams.update(1 / 60);
+ const m = new THREE.Matrix4(), p = new THREE.Vector3(); beams.mesh.getMatrixAt(0, m); p.setFromMatrixPosition(m);
+ assert.ok(p.y < top, `the streak under the deck (${p.y.toFixed(2)} vs the top ${top})`);
+ assert.ok(Math.abs(p.y - (.72 + floorY(view, p.x, p.z, true))) < .15);
+ // Every other map: nothing changes.
+ assert.equal(groundY({ ground: { flat: true } }, 1, 2), 0);
+});
+
 test('a body that falls wading under a deck lies in the water there, not on the planks', async () => {
  const { floorY } = await import('../src/render/ground-lift.js');
  const s = sim([-14, 22]); s.player.below = true;

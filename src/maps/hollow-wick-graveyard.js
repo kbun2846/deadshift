@@ -111,8 +111,7 @@ export const FIELD_WALLS = [
   {type:'fieldWall3',x:-24.5,z:37,angle:-1.57,group:'c-side'},
   {type:'fieldWall5',x:-34.5,z:29.8,angle:0,group:'c-lip'},
   {type:'fieldWall6',x:-2,z:30.2,angle:0,group:'field'},
-  {type:'fieldWall5',x:5.5,z:30.35,angle:-0.02,group:'field'},
-  {type:'fieldWall6',x:21,z:31.1,angle:-0.03,group:'field'},
-  {type:'fieldWall6',x:30,z:31.35,angle:-0.02,group:'field'},
-  {type:'fieldWall5',x:47.5,z:31.6,angle:0,group:'field'},
+  {type:'fieldWall2',x:4,z:30.32,angle:-0.02,group:'field'},
+  {type:'fieldWall5',x:20.5,z:31.08,angle:-0.03,group:'field'},
+  {type:'fieldWall4',x:47,z:31.6,angle:0,group:'field'},
 ];

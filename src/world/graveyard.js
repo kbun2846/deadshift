@@ -19,6 +19,7 @@
 // stones, mounds, the open grave, the skeleton) has no collider at all
 // (`collisionBoxes: []`): walked over, never stops a round or an orb.
 import * as THREE from 'three';
+import { settle } from './settle.js';
 
 export const SLATE = '#4c4f52', SLATE_TOP = '#5f5c56', LICHEN = '#8b8a80', MOSS = '#56603f';
 export const FIELDSTONE = '#7f7b72', FIELDSTONE_DARK = '#5f5c56', CAP = '#8b8a80', RETAIN = '#6a665c';
@@ -100,8 +101,11 @@ function weather(view, parent, t, w, top, rand, amount = 1) {
 }
 
 // A run of dry-laid fieldstone, `len` long along local x, about 1 m high,
-// with a lighter cap. Built from y -.15 so it never floats on a slope.
-function fieldWall(view, g, len, rand) {
+// with a lighter cap. Built from y -.15 so it never floats on a slope, and
+// each stone at the ground under it (`lift(x)`: along a slope the run steps
+// with the ground; stage 4 audit: the uphill end of a plot wall was buried
+// half its height).
+function fieldWall(view, g, len, rand, lift = () => 0) {
   const n = Math.max(2, Math.round(len / .62)), step = len / n;
   for (let row = 0; row < 3; row++) {
     const shift = row % 2 ? step / 2 : 0, y = -.15 + row * .34;
@@ -109,19 +113,19 @@ function fieldWall(view, g, len, rand) {
       let x0 = -len / 2 + i * step + shift, x1 = Math.min(len / 2, x0 + step);
       if (row % 2 && i === 0) x0 = -len / 2;
       if (x1 - x0 < .08) continue;
-      const b = view.box((x0 + x1) / 2, y + .165, (rand() - .5) * .05, x1 - x0 - .04, .32 + rand() * .03, .52 - row * .05, (i + row) % 3 ? FIELDSTONE : FIELDSTONE_DARK, g);
+      const b = view.box((x0 + x1) / 2, y + .165 + lift((x0 + x1) / 2), (rand() - .5) * .05, x1 - x0 - .04, .32 + rand() * .03, .52 - row * .05, (i + row) % 3 ? FIELDSTONE : FIELDSTONE_DARK, g);
       b.rotation.y = (rand() - .5) * .06;
     }
   }
   // Cap stones, a little proud and uneven, with a gap here and there.
   for (let i = 0; i < n; i++) {
     if (rand() < .12) continue;
-    const b = view.box(-len / 2 + (i + .5) * step, .93 + rand() * .05, (rand() - .5) * .05, step - .06, .12, .42 + rand() * .08, CAP, g);
+    const b = view.box(-len / 2 + (i + .5) * step, .93 + rand() * .05 + lift(-len / 2 + (i + .5) * step), (rand() - .5) * .05, step - .06, .12, .42 + rand() * .08, CAP, g);
     b.rotation.y = (rand() - .5) * .12;
   }
   // A stone or two fallen off at the foot.
-  if (rand() < .6) { const b = view.box((rand() - .5) * len * .8, .05, (rand() < .5 ? -1 : 1) * .45, .3, .16, .24, FIELDSTONE, g); b.rotation.y = rand() * 3; }
-  if (rand() < .4) view.box((rand() - .5) * len * .7, .02, (rand() < .5 ? -1 : 1) * .3, .5, .08, .16, MOSS, g);
+  if (rand() < .6) { const x = (rand() - .5) * len * .8, b = view.box(x, .05 + lift(x), (rand() < .5 ? -1 : 1) * .45, .3, .16, .24, FIELDSTONE, g); b.rotation.y = rand() * 3; }
+  if (rand() < .4) { const x = (rand() - .5) * len * .7; view.box(x, .02 + lift(x), (rand() < .5 ? -1 : 1) * .3, .5, .08, .16, MOSS, g); }
 }
 
 // A squashed, faceted lump (earth, clods): a low-poly half ellipsoid.
@@ -206,6 +210,7 @@ export function makeGrave(view, p, g) {
     box(-.1, .135, .1, .2, .01, .16, LICHEN, t); box(.15, .135, -.15, .14, .01, .12, MOSS, t);
     return;
   }
+  if (p.type === 'bigStone' || p.type === 'tableTomb') settle(view, p, g, GRAVE_TYPES[p.type].w * (p.scale || 1), GRAVE_TYPES[p.type].d * (p.scale || 1)); // (world/settle.js)
   if (p.type === 'bigStone') {
     // A double stone for a husband and wife: two heads on one broad slab, on
     // a granite footing.
@@ -231,7 +236,10 @@ export function makeGrave(view, p, g) {
     box(0, .1, .54, 1.4, .16, .08, MOSS);
     return;
   }
-  if (/^fieldWall\d$/.test(p.type)) { fieldWall(view, g, GRAVE_TYPES[p.type].w, rand); return; }
+  if (/^fieldWall\d$/.test(p.type)) {
+    const a = p.angle || 0, c = Math.cos(a), s = Math.sin(a), g0 = view.ground && !view.ground.flat ? view.ground : null, y0 = g0 ? g0.heightAt(p.x, p.z) : 0;
+    fieldWall(view, g, GRAVE_TYPES[p.type].w, rand, g0 ? x => g0.heightAt(p.x + x * c, p.z - x * s) - y0 : undefined); return;
+  }
   if (p.type === 'railPlot') {
     for (const [x, z] of GRAVE_TYPES.railPlot.collisionBoxes) {
       box(x, .4, z, .24, .96, .24, GRANITE);

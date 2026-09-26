@@ -2,6 +2,41 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.975 (2026-09-26)
+
+### Hollow Wick, stage 4: development (developer tools > World > Map in progress)
+- Wading under a bridge or the log, what you make stays down there with you: your orbs, their beams and streaks, casings, shells, dropped magazines, smoke, sparks and blood are drawn under the deck, not on its top. Someone up on the deck keeps theirs on the deck.
+- The owner's additions to the soundscape: now and then every sound simply stops for a few seconds and comes back; a faint scraping and digging by the open grave, in runs, that stops dead when you come near and waits until you have gone; the crows sometimes fall silent all at once after a last few caws.
+- Crows sit on the body pile by the stream and fly off when someone comes near, drifting back once it is quiet again; the crows that come down to the dead caw as they land.
+- Roofs never hide someone standing outside under them: the meetinghouse's portico, the hoods over the doors and the eaves open a small see-through patch over anyone standing there, yours and theirs, so a hat is never lost under a roof.
+- Under the open forge, the horse sheds and the woodshed you stay outdoors: no indoor camera and no grey shroud, only the roof lifting over you.
+- The tomb vault is fieldstone all round, and the body in the rocking chair now sits on the gambrel's stoop, which runs on past the door for it.
+- Props sit on the land properly: stone piles, boulders, tombs, crates and sacks no longer hang off slopes, and the graveyard's walls step down the hill stone by stone instead of sinking into it.
+- You can no longer walk into the hanged man or through the well sweep's stone; boulders are no bigger than they look; the fork's walls are no longer doubled, and field walls no longer run through a stalk patch or a corn shock.
+- The corn crib has a proper shingled roof with a hole in it, and the troughs are open with dark water standing in them. Pumpkins come in their sizes.
+- More breakables where the land was bare: lanterns, crates, grain and crocks at the crossings, windfall crates by the old orchard, cordwood at the woods' edges.
+- Robots no longer hide and fight from under the bridge, and when anyone is under a bridge or the log it turns see-through for everyone, not only for whoever is under it. Robots walk across the mill dam, and no longer stand still for a minute at a spot they cannot shoot from.
+- Every house now tells its own story inside: a laying-out room with a coffin on two chairs and the candles burnt down, a weaver's room with the cloth half woven on the loom, a kitchen with the stew left in the kettle and bare footprints in the spilled flour that stop at the hearth, a parlour laid for the whole family with the chairs pushed back, a nursery with the cradle rocked to one side and tiny shoes by the door, and a farmhouse with the cellar thrown open and its back door barred from inside. Salt across a threshold, a witch mark burnt into a beam, a cloak still on its peg.
+- The horse sheds have their stalls and mangers, the hearse house its bier, the woodshed its stacks; furniture no longer stands in front of open windows (a round through a window now flies on into the room), the fire inside the tavern and the smithy is under their chimneys, and robots can reach every corner of every room.
+- Team respawns at a base never come up in sight of an enemy standing in it while another spot will do, and base A's spawns are off the main street. Free-for-all respawns spread over the map instead of piling up behind Church Hill. Practice robots added from developer tools no longer come in in the water or on steep banks.
+
+### Hollow Wick, stage 5: detail (developer tools > World > Map in progress)
+- Puritan justice by the meetinghouse: the stocks with a pair of worn shoes still in the holes, the pillory with its board left lifted a crack, a whipping post worn pale at shoulder height beside the west door, and a granite mounting block by the portico.
+- Things left where they were used: hitching rails and a cast shoe before the tavern and the smithy, the grindstone, the forge's raked-out slag, a hay wagon at the barn, rain barrels under the eaves, a plough stopped mid-furrow and a harrow, a scythe on the pasture fence.
+- By the graveyard, the parish bier with an open, empty coffin (a strip of shroud caught on the rim), its lid against the hearse house and the digger's barrow by the open grave; on the water, a skiff half pulled out with water in it, an eel pot, a washtub of wet linen, spare millstones against the mill.
+- In the woods: a ring of blackened stones round a long-dead fire, two cairns where the back trail enters, and a collapsed lean-to beside a deer's carcass. Whoever camped there never came back.
+- The ground tells what went on here: wagon ruts down the street, the slope and the bridge road (older, grassed ones up Church Hill), puddles in their low spots and by the well and troughs, hoofprints where horses stood and cart tracks into the barn, boot prints round the open grave, straw at the barn and sheds, chips at every woodpile and chopping block, the forge's ash and cinders, spilled grain at the mill, leaves drifted against the walls, and bare footprints from the body pile down into the stream that never come out the other side.
+- A few things move: a black billy goat in its wattle pen behind the farm that stops grazing to turn and stare at you as you pass, washing flapping on the line, stick figures turning slowly on their strings along the woods' track, loose shutters swinging and banging in the gusts, the tavern's sign creaking, and a thin wisp from one chimney. Someone is home.
+- Tree limbs no longer hide anyone behind a trunk: they thin out round a character like the leaves and roofs do, above the shoulders only, so the trunk is still cover you can see.
+- Every roof has its own weathered shingle (silvered, brown-grey, mossy, one newer cedar, the smiths' sooty), lighter than the one dark slab the town was.
+- More fieldstone piles, boulders and chopping blocks where the land was still bare, spread out rather than heaped together.
+- The retaining walls are capped stone by stone in weathered and mossy greys instead of one pale kerb.
+- The town's yards have their scatter: trodden grass at the edges, gravel, twigs and leaves blown in from the village trees.
+- Leaves on the ground no longer swallow an Amber hat or a rust coat: the yellows lying in the woods are faded, and the darkest litter is a wet brown.
+- The overhead map shows every retaining wall, the mill dam as a walkway (it read as open water), the fenced orchard and the hanging tree.
+- The map's card picture looks over the meetinghouse and its burying ground, without the practice targets.
+- Extreme no longer hitches the first time a slow device has to lighten its shading.
+
 ## alpha v0.970 (2026-09-26)
 
 ### Hollow Wick, stage 3 finished (developer tools > World > Map in progress)

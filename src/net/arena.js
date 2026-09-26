@@ -330,12 +330,15 @@ export class Arena {
   const entry = modeById(this.mode), colliders = this.world.colliders;
   if (seat.team && entry?.teams && this.map.bases?.length) {
    const base = teamBase(this.map, seat.team, TEAMS.slice(0, entry.teams).map(t => t.id));
-   if (base) return baseSpot(this.map, colliders, base, { others, random: this.random });
+   // (Not in sight of a living enemy while another point will do: map-spawns.js.)
+   const enemies = [...this.seats.values()].filter(s => s !== seat && s.present && !s.dead && s.sim.player.hp > 0 && this.hostile(seat, s)).map(s => s.sim.player);
+   if (base) return baseSpot(this.map, colliders, base, { others, enemies, random: this.random });
   }
   const skip = (x, z) => inPickArea(this.noSpawn, x, z);
-  return ffaSpot(this.map, colliders, { others, random: this.random, space: SPAWN_APART, skip })
-   || this.openOutside(others)
-   || furthestSpot(this.map, colliders, others) || this.map.spawn;
+  // (The last few FFA points used sit out a turn: map-spawns.js ffaSpot.)
+  const at = ffaSpot(this.map, colliders, { others, random: this.random, space: SPAWN_APART, skip, recent: this.recentSpawns ||= [] });
+  if (at) { this.recentSpawns.push(at); if (this.recentSpawns.length > 3) this.recentSpawns.shift(); return at; }
+  return this.openOutside(others) || furthestSpot(this.map, colliders, others) || this.map.spawn;
  }
 
  // An open spot a screen from everyone, never in the weapon-pick view's ground.

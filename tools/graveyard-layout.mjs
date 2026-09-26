@@ -11,8 +11,9 @@
 // 40% of the cover solid, 60% breakable.
 import { writeFileSync } from 'node:fs';
 import { hollowWick, BUILDING_PADS, BASES } from '../src/maps/hollow-wick.js';
-import { groundFor } from '../src/map-kit.js';
+import { groundFor, mapColliders } from '../src/map-kit.js';
 import { insidePoly } from '../src/world/heightfield.js';
+import { FIELD_WALLS as OLD_WALLS, GRAVEYARD_PROPS as OLD_GRAVES } from '../src/maps/hollow-wick-graveyard.js';
 
 const map = { ...hollowWick, props: [] }, ground = groundFor(hollowWick);
 const O = [-44, -22.5];
@@ -299,13 +300,21 @@ const RUNS = [
 ];
 const walls = [];
 const wallOpts = { graveyard: false, path: .15, pad: .8, slopeMax: .35 };
+// (Stage 4 audit: walls were laid against a map without its other props, so
+// two stood through the fork's own walls and others through a stalk patch, a
+// corn shock and a stone pile.) Every other prop's solid collider keeps 0.35
+// m off a wall, and the stalk patches 0.8 m.
+const own = new Set([...OLD_WALLS, ...OLD_GRAVES]), others = hollowWick.props.filter(p => !own.has(p));
+const otherSolids = mapColliders({ ...hollowWick, buildings: [], trees: null, fences: [], crossings: null, props: others }).filter(c => !c.walkOver && !c.terrainEdge);
+const boxGap = (x, z, c) => { const a = c.angle || 0, cs = Math.cos(a), sn = Math.sin(a), dx = x - c.x, dz = z - c.z; return Math.hypot(Math.max(0, Math.abs(dx * cs - dz * sn) - (c.localW ?? c.w) / 2), Math.max(0, Math.abs(dx * sn + dz * cs) - (c.localD ?? c.d) / 2)); };
+const clearOfOthers = (x, z) => otherSolids.every(c => boxGap(x, z, c) >= .35) && (hollowWick.crops || []).every(f => Math.abs(x - f.x) >= f.w / 2 + .8 || Math.abs(z - f.z) >= f.d / 2 + .8);
 for (const [id, runs] of RUNS) for (const [x0, z0, x1, z1] of runs) {
   // Only the stretches of the run that are clear (sampled every half metre,
   // across its width too) are built: the wall breaks where a path, a pad,
   // the water or a bank is.
   const len = Math.hypot(x1 - x0, z1 - z0), ux = (x1 - x0) / len, uz = (z1 - z0) / len;
   const ok = [];
-  for (let t = 0; t <= len + 1e-6; t += .5) { const x = x0 + ux * t, z = z0 + uz * t; ok.push([-.3, 0, .3].every(o => okPoint(x - uz * o, z + ux * o, wallOpts))); }
+  for (let t = 0; t <= len + 1e-6; t += .5) { const x = x0 + ux * t, z = z0 + uz * t; ok.push([-.3, 0, .3].every(o => okPoint(x - uz * o, z + ux * o, wallOpts) && clearOfOthers(x - uz * o, z + ux * o))); }
   let start = null;
   for (let i = 0; i <= ok.length; i++) {
     if (i < ok.length && ok[i]) { if (start === null) start = i; continue; }

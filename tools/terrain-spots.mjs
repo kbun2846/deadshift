@@ -27,6 +27,13 @@ export const SPOTS = {
   'north-woods': { x: -6, z: -52 },
   town: { x: 30, z: -4.5 },
   bridge: { x: -14, z: 14, look: { x: -14, z: 30 } },
+  // s5-ground: where the ground marks are thickest (the green: the ruts'
+  // bend, the well's and trough's puddles, the tavern's trampled front, the
+  // forge's cart track and ash, the woodpile's chips).
+  's5-ground': { x: 22, z: -6, look: { x: 30, z: -2 } },
+  // s5-life: the farm's back yard, the goat's pen and the washing line in
+  // view (the goat turns to stare: a player is within 14 m).
+  's5-life': { x: -38.5, z: 36, look: { x: -43, z: 32 } },
  },
 };
 
