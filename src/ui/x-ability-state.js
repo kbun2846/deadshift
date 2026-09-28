@@ -11,6 +11,7 @@ import { RULES } from '../config/gameplay.js';
 export const X_STATES = Object.freeze(['cooldown', 'ready', 'charging', 'active']);
 
 export function xAbilityState(sim) {
+ if(sim.weapon==='sheath')return sim.sheath.x?'active':sim.sheath.xCooldown>0?'cooldown':'ready';
  if(sim.weapon==='ichor')return sim.ichor.frenzy>0?'active':sim.ichor.xCooldown>0?'cooldown':'ready';
  if(sim.weapon==='sidekick')return sim.sidekick.summon>0?'charging':sim.sidekick.active>0?'active':sim.sidekick.xCooldown>0?'cooldown':'ready';
  if(sim.weapon==='sightline')return sim.sightline.xLoading?'charging':sim.sightline.special?'active':sim.sightline.xCooldown>0?'cooldown':'ready';

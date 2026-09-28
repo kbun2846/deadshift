@@ -25,7 +25,8 @@ import { resetOmen, stepOmen, clearOmen } from './weapons/omen.js';
 import { resetSightline, stepSightline, prepareSightline, stepSightlineScope, SIGHTLINE } from './weapons/sightline.js';
 import { resetSidekick,stepSidekick,stepSidekickMobility,stepSidekickMines,SIDEKICK } from './weapons/sidekick.js';
 import {resetIchor,stepIchor,ichorOnTrail,ICHOR} from './weapons/ichor.js';
-const WEAPON_STEPS = { rifle: stepRifle, shotgun: stepShotgun, omen: stepOmen, sightline: stepSightline, sidekick: stepSidekick, ichor:stepIchor };
+import {resetSheath,stepSheath,stepSheathMobility,SHEATH} from './weapons/sheath.js';
+const WEAPON_STEPS = { rifle: stepRifle, shotgun: stepShotgun, omen: stepOmen, sightline: stepSightline, sidekick: stepSidekick, ichor:stepIchor, sheath:stepSheath };
 export { RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH };
 
 
@@ -207,7 +208,7 @@ export class Simulation {
 
   reset() {
     this.dev.speed=1;
-    resetRifle(this);resetShotgun(this);resetOmen(this);resetSightline(this);resetSidekick(this);resetIchor(this);
+    resetRifle(this);resetShotgun(this);resetOmen(this);resetSightline(this);resetSidekick(this);resetIchor(this);resetSheath(this);
     resetGrenades(this); resetSurge(this); resetScatter(this);
     this.time = 0; this.serial = 0; this.volley = 0; this.shots = []; this.hexOrbs = []; this.hexSpin = null; this.hexCooldown = 0; this.events = [];
     this.player = this.freshPlayer('local', this.map.spawn);
@@ -235,7 +236,7 @@ export class Simulation {
   // Online: back into the world after dying or picking a weapon. A fresh body
   // and a full loadout, but the world (props, crops, the clock) is untouched.
   respawn(at, id = this.player.id) {
-    resetRifle(this); resetShotgun(this); resetGrenades(this); resetSurge(this, true); resetScatter(this, true); resetOmen(this,true); resetSightline(this,true);resetSidekick(this,true);resetIchor(this,true);
+    resetRifle(this); resetShotgun(this); resetGrenades(this); resetSurge(this, true); resetScatter(this, true); resetOmen(this,true); resetSightline(this,true);resetSidekick(this,true);resetIchor(this,true);resetSheath(this,true);
     this.shots = []; this.hexOrbs = []; this.hexSpin = null; this.hexCooldown = 0;
     this.volleyKills = new Map(); this.volleys = new Map(); this.seedCooldown = 0;
     this.ammo = RULES.maxSeeds; this.rechargeProgress = 0; this.rechargeWait = 0; this.firstRefill = false;
@@ -248,11 +249,11 @@ export class Simulation {
   // (a retaining wall hides the ledge above them); every one on a flat map.
   launchableSeeds() { const p = this.player; return this.ground.flat ? this.seeds : this.seeds.filter(s => this.ground.sightClear(p.x, p.z, s.x, s.z, this.ownGround())); }
   // Ballast and the Sightline/Sidekick loadout have two dodge charges.
-  get maxStamina(){return this.weapon==='ichor'?ICHOR.dodges:this.weapon==='sightline'?SIGHTLINE.dodges:this.weapon==='shotgun'?SHOTGUN.dodges:RULES.maxStamina;}
+  get maxStamina(){return this.weapon==='sheath'?SHEATH.dodges:this.weapon==='ichor'?ICHOR.dodges:this.weapon==='sightline'?SIGHTLINE.dodges:this.weapon==='shotgun'?SHOTGUN.dodges:RULES.maxStamina;}
   // Nominal has no self-movement of its own, so holding a position is the one
   // thing it trades for. Standing still pays it back in dodges, matching the
   // stationary bonus Static already gets on its ammo pool.
-  get staminaRate(){return this.weapon==='ichor'?1/ICHOR.dashRechargeScale:this.weapon==='sightline'?1/SIGHTLINE.dashRechargeScale:this.weapon==='rifle'&&Math.hypot(this.player.vx,this.player.vz)<.15?RIFLE.stationaryStamina:1;}
+  get staminaRate(){return this.weapon==='sheath'?1/SHEATH.dashRechargeScale:this.weapon==='ichor'?1/ICHOR.dashRechargeScale:this.weapon==='sightline'?1/SIGHTLINE.dashRechargeScale:this.weapon==='rifle'&&Math.hypot(this.player.vx,this.player.vz)<.15?RIFLE.stationaryStamina:1;}
   get rechargeRate() { return Math.hypot(this.player.vx, this.player.vz) < .15 ? RULES.stationaryRecharge : 1; }
   get rechargeInterval() { return RULES.rechargeInterval / (this.firstRefill ? 1.4 : 1); }
   get interior() { return this.map.buildings.find(b => buildingContains(b, this.player)) || null; }
@@ -408,7 +409,7 @@ export class Simulation {
     const frozen=!!this.dev.freeze;
     if(frozen)input={moveX:input.moveX,moveZ:input.moveZ,aimX:input.aimX,aimZ:input.aimZ,aimPointX:input.aimPointX,aimPointZ:input.aimPointZ,autoRange:input.autoRange,smoothAim:input.smoothAim,dodge:input.dodge};
     if(usesTrigger(this.weapon))input={...input,spray:false,hex:false,seed:false,launch:false};
-    if(['omen','ichor'].includes(this.weapon)&&input.aiming)input={...input,aiming:false};
+    if(['omen','ichor','sheath'].includes(this.weapon)&&input.aiming)input={...input,aiming:false};
     if (this.worldAuthority && !frozen) stepCrops(this, dt, (a, b) => !this.colliders.some(c => !c.playerOnly && segmentBox(a.x, a.z, b.x, b.z, c) !== null));
     if(!frozen)stepSidekickMines(this,dt,segmentBox);
     // Dead: what you already fired keeps flying and landing (blast shells,
@@ -430,6 +431,7 @@ export class Simulation {
       this.events.push({ type: 'sprayStart', x: p.x, z: p.z });
     }
     input=prepareSightline(this,input);
+    input=stepSheathMobility(this,input,dt,{segmentBox,segmentCircle});
     if(!frozen)stepSidekickMobility(this,input,dt);
     const wasDodging = p.dodgeRemaining > 0;
     p.dodgeRemaining = Math.max(0, p.dodgeRemaining - dt);
@@ -443,6 +445,8 @@ export class Simulation {
     let moveSpeed=RULES.speed*(ichorOnTrail(this)?ICHOR.trailSpeed:1)*(this.weapon==='ichor'&&this.ichor.blood>=ICHOR.meterMax?ICHOR.fullMove:1)*(this.weapon==='sidekick'&&this.sidekick.active>0?SIDEKICK.moveSpeed:1)*(this.weapon==='ichor'&&this.ichor.frenzy>0?ICHOR.frenzyMove+.3*Math.sin(Math.PI*Math.min(1,(this.ichor.duration-this.ichor.swing)/(this.ichor.duration||1))):1)*(input.aiming?RIFLE.aimMoveMultiplier:1)*(this.surge?.active?SURGE.speed:1);
     if(this.weapon==='ichor'&&this.ichor.swing>0)moveSpeed*=ICHOR.attackMove;
     if(this.weapon==='ichor'&&this.ichor.guarding)moveSpeed*=ICHOR.guardMove;
+    // Sheath: Gold Rush is quicker; a swing and the Draw-cut's flourish slower.
+    if(this.weapon==='sheath'){const sh=this.sheath;if(sh.rush>0)moveSpeed*=SHEATH.rushSpeed;moveSpeed*=sh.swing>0?(sh.rush>0?SHEATH.attackMove:Math.min(SHEATH.attackMove,SHEATH.outMove)):sh.rush>0?1:sh.out?SHEATH.outMove:SHEATH.sheathedMove;if(sh.x?.phase==='flourish')moveSpeed*=SHEATH.xFlourishMove;}
     // Hills: walking up a slope is slower, down one a little quicker.
     if (!this.ground.flat && length) moveSpeed *= this.slopeFactor(ix, iz) * this.wadeFactor(ix, iz);
     if (wasDodging && !p.dodgeRemaining) { p.vx = ix * moveSpeed; p.vz = iz * moveSpeed;if(this.weapon==='ichor')this.ichor.dashWindow=ICHOR.dashGrace; }
@@ -545,7 +549,7 @@ export class Simulation {
       if (t.moving && t.hp > 0 && !this.dev.freezeTargets) t.x = t.baseX + Math.sin(this.time * .72) * t.travel;
     }
     // Moving and freshly respawned targets also separate from an idle player.
-    if(this.targets.some(t=>t.hp>0&&Math.hypot(t.x-p.x,t.z-p.z)<RULES.radius+targetRadius(t))||this.touchingPlayer())this.movePlayer(0,0);
+    if(!(this.weapon==='sheath'&&this.sheath?.x?.phase==='dash')&&this.targets.some(t=>t.hp>0&&Math.hypot(t.x-p.x,t.z-p.z)<RULES.radius+targetRadius(t))||this.touchingPlayer())this.movePlayer(0,0);
     this.stepSpray(dt);
     for (const s of this.shots) {
       const travel = s.launched ? Math.max(0, Math.min(dt, s.travelDuration - s.age)) : dt;
@@ -718,8 +722,10 @@ export class Simulation {
       for (let pass = 0; pass < 3; pass++) {
         // Round bodies: targets, then other players online. Pushed straight
         // out along the line between centres, and any speed into them removed.
-        for(const target of this.targets) if(target.hp>0)this.pushOutOfCircle(target.x,target.z,r+targetRadius(target),previousX,previousZ);
-        for(const other of this.otherPlayers) if(!(other.hp<=0))this.pushOutOfCircle(other.x,other.z,r*2,previousX,previousZ);
+        // (Sheath's Draw-cut passes through bodies for its whole dash: `phasing`.)
+        const phasing=this.phasing||(this.weapon==='sheath'&&this.sheath?.x?.phase==='dash');
+        if(!phasing)for(const target of this.targets) if(target.hp>0)this.pushOutOfCircle(target.x,target.z,r+targetRadius(target),previousX,previousZ);
+        if(!phasing)for(const other of this.otherPlayers) if(!(other.hp<=0))this.pushOutOfCircle(other.x,other.z,r*2,previousX,previousZ);
         for (const b of near) {
         // Floor clutter is stepped over, not walked into.
         if(b.walkOver)continue;
@@ -1329,7 +1335,7 @@ export class Simulation {
       }
     }
     if (killed || !shot.environmental) this.events.push({ type: killed ? 'kill' : 'hit', x: target.x, z: target.z, volley: shot.volley,
-      id:target.id, ...((shot.damageType==='omenCurse'||shot.damageType?.startsWith('ichor'))?{below:!!target.below}:null), ...(shot.bloodLevel!=null?{bloodLevel:shot.bloodLevel}:{}),damageType:ballast&&killed?'ballastFatal':shot.damageType, oneShot:killed&&oneShot&&!shot.environmental, electric:!!shot.electric, blast:!!shot.blast, damage:dealt, targetKind: target.kind, directionX: shot.vx || 0, directionZ: shot.vz || 0 });
+      id:target.id, ...((shot.damageType==='omenCurse'||shot.damageType?.startsWith('ichor')||shot.damageType?.startsWith('blade'))?{below:!!target.below}:null), ...(shot.bloodLevel!=null?{bloodLevel:shot.bloodLevel}:{}),damageType:ballast&&killed?'ballastFatal':shot.damageType, oneShot:killed&&oneShot&&!shot.environmental, electric:!!shot.electric, blast:!!shot.blast, damage:dealt, targetKind: target.kind, directionX: shot.vx || 0, directionZ: shot.vz || 0 });
   }
 
   damageEnvironment(entity, damage) {
@@ -1366,6 +1372,7 @@ export class Simulation {
     clearOmen(this);
     if(this.ichor){this.ichor.guarding=this.ichor.guardHeld=false;this.ichor.guardStrength=this.ichor.guardShots=this.ichor.guardFlash=0;this.ichor.frenzy=this.ichor.swing=0;this.ichorBleeds=[];this.ichorWaves=[];}delete this.player.ichor;
     this.sidekickMines=[];if(this.sidekick){this.sidekick.active=this.sidekick.summon=0;}delete this.player.sidekick;
+    if(this.sheath){this.sheath.swing=this.sheath.rush=0;this.sheath.x=null;this.sheath.queued=false;}delete this.player.sheath;
     // A nova ends (its cooldown runs) and a readied blast is dropped.
     if(this.surge&&this.surge.phase!=='idle'&&!this.predictOnly)endSurge(this,false);
     if(this.scatter)this.scatter.armed=false;
@@ -1426,6 +1433,7 @@ export class Simulation {
     clearOmen(this);
     if(this.ichor){this.ichor.guarding=this.ichor.guardHeld=false;this.ichor.guardStrength=this.ichor.guardShots=this.ichor.guardFlash=0;this.ichor.frenzy=this.ichor.swing=0;this.ichorBleeds=[];this.ichorWaves=[];}delete this.player.ichor;
     this.sidekickMines=[];if(this.sidekick){this.sidekick.active=this.sidekick.summon=0;}delete this.player.sidekick;
+    if(this.sheath){this.sheath.swing=this.sheath.rush=0;this.sheath.x=null;this.sheath.queued=false;}delete this.player.sheath;
     for (const prop of this.props) {
       if (prop.hp === null) continue;
       if (prop.hp <= 0) this.events.push({ type: 'propRestore', id: prop.id, x: prop.x, z: prop.z, propType: prop.type, quiet: true });

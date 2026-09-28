@@ -2,7 +2,7 @@ import {createIchorAbilityBlood} from './ichor-blood-hud.js';
 // The ability readouts beside the ammo: dodge stamina pips, the main ability
 // dial (Static's hex, Nominal's grenade, Ballast's blast), Nominal's
 // nova dial (the X abilities: hex, nova, blast; a ready one shows its name), and the (visually retired, still announced) charge meter.
-import { ICHOR, SIDEKICK, SIGHTLINE, RULES, GRENADE, SURGE, SCATTER } from '../config/gameplay.js';
+import { SHEATH, ICHOR, SIDEKICK, SIGHTLINE, RULES, GRENADE, SURGE, SCATTER } from '../config/gameplay.js';
 import { scatterPrimeLeft } from '../weapons/scatter.js';
 import { bindAbilityCooldown, addAbilityCooldown } from './ability-cooldown.js';
 import { setStyle, setAttr } from './dom-writes.js';
@@ -34,6 +34,17 @@ export function createAbilityHUD() {
    for(const id of ['hex-recharge','touch-grenade'])setAttr(byId(id),'data-x-state',locked?'locked':s.eCooldown>0?'cooldown':'ready');
    for(const id of ['extended-recharge','touch-extended'])setAttr(byId(id),'data-x-state',xAbilityState(sim));
    for(const [id,left]of [['touch-grenade',s.eCooldown],['touch-extended',s.frenzy||s.xCooldown]])setAttr(byId(id),'data-x-left',id==='touch-grenade'&&locked?'50%':left>0?String(Math.ceil(left)):'');
+   byId('hex-range').classList.add('hidden');return;
+  }
+  if(sim.weapon==='sheath'){
+   // Gold Rush on E (blue while it runs), the Draw-cut on X.
+   const s=sim.sheath,x=xAbilityState(sim),e=s.rush>0?'active':s.eCooldown>0?'cooldown':'ready';
+   for(const id of ['hex-recharge','extended-recharge','touch-grenade','touch-extended'])if(byId(id))setAttr(byId(id),'data-omen-optimal','false');
+   updatePrimaryCooldown({remaining:s.rush||s.eCooldown,duration:s.rush?SHEATH.rushDuration:SHEATH.eCooldown,binding:'E',text:s.rush>0?undefined:s.eCooldown>0?undefined:'RUSH',label:s.rush>0?'gold rush · running':'gold rush'});
+   extendedCooldownUI.root.classList.remove('hidden');
+   extendedCooldownUI.update({remaining:s.xCooldown,duration:SHEATH.xCooldown,binding:'X',text:s.xCooldown>0?undefined:'DRAW',label:'draw-cut'});
+   setAttr(byId('hex-recharge'),'data-x-state',e);setAttr(extendedCooldownUI.root,'data-x-state',x);
+   for(const [id,state,left] of [['touch-grenade',e,s.rush||s.eCooldown],['touch-extended',x,s.xCooldown]]){setAttr(byId(id),'data-x-state',state);setAttr(byId(id),'data-x-left',left>0?String(Math.ceil(left)):'');}
    byId('hex-range').classList.add('hidden');return;
   }
   if(sim.weapon==='sidekick'){

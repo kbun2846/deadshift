@@ -76,6 +76,7 @@ import { createRobotMinds } from './ui/robot-minds.js';
 import { addWatermark } from './ui/watermark.js';
 import { viewWidth, viewHeight } from './viewport.js';
 import { installTitle } from './ui/title-screen.js';
+import { createSheathScreen } from './ui/sheath-screen.js';
 
 const $ = id => document.getElementById(id);
 try{migrateGameStorage(localStorage);}catch{}
@@ -138,11 +139,11 @@ function heard(e,shooter){
  return {level:hearingLevel(Math.hypot(x-sim.player.x,z-sim.player.z)/(e.hearingScale||1)),x,z};
 }
 // Someone else firing within earshot: a pink arc on the side it came from.
-const FIRING=new Set(['ichorSwing','ichorWave','ichorFrenzyStart','sidekickShot','sightlineShot','omenShot','omenVolley','rifleShot','shotgunShot','launch','sprayArc','hexPulse','scatterFire']);
+const FIRING=new Set(['sheathSwing','sheathDrawCut','ichorSwing','ichorWave','ichorFrenzyStart','sidekickShot','sightlineShot','omenShot','omenVolley','rifleShot','shotgunShot','launch','sprayArc','hexPulse','scatterFire']);
 function otherEvent(e,shooter,slot){
  const {level,x,z}=heard(e,shooter);
  hollow?.event(e,shooter,slot); // s3-sound
- if(NET_SOUNDS.has(e.type)||e.damageType?.startsWith('ichor')&&['hit','kill'].includes(e.type))sound.event(e,level);
+ if(NET_SOUNDS.has(e.type)||(e.damageType?.startsWith('ichor')||e.damageType?.startsWith('blade'))&&['hit','kill'].includes(e.type))sound.event(e,level);
  if(FIRING.has(e.type)&&x!==null&&level>HEARING.silent&&running&&!deathActive){
   const me=view.screenPoint(sim.player.x,sim.player.z),at=view.screenPoint(shooter?.x??x,shooter?.z??z);
   fireIndicator.add(Math.atan2(at.y-me.y,at.x-me.x),Math.min(1,.25+level*.9));
@@ -549,6 +550,7 @@ function updateHUD() {
 
 }
 
+const sheathScreen=createSheathScreen();
 function event(e) {
   // The danger zone blinks out on the shot itself: the cone is a warning, and
   // once the shell is away there is nothing left to warn about for a moment.
@@ -563,6 +565,11 @@ function event(e) {
   // You killed a player (or a robot): KILL where they fell.
   if(e.type==='kill'&&(e.targetKind==='player'||e.targetKind==='robot'))outgoingFeedback.kill(e,sim.time);
   if(e.type==='syphon')outgoingFeedback.heal(e,sim.time);
+  // Sheath's Draw-cut: a white streak across the screen, yours or cutting you.
+  if((e.type==='sheathDrawCut'&&e.id===sim.player.id)||(e.type==='playerDamage'&&e.damageType==='bladeDraw')){
+   const a=view.screenPoint(sim.player.x,sim.player.z),b=view.screenPoint(sim.player.x+(e.dx??e.directionX??1),sim.player.z+(e.dz??e.directionZ??0));
+   sheathScreen.streak(Math.atan2(b.y-a.y,b.x-a.x));
+  }
   if(tutorial){tutorial.event(e,sim);updateTutorial();}
   view.event(e); sound.event(e,heard(e).level); hollow?.event(e,sim.player); // (s3-sound: the crows)
   if(e.type==='playerDeath'){duel.playerDied();beginDeath();}
@@ -869,7 +876,7 @@ function syncOnlineScreens(){
 }
 function enterOnline(){onlineMenus(true);syncOnlineScreens();}
 // Loud enough to hear from anyone's gun; the rest stay with their owner.
-const NET_SOUNDS=new Set(['ichorDeflect','ichorGuardStart','ichorSwing','ichorWave','ichorFrenzyStart','sidekickShot','sidekickRush','sidekickMine','sidekickReload','sidekickReloaded','sightlineShot','omenShot','omenVolley','omenBurst','omenPrime','omenMark','omenCurseBeat','omenFade','rifleShot','shotgunShot','launch','explosion','grenadeExplosion','propBreak','hexPulse','sprayStart','surgeCharge','surgeStart','scatterFire','scatterBurst']);
+const NET_SOUNDS=new Set(['sheathSwing','sheathClang','sheathSheathe','sheathRush','sheathRushEnd','sheathDrawBack','sheathDrawTell','sheathDrawDash','sheathDrawCut','ichorDeflect','ichorGuardStart','ichorSwing','ichorWave','ichorFrenzyStart','sidekickShot','sidekickRush','sidekickMine','sidekickReload','sidekickReloaded','sightlineShot','omenShot','omenVolley','omenBurst','omenPrime','omenMark','omenCurseBeat','omenFade','rifleShot','shotgunShot','launch','explosion','grenadeExplosion','propBreak','hexPulse','sprayStart','surgeCharge','surgeStart','scatterFire','scatterBurst']);
 function netEvents(){
  const myId=online.myId,isClient=!online.isHost;
  for(const {by,e,shooter,slot} of online.events()){
@@ -1256,7 +1263,7 @@ function frame(time) {
       if(!online.active)bots.before(sim);
       // Freezing is a solo tool: online it would stop only the host.
       if(online.active&&sim.dev.freeze)sim.dev.freeze=false;
-      sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), surge:sim.weapon==='rifle'&&tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(usesTrigger(sim.weapon)&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),scatter:sim.weapon==='shotgun'&&tappedKeys.has('KeyX'),doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming,reload:tappedKeys.has('KeyR'), ichorGuard:weaponGuarding(sim.weapon,rifleAiming,keys),ichorE:sim.weapon==='ichor'&&tappedKeys.has(GAME_KEYS.secondary),ichorX:sim.weapon==='ichor'&&tappedKeys.has('KeyX'),sidekickMine:sim.weapon==='sidekick'&&tappedKeys.has(GAME_KEYS.secondary),sidekickX:sim.weapon==='sidekick'&&tappedKeys.has('KeyX'),sightlineStance:sim.weapon==='sightline'&&tappedKeys.has(GAME_KEYS.secondary),sightlineX:sim.weapon==='sightline'&&tappedKeys.has('KeyX'),omenPrime:sim.weapon==='omen'&&tappedKeys.has(GAME_KEYS.secondary), omenVolley:sim.weapon==='omen'&&tappedKeys.has('KeyX'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
+      sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), surge:sim.weapon==='rifle'&&tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(usesTrigger(sim.weapon)&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),scatter:sim.weapon==='shotgun'&&tappedKeys.has('KeyX'),doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming,reload:tappedKeys.has('KeyR'), ichorGuard:weaponGuarding(sim.weapon,rifleAiming,keys),ichorE:sim.weapon==='ichor'&&tappedKeys.has(GAME_KEYS.secondary),ichorX:sim.weapon==='ichor'&&tappedKeys.has('KeyX'),sheathE:sim.weapon==='sheath'&&tappedKeys.has(GAME_KEYS.secondary),sheathX:sim.weapon==='sheath'&&tappedKeys.has('KeyX'),sidekickMine:sim.weapon==='sidekick'&&tappedKeys.has(GAME_KEYS.secondary),sidekickX:sim.weapon==='sidekick'&&tappedKeys.has('KeyX'),sightlineStance:sim.weapon==='sightline'&&tappedKeys.has(GAME_KEYS.secondary),sightlineX:sim.weapon==='sightline'&&tappedKeys.has('KeyX'),omenPrime:sim.weapon==='omen'&&tappedKeys.has(GAME_KEYS.secondary), omenVolley:sim.weapon==='omen'&&tappedKeys.has('KeyX'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
         launchPointX: arrows.active?undefined:pendingAimPoint?.aimPointX, launchPointZ: arrows.active?undefined:pendingAimPoint?.aimPointZ }));
       online.afterStep();
       if(!online.active){bots.after(sim);bots.step(sim);}
@@ -1306,6 +1313,8 @@ function frame(time) {
   perfReadout.update(started && !paused ? dt : 0, measuredFPS);
   syncGameCursor();
   updateHealthHUD(sim);
+  // Your own Gold Rush tints your view (sheath-screen.js); nobody else's does.
+  sheathScreen.rush(started&&!paused&&sim.weapon==='sheath'&&sim.sheath.rush>0&&!sim.player.dead);
   hudTime += dt; if (hudTime >= .08) { updateHUD(); hudTime = 0; keepAwake(running && !deathActive); }
   damageFeedback.update(sim,view);outgoingFeedback.update(sim,view);
   if(started&&!paused)duel.frame(dt);
@@ -1360,7 +1369,7 @@ function applyInputPreference(){
   updateWeaponHUD(sim,touchPrompts);
   touchLabel('touch-launch',extras?'FIRE':'LAUNCH','LMB / SPACE');
   touchLabel('touch-hex',extras?'RELOAD':'HEX',extras?'R':'X');
-  $('touch-hex').hidden=sim.weapon==='ichor';
+  $('touch-hex').hidden=sim.weapon==='ichor'||sim.weapon==='sheath';
   $('touch-stream').hidden=!!extras&&!extras.aim;
   if(!extras||extras.aim)touchLabel('touch-stream',extras?(extras.aim.label||'AIM'):'STREAM',extras?extras.aim.binding:'C');
   touchLabel('touch-dodge','DODGE','Q');

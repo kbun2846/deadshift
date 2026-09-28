@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { makeBoneBank } from './death-bones.js';
 import { BallastBlood } from './ballast-blood.js';
-import { addGore, skeletonRemains, spilledBrains, charMaterial, compact, disposeMerged, GORE_DETAIL } from './gore.js';
+import { addGore, skeletonRemains, spilledBrains, charMaterial, compact, disposeMerged, GORE_DETAIL, GoreBurst } from './gore.js';
 import { groundY, floorY, hilly } from '../render/ground-lift.js';
 
 // A body left where it fell, copied from a live avatar's pose: yours
@@ -17,11 +17,15 @@ export class DeathCorpse{
   const player=source?.root||view.player,gun=source?source.skip:player.userData.gun,inverse=new THREE.Matrix4().makeTranslation(-event.x,-base,-event.z);
   const detail=GORE_DETAIL[view.qualityName]??2;
   const char=reaction.charred?charMaterial(reaction.mode==='skeleton'):null;
+  // A blade death (Sheath): one arm, sometimes both, cut off at the
+  // shoulder (1 the right, -1 the left). The Draw-cut takes both more often.
+  const severed=reaction.severed?new Set(Math.random()<(reaction.both?.6:.35)?[1,-1]:[Math.random()<.6?1:-1]):null;this.severed=severed;
+  const cut=node=>severed&&(severed.has(node.userData.limb==='arm1'?1:node.userData.limb==='arm-1'?-1:0)||(node.userData.deathPart==='arm'||node===player.userData?.staticArm)&&severed.has(1));
   if(char)this.materials.push(char);this.charMaterial=char;
   // Preserve the visible avatar and pose, but never duplicate the dropped weapon.
   const walk=node=>{
    if((gun&&node===gun)||node===view.grenadeView?.held||!node.visible)return;
-   if(reaction.headless&&node.userData.deathPart==='head'||reaction.kneeling&&node.userData.deathPart==='leg')return;
+   if(reaction.headless&&node.userData.deathPart==='head'||reaction.kneeling&&node.userData.deathPart==='leg'||cut(node))return;
    if(node.isMesh&&!node.material.transparent){
     let geometry=node.geometry,material=char||node.material;
     // A soaked live avatar restores its original assets on respawn. Its fallen
@@ -93,8 +97,19 @@ export class DeathCorpse{
   if(Math.hypot(dx,dz)<.001)dz=1;
   this.direction=new THREE.Vector3(dx,0,dz).normalize();this.axis=new THREE.Vector3(this.direction.z,0,-this.direction.x);
   if(reaction.kneeling)this.blood=new BallastBlood(view,event,this.body,this.direction,yaw);
+  if(severed){
+   // Raw red stumps where they came off, and the arms thrown the way the
+   // blade went (gore.js GoreBurst, limbs only).
+   const turn=new THREE.Group();turn.rotation.y=yaw;this.body.add(turn);
+   const red=new THREE.MeshLambertMaterial({color:'#8e1624',flatShading:true}),bone=new THREE.MeshLambertMaterial({color:'#e6dcc6',flatShading:true});this.materials.push(red,bone);
+   const stumpGeo=new THREE.BoxGeometry(.13,.12,.13),boneGeo=new THREE.CylinderGeometry(.025,.03,.07,5);this.geometries.push(stumpGeo,boneGeo);
+   for(const side of severed){const stump=new THREE.Mesh(stumpGeo,red);stump.position.set(side*.27,.78,0);turn.add(stump);const end=new THREE.Mesh(boneGeo,bone);end.rotation.z=Math.PI/2;end.position.set(side*.34,.79,0);turn.add(end);}
+   const colours=source?.colours||{coat:'#496e6b',arm:'#49716b',legs:'#394a44'};
+   this.limbs=new GoreBurst(view,event,colours,detail,{arms:severed.size});
+  }
  }
  update(time){
+  this.limbs?.update(time);
   // Burn seams glow orange just after death and cool to a dull red.
   if(this.charMaterial)this.charMaterial.emissiveIntensity=.12+1.1*Math.exp(-time*.9);
   if(this.blood){
@@ -117,5 +132,5 @@ export class DeathCorpse{
    if(time>1.1&&!this.settled){this.settled=true;for(const material of [...this.skeletonMaterials,...(this.brainMaterials||[])]){material.transparent=false;material.opacity=1;}compact(this.skeleton);}
   }
  }
- dispose(){disposeMerged(this.root);disposeMerged(this.brains);this.blood?.dispose();this.root.removeFromParent();this.brains?.removeFromParent();this.bank?.dispose();this.materials.forEach(material=>material.dispose());this.geometries.forEach(geometry=>geometry.dispose());}
+ dispose(){this.limbs?.dispose();disposeMerged(this.root);disposeMerged(this.brains);this.blood?.dispose();this.root.removeFromParent();this.brains?.removeFromParent();this.bank?.dispose();this.materials.forEach(material=>material.dispose());this.geometries.forEach(geometry=>geometry.dispose());}
 }

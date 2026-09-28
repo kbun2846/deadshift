@@ -95,7 +95,7 @@ export const WarmUp = {
     // The detail-effect pools sit hidden until something happens, and compile
     // only compiles what is visible: shown for the warm-up, so the first
     // grenade or gunshot does not stop the game for a second to build shaders.
-    const fxMeshes = [...(this.fx?.meshes || []), ...(this.omenView?.meshes || []),...(this.sightlineView?.meshes||[]),...(this.sidekickView?.meshes||[]),...(this.ichorView?.meshes||[]),...(this.rifleView?.batches||[]),this.shotgunView?.pellets,this.shotgunView?.shellTrails, this.orbBeams?.mesh, this.scatterView?.mesh].filter(Boolean);
+    const fxMeshes = [...(this.fx?.meshes || []), ...(this.omenView?.meshes || []),...(this.sightlineView?.meshes||[]),...(this.sidekickView?.meshes||[]),...(this.ichorView?.meshes||[]),...(this.sheathView?.meshes||[]),...(this.rifleView?.batches||[]),this.shotgunView?.pellets,this.shotgunView?.shellTrails, this.orbBeams?.mesh, this.scatterView?.mesh].filter(Boolean);
     for (const mesh of fxMeshes) { this.interiorVisibility.apply(mesh); mesh.visible = true; }
     // On Extreme the scene is drawn into the composer's (linear) render target,
     // not the (sRGB) canvas, and the output colour space is part of every
@@ -160,7 +160,7 @@ export const WarmUp = {
     const at = this.map.spawn || { x: 0, z: 0 };
     this.player.updateMatrixWorld(true);
     const sceneBefore = new Set(this.scene.children);
-    this.warmDeaths = ['gunshot', 'explosion', 'fire', 'ballastFatal', 'electric'].map(damageType => {
+    this.warmDeaths = ['gunshot', 'explosion', 'fire', 'ballastFatal', 'electric', 'bladeDraw'].map(damageType => {
       const d = new DeathView(this);
       try { d.start({ type: 'playerDeath', x: at.x, z: at.z, directionX: 1, directionZ: 0, aimX: 1, aimZ: 0, damageType }); for (const t of [.3, 1, 2.5, 4]) d.update(t - (d.age || 0)); } catch { /* staging only */ }
       return d;

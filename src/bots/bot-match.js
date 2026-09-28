@@ -341,7 +341,7 @@ export class BotMatch {
    // Others on each target, not counting this robot itself.
    const mine = bot.brain.targetId, others = new Map(targeting); if (mine != null && others.has(mine)) others.set(mine, others.get(mine) - 1);
    const input = bot.brain.step(dt, { enemies, noises: heard, grenades, bodies, friends, intel, targeting: others, seeAll: !!dev.robotSeeAll, rally: this.squads.rally(bot, friends) });
-   if (dev.robotHoldFire) { input.ichorE = input.ichorX = input.sidekickMine = input.sidekickX = input.sightlineX = input.omenPrime = input.omenVolley = input.fire = input.tapFire = input.launch = input.spray = input.hex = input.grenade = input.doubleShot = input.surge = input.scatter = false; }
+   if (dev.robotHoldFire) { input.sheathE = input.sheathX = input.ichorE = input.ichorX = input.sidekickMine = input.sidekickX = input.sightlineX = input.omenPrime = input.omenVolley = input.fire = input.tapFire = input.launch = input.spray = input.hex = input.grenade = input.doubleShot = input.surge = input.scatter = false; }
    if (dev.robotFreeze) { input.moveX = input.moveZ = 0; input.dodge = false; }
    sim.viewAspect=this.viewAspect||16/9;
    sim.step(input, dt);
@@ -412,8 +412,9 @@ export class BotMatch {
  others(alpha = 1) {
   return this.living().map(b => {
    const p = b.sim.player, prev = b.prev || p;
-   return { id: b.id, slot: b.slot, robot: !b.human, ...this.sideOf(b), hp: b.sim.player.hp, maxHp: b.sim.player.maxHp, ally: b.team === YOU_TEAM, x: prev.x + (p.x - prev.x) * alpha, z: prev.z + (p.z - prev.z) * alpha, vx: p.vx, vz: p.vz,
-    aimX: p.aimX, aimZ: p.aimZ, dodgeRemaining: p.dodgeRemaining, weapon: b.sim.weapon, ...(p.ichor?{ichor:{...p.ichor}}:{}),...(p.sidekick?{sidekick:{...p.sidekick}}:{}), ...(p.sightline?{sightline:{...p.sightline}}:{}), ...(p.below ? { below: true } : {}) };
+   const k = alpha;
+   return { id: b.id, slot: b.slot, robot: !b.human, ...this.sideOf(b), hp: b.sim.player.hp, maxHp: b.sim.player.maxHp, ally: b.team === YOU_TEAM, x: prev.x + (p.x - prev.x) * k, z: prev.z + (p.z - prev.z) * k, vx: p.vx, vz: p.vz,
+    aimX: p.aimX, aimZ: p.aimZ, dodgeRemaining: p.dodgeRemaining, weapon: b.sim.weapon, ...(p.ichor?{ichor:{...p.ichor}}:{}),...(p.sidekick?{sidekick:{...p.sidekick}}:{}), ...(p.sightline?{sightline:{...p.sightline}}:{}),...(p.sheath?{sheath:{...p.sheath}}:{}), ...(p.below ? { below: true } : {}) };
   });
  }
 

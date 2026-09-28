@@ -34,7 +34,9 @@ import { weaponOrDefault } from '../items.js';
 // 16 (v0.990a fixes): 'cropCut' (Ichor cuts crops down); the guard turns
 // only rounds that meet its blade (host-side rule); 'moveMap' (the host
 // takes the room to another map; the welcome's `map` moves a joiner there).
-export const PROTOCOL_VERSION = 16;
+// 17: Sheath: its inputs (`sheathE` Gold Rush, `sheathX` Draw-cut, both
+// predicted by the joiner: they move the body), its player state and loadout.
+export const PROTOCOL_VERSION = 17;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);
@@ -47,12 +49,12 @@ export function movementInput(input = {}, weapon = null) {
  let aimX = n(input.aimX), aimZ = n(input.aimZ);
  const aim = Math.hypot(aimX, aimZ);
  if (aim > 1e-6) { aimX /= aim; aimZ /= aim; } else { aimX = 0; aimZ = 0; }
- return { moveX, moveZ, aimX, aimZ, smoothAim: !!input.smoothAim, dodge: !!input.dodge, aiming: !!input.aiming, ...(weapon==='sidekick'&&input.sidekickX?{sidekickX:true}:{}),...(input.sightlineStance?{sightlineStance:true}:{}),...(weapon==='sightline'&&input.reload?{reload:true}:{}),...(weapon==='sightline'&&input.sightlineX?{sightlineX:true}:{}) };
+ return { moveX, moveZ, aimX, aimZ, smoothAim: !!input.smoothAim, dodge: !!input.dodge, aiming: !!input.aiming, ...(weapon==='sidekick'&&input.sidekickX?{sidekickX:true}:{}),...(input.sightlineStance?{sightlineStance:true}:{}),...(weapon==='sightline'&&input.reload?{reload:true}:{}),...(weapon==='sightline'&&input.sightlineX?{sightlineX:true}:{}),...(weapon==='sheath'&&input.sheathE?{sheathE:true}:{}),...(weapon==='sheath'&&input.sheathX?{sheathX:true}:{}) };
 }
 
 // Every button a player can press, cleaned: booleans stay booleans, points
 // stay finite and on the map. Nothing else gets through.
-const PRESSES = ['ichorGuard','ichorE','ichorX','sidekickMine','sidekickX','sightlineStance','sightlineX','omenPrime','omenVolley','grenade', 'surge', 'fire', 'tapFire', 'scatter', 'doubleShot', 'reload', 'spray', 'hex', 'seed', 'launch', 'quickShot'];
+const PRESSES = ['sheathE','sheathX','ichorGuard','ichorE','ichorX','sidekickMine','sidekickX','sightlineStance','sightlineX','omenPrime','omenVolley','grenade', 'surge', 'fire', 'tapFire', 'scatter', 'doubleShot', 'reload', 'spray', 'hex', 'seed', 'launch', 'quickShot'];
 export function playerInput(input = {}) {
  const clean = movementInput(input);
  for (const key of PRESSES) clean[key] = !!input[key];
@@ -74,7 +76,7 @@ export function playerState(id, p, lastSeq = 0) {
  return {
   id, lastSeq,
   ...(p.ichor?{ichor:{...p.ichor}}:{}),...(p.sidekick?{sidekick:{...p.sidekick}}:{}),
-  ...(p.sightline?{sightline:{...p.sightline}}:{}),
+  ...(p.sightline?{sightline:{...p.sightline}}:{}),...(p.sheath?{sheath:{...p.sheath}}:{}),
   x: round(p.x), z: round(p.z), vx: round(p.vx), vz: round(p.vz),
   aimX: round(p.aimX, 4), aimZ: round(p.aimZ, 4), aimSpin: round(p.aimSpin || 0, 4),
   dodgeRemaining: round(p.dodgeRemaining, 4), dodgeX: round(p.dodgeX, 4), dodgeZ: round(p.dodgeZ, 4),
@@ -97,7 +99,7 @@ export function applyPlayerState(p, s) {
 // charges, cooldowns). A joiner's sim never fires, so it learns these here.
 export function loadout(sim) {
  const flat = o => Object.fromEntries(Object.entries(o).filter(([, v]) => typeof v !== 'object'));
- return { ...(sim.weapon==='ichor'?{ichor:flat(sim.ichor),ichorTrails:sim.ichorTrails.map(t=>({...t}))}:{}),...(sim.weapon==='sidekick'?{sidekick:{...flat(sim.sidekick)}}:{}), ...(sim.weapon==='sightline'?{sightline:{...flat(sim.sightline)}}:{}), omen:sim.omen?{...flat(sim.omen),marks:sim.omen.marks.map(m=>({...m}))}:undefined, ammo: sim.ammo, rechargeProgress: round(sim.rechargeProgress, 3), rechargeWait: round(sim.rechargeWait, 3), hexCooldown: round(sim.hexCooldown, 2),
+ return { ...(sim.weapon==='sheath'&&sim.sheath?{sheath:flat(sim.sheath)}:{}),...(sim.weapon==='ichor'?{ichor:flat(sim.ichor),ichorTrails:sim.ichorTrails.map(t=>({...t}))}:{}),...(sim.weapon==='sidekick'?{sidekick:{...flat(sim.sidekick)}}:{}), ...(sim.weapon==='sightline'?{sightline:{...flat(sim.sightline)}}:{}), omen:sim.omen?{...flat(sim.omen),marks:sim.omen.marks.map(m=>({...m}))}:undefined, ammo: sim.ammo, rechargeProgress: round(sim.rechargeProgress, 3), rechargeWait: round(sim.rechargeWait, 3), hexCooldown: round(sim.hexCooldown, 2),
   grenadeCooldown: round(sim.grenadeCooldown, 2), rifle: flat(sim.rifle), shotgun: flat(sim.shotgun), spraying: !!sim.spray.active,
   surge: sim.surge ? { phase: sim.surge.phase, t: round(sim.surge.t, 3), cooldown: round(sim.surge.cooldown, 2), active: !!sim.surge.active } : undefined,
   scatter: sim.scatter ? { armed: !!sim.scatter.armed, armedFor: round(sim.scatter.armedFor || 0, 2), cooldown: round(sim.scatter.cooldown, 2) } : undefined };
@@ -107,6 +109,7 @@ export function applyLoadout(sim, l) {
  for (const key of ['ammo', 'rechargeProgress', 'rechargeWait', 'hexCooldown', 'grenadeCooldown']) if (Number.isFinite(l[key])) sim[key] = l[key];
  if(l.ichor&&sim.ichor){Object.assign(sim.ichor,l.ichor);sim.ichorTrails=(l.ichorTrails||[]).map(t=>({...t}));}
  if(l.sidekick&&sim.sidekick)Object.assign(sim.sidekick,l.sidekick);
+ if(l.sheath&&sim.sheath)Object.assign(sim.sheath,l.sheath);
  if(l.sightline&&sim.sightline)Object.assign(sim.sightline,l.sightline);
  if(l.omen&&sim.omen)Object.assign(sim.omen,l.omen,{marks:(l.omen.marks||[]).map(m=>({...m}))});
  if (l.rifle) Object.assign(sim.rifle, l.rifle);

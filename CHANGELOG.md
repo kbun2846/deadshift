@@ -2,6 +2,17 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.994 (2026-09-28)
+
+### Sheath, a new weapon
+- A white broadsword in a black sheath. The first cut draws it (a little slower if you draw on the move); it goes back in when you stop. Heavy, wide cuts for 60–70 to everyone in the swing, about two a second, each swing flowing from where the last ended. You walk 2% faster with it sheathed and 12% slower with it out.
+- **E Gold Rush:** three seconds of faster movement with a gold trail. The sword comes out with a see-through gold blade over it that doubles its length and its reach; it pops in with a white flash and dissolves into gold motes when the rush ends. No slowdown for having the sword out while it runs; keep attacking.
+- **X Draw-cut:** a quick hop back, a split second set with a gold line showing where it will go, then a dash straight ahead the way you faced, up to 7.5 m. Everyone it passes through takes 290–310 and every breakable on the line is cut; step off the line during the set and it misses you. Walls stop it. It leaves a huge engraved gold slash along its path that lingers, then burns away. 35-second cooldown.
+- Its kills take an arm off, sometimes both. Robots can use it too, and it has its own short tutorial.
+
+### Menus
+- The map pick is two across and scrolls, like the weapon menu, with the same card and text sizes.
+
 ## alpha v0.993 (2026-09-28)
 
 ### Graphics

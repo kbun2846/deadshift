@@ -61,7 +61,7 @@ export function roomPlan(brain,target) {
  return plan;
 }
 
-const ATTACKS=['ichorE','ichorX','sidekickMine','sidekickX','fire','tapFire','doubleShot','launch','spray','grenade','hex','surge','scatter','sightlineX','omenPrime','omenVolley'];
+const ATTACKS=['sheathE','sheathX','ichorE','ichorX','sidekickMine','sidekickX','fire','tapFire','doubleShot','launch','spray','grenade','hex','surge','scatter','sightlineX','omenPrime','omenVolley'];
 const BLIND=['fire','launch'];
 export function paceRoomFire(brain,input,target) {
  const blind=!target?.visible;

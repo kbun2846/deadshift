@@ -36,7 +36,8 @@
 //    rather than chasing across the map, goes first for whoever is hurting
 //    you, and stands between you and them when you are nearly dead.
 // Nothing here touches the DOM or three.js.
-import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER, WADE, TERRAIN, OMEN, SIGHTLINE, ICHOR } from '../config/gameplay.js';
+import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER, WADE, TERRAIN, OMEN, SIGHTLINE, ICHOR, SHEATH } from '../config/gameplay.js';
+import { sheathDrawCutLength } from '../weapons/sheath.js';
 import { collidersAlong } from '../world/collider-grid.js';
 import { segmentBox } from '../simulation.js';
 import { cropEntityVisible } from '../crops.js';
@@ -54,6 +55,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // How each weapon likes to fight.
 export const STYLE = Object.freeze({
  ichor:{near:1,far:1.7,speed:ICHOR.waveSpeed,reach:ICHOR.waveRange},
+ sheath:{near:1.2,far:2.1,speed:60,reach:SHEATH.xRange},
  sidekick:{near:5,far:10,speed:65,reach:22},
  sightline:{near:12,far:19,speed:SIGHTLINE.speed,reach:32},
  omen: {near:6,far:11,speed:30,reach:22},
@@ -284,6 +286,7 @@ export class RobotBrain {
  // Ballast's Scatter)?
  abilityReady() {
   const sim = this.sim;
+  if(sim.weapon==='sheath')return sim.sheath.xCooldown<=0&&!sim.sheath.x;
   if(sim.weapon==='ichor')return sim.ichor.xCooldown<=0&&!sim.ichor.frenzy&&sim.player.hp>100;
   if(sim.weapon==='sidekick')return sim.sidekick.xCooldown<=0&&!sim.sidekick.active&&!sim.sidekick.summon;
   if(sim.weapon==='sightline')return !sim.sightline.special&&!sim.sightline.xLoading&&sim.sightline.xCooldown<=0;
@@ -483,7 +486,7 @@ export class RobotBrain {
 
  outOfAmmo() {
   const sim = this.sim;
-  if(sim.weapon==='ichor')return false;
+  if(sim.weapon==='ichor'||sim.weapon==='sheath')return false;
   if(sim.weapon==='sidekick')return !sim.sidekick.active&&(sim.sidekick.reload>0||sim.sidekick.ammo<=0);
   if(sim.weapon==='sightline')return sim.sightline.crouched?sim.sightline.rifleReload>0||!sim.sightline.rifleAmmo:sim.sightline.pistolReload>0||!sim.sightline.pistolAmmo;
   if(sim.weapon==='omen')return sim.omen.reload>0||sim.omen.ammo<=0;
@@ -805,6 +808,7 @@ export class RobotBrain {
   if (sim.weapon === 'rifle') this.rifle(input, target, d, shoot, visible);
   else if (sim.weapon === 'shotgun') this.shotgun(input, target, d, shoot, visible);
   else if(sim.weapon==='ichor'){input.aiming=false;input.tapFire=shoot&&d<2.5&&sim.ichor.cooldown<=0;input.ichorE=shoot&&d>3&&d<16&&sim.ichor.eCooldown<=0&&sim.ichor.blood>=ICHOR.eBlood&&sim.player.hp>ICHOR.waveDamage*2;/* (v0.990a: the wave costs half its hit in health) */if(shoot&&d<2.8&&this.xAllowed()){input.ichorX=true;this.usedX();}}
+  else if(sim.weapon==='sheath')this.sheath(input,target,d,shoot,visible);
   else if(sim.weapon==='sidekick')this.sidekick(input,target,d,shoot,visible);
   else if(sim.weapon==='sightline')this.sightline(input,target,d,shoot,visible);
   else if(sim.weapon==='omen')this.omen(input,target,d,shoot,visible);
@@ -844,6 +848,23 @@ export class RobotBrain {
  // X abilities a bit rarer (owner, v146): once ready, it waits a while
  // before using it (longer for easier robots, xRate).
  // (Counted from the first moment it could use it in a fight.)
+ // Sheath: slash in reach (never pressed mid-dash; the rules would hold it
+ // anyway), Gold Rush to close on someone far off or to get away when low,
+ // the Draw-cut down a clear line within its reach, at once when it would
+ // finish them.
+ sheath(input,target,d,shoot,visible){
+  const sim=this.sim,s=sim.sheath,p=sim.player,dashing=p.dodgeRemaining>0;
+  input.aiming=false;
+  input.tapFire=shoot&&!dashing&&d<SHEATH.range*(s.rush>0?SHEATH.rushReach:1)+.3&&s.cooldown<=0;
+  input.sheathE=!!target&&!s.rush&&s.eCooldown<=0&&((visible&&this.openFire(target,d)&&d>6&&d<18)||(p.hp<p.maxHp*.3&&visible&&d<7));
+  // (The line starts where the hop back ends: its reach from here is
+  // xRange - xBackDist.)
+  if(shoot&&!dashing&&!s.x&&s.xCooldown<=0&&d>1.6&&d<SHEATH.xRange-SHEATH.xBackDist-.3){
+   // (The line's wall check only once it would go: it walks every collider.)
+   const finish=target.hp!=null&&target.hp<=SHEATH.xDamage-SHEATH.xRoll;
+   if((finish||this.xAllowed())&&sheathDrawCutLength(sim,p.x-p.aimX*SHEATH.xBackDist,p.z-p.aimZ*SHEATH.xBackDist,p.aimX,p.aimZ,segmentBox)-SHEATH.xBackDist>=d-.2){input.sheathX=true;this.usedX();}
+  }
+ }
  xAllowed() {
   if (this.holding || !this.abilityReady()) { if (!this.holding) this.readySince = null; return false; }
   this.readySince ??= this.time; this.xWait ??= this.newXWait();

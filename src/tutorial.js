@@ -39,6 +39,11 @@ export function tutorialMapFor(weapon) {
 // { id, title, goal, keys, touch, note?, touchNote?, highlight? }
 const lesson = (id, title, goal, keys, touch, extra = {}) => ({ id, title, goal, keys, touch, ...extra });
 export const COURSES = {
+ sheath:[
+ lesson('hslash','slash',3,'get close and hold [LMB] / [SPACE] to slash','get close and hold [FIRE] to slash',{note:'the first cut draws the sword · it goes back in the sheath when you stop'}),
+ lesson('hrush','gold rush',1,'press [E] for a gold rush','tap [RUSH] for a gold rush',{note:'three seconds of faster movement · keep attacking',highlight:'hex-recharge'}),
+ lesson('hdraw','draw-cut',1,'face a target a few steps away and press [X]','face a target a few steps away and tap [DRAW]',{note:'a hop back, a moment to aim, then a dash that cuts everything on the line · walls stop it',highlight:'extended-recharge'}),
+ ],
  ichor:[
  lesson('icut','cut',3,'get close and hold [LMB] / [SPACE] to cut','get close and hold [FIRE] to cut',{note:'hits fill blood and make the blade stronger',highlight:'ichor-blood'}),
  lesson('iguard','deflect',1,'hold [RMB] / [SHIFT] to raise your blade','hold [GUARD] to raise your blade',{note:'raise or lower it freely · 20 seconds to recharge after it breaks',highlight:'ichor-deflect-recharge'}),
@@ -189,6 +194,7 @@ export class Tutorial {
   if (id === 'nova' && sim.surge?.phase === 'idle') sim.surge.cooldown = 0;
   if (id === 'blast' && sim.scatter) sim.scatter.cooldown = 0;
   if(this.course==='ichor'&&!this.complete){sim.ichor.eCooldown=sim.ichor.xCooldown=0;}
+  if(this.course==='sheath'&&!this.complete&&sim.sheath&&!sim.sheath.rush&&!sim.sheath.x){sim.sheath.eCooldown=sim.sheath.xCooldown=0;}
   if(this.course==='sidekick'&&!this.complete){sim.sidekick.mineCooldown=0;if(!sim.sidekick.active&&!sim.sidekick.summon)sim.sidekick.xCooldown=0;}
   if(this.course==='sightline'&&!this.complete&&sim.sightline&&!sim.sightline.special)sim.sightline.xCooldown=0;
   if (this.course === 'omen' && !this.complete && sim.omen) {
@@ -204,6 +210,9 @@ export class Tutorial {
   if (this.complete || this.ready) return false;
   const id = this.lesson.id, hit = e.type === 'hit' || e.type === 'kill';
   switch (id) {
+   case 'hslash': return hit&&e.damageType==='blade'&&this.credit();
+   case 'hrush': return e.type==='sheathRush'&&this.credit();
+   case 'hdraw': return e.type==='sheathDrawCut'&&e.hits>0&&this.credit();
    case 'icut':case 'iblood': return (e.type==='hit'||e.type==='kill')&&e.damageType?.startsWith('ichor')&&this.credit();
    case 'iguard':return e.type==='ichorGuardStart'&&this.credit();
    case 'iwave':return e.type==='ichorWave'&&this.credit();

@@ -12,7 +12,7 @@
 // backend later) and sent to the game as a list of ids. The game never trusts
 // its own copy for anything paid: see `ownedItems` below and AGENTS.md.
 
-import { RIFLE, SHOTGUN, SURGE, GRENADE, SCATTER, RULES, OMEN, SIGHTLINE, SIDEKICK, ICHOR } from './config/gameplay.js';
+import { RIFLE, SHOTGUN, SURGE, GRENADE, SCATTER, RULES, OMEN, SIGHTLINE, SIDEKICK, ICHOR, SHEATH } from './config/gameplay.js';
 import { GAME_KEYS } from './config/controls.js';
 export const ITEM_KIND = Object.freeze({ WEAPON: 'weapon', SKIN: 'skin' });
 
@@ -83,7 +83,16 @@ export const WEAPONS = Object.freeze([
  {id:'ichor',kind:ITEM_KIND.WEAPON,name:'Ichor',stats:'ICHOR',input:'trigger',smoothCursor:false,description:'a blood-fed katana · follow the trail and cut through with frenzy',previewAlt:'Ichor — straight dark blade with an angled tip and a black grip with red detail',accent:'#c95765',capacity:10,tutorial:{targetHp:800},
  touchButtons:{aim:{label:'GUARD',binding:'RMB / SHIFT',aria:'hold sword guard'},grenade:{label:'SLASH',binding:'E',key:'KeyE',aria:'launch blood slash'},extended:{label:'FRENZY',binding:'X',key:'KeyX',aria:'twelve-strike frenzy'}},
  controls:[['Cut','Hold LMB / Space / FIRE','Hold to chain wide two-handed slashes. A well-timed cut can deflect an incoming bullet. Slashing during or just after a dash deals 15% more damage. Damage grows from 30 to 85 as hits fill the blood meter. No reload.'],['Deflect','Hold RMB / Left Shift / GUARD','Raise the blade toward incoming shots. A solid white spark shows the guard is active. Each charge absorbs 40–60 projectile damage. Lowering and raising the blade keeps its remaining capacity. Excess damage breaks through; Ballast spends it pellet by pellet. Hold for as long as needed while moving 10% slower. Explosions, electricity and active curses cannot be blocked. Only exhausting its capacity starts a 20-second cooldown. Attacking with E or X lowers it.'],['Blood trail','Passive','Blood trails passively give 20% faster movement. Full blood gives 5% extra speed and 1.2x E/X recharge. Above 90% blood restores 6 health per second outside Frenzy. Full-blood hits make people drip blood for eight seconds without extra damage.'],['Blood slash','E / SLASH','Requires at least 50% blood. A growing blood arc travels forward for 60–80 damage. Hits fill blood; casting does not spend it. 6-second cooldown.'],['Frenzy','X / FRENZY','Twelve fast strikes over 2.4 seconds with quicker movement while you steer. 180–540 total direct damage at your starting blood level, with light splash. Drains 80 health; never heals. Stops at one health. 50-second cooldown.'],['Dodge','Q / DODGE','Two dodges with a slightly slower refill.']],
- hints:{keyboard:[['LMB / SPACE','HOLD TO CUT'],['RMB / SHIFT','GUARD'],['E','SLASH'],['X','FRENZY']],touch:[['FIRE','HOLD'],['GUARD','HOLD'],['SLASH','TAP'],['FRENZY','TAP']]}}
+ hints:{keyboard:[['LMB / SPACE','HOLD TO CUT'],['RMB / SHIFT','GUARD'],['E','SLASH'],['X','FRENZY']],touch:[['FIRE','HOLD'],['GUARD','HOLD'],['SLASH','TAP'],['FRENZY','TAP']]}},
+ {id:'sheath',kind:ITEM_KIND.WEAPON,name:'Sheath',stats:'SHEATH',input:'trigger',smoothCursor:false,
+ description:'a white broadsword drawn from a black sheath · heavy, wide cuts, a golden rush and a draw-cut that crosses the field',
+ previewAlt:'Sheath — a wide white broadsword with a plain crossguard beside its black sheath',accent:'#e9e4d6',capacity:1,tutorial:{targetHp:800},
+ touchButtons:{grenade:{label:'RUSH',binding:'E',key:'KeyE',aria:'gold rush'},extended:{label:'DRAW',binding:'X',key:'KeyX',aria:'draw-cut'}},
+ controls:[['Slash','Hold LMB / Space / FIRE',`Heavy, wide cuts: ${SHEATH.damage-SHEATH.damageRoll}–${SHEATH.damage+SHEATH.damageRoll} damage to everyone in the swing, about two a second. The first cut draws the sword; it goes back in the sheath after ${SHEATH.sheatheDelay} seconds without attacking. You can walk while slashing (a little slower), not while dashing: a cut pressed mid-dash comes as the dash ends. No reload.`],
+  ['Gold Rush','E / RUSH',`${SHEATH.rushDuration} seconds of ${Math.round((SHEATH.rushSpeed-1)*100)}% faster movement and a gold trail. The sword comes out with a gold extension that doubles its reach, and you walk at full speed with it out. You can keep attacking. ${SHEATH.eCooldown}-second cooldown.`],
+  ['Draw-cut','X / DRAW',`Hop back, set for a split second (a gold line shows the way), then dash up to ${SHEATH.xRange} m straight ahead the way you faced and leave a huge gold slash: everyone the dash passes through takes ${SHEATH.xDamage-SHEATH.xRoll}–${SHEATH.xDamage+SHEATH.xRoll} damage and breakables on it are cut apart. Stops at the first wall. Uses no dash. ${SHEATH.xCooldown}-second cooldown.`],
+  ['Dodge','Q / DODGE',`${SHEATH.dodges} dodges.`]],
+ hints:{keyboard:[['LMB / SPACE','HOLD TO SLASH'],['E','GOLD RUSH'],['X','DRAW-CUT']],touch:[['FIRE','HOLD'],['RUSH','TAP'],['DRAW','TAP']]}}
 ]);
 
 // Skins. Each weapon has a default one, which is simply how it looks today.

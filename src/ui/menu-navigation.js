@@ -31,6 +31,14 @@ export function createMenuNavigation(){
   if(!items.length)return true;
   const index=items.indexOf(active);
   if(key.startsWith('Arrow')){
+   // The maps page is a two-across grid too (v0.995a): up and down move a row.
+   const mapCard=active?.closest('.map-choice');
+   if(mapCard&&mapCard.parentElement?.id==='map-options'&&root.contains(mapCard)){
+    const cards=[...mapCard.parentElement.querySelectorAll('.map-choice:not(:disabled)')].filter(card=>card.getClientRects().length);
+    const delta=key==='ArrowLeft'?-1:key==='ArrowRight'?1:key==='ArrowUp'?-2:2;
+    const next=cards[Math.max(0,Math.min(cards.length-1,cards.indexOf(mapCard)+delta))];
+    next?.focus();next?.scrollIntoView({block:'nearest'});return true;
+   }
    const weaponCard=active?.closest('.weapon-card');
    if(weaponCard&&root.contains(weaponCard)){
     const cards=[...root.querySelectorAll('.weapon-card')].filter(card=>card.getClientRects().length);

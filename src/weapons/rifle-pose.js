@@ -12,7 +12,9 @@ export class RiflePose{
   const bone=new THREE.BoxGeometry(1,1,1),palm=new THREE.BoxGeometry(.115,.10,.14);
   this.arms=[1,-1].map(side=>{
    const upper=new THREE.Mesh(bone,sleeve),lower=new THREE.Mesh(bone,sleeve),hand=new THREE.Group();
-   hand.add(new THREE.Mesh(palm,skin));this.root.add(upper,lower,hand);
+   const palmMesh=new THREE.Mesh(palm,skin);hand.add(palmMesh);this.root.add(upper,lower,hand);
+   // (A blade death can take this arm off: death-corpse.js reads `limb`.)
+   for(const part of [upper,lower,palmMesh])part.userData.limb='arm'+side;
    return {side,upper,lower,hand,shoulder:new THREE.Vector3(),elbow:new THREE.Vector3(),target:new THREE.Vector3()};
   });
   this.offHand=this.arms[1].hand;this.delta=new THREE.Vector3();this.grip=new THREE.Vector3();this.sidekickGrip=new THREE.Vector3();this.armAxis=new THREE.Vector3();this.armBend=new THREE.Vector3();
@@ -33,7 +35,7 @@ export class RiflePose{
  }
  update(sim,focus,settle,recoil){
   const sightline=sim.weapon==='sightline',sidekick=sim.weapon==='sidekick';
-  const active=sim.weapon==='ichor'||sim.weapon==='rifle'||sim.weapon==='shotgun'||sightline||sidekick;this.root.visible=active;if(this.staticArm)this.staticArm.visible=!active;
+  const active=sim.weapon==='sheath'||sim.weapon==='ichor'||sim.weapon==='rifle'||sim.weapon==='shotgun'||sightline||sidekick;this.root.visible=active;if(this.staticArm)this.staticArm.visible=!active;
   if(!active)return;
   // Plant the torso, dip the head toward the sights, and damp the running sway.
   this.body.position.y-=focus*.035+settle*.012;
@@ -82,6 +84,12 @@ export class RiflePose{
     const pack=this.gun.getObjectByName('ichor-loadout'),blade=pack?.getObjectByName('ichor-blade');
     if(blade){blade.updateMatrix();arm.target.set(0,0,off?.19:.025).applyMatrix4(blade.matrix).applyMatrix4(this.gun.matrix);this.solveSightlineArm(arm,true);}
    }
+   // Sheath (sheath-model.js poseSheath): both hands on the grip while the
+   // sword is out; sheathed, the right hangs and the left rests on the throat.
+   if(sim.weapon==='sheath'){
+    const hands=this.gun.getObjectByName('sheath-loadout')?.userData.sheathPose?.hands;
+    if(hands){arm.target.copy(off?hands.left:hands.right).applyMatrix4(this.gun.matrix);this.solveSightlineArm(arm,true);}
+   }
    const age=sim.time-sim.grenadeThrowTime;
    if(off&&sim.weapon==='shotgun'&&sim.shotgun.reload>0){const phase=1-sim.shotgun.reload/SHOTGUN.reload;arm.target.set(-.1,.52+Math.sin(phase*Math.PI*4)*.07,-.10);}
    if(off&&sim.weapon==='rifle'&&age>=0&&age<.64){
@@ -97,6 +105,7 @@ export class RiflePose{
    this.segment(arm.lower,arm.elbow,arm.target,.13);
    arm.hand.position.copy(arm.target);arm.hand.quaternion.copy(this.gun.quaternion);
    arm.hand.rotation.z=off?-.3-focus*.12:.12;
+   if(sim.weapon==='sheath'){const pack=this.gun.getObjectByName('sheath-loadout'),hands=pack?.userData.sheathPose?.hands,blade=pack?.getObjectByName('sheath-blade');if(blade&&(off?hands?.leftGrip:hands?.rightGrip)){arm.hand.quaternion.copy(this.gun.quaternion).multiply(blade.quaternion);arm.hand.rotateZ(off?-.35:.35);}}
    if(sim.weapon==='ichor'){const blade=this.gun.getObjectByName('ichor-blade');if(blade){arm.hand.quaternion.copy(this.gun.quaternion).multiply(blade.quaternion);arm.hand.rotateZ(off?-.35:.35);}}
   }
  }

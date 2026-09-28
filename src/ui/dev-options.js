@@ -88,6 +88,8 @@ export const DEV_OPTIONS = Object.freeze([
   { weapon: 'shotgun', kind: 'toggle', key: 'shotgunInstantReload', label: 'Instant reload', bulk: true },
   { weapon: 'shotgun', kind: 'toggle', key: 'shotgunRapid', label: 'No delay between shots' },
   { weapon: 'shotgun', kind: 'action', key: 'scatterNow', label: 'Ready the blast now', button: 'Ready' },
+  { weapon: 'sheath', kind: 'action', key: 'sheathReady', label: 'E and X ready now', button: 'Ready' },
+  { weapon: 'sheath', kind: 'action', key: 'sheathBlood', label: 'Blood the blade (full)', button: 'Blood' },
 
   { section: 'world', kind: 'action', key: 'spawnBird', label: 'Spawn bird', button: 'Spawn' },
   { section: 'world', kind: 'toggle', key: 'freezeTargets', label: 'Freeze moving targets' },

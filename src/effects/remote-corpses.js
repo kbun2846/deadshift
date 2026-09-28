@@ -34,7 +34,7 @@ export class RemoteCorpses {
    // Blown apart: no body, the pieces thrown (and the stain from blood-splatter.js).
    entry.gore = new GoreBurst(view, event, { coat: avatar.colours.coat, arm: avatar.colours.arm, legs: avatar.colours.legs }, GORE_DETAIL[view.qualityName] ?? 2);
   } else {
-   entry.corpse = new DeathCorpse(view, event, reaction, { root: avatar.root, skip: avatar.hand, yaw: avatar.group.rotation.y });
+   entry.corpse = new DeathCorpse(view, event, reaction, { root: avatar.root, skip: avatar.hand, yaw: avatar.group.rotation.y, colours: avatar.colours });
    entry.corpse.update(0);
   }
   this.bodies.set(slot, entry);

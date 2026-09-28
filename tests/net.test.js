@@ -460,7 +460,7 @@ test('the weapon pick: GO goes in at once; at zero you go in with your pick, or 
  assert.ok(!seats[0].present && seats[0].picking.weapon === 'rifle', 'picked but waiting for GO or the timer');
  for (let i = 0; i < 10 * 60; i++) r.tick();
  assert.ok(seats[0].present && seats[0].weapon === 'rifle', 'the timer sends in the picked weapon');
- assert.ok(seats[1].present && ['static', 'rifle', 'shotgun', 'omen', 'sightline', 'sidekick'].includes(seats[1].weapon), 'nothing picked: a random weapon');
+ assert.ok(seats[1].present && ['static', 'rifle', 'shotgun', 'omen', 'sightline', 'sidekick', 'ichor', 'sheath'].includes(seats[1].weapon), 'nothing picked: a random weapon');
  assert.equal(b.session.me.present, true);
 });
 

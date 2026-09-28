@@ -135,15 +135,19 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   card.innerHTML='<button class="weapon-choice" type="button" disabled aria-disabled="true"><span class="weapon-preview weapon-soon-art" aria-hidden="true"><b>+</b></span><span class="weapon-name"><span class="button-label">COMING SOON</span></span></button>';
   card.loadPreview=()=>{};$('weapon-options').append(card);
  }
- const weaponList=$('weapon-options');
- const scrollFrame=document.createElement('div');scrollFrame.className='weapon-scroll-frame';
- weaponList.before(scrollFrame);scrollFrame.append(weaponList);
- const scrollCue=document.createElement('span');scrollCue.className='weapon-scroll-cue';scrollCue.setAttribute('aria-hidden','true');
- scrollCue.innerHTML='<svg viewBox="0 0 32 22"><path d="M3 3H29L16 19Z"/></svg>';scrollFrame.append(scrollCue);
- const updateScrollCue=()=>scrollFrame.classList.toggle('has-more',weaponList.clientHeight>0&&weaponList.scrollHeight-weaponList.clientHeight-weaponList.scrollTop>3);
- weaponList.addEventListener('scroll',updateScrollCue,{passive:true});
- const scrollResize=new ResizeObserver(updateScrollCue);scrollResize.observe(weaponList);
- for(const card of weaponList.children)scrollResize.observe(card);
+ // A scrolling list in a frame whose pink arrow shows while more lies below
+ // (the weapon page; the maps page too since v0.995a).
+ const scrollList=list=>{
+  const scrollFrame=document.createElement('div');scrollFrame.className='weapon-scroll-frame';
+  list.before(scrollFrame);scrollFrame.append(list);
+  const scrollCue=document.createElement('span');scrollCue.className='weapon-scroll-cue';scrollCue.setAttribute('aria-hidden','true');
+  scrollCue.innerHTML='<svg viewBox="0 0 32 22"><path d="M3 3H29L16 19Z"/></svg>';scrollFrame.append(scrollCue);
+  const updateScrollCue=()=>scrollFrame.classList.toggle('has-more',list.clientHeight>0&&list.scrollHeight-list.clientHeight-list.scrollTop>3);
+  list.addEventListener('scroll',updateScrollCue,{passive:true});
+  const scrollResize=new ResizeObserver(updateScrollCue);scrollResize.observe(list);
+  for(const card of list.children)scrollResize.observe(card);
+ };
+ scrollList($('weapon-options'));
  $('tutorial-basics').onclick=()=>launch(DEFAULT_WEAPON,'basics');
  // One card per map the Practice menu offers (maps.js menuMaps): the stretched
  // name, and a top-down preview for the map already loaded on this page.
@@ -169,6 +173,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   card.innerHTML=`<span class="map-thumbnail map-soon-art" aria-hidden="true"><b>+</b></span><small class="map-mode">Soon</small><span class="map-caption"><strong>${stretched('COMING')}${stretched('SOON')}</strong></span>`;
   $('map-options').append(card);
  }
+ // Two maps across, scrolling like the weapon page (v0.995a, owner).
+ scrollList($('map-options'));
  let thumbnailScheduled=false;
  function loadThumbnail(){
   // Maps with a shipped picture have it already; a render of the loaded map

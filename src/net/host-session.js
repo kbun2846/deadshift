@@ -20,7 +20,7 @@ const STALL = 1;
 
 const IDLE = Object.freeze(playerInput({}));
 // Events that other screens need to see. Everything else stays with its sim.
-export const SHARED_EVENTS = new Set(['ichorGuardStart','ichorDeflect','ichorSwing','ichorWave','ichorFrenzyStart','ichorDrip','sidekickImpact','sidekickShot','sidekickRush','sidekickMine','sidekickReload','sidekickReloaded','sightlineShot','sightlineImpact','sightlineReload','sightlineReloaded','omenShot','omenPrime','omenPrimeExpired','omenVolley','omenMark','omenCurseBeat','omenFade','omenImpact','omenBurst','explosion', 'grenadeExplosion', 'propBreak', 'propHit', 'propRestore', 'impactMark', 'rifleImpact',
+export const SHARED_EVENTS = new Set(['sheathSwing','sheathHit','sheathClang','sheathSheathe','sheathRush','sheathRushEnd','sheathDrawBack','sheathDrawTell','sheathDrawDash','sheathDrawCut','ichorGuardStart','ichorDeflect','ichorSwing','ichorWave','ichorFrenzyStart','ichorDrip','sidekickImpact','sidekickShot','sidekickRush','sidekickMine','sidekickReload','sidekickReloaded','sightlineShot','sightlineImpact','sightlineReload','sightlineReloaded','omenShot','omenPrime','omenPrimeExpired','omenVolley','omenMark','omenCurseBeat','omenFade','omenImpact','omenBurst','explosion', 'grenadeExplosion', 'propBreak', 'propHit', 'propRestore', 'impactMark', 'rifleImpact',
  'rifleShot', 'shotgunShot', 'launch', 'sprayArc', 'hexPulse', 'hexZap', 'hexFizzle', 'pointImpact', 'wall', 'trailEnd', 'hit', 'kill',
  'cropDust', 'cropCut', 'cropAsh', 'syphon', 'surgeCharge', 'surgeStart', 'surgeEnd', 'scatterArm', 'scatterPrimed', 'scatterFire', 'scatterSplit', 'scatterHit', 'scatterBurst', 'dodge', 'seed', 'playerDeath', 'playerDamage', 'outgoingDamage', 'rifleReloaded', 'shotgunReload', 'grenadeThrow', 'sprayStart',
  'hexBlock', 'mapReset', 'matchStart', 'matchEnd', 'roundEnd', 'respawn']);
@@ -227,7 +227,7 @@ export class HostSession {
     if (input) { remote.last = input; remote.lastSeq = input.seq; }
     // No input this tick: keep walking the way they were for a moment (a late
     // packet), never repeating a press; a longer silence means stand still.
-    const held = remote.silent < .25 ? { ...playerInput({ ...remote.last }), ichorE:false,ichorX:false,sidekickMine:false,sidekickX:false,sightlineStance:false,sightlineX:false,omenPrime:false, omenVolley:false, dodge: false, launch: false, tapFire: false, grenade: false, doubleShot: false, reload: false, hex: false, surge: false, scatter: false, quickShot: false } : IDLE;
+    const held = remote.silent < .25 ? { ...playerInput({ ...remote.last }), sheathE:false,sheathX:false,ichorE:false,ichorX:false,sidekickMine:false,sidekickX:false,sightlineStance:false,sightlineX:false,omenPrime:false, omenVolley:false, dodge: false, launch: false, tapFire: false, grenade: false, doubleShot: false, reload: false, hex: false, surge: false, scatter: false, quickShot: false } : IDLE;
     remote.sim.dev = { speed: 1 };
     this.arena.stepSeat(remote.seat, input || held);
     const events = remote.sim.drainEvents();

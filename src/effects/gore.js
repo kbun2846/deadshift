@@ -212,7 +212,9 @@ export function skeletonRemains(skeleton, detail = 2) {
 // An explosion: severed limbs, a torn torso piece and flesh, thrown with the
 // body's bones (death-view.js). `colours`: { coat, arm, legs, skin }.
 export class GoreBurst {
- constructor(view, event, colours, detail = 2) {
+ // `options.arms`: only that many severed arms, thrown hard the way the
+ // killing blow went, and a few chunks (a Sheath death, death-corpse.js).
+ constructor(view, event, colours, detail = 2, options = {}) {
   const m = materials(), geo = geometries();
   this.event = event; this.group = new THREE.Group(); view.scene.add(this.group); this.own = [];
   // Hills: every piece lands on the ground under it (0 on a flat map).
@@ -233,27 +235,28 @@ export class GoreBurst {
    if (handOrBoot) { const tip = new THREE.Mesh(geo.box, handOrBoot); tip.scale.set(width * .9, width * .8, .1); tip.position.z = -length / 2 - .04; g.add(tip); }
    return g;
   };
-  const kinds = [limb(legs, .26, .17, mat('#2b2622')), limb(legs, .22, .17), limb(arm, .3, .15, skin)];
-  if (detail >= 2) kinds.push(limb(arm, .18, .15));
+  const onlyArms = options.arms > 0;
+  const kinds = onlyArms ? Array.from({ length: options.arms }, (_, i) => limb(arm, i ? .5 : .54, .15, skin)) : [limb(legs, .26, .17, mat('#2b2622')), limb(legs, .22, .17), limb(arm, .3, .15, skin)];
+  if (detail >= 2 && !onlyArms) kinds.push(limb(arm, .18, .15));
   // A piece of the torso: coat outside, ribs and flesh on the torn side.
   const torso = new THREE.Group();
   const cloth = new THREE.Mesh(geo.box, coat); cloth.scale.set(.3, .08, .26); torso.add(cloth);
   const wound = new THREE.Mesh(geo.box, m.blood); wound.scale.set(.26, .02, .22); wound.position.y = .045; torso.add(wound);
   for (let i = 0; i < 3; i++) { const rib = new THREE.Mesh(geo.rib, m.bone); rib.scale.setScalar(.8); rib.rotation.x = -Math.PI / 2; rib.position.set(0, .06, (i - 1) * .06); torso.add(rib); }
-  kinds.push(torso);
-  if(event.damageType?.startsWith('ichor')){this.organBank=makeBoneBank();kinds.push(this.organBank.organs[0].clone(),this.organBank.organs[1].clone());const heart=new THREE.Group();for(const side of [-1,1]){const lobe=new THREE.Mesh(geo.chunk,m.flesh);lobe.scale.set(.095,.12,.075);lobe.position.set(side*.05,.02,0);lobe.rotation.z=side*.35;heart.add(lobe);}kinds.push(heart);}
+  if (!onlyArms) kinds.push(torso);
+  if(!onlyArms&&event.damageType?.startsWith('ichor')){this.organBank=makeBoneBank();kinds.push(this.organBank.organs[0].clone(),this.organBank.organs[1].clone());const heart=new THREE.Group();for(const side of [-1,1]){const lobe=new THREE.Mesh(geo.chunk,m.flesh);lobe.scale.set(.095,.12,.075);lobe.position.set(side*.05,.02,0);lobe.rotation.z=side*.35;heart.add(lobe);}kinds.push(heart);}
   // Each piece one draw (its parts' colours per vertex); the colour materials
   // were only needed to carry those colours.
   for (const model of kinds) compact(model);
   this.own.forEach(x => x.dispose()); this.own = [];
   for (const [i, model] of kinds.entries()) {
    this.group.add(model);
-   const a = random() * Math.PI * 2, speed = .6 + random() * .9, push = directed ? 1.6 + random() * 1.8 : 0;
+   const a = random() * Math.PI * 2, speed = (.6 + random() * .9) * (onlyArms ? .45 : 1), push = directed ? (onlyArms ? 3.8 + random() * 1.6 : 1.6 + random() * 1.8) : 0;
    this.pieces.push({ model, vx: Math.cos(a) * speed + dx * push, vz: Math.sin(a) * speed + dz * push, vy: 1.3 + random() * 1.5, y: .4 + random() * .5,
     floor: i === kinds.length - 1 ? .05 : .08, spin: (random() - .5) * 12, angle: random() * Math.PI * 2 });
   }
   // Flesh and blood chunks, more with more detail.
-  const count = [8, 14, 26, 40][detail] ?? 26;
+  const count = Math.round(([8, 14, 26, 40][detail] ?? 26) * (onlyArms ? .4 : 1));
   this.chunks = new THREE.InstancedMesh(geo.chunk, m.flesh, count); this.darkChunks = new THREE.InstancedMesh(geo.chunk, m.soaked, count);
   for (const mesh of [this.chunks, this.darkChunks]) { mesh.frustumCulled = false; mesh.count = count; this.group.add(mesh); }
   this.bits = Array.from({ length: count * 2 }, () => {

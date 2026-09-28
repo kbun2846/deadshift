@@ -159,8 +159,25 @@ input,textarea,[contenteditable=true]{-webkit-user-select:text;user-select:text}
 #game .menu-shell [data-page=weapons]{width:min(720px,100%)}
 .weapon-options{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;max-height:calc(100dvh - 200px);overflow-y:auto;padding:3px 3px 12px}
 .weapon-scroll-frame{position:relative}
-.weapon-scroll-frame .weapon-options{scrollbar-width:none}
-.weapon-scroll-frame .weapon-options::-webkit-scrollbar{display:none}
+.weapon-scroll-frame :is(.weapon-options,.map-options){scrollbar-width:none}
+.weapon-scroll-frame :is(.weapon-options,.map-options)::-webkit-scrollbar{display:none}
+/* Maps: two across, scrolling like the weapon page (v0.995a, owner). Each card
+   keeps its old size and lettering (230 wide: a 285 picture, 108 caption, the
+   104 x 30 mode tag); only on a screen too narrow for two of those does the card
+   shrink, every part in proportion (cqw = 1% of the card's width). */
+#game .menu-shell [data-page=maps]{width:min(480px,100%)}
+#game .map-options{display:grid;grid-template-columns:repeat(2,minmax(0,230px));gap:14px;max-height:calc(100dvh - 200px);overflow-y:auto;overscroll-behavior:contain;padding:3px 3px 12px;align-items:start}
+#game .menu-shell .map-options .map-choice{width:100%;min-width:0;container-type:inline-size}
+#game .map-options .map-choice .map-thumbnail{height:auto;aspect-ratio:230/285}
+#game .map-options .map-choice .map-caption,#game .map-options .map-choice .map-caption strong{height:calc(100cqw * 108 / 230)}
+#game .map-options .map-choice .map-mode{bottom:calc(100cqw * 108 / 230);width:calc(100cqw * 104 / 230);height:calc(100cqw * 30 / 230)}
+@media(max-width:480px){#game .map-options{gap:8px;max-height:calc(100dvh - 170px)}}
+@media(max-height:520px) and (orientation:landscape){
+ #game .menu-shell [data-page=maps]>.menu-back{float:left;margin:0 14px 0 0}
+ #game .menu-shell [data-page=maps]>h2{margin:0 0 12px;line-height:40px}
+ #game .menu-shell [data-page=maps] .weapon-scroll-frame{clear:both}
+ #game .map-options{max-height:calc(100dvh - 96px)}
+}
 .weapon-scroll-cue{position:absolute;bottom:28px;left:50%;width:44px;height:30px;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .15s;filter:drop-shadow(0 2px 4px #000c)}
 .weapon-scroll-frame.has-more .weapon-scroll-cue{opacity:1}
 .weapon-scroll-cue svg{display:block;width:100%;height:100%;fill:var(--ui-accent);stroke:#191c1c;stroke-width:2;stroke-linejoin:round}
@@ -473,7 +490,7 @@ body[data-controls=keyboard] #game #scores-toggle{display:none}
 #game .reticle.on-target{background:#ff3440!important;box-shadow:0 0 0 2px #ff34404d,0 0 8px #ff3440aa!important}
 
 /* Button lettering and map captions are shown only once fitted (button-typography.js), never as plain text first. */
-#game .button-label:not([data-fit]),#game .map-caption strong svg:not([viewBox]),#game .map-mode svg:not([viewBox]){visibility:hidden}
+#game .button-label:not([data-fit]),#game .map-caption strong svg:not([viewBox]),#game .map-mode svg:not([data-fit]){visibility:hidden}
 
 /* Death screen (death-screen.js): who killed you and the respawn countdown sit
    over the buttons, in the card's black ink. The bar drains as the respawn nears. */
@@ -981,3 +998,10 @@ body[data-controls=touch].duel-on.playing #game .health-hud{top:calc(max(8px,env
 /* (Still, not spinning: an animation keeps the compositor busy in the very
    process that is building the shaders, which slowed it measurably.) */
 #game .graphics-busy i{width:8px;height:8px;border-radius:50%;background:var(--ui-accent)}
+
+/* Sheath (v0.995a): no ammo row; white and black like the sword. */
+#weapon[data-weapon="sheath"] #seed-pips,#weapon[data-weapon="sheath"] .weapon-count{display:none}
+#weapon[data-weapon="sheath"] .weapon-title{color:#efe9dc}
+/* No ammo row: the panel keeps the others' height so its two stacked dials stay on screen. */
+#game #weapon[data-weapon="sheath"]{min-height:114px}
+#weapon[data-weapon="sheath"] .weapon-status{color:#d9d1bf}

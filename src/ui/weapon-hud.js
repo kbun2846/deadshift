@@ -43,6 +43,11 @@ export function createWeaponHUD(root){
   if(inputMode!==touch||shownBinds!==bindsVersion()){inputMode=touch;shownBinds=bindsVersion();controls.style.gridTemplateColumns=`repeat(${config.keyboard.length},minmax(0,1fr))`;controls.replaceChildren(...config[touch?'touch':'keyboard'].map(([key,label])=>{
    const item=document.createElement('span'),binding=document.createElement('kbd');binding.textContent=touch?key:displayKeys(key);item.append(binding,document.createTextNode(label));return item;
   }));}
+  // Sheath: no ammo; the line says what the sword is doing.
+  if(id==='sheath'){
+   mines.hidden=true;const s=sim.sheath;setAttr(root,'data-breach','false');
+   setText(status,s.x?'DRAW-CUT':s.rush>0?'GOLD RUSH · '+s.rush.toFixed(1)+'s':s.out?'DRAWN':'SHEATHED');return;
+  }
   if(id==='ichor'){
    mines.hidden=true;const s=sim.ichor;setAttr(root,'data-breach','false');
    setText(status,s.frenzy>0?'FRENZY · '+s.frenzy.toFixed(1)+'s':s.trail?'BLOOD TRAIL · FASTER':'');return;

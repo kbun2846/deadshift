@@ -17,11 +17,12 @@ import omenImage from '../assets/weapons/omen.webp?inline';
 import ichorImage from '../assets/weapons/ichor.webp?inline';
 import sidekickImage from '../assets/weapons/sidekick.webp?inline';
 import sightlineImage from '../assets/weapons/sightline.webp?inline';
+import sheathImage from '../assets/weapons/sheath.webp?inline';
 import { registerWeaponImages, registerMapImages } from './weapon-grid.js';
 
 export const CARD_IMAGES = Object.freeze(Object.fromEntries(Object.entries(THUMBNAILS).map(([path, src]) => [path.split('/').pop().replace(/\.webp$/, ''), src]))); // s3-look
 registerMapImages(CARD_IMAGES);
-export const WEAPON_IMAGES = Object.freeze({ ichor:ichorImage,static: staticImage, rifle: rifleImage, shotgun: shotgunImage, omen: omenImage, sightline: sightlineImage, sidekick:sidekickImage });
+export const WEAPON_IMAGES = Object.freeze({ ichor:ichorImage,static: staticImage, rifle: rifleImage, shotgun: shotgunImage, omen: omenImage, sightline: sightlineImage, sidekick:sidekickImage, sheath:sheathImage });
 registerWeaponImages(WEAPON_IMAGES); // the picture grids (weapon-grid.js)
 // Decode them now, off to one side, so the first weapon page is instant.
 for (const src of Object.values(WEAPON_IMAGES)) { const image = new Image(); image.src = src; image.decode?.().catch(() => {}); }

@@ -162,6 +162,8 @@ export class ClientSession {
   if(replay.weapon==='ichor'){replay.ichor={...this.local.ichor,...state.ichor};replay.ichorTrails=this.local.ichorTrails;}
   if(replay.weapon==='sidekick')replay.sidekick={...this.local.sidekick,...state.sidekick};
   if(replay.weapon==='sightline')replay.sightline={...this.local.sightline,...state.sightline};
+  // Sheath: Gold Rush's speed and a Draw-cut under way, from the host's word.
+  if(replay.weapon==='sheath'){const h=state.sheath||{};replay.sheath={...this.local.sheath,rush:h.rush||0,x:h.cut?{phase:h.cut,t:h.cutT||0,dx:h.cutDX||0,dz:h.cutDZ||0,length:h.cutLen||0,sx:h.cutSX??state.x,sz:h.cutSZ??state.z,travel:h.cutTr||0,back:h.cutBack||0,hitIds:[],hits:0}:null};}
   replay.props = this.local.props; replay.colliders = this.local.colliders; replay.crops = this.local.crops;
   applyPlayerState(replay.player, state); replay.player.hp = Math.max(1, state.hp || 1); replay.player.dead = false;
   for (const input of this.pending) { replay.step(movementInput(input,this.local.weapon)); replay.drainEvents(); }

@@ -200,3 +200,37 @@ export const SIDEKICK=Object.freeze({magazine:10,damage:30,damageRoll:2,reload:2
 
 // Ichor: rapid contact-timed katana swings and eight committed Frenzy cuts.
 export const ICHOR=Object.freeze({damage:30,maxDamage:85,interval:.24,contact:.067,range:2.15,arc:2.9,meterMax:100,gain:7.5,gainRoll:1,waveGain:13,waveGainRoll:1.5,decayDelay:7,decay:3,bleedDuration:8,trailSpeed:1.20,trailLife:18,trailCap:160,dodges:2,dashRechargeScale:1.12,eCooldown:6,eBlood:50,waveDamage:70,waveRoll:10,waveCost:.5,waveSpeed:19,waveRange:17,xCooldown:50,hits:12,frenzyInterval:.20,frenzyDamage:180,frenzyMax:540,healthDrain:80/2.4,splash:.22,dashGrace:.24,dashDamage:1.15,dashReach:.3,frenzyMove:1.3,fullMove:1.05,fullRecharge:1.2,attackMove:.88,regenThreshold:90,regen:6,parryStart:.04,parryEnd:.095,parryRecovery:.28,parryFacing:.55,guardCooldown:20,guardCapacity:50,guardRoll:10,guardMove:.9,chainWindow:.85,chainStep:.07,chainMax:.21,shortArc:1.85,midArc:2.3});
+
+// Sheath: a white broadsword carried in a black sheath at the hip (owner's
+// brief, 2026-09-28). Heavier than Ichor: one slower, wider swing at a time.
+// Main slashes: `damage` ± `damageRoll` (60-70, about 8 hits for 500 health).
+// A swing every `interval` s (1.9x Ichor's .24): `windup` before the blade
+// meets anyone, then a `hitWindow` in which everyone inside that swing's arc
+// is cut once; the rest is recovery. The first swing out of the sheath is a
+// draw-slash, a little later to land (`drawWindup`). Time to kill ~3.3 s of
+// pure slashing (Nominal ~3.6 s, Ichor ~4 s at no blood and faster as it fills).
+// Walking (owner, 2026-09-28): `outMove` with the sword out, `sheathedMove`
+// with it sheathed; a swing is `attackMove` (the slower of the two, not both).
+// Gold Rush draws the sword and keeps it out; while it runs the blade's gold
+// extension multiplies every slash's reach by `rushReach`, and walking with
+// the sword out is not slowed.
+// A draw-slash made while moving takes `drawMoveSlow` times as long (its
+// wind-up and whole swing stretched alike, so the pose still meets the hit).
+// `arcs`, `reaches`: per swing (sheath.js SHEATH_SWINGS order); wider and a
+// little longer than Ichor's 2.15 m. E Gold Rush: `rushDuration` s at
+// `rushSpeed`, `eCooldown`. X Draw-cut (rev. 2, owner 2026-09-28): a hop
+// back `xBackDist` m over `xBack` s, a set of `xTell` s with the line shown
+// (the tell: long enough to see and step off), then a dash at `xDashSpeed`
+// m/s along the way you faced as you pressed it. The line is `xRange` m from
+// where the hop ends (stops at the first solid wall); everyone within `xWidth`
+// of it that the blade reaches (`xLead` m ahead of the body) is cut once for
+// `xDamage` ± `xRoll`. The body lands `xShort` m short of the line's end, then
+// the strike (`xStrike` s, rooted) and a flourish back into the sheath
+// (`xFlourish` s, walking at `xFlourishMove`). Contact comes .29 s after the
+// press at the earliest, ~.43 s at the far end. Blade blood: each hit
+// on a person (never a robot) adds `bloodPerHit` of a full blade.
+export const SHEATH=Object.freeze({damage:65,damageRoll:5,interval:.46,windup:.1,drawWindup:.14,hitWindow:.08,
+ range:2.45,arcs:[2.1,2.0,1.9,1.95,1.35,2.35,2.0],reaches:[0,0,0,0,.3,.1,0],attackMove:.85,outMove:.88,sheathedMove:1.02,drawMoveSlow:1.25,
+ dodges:2,dashRechargeScale:1.12,sheatheDelay:1.5,bloodPerHit:1/8,
+ rushDuration:3,rushSpeed:1.35,eCooldown:12,
+ xRange:7.5,xWidth:.75,xDamage:300,xRoll:10,xBack:.12,xBackDist:1.5,xTell:.17,xDashSpeed:52,xLead:.6,xStrike:.3,xFlourish:.5,xFlourishMove:.6,xShort:.55,xCooldown:35,rushReach:2});

@@ -160,6 +160,26 @@ export class Soundscape {
     noise.onended = () => { noise.disconnect(); filter.disconnect(); gain.disconnect(); };
   }
 
+  // Air cut by a blade (Sheath): noise through a band-pass that sweeps from
+  // `from` to `to` Hz, swelling to its loudest `peak` of the way through,
+  // after `delay` s. Q sets how whistly (low) or breathy (high) it is.
+  whoosh(duration, volume, from, to, delay = 0, peak = .45, q = 1.4, bus) {
+    if (!this.context || !this.enabled || this.context.state !== 'running') return;
+    const ctx = this.context, now = ctx.currentTime + Math.max(0, delay);
+    const source = ctx.createBufferSource(); source.buffer = this.noiseBuffer;
+    const filter = ctx.createBiquadFilter(); filter.type = 'bandpass'; filter.Q.value = q;
+    filter.frequency.setValueAtTime(from, now); filter.frequency.exponentialRampToValueAtTime(Math.max(40, to), now + duration);
+    const gain = ctx.createGain(); gain.gain.setValueAtTime(.0001, now);
+    gain.gain.exponentialRampToValueAtTime(volume, now + duration * peak); gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
+    source.connect(filter); filter.connect(gain); gain.connect(this.busFor(bus)); source.start(now, Math.random()); source.stop(now + duration + .02);
+    source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
+  }
+  // Struck or drawn steel ringing on: a few inharmonic partials of `base` Hz,
+  // the higher ones dying first.
+  ring(base, duration, volume, delay = 0, partials = [1, 1.51, 2.37, 3.62]) {
+    partials.forEach((k, i) => this.tone(base * k, base * k * .985, duration / (1 + i * .55), volume / (1 + i * .8), 'sine', delay + i * .002));
+  }
+
   // `delay` comes last so the existing three- and four-argument calls are
   // untouched; tone() takes its delay earlier for the same reason.
   impact(duration, volume, frequency, bus, delay = 0) {
@@ -210,7 +230,7 @@ export class Soundscape {
   }
 
   // Sounds a weapon makes, as opposed to sounds the world makes.
-  static WEAPON_EVENTS = new Set(['ichorGuardStart','ichorDeflect','ichorSwing','ichorWave','ichorFrenzyStart','sidekickShot','sidekickRush','sidekickMine','sidekickReload','sidekickReloaded','sightlineShot','sightlineReload','sightlineReloaded','omenShot','omenPrime','omenPrimeExpired','omenVolley','omenBurst','omenMark','omenCurseBeat','omenFade','omenReload','omenReloaded','shotgunShot','shotgunReload','shotgunReloaded','scatterArm','scatterPrimed','scatterFire','scatterSplit','scatterBurst',
+  static WEAPON_EVENTS = new Set(['sheathSwing','sheathSheathe','sheathClang','sheathRush','sheathRushEnd','sheathDrawBack','sheathDrawTell','sheathDrawDash','sheathDrawCut','ichorGuardStart','ichorDeflect','ichorSwing','ichorWave','ichorFrenzyStart','sidekickShot','sidekickRush','sidekickMine','sidekickReload','sidekickReloaded','sightlineShot','sightlineReload','sightlineReloaded','omenShot','omenPrime','omenPrimeExpired','omenVolley','omenBurst','omenMark','omenCurseBeat','omenFade','omenReload','omenReloaded','shotgunShot','shotgunReload','shotgunReloaded','scatterArm','scatterPrimed','scatterFire','scatterSplit','scatterBurst',
     'rifleShot','rifleReload','cock','grenadeWindup','grenadeThrow',
     'sprayStart','sprayArc','hexDeploy','hexPulse','hexZap','hexFizzle','seed','launch','surgeCharge','surgeStart','surgeEnd']);
 
@@ -237,6 +257,63 @@ export class Soundscape {
      this.noise(length,.038*gain,3500+blood*1700);
      this.tone(pitch,pitch*.94,length,.012*gain,'sine',.007);
      this.tone(pitch*1.47,pitch*1.40,length*.68,.006*gain,'sine',.014);return;
+    }
+    // Sheath (owner's brief, 2026-09-28): heavier than Ichor's cuts, never
+    // the same twice (each swing its own band, sweep and a random pitch).
+    if(e.type==='sheathSwing'){
+     const v=e.variant||0,jitter=.88+Math.random()*.24,heavy=v===5||v===4,at=Math.max(0,(e.windup??.1)-.035),length=(heavy?.26:.2)*(.92+Math.random()*.16);
+     const from=[1500,1150,1700,900,1300,1000,1250][v]*jitter,to=[520,700,420,1300,360,480,900][v]*jitter;
+     this.whoosh(length,heavy?.2:.16,from,to,at,.42+Math.random()*.1,1.2+Math.random()*.6);
+     this.whoosh(length*.8,.06,from*2.2,to*1.8,at+.01,.5,3);
+     // Weight behind it: a low push of air.
+     this.tone(95*jitter,58,length*.9,heavy?.05:.035,'sine',at);
+     if(e.draw){
+      // Out of the sheath: a scrape along the throat, then the steel rings.
+      this.whoosh(.13,.07,5200,2600,0,.3,4);this.impact(.03,.06,4200);
+      this.ring(1860*(.97+Math.random()*.06),.7,.035,.06);
+     }
+     return;
+    }
+    if(e.type==='sheathSheathe'){
+     // Slid home and clicked shut (after the flourish, quicker).
+     const home=e.flourish?.02:.29;
+     this.whoosh(.18,.04,2600,5200,Math.max(0,home-.2),.6,4);
+     this.impact(.025,.12,3600,undefined,home);this.impact(.04,.07,1400,undefined,home+.012);this.tone(2200,2100,.05,.012,'sine',home);
+     return;
+    }
+    if(e.type==='sheathClang'){this.impact(.09,.16,900);this.tone(330*(.9+Math.random()*.2),250,.16,.06,'triangle');this.ring(640*(.92+Math.random()*.16),.26,.025,0,[1,1.47,2.09]);this.noise(.05,.035,3800);return;}
+    if(e.type==='sheathRush'){
+     // A shimmer climbing over a rush of air.
+     this.whoosh(.55,.13,380,2600,0,.55,.9);
+     [1320,1760,2210,2640,3300].forEach((f,i)=>this.tone(f,f*1.25,.5-i*.05,.018,'sine',i*.035));
+     this.tone(180,420,.3,.04,'triangle');return;
+    }
+    if(e.type==='sheathRushEnd'){[2640,2210,1760].forEach((f,i)=>this.tone(f,f*.7,.3,.012,'sine',i*.03));this.whoosh(.25,.04,1800,500,0,.3,1);return;}
+    // Draw-cut: the thumb pops the guard free as you hop back, a rising gold
+    // shimmer through the set (loud enough to warn whoever is on the line),
+    // then the dash tears through the air.
+    if(e.type==='sheathDrawBack'){this.impact(.03,.05,4800);this.tone(3100,2900,.04,.02,'triangle',.005);this.whoosh(.12,.05,900,2400,0,.4,2);return;}
+    if(e.type==='sheathDrawTell'){const d=e.tell||.17;this.tone(880,2640,d+.04,.03,'sine');this.tone(1320,3960,d+.04,.014,'sine',.01);this.ring(1760,.35,.012,d*.6,[1,1.5,2.01]);return;}
+    if(e.type==='sheathDrawDash'){this.whoosh(.2,.14,7000,1400,0,.08,1.6);this.noise(.06,.05,5200);return;}
+    if(e.type==='sheathDrawCut'){
+     // The arrival: a crack and a long ring.
+     this.impact(.035,.32,4600);this.tone(2600,900,.06,.07,'square');this.impact(.14,.2,1300,undefined,.01);
+     this.whoosh(.4,.2,3400,520,0,.12,1.1);
+     this.ring(1410*(.97+Math.random()*.06),1.5,.05,.02,[1,1.49,2.34,3.51,4.9]);
+     this.tone(70,40,.35,.08,'sine');
+     // The gold slash: a bright chime over the ring.
+     [2093,2637,3136,4186].forEach((f,i)=>this.tone(f,f*1.01,.9-i*.12,.016,'sine',.02+i*.025));return;
+    }
+    if(e.damageType?.startsWith('blade')&&['hit','kill'].includes(e.type)){
+     const draw=e.damageType==='bladeDraw';
+     if(e.targetKind==='robot'){this.impact(.07,.16,2400);this.tone(640+Math.random()*220,260,.2,.07,'triangle');this.ring(1180+Math.random()*300,.3,.02,0,[1,1.6,2.3]);this.noise(.05,.05,4300);}
+     else if(e.targetKind==='player'){
+      // A meaty slice: a wet chop, the cut itself and a low body thud.
+      const k=.85+Math.random()*.3;
+      this.impact(.1,.17,700*k);this.whoosh(.09,.09,2400*k,900,0,.15,1.6);this.tone(150*k,45,.15,.075,'sine');this.impact(.05,.06,380,undefined,.035);
+      if(draw||e.type==='kill'){this.impact(.24,.14,480,undefined,.03);this.tone(230,60,.2,.05,'sine',.03);this.impact(.1,.06,1100,undefined,.12);}
+     }
+     else this.impact(.07,.09,1600);return;
     }
     if(e.type==='ichorWave'){this.noise(.32,.14,1300);this.tone(560,160,.24,.065,'triangle');return;}
     if(e.type==='ichorFrenzyStart'){this.tone(160,55,.30,.11,'triangle');this.noise(.22,.08,420);return;}

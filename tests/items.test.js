@@ -14,7 +14,7 @@ test('Omen controls and touch layout offer no aim-in action',()=>{
 
 test('every item has a unique id, and weapons and skins stay separate',()=>{
  assert.equal(new Set(ITEMS.map(i=>i.id)).size,ITEMS.length);
- assert.deepEqual(WEAPONS.map(w=>w.id),['static','rifle','shotgun','omen','sightline','sidekick','ichor']);
+ assert.deepEqual(WEAPONS.map(w=>w.id),['static','rifle','shotgun','omen','sightline','sidekick','ichor','sheath']);
  assert.ok(WEAPONS.every(w=>w.kind===ITEM_KIND.WEAPON&&gameplay[w.stats]),'each weapon points at its tuning block');
  assert.ok(SKINS.every(s=>s.kind===ITEM_KIND.SKIN&&weapon(s.appliesTo)&&!('stats' in s)),'skins are visual only');
  assert.equal(item('nope'),null);assert.equal(weapon('static.default'),null);

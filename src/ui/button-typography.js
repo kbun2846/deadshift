@@ -36,6 +36,9 @@ export function installButtonTypography(root){
    if(inkHeight<=0)continue;
    // Fit actual letter ink, with the same slight edge crop as menu labels.
    svg.setAttribute('viewBox',`${box.x} ${Number(text.getAttribute('y'))-metrics.actualBoundingBoxAscent+inkHeight*.02} ${box.width} ${inkHeight*.96}`);
+   // (v0.995a) Chrome does not restyle on a later camel-case `viewBox`, so the
+   // badge's show-when-fitted rule keys on this instead: PRACTICE was blank.
+   svg.dataset.fit='1';
   }
   // The stretched, cropped lettering is the game's display voice. Developer
   // controls are not part of that surface, so they keep ordinary UI text.

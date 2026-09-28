@@ -196,7 +196,96 @@ function sidekickPhotoModel() {
  return gun;
 }
 
-const BUILD = { ichor:()=>{const gun=makeIchor();gun.rotation.set(.08,0,-.18);const scene=new THREE.Group();scene.add(gun);return {scene,gun};}, sidekick:()=>{const gun=sidekickPhotoModel();gun.rotation.set(.12,0,-.16);const scene=new THREE.Group();scene.add(gun);return {scene,gun};}, sightline:()=>{const scene=new THREE.Group(),rifle=makeSightlineRifle(),pistol=sidekickPhotoModel();// Remove unused animated effects so their hidden bounds cannot shrink the portrait.
+// Sheath (owner, 2026-09-28: "a lot more detail... the sheath halfway on"):
+// the white broadsword half drawn, its black lacquered scabbard over the
+// point half of the blade, along the card's diagonal like Ichor's katana.
+// Photo-only detail on the game's proportions: a bevelled, fullered blade
+// with a gold maker's mark on the ricasso; a crossguard with flared
+// quillons, langets and a gold-inlaid centre; a diamond-wrapped leather
+// grip between steel ferrules; a faceted pommel with a gold collar; the
+// scabbard with a riveted steel locket, gold trim and inlay, a banded
+// middle with a hanging ring and strap, and a pointed steel chape.
+// Tip toward -z, flat face +y (as the game's model), origin at the guard.
+const plate = (parent, points, thickness, y, color) => {
+ const outline = new THREE.Shape(); points.forEach(([x, z], i) => i ? outline.lineTo(x, z) : outline.moveTo(x, z)); outline.closePath();
+ const geo = new THREE.ExtrudeGeometry(outline, { depth: thickness, bevelEnabled: false }); geo.rotateX(Math.PI / 2);
+ const m = add(parent, geo, color, 0, y + thickness / 2, 0); return m;
+};
+function sheathPhotoModel() {
+ const gun = new THREE.Group(), GOLD = '#d9a534', DEEP = '#a8741c', STEEL = '#9a9d99', BRIGHT = '#c3c6c1', DARK_STEEL = '#6c6f6c';
+ // Blade: the part out of the scabbard (it runs on inside, unseen).
+ const top = -.07, mouth = -.56;
+ plate(gun, [[-.066, top], [.066, top], [.066, mouth], [-.066, mouth]], .02, 0, '#ebe7dc');
+ for (const side of [1, -1]) {
+  // Bevelled edges a shade brighter, one catching the key light.
+  plate(gun, [[side * .044, top - .05], [side * .066, top - .05], [side * .066, mouth], [side * .044, mouth]], .012, .004, side > 0 ? '#ffffff' : '#f6f4ec');
+  plate(gun, [[side * .044, top - .05], [side * .066, top - .05], [side * .066, mouth], [side * .044, mouth]], .012, -.004, '#f1eee5');
+ }
+ for (const y of [.0105, -.0105]) {
+  // The fuller down each face, and the plain ricasso by the guard with a
+  // small gold mark.
+  box(gun, 0, y, (top - .06 + mouth) / 2, .024, .003, Math.abs(mouth - top + .06), '#bdb6a7');
+  box(gun, 0, y * 1.02, top - .03, .118, .003, .05, '#dcd6c8');
+  const mark = box(gun, 0, y * 1.15, top - .032, .02, .003, .02, GOLD); mark.rotation.y = Math.PI / 4;
+ }
+ // Crossguard: a bar with flared, capped quillons, a raised centre block
+ // with a gold diamond each face, and short langets down onto the blade.
+ box(gun, 0, 0, -.035, .36, .042, .05, '#8f928f');
+ for (const side of [1, -1]) {
+  const q = box(gun, side * .19, 0, -.04, .05, .062, .07, STEEL); q.rotation.y = side * .18;
+  box(gun, side * .218, 0, -.046, .016, .07, .078, BRIGHT);
+  box(gun, side * .11, 0, -.035, .01, .05, .056, DARK_STEEL);
+ }
+ box(gun, 0, 0, -.035, .1, .066, .074, STEEL);
+ box(gun, 0, 0, -.035, .12, .05, .06, DARK_STEEL);
+ for (const y of [.034, -.034]) { const d = box(gun, 0, y, -.035, .036, .004, .036, GOLD); d.rotation.y = Math.PI / 4; box(gun, 0, y * 1.06, -.035, .014, .004, .014, '#fff0b8'); }
+ box(gun, 0, 0, -.085, .032, .05, .06, STEEL);
+ // Grip: leather under a diamond wrap, a steel ferrule at each end.
+ box(gun, 0, 0, .135, .042, .044, .21, '#2a211c');
+ for (let i = 0; i < 7; i++) {
+  const z = .045 + i * .028;
+  for (const turn of [.62, -.62]) { const b = box(gun, 0, 0, z, .05, .05, .01, '#4f3d2f'); b.rotation.y = turn; }
+ }
+ prism(gun, .03, .03, .02, STEEL, 8);
+ prism(gun, .243, .031, .02, STEEL, 8);
+ // Pommel: faceted, a gold collar, a bright peen cap.
+ prism(gun, .275, .046, .052, '#9a9c98', 8);
+ prism(gun, .275, .049, .012, GOLD, 8);
+ prism(gun, .305, .026, .016, BRIGHT, 8);
+ // The scabbard: black lacquer, tapering to a steel chape at the point.
+ const throat = -.52, end = -1.13;
+ plate(gun, [[-.088, throat], [.088, throat], [.077, end + .11], [-.077, end + .11]], .046, 0, '#141417');
+ box(gun, 0, .024, -.8, .018, .004, .38, '#2a2a30');
+ // Gold trim lines along both edges, and two small gold diamonds inlaid.
+ for (const y of [.0235, -.0235]) {
+  for (const side of [1, -1]) { const t = box(gun, side * .066, y, -.81, .006, .003, .38, DEEP); t.rotation.y = side * -.02; }
+  for (const z of [-.7, -.93]) { const d = box(gun, 0, y * 1.05, z, .03, .003, .03, GOLD); d.rotation.y = Math.PI / 4; }
+ }
+ // Locket: a steel band at the mouth, gold edged, riveted.
+ box(gun, 0, 0, throat - .045, .2, .058, .09, '#8a8d8a');
+ box(gun, 0, 0, throat - .004, .206, .062, .01, GOLD);
+ box(gun, 0, 0, throat - .086, .204, .06, .008, GOLD);
+ for (const x of [-.06, .06]) for (const y of [.03, -.03]) bolt(gun, x, y, throat - .045, .009, BRIGHT, 'y');
+ // The middle band with its hanging ring and a short strap and buckle.
+ const band = throat - .29;
+ box(gun, 0, 0, band, .19, .054, .034, '#7f827f');
+ box(gun, 0, 0, band, .194, .056, .006, GOLD);
+ const hang = add(gun, new THREE.TorusGeometry(.028, .007, 4, 8), BRIGHT, .115, 0, band); hang.rotation.x = Math.PI / 2;
+ // (The strap runs from the ring back up beside the scabbard toward the belt.)
+ const strap = box(gun, .142, -.004, band + .13, .026, .01, .22, '#3a2c22'); strap.rotation.y = -.12;
+ const buckle = box(gun, .148, .004, band + .15, .04, .012, .034, '#8a8d8a'); buckle.rotation.y = -.12;
+ box(gun, .148, .011, band + .15, .02, .004, .018, '#3a2c22').rotation.y = -.12;
+ for (const k of [.07, .21]) box(gun, .142 + k * .12, .002, band + .13 - .11 + k, .03, .011, .005, '#57432f').rotation.y = -.12;
+ // Chape: the steel tip, gold edged.
+ plate(gun, [[-.08, end + .125], [.08, end + .125], [.08, end + .085], [0, end - .015], [-.08, end + .085]], .052, 0, '#8a8d8a');
+ box(gun, 0, .027, end + .06, .012, .003, .08, BRIGHT);
+ box(gun, 0, 0, end + .12, .16, .054, .008, GOLD);
+ return gun;
+}
+function sheathPhoto(){
+ const gun=sheathPhotoModel();const scene=new THREE.Group();scene.add(gun);return {scene,gun};
+}
+const BUILD = { sheath:sheathPhoto, ichor:()=>{const gun=makeIchor();gun.rotation.set(.08,0,-.18);const scene=new THREE.Group();scene.add(gun);return {scene,gun};}, sidekick:()=>{const gun=sidekickPhotoModel();gun.rotation.set(.12,0,-.16);const scene=new THREE.Group();scene.add(gun);return {scene,gun};}, sightline:()=>{const scene=new THREE.Group(),rifle=makeSightlineRifle(),pistol=sidekickPhotoModel();// Remove unused animated effects so their hidden bounds cannot shrink the portrait.
 for(const name of ['sightline-loading-round','sightline-breach-light']){const part=rifle.getObjectByName(name);part.removeFromParent();part.traverse(o=>o.geometry?.dispose());}
 for(const name of ['sightline-leg-left','sightline-leg-right'])rifle.getObjectByName(name).rotation.x=-Math.PI/2;
 rifle.rotation.z=-.16;pistol.position.set(.1,-.48,.15);pistol.rotation.set(.1,0,.28);pistol.scale.setScalar(1.25);scene.add(rifle,pistol);return {scene,gun:scene};}, omen:()=>{const gun=makeOmen(3,false);gun.rotation.set(.12,0,-.16);const scene=new THREE.Group();scene.add(gun);return {scene,gun};}, static: staticGun, rifle: rifleGun, shotgun: shotgunGun };
@@ -263,8 +352,8 @@ export function weaponPhoto(id) {
   const p = new THREE.Vector3(i & 1 ? bounds.max.x : bounds.min.x, i & 2 ? bounds.max.y : bounds.min.y, i & 4 ? bounds.max.z : bounds.min.z).project(camera);
   ex = Math.max(ex, Math.abs(p.x)); ey = Math.max(ey, Math.abs(p.y));
  }
- camera.zoom = Math.min((id==='ichor'?.96:id==='sightline'?1.04:1.3) / ex, (id==='ichor'?.96:1.15) / ey); camera.updateProjectionMatrix();
- if (id === 'ichor') fitAlongDiagonal(gun, camera);
+ camera.zoom = Math.min((id==='ichor'||id==='sheath'?.96:id==='sightline'?1.04:1.3) / ex, (id==='ichor'||id==='sheath'?.96:1.15) / ey); camera.updateProjectionMatrix();
+ if (id === 'ichor' || id === 'sheath') fitAlongDiagonal(gun, camera);
  renderer.render(scene, camera);
  const url = renderer.domElement.toDataURL('image/png');
  scene.traverse(o => o.geometry?.dispose()); flat.forEach(m => m.dispose()); flat.clear(); renderer.dispose(); renderer.forceContextLoss();

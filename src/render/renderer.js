@@ -1,5 +1,6 @@
 import { ScopeShading } from './scope-shading.js';
 import { IchorView } from '../weapons/ichor-view.js';
+import { SheathView } from '../weapons/sheath-view.js';
 import { SidekickView } from '../weapons/sidekick-view.js';
 import { SightlineView } from '../weapons/sightline-view.js';
 import { scopeActive, scopeFacing, inSightCone, sightlineCamera, SIGHTLINE } from '../weapons/sightline.js';
@@ -393,7 +394,7 @@ export class WorldView {
     // The weapon views build their meshes (the rifle's smoke, the shotgun's
     // pellets, the grenade's range marker) when made, so they are made here,
     // before the warm-up, rather than on the first frame of play after it.
-    this.rifleView = new RifleView(this); this.shotgunView = new ShotgunView(this); this.grenadeView = new GrenadeView(this); this.omenView = new OmenView(this); this.sightlineView=new SightlineView(this);this.sidekickView=new SidekickView(this);this.ichorView=new IchorView(this);
+    this.rifleView = new RifleView(this); this.shotgunView = new ShotgunView(this); this.grenadeView = new GrenadeView(this); this.omenView = new OmenView(this); this.sightlineView=new SightlineView(this);this.sidekickView=new SidekickView(this);this.ichorView=new IchorView(this);this.sheathView=new SheathView(this);
     this.orderGround();
     // The warm-up runs from main.js (warmProgramsParallel, awaited while the
     // loading screen shows); `programsWarmed` is set there.
@@ -1100,6 +1101,7 @@ export class WorldView {
   // ids of their launches and trails.
   netEvent(e, shooter, slot = 0) {
     if(e.type.startsWith('ichor')){this.ichorView.event(e);return;}
+    if(e.type.startsWith('sheath')){this.sheathView.event(e);return;}
     if(e.type.startsWith('sidekick')){this.sidekickView.event({...e,remote:true});return;}
     if(e.type.startsWith('sightline')){this.sightlineView.event({...e,remote:true});return;}
     if(e.type.startsWith('omen')){this.omenView.event({...e,remote:true});return;}
@@ -1163,6 +1165,7 @@ export class WorldView {
 
   event(e) {
     if(e.type.startsWith('ichor')){this.ichorView.event(e);return;}
+    if(e.type.startsWith('sheath')){this.sheathView.event(e);return;}
     if(e.type.startsWith('sidekick')){this.sidekickView.event(e);return;}
     if(e.type.startsWith('sightline')){this.sightlineView.event(e);return;}
     if(e.type.startsWith('omen')){this.omenView.event(e);return;}
@@ -1305,6 +1308,9 @@ export class WorldView {
     }
     if (e.type === 'hit' || e.type === 'kill') {
       if(e.damageType?.startsWith('ichor')&&['player','robot'].includes(e.targetKind)){this.ichorView.hit(e);}
+      // (Sheath's cuts draw their own spray and sparks from 'sheathHit'; the
+      // body still bleeds here.)
+      else if(e.damageType?.startsWith('blade')&&e.targetKind==='player'){this.bleed(e);if(e.type==='kill')this.burst(e.x,e.z,34,'kill');}
       else if (e.targetKind === 'dummy') {
         this.burst(e.x, e.z, e.type === 'kill' ? 30 : 5, 'dust');
         if (e.type === 'kill') this.breakProp({ ...e, propType: 'hay', scale: .65 });
@@ -1354,6 +1360,7 @@ export class WorldView {
     let amount = Math.min(BLEED.max, 1 + streak * BLEED.step) * Math.max(.5, Math.min(1.6, (e.damage || 25) / 35));
     if (e.blast) amount *= BLEED.blast;
     if(e.damageType?.startsWith('ichor'))amount*=2.5+(e.bloodLevel||0)*5.5;
+    if(e.damageType?.startsWith('blade'))amount*=2.2;
     if (same) amount *= .3;
     const dx = e.directionX || 0, dz = e.directionZ || 0, length = Math.hypot(dx, dz) || 1;
     const count = Math.round((2 + 4 * amount) * this.quality.effects), colour = this.bloodColour ||= new THREE.Color('#8a1019');
@@ -1654,7 +1661,7 @@ export class WorldView {
     this.rifleView.update(sim,fdt);
     if(!this.shotgunView)this.shotgunView=new ShotgunView(this);
     this.shotgunView.update(sim,fdt);
-    this.omenView.update(sim,fdt); this.sightlineView.update(sim,fdt);this.sidekickView.update(sim,fdt);this.ichorView.update(sim,fdt);
+    this.omenView.update(sim,fdt); this.sightlineView.update(sim,fdt);this.sidekickView.update(sim,fdt);this.ichorView.update(sim,fdt);this.sheathView.update(sim,fdt);
     this.scatterView?.update(sim,fdt);
     this.orbBeams?.update(fdt);
     if(!this.grenadeView)this.grenadeView=new GrenadeView(this);
@@ -2005,7 +2012,7 @@ export class WorldView {
       for (const g of this.electric.arcs.objects) apply(g);
       for (const g of this.electric.pulseParts()) apply(g);
       this.particlePool.forEach(apply); this.rings.forEach(r => apply(r.mesh));
-      for (const mesh of [...this.fx.meshes,...this.omenView.meshes,...this.sightlineView.meshes,...this.sidekickView.meshes,...this.ichorView.meshes]) if (mesh.visible) apply(mesh);
+      for (const mesh of [...this.fx.meshes,...this.omenView.meshes,...this.sightlineView.meshes,...this.sidekickView.meshes,...this.ichorView.meshes,...this.sheathView.meshes]) if (mesh.visible) apply(mesh);
       for(const mesh of [...(this.rifleView?.batches||[]),...[this.shotgunView?.pellets,this.shotgunView?.shellTrails].filter(Boolean)])apply(mesh);
       for(const flight of this.birds?.flights||[]){apply(flight.group);if(flight.shadow)apply(flight.shadow);}
       for(const model of this.grenadeView?.items.values()||[])apply(model);
@@ -2199,7 +2206,7 @@ export class WorldView {
   // Debris only (online map reset): the world's marks and leftovers, not the
   // camera, the players or anything in flight.
   clearDebris() {
-    this.omenView?.clear();this.sightlineView?.clear();this.sidekickView?.clear();this.ichorView?.clear();
+    this.omenView?.clear();this.sightlineView?.clear();this.sidekickView?.clear();this.ichorView?.clear();this.sheathView?.clear();
     this.orbBeams?.clear(); this.deathView?.clear(); this.surgeView?.clear(); this.remoteCorpses?.clear(); this.robotWrecks?.clear(); this.robotScrap?.clear(); this.scatterView?.clear(); this.drops?.clear(); this.bleeds?.clear();
     this.blood?.clear?.();
     this.surfaceMarks.clear(); this.cropView.reset();
@@ -2227,7 +2234,7 @@ export class WorldView {
     this.hollowBreaks?.clear(); // s2-breakables
     this.leafFX?.clear(); // s3-leaves
     this.remote?.clear();
-    this.rifleView?.clear();this.shotgunView?.clear();this.omenView?.clear();this.sightlineView?.clear();this.sidekickView?.clear();this.ichorView?.clear();
+    this.rifleView?.clear();this.shotgunView?.clear();this.omenView?.clear();this.sightlineView?.clear();this.sidekickView?.clear();this.ichorView?.clear();this.sheathView?.clear();
     this.grenadeView?.clear();
     for(const g of this.targets.values()){g.userData.coverHiddenTime=0;g.visible=true;}
     this.cameraHeight = OUTDOOR_CAMERA_HEIGHT;

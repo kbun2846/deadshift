@@ -95,6 +95,8 @@ export function installDevWiring(ctx) {
    const s = sim.surge; Object.assign(s, { phase: 'active', t: 0, active: true, cooldown: 0 }); sim.rifle.ammo = sim.rifle.capacity; sim.rifle.reload = 0;
    sim.events.push({ type: 'surgeStart', x: sim.player.x, z: sim.player.z, duration: 5 });
   },
+  sheathReady: () => { if (sim.weapon !== 'sheath') { toast('SHEATH ONLY'); return; } sim.sheath.eCooldown = sim.sheath.xCooldown = 0; toast('READY'); },
+  sheathBlood: () => { if (sim.weapon !== 'sheath') { toast('SHEATH ONLY'); return; } sim.sheath.blood = 1; toast('BLADE BLOODIED'); },
   scatterNow: () => {
    if (sim.weapon !== 'shotgun' || !sim.scatter) { toast('BALLAST ONLY'); return; }
    sim.scatter.cooldown = 0; sim.scatter.armed = true; sim.events.push({ type: 'scatterArm', x: sim.player.x, z: sim.player.z });

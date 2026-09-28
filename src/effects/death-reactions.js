@@ -5,6 +5,10 @@ export const DEATH_REACTIONS=Object.freeze({
  ichorWave:{mode:'scatter',organs:true},
  ichorFrenzy:{mode:'scatter',organs:true},
  ichorCost:{mode:'corpse'},
+ // Sheath: a fallen body with gore and one or two arms cut off, thrown the
+ // way the killing slash went (death-corpse.js `severed`).
+ blade:{mode:'corpse',severed:true},
+ bladeDraw:{mode:'corpse',severed:true,both:true},
  sidekickShot:{mode:'corpse',headWound:true},
  sidekickMine:{mode:'scatter'},
  sightlineShot:{mode:'corpse',headWound:true},

@@ -1,4 +1,5 @@
 import { makeIchor,poseIchor,applyIchorBody } from './weapons/ichor-model.js';
+import { makeSheath,poseSheath,applySheathBody } from './weapons/sheath-model.js';
 import { buildingContains } from './map-kit.js';
 import { IchorDrench } from './effects/ichor-drench.js';
 import { RiflePose } from './weapons/rifle-pose.js';
@@ -32,6 +33,7 @@ function gunModel(view, weapon) {
   let model;
   if (weapon === 'rifle') model = makeRifle(2);
   else if (weapon === 'ichor') model = makeIchor();
+  else if (weapon === 'sheath') model = makeSheath();
   else if (weapon === 'sidekick') model = makeSidekick();
   else if (weapon === 'sightline') model = makeSightline();
   else if (weapon === 'omen') model = makeOmen(2);
@@ -166,7 +168,7 @@ export class RemotePlayers {
    const speed = Math.hypot(p.vx, p.vz);
    const dodge = p.dodgeRemaining > 0 ? Math.sin(Math.PI * (1 - p.dodgeRemaining / RULES.dodgeDuration)) : 0;
    avatar.body.scale.set(1 + dodge * .12, 1 - dodge * .3, 1 + dodge * .12);
-   avatar.body.rotation.y=0;avatar.body.rotation.x=0;
+   avatar.body.rotation.y=0;avatar.body.rotation.x=0;avatar.body.position.x=avatar.body.position.z=0;
    if(weapon==='sidekick')poseSidekick(avatar.hand,p.sidekick||{},time);
    if(weapon==='sightline'){const pose=poseSightline(avatar.hand,p.sightline||{},time,dt);avatar.body.scale.y*=1-.27*pose.bodyCrouch;}
    avatar.body.position.y = Math.sin(time * 17) * .022 * speed / 7;
@@ -177,7 +179,16 @@ export class RemotePlayers {
     for(const arm of avatar.fixedArms)arm.visible=false;
     avatar.ichorArms.update({weapon:'ichor',ichor:p.ichor||{},time,grenadeThrowTime:-10},0,0,0);
     applyIchorBody(avatar.body,pose);
+   }else if(weapon==='sheath'){
+    // Sheath (sheath-model.js): the same two-handed arm rig as Ichor's.
+    const pose=poseSheath(avatar.hand,p.sheath||{},time,Math.min(1,speed/5));
+    if(!avatar.ichorArms){avatar.ichorArms=new RiflePose({userData:{body:avatar.body,gun:avatar.hand}},{sleeveColor:avatar.colours.arm,skinColor:avatar.robot?avatar.colours.coat:'#d6b58a'});avatar.fixedArms=avatar.body.children.filter(o=>o.userData.deathPart==='arm');}
+    for(const arm of avatar.fixedArms)arm.visible=false;
+    avatar.ichorArms.update({weapon:'sheath',sheath:p.sheath||{},time,grenadeThrowTime:-10},0,0,0);
+    applySheathBody(avatar.body,pose);
    }else if(avatar.ichorArms){avatar.ichorArms.root.visible=false;for(const arm of avatar.fixedArms)arm.visible=true;}
+   // Thrown by a Sheath's cut (sheath-view.js).
+   this.view.sheathView?.flinch(avatar.body,p.id);
    // A robot sheds armour and sparks as it is damaged (bots/robot-wear.js).
    if (avatar.robot && p.hp != null && dt > 0) wear(this.view, avatar, p.hp / (p.maxHp || 500), dt);
    if (avatar.stains && dt > 0) {
