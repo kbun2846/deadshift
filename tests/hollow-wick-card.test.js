@@ -9,11 +9,10 @@ import { mapGridHTML } from '../src/ui/weapon-grid.js';
 
 const hw = maps['hollow-wick'];
 
-test('Hollow Wick has a card: name, one short line, a picture spot over the play area', () => {
+test('Hollow Wick has a card: name and a picture spot over the play area, no line over it (v0.992a)', () => {
  assert.equal(hw.name, 'Hollow Wick');
  const { line, thumbnail } = hw.card;
- assert.ok(typeof line === 'string' && line.length > 10 && line.length <= 60, 'one short line');
- assert.ok(!/[!]|halloween|ghost|zombie|spooky/i.test(line), 'quiet, not cartoonish');
+ assert.equal(line, undefined, 'owner, v0.992a: the line over the picture is gone');
  assert.ok(isPlayable(hw, thumbnail.x, thumbnail.z), 'the picture looks at the play area');
  assert.ok(thumbnail.height >= 30 && thumbnail.height <= 60);
 });
@@ -27,9 +26,9 @@ test('Hollow Wick\'s card picture ships with the game', { todo: !existsSync(pict
  assert.match(readFileSync(new URL('../src/ui/map-cards.js', import.meta.url), 'utf8'), /import\.meta\.glob\('\.\.\/assets\/thumbnails\/\*\.webp'/);
 });
 
-test('the map picker shows the line; the map is in the menus (v0.990a)', () => {
+test('the map picker names the map; the map is in the menus (v0.990a)', () => {
  const html = mapGridHTML({ label: 'map', maps: [maps.deadwater, hw], pressed: 'deadwater' });
- assert.ok(html.includes(`title="Hollow Wick: ${hw.card.line}"`));
+ assert.ok(html.includes(`title="Hollow Wick" >`));
  assert.ok(html.includes(`title="${maps.deadwater.name}" >`), "Deadwater's tile as before");
  // Released (owner, v0.990a): the Practice map page, SOLO and the lobby,
  // from any map; no longer under Developer tools > World > Map in progress.

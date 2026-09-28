@@ -29,7 +29,7 @@ import { ROOF_PREPASS_ORDER } from '../render/renderer.js';
 import { makeDetailedInterior } from './detailed-interiors.js';
 import { COLONIAL_TYPES } from './colonial-parts.js';
 import { takeLifeParts } from './hollow-life.js'; // s5-life: loose shutters, the tavern's sign, chimney smoke
-import { fadeRoofMaterial, fadeRoofMeshes, roofOverlayMaterial, registerOverlay, registerSections, SECTION_FADE, WALL_FADE } from './roof-fade.js';
+import { fadeRoofMaterial, fadeRoofMeshes, roofOverlayMaterial, registerOverlay, registerSections, SECTION_FADE, WALL_FADE, CEILING_FADE, ceilingMaterial } from './roof-fade.js';
 import { mergeTransformed } from '../render/merge-transformed.js';
 
 export const isColonialPart = type => !!COLONIAL_TYPES[type];
@@ -711,6 +711,32 @@ function registerRoof(view, b, roof, { planes = [], pulls = new Map() } = {}) {
   // its whole fade (the gameplay guard: shownInside).
   if (record) { record.entry = entry; record.box = reach; }
   fadeRoofMeshes(view, colour, roofOverlayMaterial(view), () => entry.opacity < .995, record ? { start: record.start, end: record.start + sections.length } : { start: 0, end: 0 });
+  if (record) entry.ceiling = ceiling(view, b, () => entry.opacity < .995, record.start, record.start + sections.length);
+}
+
+// The ceiling (owner, v0.990a: "when running against a wall in some
+// buildings, especially smaller ones, it lets me see inside"): a whole roof
+// section fading over someone outside under its eave, or behind the
+// building, showed the room under it, and on a small building one or two
+// sections are most of its roof. A boarded ceiling over the room, just under
+// the walls' tops and out to their middles (so its edges hide in them): the
+// faded section still shows whoever stands under the eave (outside the
+// walls), and the room stays hidden. Drawn only while one of its roof's
+// sections is faded (prepareFades 'sections', as the blended copies), never
+// while the roof fades whole (you inside, or in its doorway), so it costs a
+// draw only then. Someone behind the building shows through the wall's patch
+// and the small hole the ceiling opens on the line to them (CEILING_FADE).
+function ceiling(view, b, skip, start, end) {
+  const n = Math.max(1, Math.round(b.d / CEILING_FADE.board)), depth = b.d / n;
+  const board = new THREE.PlaneGeometry(b.w, depth).rotateX(-Math.PI / 2), colours = CEILING_FADE.colours.map(c => new THREE.Color(c));
+  const geometry = mergeTransformed(Array.from({ length: n }, (_, i) => ({ geometry: board, matrix: new THREE.Matrix4().makeTranslation(0, 0, -b.d / 2 + depth * (i + .5)), color: colours[i % colours.length] })));
+  board.dispose();
+  geometry.computeBoundingSphere(); geometry.computeBoundingBox();
+  const mesh = new THREE.Mesh(geometry, ceilingMaterial(view));
+  mesh.position.set(b.x, (b.baseY || 0) + b.height - CEILING_FADE.drop, b.z); mesh.rotation.y = b.angle || 0;
+  mesh.updateMatrix(); mesh.matrixAutoUpdate = false; mesh.receiveShadow = true; mesh.userData.ceiling = b.id;
+  view.scene.add(mesh); mesh.updateMatrixWorld(true);
+  return registerOverlay(view, mesh, { near: 'sections', start, end, skip, opaque: true });
 }
 
 // The forge's parts (props: world/colonial-parts.js), built from y 0 on the

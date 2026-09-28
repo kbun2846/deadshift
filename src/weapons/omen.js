@@ -181,6 +181,7 @@ export function stepOmen(sim,input,dt,geo){
    if(at!==null&&at<first&&roundSees(sim,b,t,(b.segment?0:b.travel)+travel*at)){first=at;target=t;prop=null;blocked=true;}
   }
   if(b.segment&&b.flight.stop<travel){const at=b.flight.stop/travel;if(at<=first){first=at;target=prop=null;blocked=true;}}
+  {const wall=sim.shieldStop(b.x,b.z,endX,endZ);if(wall!==null&&wall<first){first=wall;target=prop=null;blocked=true;sim.events.push({type:'hexBlock',x:b.x+b.dx*travel*wall,z:b.z+b.dz*travel*wall,wall:true});}} // (v0.990a: a hex's wall stops it)
   b.x+=b.dx*travel*first;b.z+=b.dz*travel*first;b.travel+=travel*first;
   if(b.segment)b.base=sim.ground.flightAt(b.flight,travel*first);
   b.y=(b.segment?b.base:b.flight?sim.ground.flightAt(b.flight,b.travel):0)+TERRAIN.roundHeight;

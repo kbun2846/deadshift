@@ -10,6 +10,15 @@ export function pickView(map) {
   const spot = map.pickView || map.thumbnail || map.spawn;
   return { x: spot.x, z: spot.z, height: spot.height || PICK_HEIGHT };
 }
+// Behind the lobby screen (v0.990a, owner: a distinct place, as Deadwater's
+// farmhouse and corn): `lobbyView`, else the pick view. Nobody is in the
+// world during the lobby, so it needs no rule against spawning under it
+// (the pick view keeps its own: Hollow Wick's looks at stubble outside the
+// fence so it never takes a spawn from the map).
+export function lobbyView(map) {
+  const spot = map.lobbyView; if (!spot) return pickView(map);
+  return { x: spot.x, z: spot.z, height: spot.height || PICK_HEIGHT };
+}
 
 // The ground the pick view shows, generously: the camera's vertical field of
 // view is at most 49 degrees (portrait), the widest screens about 2.4:1, and

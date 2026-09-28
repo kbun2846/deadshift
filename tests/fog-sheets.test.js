@@ -53,7 +53,9 @@ test('a moving centre leaves a wake that closes in behind it', () => {
 
 test('flat maps: the sheets ride with the camera as before, in Deadwater\'s own dust', () => {
  const look = mapLook(maps.deadwater);
- assert.deepEqual({ ...look.fog }, { colour: '#d0ba8e', highlight: '#e8d6ac', opacity: .27, lowBias: 0 });
+ // (v0.990a, owner: Deadwater's dust more yellow: a dry ochre, not grey-tan.)
+ assert.deepEqual({ ...look.fog }, { colour: '#d8bc70', highlight: '#efd690', opacity: .27, lowBias: 0 });
+ assert.deepEqual(look.dust, { tint: '#dcb858', mix: .32 });
  const sheets = new FogSheets({ fog: look.fog, ground: groundFor(maps.deadwater), heights: groundHeights(), texture: fakeTexture, random: seeded(2) });
  assert.equal(sheets.terrain, false);
  const focus = new THREE.Vector3(10, 0, -5), frame = { count: 3, interior: false, focus, halfWidth: 20, halfHeight: 11, dt: 1 / 60, elapsed: 1, player: { x: 10, z: -5, y: 0 }, aim: { x: 12, z: -5, y: 0 } };

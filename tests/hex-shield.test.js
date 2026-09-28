@@ -48,3 +48,25 @@ test('a teammate is never pushed out of your hex; an enemy is', () => {
  assert.equal(mate.x, 1);
  assert.ok(foe.x > 1.5, 'enemy pushed out');
 });
+
+// v0.990a (owner: "being inside the hex should prevent bullets and stuff
+// from entering the hex"): a round fired from outside stops at the hex's
+// wall with a spark there, instead of flying on in to the people inside.
+test('rounds from outside stop at the hex wall; from inside they pass out', async () => {
+ const { shieldEntry } = await import('../src/simulation.js');
+ const hex = { x: 10, z: 0, rotation: 0, limit: 3 }, round = { x: 10, z: 0, rotation: 0, limit: 3, round: true };
+ const t = shieldEntry(hex, 0, 0, 20, 0);
+ assert.ok(t > 0 && t < .5 && insideShield(hex, t * 20 + .01, 0) && !insideShield(hex, t * 20 - .01, 0), 'enters at the wall');
+ assert.equal(shieldEntry(hex, 0, 5, 20, 5), null, 'passing by');
+ assert.ok(Math.abs(shieldEntry(round, 0, 0, 20, 0) * 20 - (10 - 3 / Math.cos(Math.PI / 6))) < 1e-6, 'a pulsed (round) hex as a circle');
+ // A rifle round from outside, at a target inside: it stops at the wall.
+ const sim = new Simulation(empty({ targets: [{ id: 'in', x: 10, z: 0 }] }));
+ sim.weapon = 'rifle'; sim.shields = [{ ...hex, owner: 'other' }];
+ const hp = sim.targets[0].hp;
+ for (let i = 0; i < 40; i++) sim.step({ aimX: 1, aimZ: 0, aimPointX: 10, aimPointZ: 0, fire: i < 3, tapFire: i === 0 });
+ assert.equal(sim.targets[0].hp, hp, 'nothing reaches the target');
+ assert.ok(sim.drainEvents().some(e => e.type === 'hexBlock' && e.wall && e.x < 10 - 2.9), 'a spark on the wall');
+ // From inside the same hex, out: nothing stops it.
+ const inner = new Simulation(empty({ spawn: { x: 10, z: 0 } })); inner.shields = [hex];
+ assert.equal(inner.shieldStop(10, 0, 30, 0), null);
+});

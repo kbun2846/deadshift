@@ -16,7 +16,7 @@ export function sniperLineClear(sim,source,x,z) {
 
 export function laserThreatens(sim,enemy) {
  const s=enemy?.sightline,p=sim.player;
- if(!enemy?.visible||enemy.weapon!=='sightline'||!s?.crouched||!s.aiming||!s.rifleAmmo||s.rifleReload||s.pistolReload||s.xLoading||s.commit||s.aimBlocked||!sightlineCanScope(sim,enemy))return false;
+ if(!enemy?.visible||enemy.weapon!=='sightline'||!s?.crouched||!s.aiming||!s.rifleAmmo||s.rifleReload||s.xLoading||s.commit||s.aimBlocked||!sightlineCanScope(sim,enemy))return false;
  const dx=enemy.aimX,dz=enemy.aimZ;if(!Number.isFinite(dx)||!Number.isFinite(dz))return false;
  const mx=enemy.x+dx*S.muzzleForward-dz*S.muzzleLateral,mz=enemy.z+dz*S.muzzleForward+dx*S.muzzleLateral;
  const rx=p.x-mx,rz=p.z-mz,along=rx*dx+rz*dz;

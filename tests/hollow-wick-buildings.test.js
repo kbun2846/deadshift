@@ -195,6 +195,38 @@ test('the colonial roofs fade by whole sections (s6-roofs): every piece in one, 
   // opens a patch that would show where they stand; one inside the shed has
   // it as their room, so its whole roof lifts for them instead.)
   assert.deepEqual(fades(-33.2, -39.9), [], 'in an open shed: no patch (its roof lifts whole for you as your room)');
+  // The ceilings (v0.990a, owner: against a wall he could see inside): every
+  // sectioned roof has a boarded ceiling over its room, opaque, just under the
+  // walls' tops, shown only while one of its sections is faded and never while
+  // the roof fades whole.
+  const { prepareFades, CEILING_FADE } = await import('../src/world/roof-fade.js');
+  const overlays = roofFade(view).overlays;
+  for (const r of view.roofs) {
+    const R = S.roofs.find(x => x.id === r.id), b = map.buildings.find(b => b.id === r.id), c = r.ceiling;
+    assert.ok(c && c.userData.ceiling === r.id, `${r.id}: a ceiling`);
+    const o = overlays.find(o => o.mesh === c);
+    assert.ok(o && o.near === 'sections' && o.start === R.start && o.end === R.start + R.sections.length, `${r.id}: shown by its own sections`);
+    assert.ok(!c.material.transparent && c.material.depthWrite, `${r.id}: opaque`);
+    c.geometry.computeBoundingBox(); const size = c.geometry.boundingBox.getSize(new THREE.Vector3());
+    assert.ok(Math.abs(size.x - b.w) < .01 && Math.abs(size.z - b.d) < .01, `${r.id}: out to the walls' middles`);
+    assert.ok(Math.abs(c.position.y - ((b.baseY || 0) + b.height - CEILING_FADE.drop)) < 1e-6, `${r.id}: just under the walls' tops`);
+  }
+  const cape = view.roofs.find(r => r.id === 'cape');
+  // (Eased to the targets, then the overlays decided.)
+  const settle = (x, z) => { fades(x, z); for (let i = 0; i < 20; i++) { updateSections(view, .05); } prepareFades(view); return cape.ceiling.visible; };
+  assert.equal(settle(52.59, -14.34), true, "against the cape's front wall, off its door: the front slope fades and the ceiling hides the room");
+  assert.equal(settle(30, -4.5), false, 'in the street: no ceiling drawn');
+  cape.opacity = 0;
+  assert.equal(settle(52.59, -14.34), false, 'the roof fading whole (you inside or in its doorway): no ceiling');
+  cape.opacity = 1;
+  // (v0.990a, owner: entering, the roof came off in parts.) While a roof
+  // lifts whole (you on its stoop or inside), none of its sections fades on
+  // its own; the other roofs carry on.
+  assert.deepEqual(fades(50.67, -22.74), ['cape hood1', 'cape slope-'], 'the back stoop, the roof not lifting');
+  cape.lifting = true;
+  assert.deepEqual(fades(50.67, -22.74), [], 'lifting whole: no section apart');
+  assert.ok(S.roofs.find(R => R.id === 'cape').sections.every(s => S.values[s.index] === 0));
+  cape.lifting = false;
 });
 
 test('an eave facing north runs on less (the camera looks from the south: its strip hid whoever stood there)', async () => {

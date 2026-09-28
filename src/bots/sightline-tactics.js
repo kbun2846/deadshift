@@ -62,7 +62,7 @@ export function sniperInput(brain,input,target,d,shoot,visible) {
  // Also support direct act() calls (tests): close Sidekick fights need no plan.
  const want=(n?!!n.want:s.crouched&&(!s.rifleAmmo||s.rifleReload>0))&&!input.dodge;
  input.sightlineStance=s.crouched!==want&&!s.commit;
- input.aiming=(want||visible)&&!s.rifleReload&&!s.pistolReload&&!s.aimBlocked&&!input.sightlineStance;
+ input.aiming=(want||visible)&&!(s.crouched?s.rifleReload:s.pistolReload)&&!s.aimBlocked&&!input.sightlineStance;
  if(want&&!input.dodge){input.moveX=input.moveZ=0;brain.smoothMove={x:0,z:0};}
  const rifle=s.crouched&&!input.sightlineStance;
  const steady=rifle&&visible&&scopeActive(sim)&&inSightCone(sim.player,target.x,target.z)&&shoot;

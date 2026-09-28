@@ -60,9 +60,13 @@ export function prepareSightline(sim,input){
  const s=sim.sightline,p=sim.player;
  if(input.sightlineStance&&!p.dodgeRemaining&&!s.commit){s.crouched=!s.crouched;s.setup=s.crouched?S.setupDuration:0;s.turnVelocity=0;if(!s.crouched&&!s.xLoading)s.rifleReload=0;sim.events.push({type:'sightlineStance',x:p.x,z:p.z,crouched:s.crouched});}
  s.setup=Math.max(0,(s.setup||0)-RULES.step);
- if(!input.aiming)s.aimBlocked=false;
- if((input.reload||input.sightlineX||s.rifleReload||s.pistolReload)&&input.aiming)s.aimBlocked=true;
- s.aiming=!!input.aiming&&!s.aimBlocked&&!s.rifleReload&&!s.pistolReload&&(!s.crouched||sightlineCanScope(sim));
+ // A reload takes the aim down while it runs (the rifle's in the stance; the
+ // Sidekick's, or the holstered Sidekick during a standing Breach load,
+ // standing) and gives it back by itself when it is done (v0.992a, owner:
+ // the laser was sometimes missing; a held aim had to be let go and pressed
+ // again after every reload, and the Sidekick's reload blocked the rifle's scope).
+ s.aimBlocked=s.crouched?s.rifleReload>0:(s.pistolReload>0||!!s.xLoading);
+ s.aiming=!!input.aiming&&!s.aimBlocked&&(!s.crouched||sightlineCanScope(sim));
  p.sightline={rifleAmmo:s.rifleAmmo,crouched:s.crouched,aiming:s.aiming,special:s.special,xLoading:s.xLoading,rifleReload:s.rifleReload,pistolReload:s.pistolReload,aimBlocked:s.aimBlocked,commit:s.commit,setup:s.setup};
  if(s.crouched){p.vx=p.vz=0;p.dodgeQueued=0;return {...input,moveX:0,moveZ:0,dodge:false};}
  return input;
@@ -114,7 +118,10 @@ export function stepSightline(sim,input,dt,geo){
  else{
   if(s.pistolReload>0){s.pistolReload=Math.max(0,s.pistolReload-dt);if(s.pistolReload<1e-8){s.pistolReload=0;s.pistolAmmo=S.pistolMagazine;sim.events.push({type:'sightlineReloaded'});}}
   if(s.rifleReload>0){s.rifleReload=Math.max(0,s.rifleReload-dt);if(s.rifleReload<1e-8){s.rifleReload=0;s.rifleAmmo=1;s.special=s.xLoading;s.xLoading=false;sim.events.push({type:'sightlineReloaded',rifle:true,special:s.special});}}
-  if(s.commit>0){s.commit=Math.max(0,s.commit-dt);if(s.commit<1e-8&&sim.sightlinePending){launch(sim,sim.sightlinePending,geo);sim.sightlinePending=null;s.commit=0;}}
+  if(s.commit>0){s.commit=Math.max(0,s.commit-dt);if(s.commit<1e-8&&sim.sightlinePending){launch(sim,sim.sightlinePending,geo);sim.sightlinePending=null;s.commit=0;
+   // The rifle reloads itself once its round is away (v0.992a, owner: an empty
+   // rifle showed no laser until FIRE was pressed again to reload it).
+   if(s.crouched&&s.rifleAmmo<=0&&!s.rifleReload)reload(sim,true);}}
   else if(!p.dodgeRemaining){
    if(input.sightlineX&&!s.special&&!s.xLoading&&!s.pistolReload&&s.xCooldown<=1e-8)reload(sim,true,true);
    const rifle=s.crouched;
@@ -144,8 +151,10 @@ export function stepSightline(sim,input,dt,geo){
    if(at!==null&&(b.pistol?roundMeets:sightlineMeets)(sim,b,c,b.x+b.dx*step*at,b.z+b.dz*step*at,b.travel+step*at))hits.push({at,prop:sim.props.find(v=>v.id===c.propId)});
   }
   for(const t of sim.targets){if(t.hp<=0)continue;const at=geo.segmentCircle(b.x,b.z,ex,ez,t.x,t.z,targetRadius(t)+.035);if(at!==null&&(b.pistol?roundSees:sightlineSees)(sim,b,t,b.travel+step*at))hits.push({at,t});}
+  {const wall=sim.shieldStop(b.x,b.z,ex,ez);if(wall!==null)hits.push({at:wall,hex:true});} // (v0.990a: a hex's wall stops it)
   hits.sort((a,v)=>a.at-v.at);let first=1,target=null,blocked=false;
   for(const h of hits){
+   if(h.hex){first=h.at;target=null;blocked=true;sim.events.push({type:'hexBlock',x:b.x+b.dx*step*h.at,z:b.z+b.dz*step*h.at,wall:true});break;}
    if(h.prop&&h.prop.hp!==null&&!b.pistol){if(b.pierced.includes(h.prop.id))continue;b.pierced.push(h.prop.id);sim.hitProp(h.prop,{damage:b.damage,volley:b.volley,damageType:'sightlineShot',bullet:true,vx:b.dx,vz:b.dz,x:b.x+b.dx*step*h.at,z:b.z+b.dz*step*h.at});continue;}
    first=h.at;target=h.t;blocked=true;if(h.prop)sim.hitProp(h.prop,{damage:b.damage,volley:b.volley,damageType:'sightlinePistol',bullet:true,vx:b.dx,vz:b.dz});break;
   }

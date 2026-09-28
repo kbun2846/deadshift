@@ -375,6 +375,9 @@ export class OmenView{
    ax=x;ay=y;az=z;
   }
  }
+ // Where a body is drawn now: you, another player's or robot's avatar (their
+ // interpolated position), a practice target; null if it is not drawn.
+ drawnAt(id){if(id==null)return null;const v=this.view;if(id===v.lastSim?.player?.id)return v.player?.position||null;const a=v.remote?.avatars?.get(id);if(a?.root)return a.root.position;return v.targets?.get?.(id)?.position||null;}
  update(sim,dt){
   this.time+=dt;this.recoil=Math.max(0,this.recoil-dt);
   const active=sim.weapon==='omen'&&!sim.player.dead;
@@ -402,8 +405,13 @@ export class OmenView{
    if(m.left<=0)this.primers.delete(id);else this.primeSigil(m,look);
   }
   let drawn=0;const groups=this.groups;groups.clear();for(const l of this.links.values())l.seen=false;
-  for(const m of marks){
-   if(m.left<=0||drawn++>=24)continue;
+  const smooth=this.smoothMarks||=[];
+  for(const raw of marks){
+   if(raw.left<=0||drawn>=24)continue;
+   // On the body as it is drawn (v0.990a, owner: the curses lagged and
+   // jittered under people, worst online): its smoothed position, not the
+   // simulation's step or the last snapshot's (drawnAt).
+   const at=this.drawnAt(raw.id),m=at?Object.assign(smooth[drawn]||={},raw,{x:at.x,z:at.z}):raw;drawn++;
    this.sigil(m,look);
    if(m.kind==='x'){
     const key=(m.caster??'self')+':'+m.group,last=groups.get(key);groups.set(key,m);
@@ -423,8 +431,8 @@ export class OmenView{
     this.shotParticles(e,p,look);if(e.kind==='omenShot')this.muzzleEnergy(e,p,look);
    }
    else if(e.kind==='omenTick'){
-    const target=e.id===sim.player.id?sim.player:sim.targets?.find(t=>t.id===e.id);
-    if(target){e.x=target.x;e.z=target.z;e.below=target.below;}this.tickPulse(e,p,look);
+    const target=e.id===sim.player.id?sim.player:sim.targets?.find(t=>t.id===e.id),at=this.drawnAt(e.id);
+    if(target){e.x=target.x;e.z=target.z;e.below=target.below;}if(at){e.x=at.x;e.z=at.z;}this.tickPulse(e,p,look);
    }
    else if(e.kind==='omenFade'){
     for(let i=0;i<(look.facets===4?36:24);i++){const a=i*2.399+p*.45,r=CURSE_SCALE+p*(.5+(i%3)*.15);

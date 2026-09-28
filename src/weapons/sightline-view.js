@@ -90,7 +90,7 @@ export class SightlineView{
     const own=p===sim.player||p.id===sim.player.id,pack=own?this.model:this.view.remote?.avatars.get(p.id)?.hand;
     const vent=pack?.getObjectByName('sightline-vents');if(vent){vent.getWorldPosition(this.a);this.view.fx.puff({x:this.a.x,y:this.a.y-this.view.gy(this.a.x,this.a.z),z:this.a.z,color:VAPOR,size:.08,life:.75,grow:2,alpha:.16,vy:.35,vx:.07,vz:.04});}
    }
-   if(!s.rifleAmmo||!s.crouched||!s.aiming||!sightlineCanScope(sim,p)||s.commit>0||s.xLoading||s.rifleReload||s.pistolReload)continue;
+   if(!s.rifleAmmo||!s.crouched||!s.aiming||!sightlineCanScope(sim,p)||s.commit>0||s.xLoading||s.rifleReload)continue;
    // The guide and shot share a straight flight; ground ends it, never bends it.
    const {points,length,pieces}=this.laserPath(sim,p,s),hot=s.special&&s.crouched,scale=Math.min(2.6,Math.max(1,this.view.cameraHeight/29));
    const own=p.id===sim.player.id,mesh=own?this.guideLines:this.lines;

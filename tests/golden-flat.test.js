@@ -29,6 +29,9 @@
 //     This replay spends 99 robot ticks in rail-freight-hall/supplies and 420
 //     ticks remembering a witnessed room entry. Those rules intentionally change
 //     this fight; all four other replay hashes and repeat determinism match.
+// (v0.990a fixes: hosted re-recorded, a4dc5523 -> e448e157: a hex now stops
+//     rounds from outside at its wall (Simulation.shieldStop, owner); the hosted
+//     fight has a hex up with fire coming at it. The other four are unchanged.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation } from '../src/simulation.js';
@@ -40,7 +43,7 @@ import { ClientSession } from '../src/net/client-session.js';
 
 // Recorded with Node 22.22 (V8 12.4.254). Math is deterministic within one engine build;
 // a different Node major may need a re-record on untouched code, never on new code.
-export const GOLDEN = { static: '8500a3fd', rifle: '5c57348a', shotgun: 'dc6257e4', robots: '299bae72', hosted: 'a4dc5523' };
+export const GOLDEN = { static: '8500a3fd', rifle: '5c57348a', shotgun: 'dc6257e4', robots: '299bae72', hosted: 'e448e157' };
 
 const map = maps.deadwater;
 function seeded(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }

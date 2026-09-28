@@ -81,6 +81,13 @@ import { RIFLE_MUZZLE } from '../config/gameplay.js';
 // Longest the renderer will hold a frame back waiting for the GPU (gpuBusy).
 // Drawn after every other see-through thing: a faded roof's depth, then its colour.
 export const ROOF_PREPASS_ORDER = 50;
+// Footprints in the dirt, everyone's together (v0.990a: robots and other
+// players print too, stepPrints): the pool's size.
+export const FOOT_CAP = 320;
+// How far from a door's wall line (either side, `out`) and past its sides
+// (`side`) its roof lifts whole: the stoop and all round the hood over it, a
+// step before the hood alone would fade (v0.990a; the doorway itself was .42).
+export const DOOR_LIFT = Object.freeze({ out: 1.8, side: .35 });
 // An opaque roof is drawn before every other opaque thing (v0.980a). Opaque
 // draws go by material, and the scenery's baked material is older than the
 // roofs', so every floor, table and hearth under a roof was shaded and then
@@ -299,7 +306,7 @@ export class WorldView {
     this.footprints = []; this.footDistance = 0; this.footSide = 1;
     this.lastFootPosition = { ...map.spawn };
     const footGeometry = new THREE.CircleGeometry(1, 10); footGeometry.rotateX(-Math.PI / 2);
-    footGeometry.setAttribute('fade', new THREE.InstancedBufferAttribute(new Float32Array(160), 1));
+    footGeometry.setAttribute('fade', new THREE.InstancedBufferAttribute(new Float32Array(FOOT_CAP), 1));
     this.footMesh = new THREE.InstancedMesh(footGeometry, new THREE.ShaderMaterial({
       transparent: true, depthWrite: false,
       uniforms: { relief: { value: 0 }, pressed: { value: 0 } },
@@ -338,7 +345,7 @@ export class WorldView {
           vec3 color=(vec3(.3,.21,.12)*darkA+vec3(.93,.83,.64)*lightA)/max(darkA+lightA,1e-3);
           gl_FragColor=linearToOutputTexel(sRGBTransferEOTF(vec4(color,alpha*vFade*smoothstep(1.0,.9,length(vFoot)))));
         }`,
-    }), 160);
+    }), FOOT_CAP);
     this.footMesh.count = 0; this.footMesh.frustumCulled = false;
     this.footMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.scene.add(this.footMesh);
     this.shake = 0; this.shakeDecay = 20; this.kick = new THREE.Vector3(); this.motion = true;
@@ -991,7 +998,7 @@ export class WorldView {
     return new THREE.Color(onRoad ? this.map.palette.road : this.map.palette.ground);
   }
 
-  kickedDustColor(x, z) { return kickedDust(this.walkingDustColor(x, z)); }
+  kickedDustColor(x, z) { const c = kickedDust(this.walkingDustColor(x, z)), d = this.look?.dust; return d ? c.lerp(this.dustTint ||= new THREE.Color(d.tint), d.mix) : c; }
 
   // Tier multipliers for one-off effects, so the top two presets read richer
   // without changing what the low tiers were tuned to afford.
@@ -1154,6 +1161,16 @@ export class WorldView {
       this.rifleView?.shot(e);return;
     }
     if(e.electric&&['hit','kill','playerHit'].includes(e.type))this.electric.aftershock(e);
+    // Cut down by the katana (v0.990a): straw and chaff thrown along the cut,
+    // over the tile, and a little dust at its foot.
+    if (e.type === 'cropCut') {
+      const straw = this.strawTint ||= new THREE.Color('#c2a661');
+      for (let i = 0; i < 8; i++) {
+        const x = e.x + (Math.random() - .5) * e.w, z = e.z + (Math.random() - .5) * e.d;
+        this.burst(x + (e.dx || 0) * .3, z + (e.dz || 0) * .3, 3, 'hit', straw);
+        this.burst(x, z, 2, 'dust');
+      }
+    }
     if (e.type === 'cropDust' || e.type === 'cropAsh') {
       for (let i = 0; i < 12; i++) {
         const x = e.x + (Math.random() - .5) * e.w, z = e.z + (Math.random() - .5) * e.d;
@@ -1676,9 +1693,14 @@ export class WorldView {
       // same depth, which not every driver guarantees). Gone is gone anywhere.
       // Also gone while stepping through one of its doors under the eaves.
       const p = sim.player, r = roof.reach, doorGap = roof.doors?.length ? Math.min(...roof.doors.map(d => Math.hypot(p.x - d.x, p.z - d.z) - d.half)) : Infinity;
-      // In a doorway: within its width, and no further than half a body from the wall line.
-      const atDoor = !!r && !!roof.doors?.some(d => { const dx = p.x - d.x, dz = p.z - d.z; return Math.abs(dx * d.ux + dz * d.uz) < d.half && Math.abs(dx * d.uz - dz * d.ux) < .42; });
+      // In a doorway: within its width, and no further than DOOR_LIFT m from
+      // the wall line (v0.990a, owner: entering, the roof came off in parts,
+      // its front section first as you stepped onto the stoop under the
+      // hood, the rest a step later at the door; now it lifts whole from the
+      // stoop (DOOR_LIFT), and while it lifts its sections keep out: world/roof-fade.js).
+      const atDoor = !!r && !!roof.doors?.some(d => { const dx = p.x - d.x, dz = p.z - d.z; return Math.abs(dx * d.ux + dz * d.uz) < d.half + DOOR_LIFT.side && Math.abs(dx * d.uz - dz * d.ux) < DOOR_LIFT.out; });
       const desired = sim.roofId === roof.id || atDoor ? 0 : 1;
+      roof.lifting = desired === 0;
       // Rate 20: about a tenth of a second to 90%. At 8 the roof was still
       // visibly lifting a third of a second after the player was through the door.
       roof.opacity = lerp(roof.opacity, desired, 1 - Math.exp(-20 * dt));
@@ -1856,7 +1878,11 @@ export class WorldView {
     const rooms = this.roofSections?.roofs.length ? (this.roomGuard ||= p => shownInside(this, this.lastSim, p)) : null;
     const ground = this.ground, worldSees = !hilly(this) ? (rooms && indoors ? p => rooms(p) && indoors(p) : rooms || indoors) : p => (!indoors || indoors(p)) && (!rooms || rooms(p)) &&
       (p.ally || (this.teamRing && p.ring === this.teamRing) || ground.sightClear(sim.player.x, sim.player.z, p.x, p.z, sim.player.below ? ground.drawnHeightAt(sim.player.x, sim.player.z) : undefined, p.below ? ground.drawnHeightAt(p.x, p.z) : undefined));
-    const scopedVision=scopeActive(sim),sees=other=>roomShowsEntity(sim,other)&&(!worldSees||worldSees(other))&&(!scopedVision||inSightCone(sim.player,other.x,other.z));
+    // (v0.990a, owner: players and robots in a crop field are hidden from
+    // anyone outside it, and in it are seen only close by, as the practice
+    // targets always were: crops.js cropEntityVisible. Your own side shows.)
+    const crops=sim.crops?.length?sim.crops:null,ally=other=>other.ally||(this.teamRing&&other.ring===this.teamRing);
+    const scopedVision=scopeActive(sim),sees=other=>roomShowsEntity(sim,other)&&(!worldSees||worldSees(other))&&(!scopedVision||inSightCone(sim.player,other.x,other.z))&&(!crops||ally(other)||cropEntityVisible(crops,sim.player,other));
     if (this.remotePlayers?.length || this.remote) (this.remote ||= new RemotePlayers(this)).update(this.remotePlayers || [], elapsed, fdt, this.bloodSources || [], sees);
     if (this.blobShadows?.enabled) {
       const movers = [];
@@ -2020,6 +2046,22 @@ export class WorldView {
     return list;
   }
 
+  // Another body's steps (v0.990a, owner: robots leave footprints): remote
+  // players and robots print the dirt as you do, one print every .55 m,
+  // feet alternating, while walking outdoors on dry ground (`ok`). `key`
+  // keeps each walker's stride. (An object a step, never a frame.)
+  stepPrints(key, x, z, vx, vz, ok) {
+    const walkers = this.walkers ||= new Map(); let w = walkers.get(key);
+    if (!w) { w = { x, z, d: 0, side: 1 }; walkers.set(key, w); }
+    const distance = Math.hypot(x - w.x, z - w.z); w.x = x; w.z = z; w.seen = this.effectTime;
+    if (!ok || distance >= 1 || Math.hypot(vx, vz) <= .6) return;
+    w.d += distance; if (w.d < .55) return;
+    w.d %= .55; w.side *= -1;
+    const angle = Math.atan2(vx, vz), offset = .15 * w.side;
+    this.footprints.push({ x: x + Math.cos(angle) * offset, z: z - Math.sin(angle) * offset, angle, age: 0 });
+    if (this.footprints.length > FOOT_CAP) this.footprints.shift();
+  }
+
   updateFootprints(sim, dt, active, x, z) {
     const distance = Math.hypot(x - this.lastFootPosition.x, z - this.lastFootPosition.z);
     this.lastFootPosition = { x, z };
@@ -2034,7 +2076,7 @@ export class WorldView {
         const angle = Math.atan2(sim.player.vx, sim.player.vz), offset = .15 * this.footSide, fx = x + Math.cos(angle) * offset, fz = z - Math.sin(angle) * offset;
         // Prints in the dirt outdoors; a bloody boot prints anywhere, on the
         // very same step, the same size and shape (blood-wading.js).
-        if (!sim.roofId && !this.playerWet) { this.footprints.push({ x: fx, z: fz, angle, age: 0 }); if (this.footprints.length > 160) this.footprints.shift(); }
+        if (!sim.roofId && !this.playerWet) { this.footprints.push({ x: fx, z: fz, angle, age: 0 }); if (this.footprints.length > FOOT_CAP) this.footprints.shift(); }
         const wet = this.wading?.takePrint() || 0;
         if (wet&&!this.playerWet) { (this.drops ||= new BloodDrops(this)).print(fx, fz, angle, wet, this.map, sim.player.below);if(this.wading.drench>.85)for(let k=0;k<2;k++){const bx=fx+(Math.random()-.5)*.27,bz=fz+(Math.random()-.5)*.27;this.drops.stain(bx,floorY(this,bx,bz,sim.player.below)+.013,bz,.07+Math.random()*.08);} }
       }

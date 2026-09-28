@@ -119,6 +119,25 @@ export function segmentCircle(ax, az, bx, bz, cx, cz, radius) {
 
 // Is (x, z) inside a hex shield (Simulation.hexShield)? Six sides, or round
 // while it spins after the pulse.
+// Where the segment a..b first enters the shield (0..1), or null (a
+// outside it: Cyrus-Beck against its six walls; a round one as a circle).
+export function shieldEntry(sh, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  if (sh.round) {
+    const R = sh.limit / Math.cos(Math.PI / 6), fx = ax - sh.x, fz = az - sh.z, a = dx * dx + dz * dz, b = fx * dx + fz * dz, c = fx * fx + fz * fz - R * R;
+    if (a < 1e-12 || c <= 0) return null; const disc = b * b - a * c; if (disc < 0) return null;
+    const t = (-b - Math.sqrt(disc)) / a; return t >= 0 && t <= 1 ? t : null;
+  }
+  let t0 = 0, t1 = 1;
+  for (let i = 0; i < 6; i++) {
+    const w = (i + .5) * Math.PI / 3 + sh.rotation, nx = Math.cos(w), nz = Math.sin(w);
+    const num = sh.limit - ((ax - sh.x) * nx + (az - sh.z) * nz), den = dx * nx + dz * nz;
+    if (Math.abs(den) < 1e-12) { if (num < 0) return null; continue; }
+    const t = num / den; if (den < 0) { if (t > t0) t0 = t; } else if (t < t1) t1 = t;
+    if (t0 > t1) return null;
+  }
+  return t0 > 0 ? t0 : null;
+}
 export function insideShield(sh, x, z) {
   const dx = x - sh.x, dz = z - sh.z;
   if (sh.round) return Math.hypot(dx, dz) <= sh.limit / Math.cos(Math.PI / 6);
@@ -578,6 +597,8 @@ export class Simulation {
         const t = aimedInside ? 1 : segmentCircle(s.x, s.z, nx, nz, candidate.x, candidate.z, .66);
         if (t !== null && t < first) { first = t; target = candidate; prop = null; aimedTarget = aimedInside; }
       }
+      // (v0.990a) Someone else's hex, with you outside it: a launched orb ends at its wall.
+      if (s.launched) { const wall = this.shieldStop(s.x, s.z, nx, nz); if (wall !== null && wall < first) { first = wall; target = prop = null; aimedTarget = false; this.events.push({ type: 'hexBlock', x: s.x + (nx - s.x) * wall, z: s.z + (nz - s.z) * wall, wall: true }); } }
       let spent = null;
       if (pierced) {
         pierced.sort((a, b) => a.t - b.t);
@@ -763,6 +784,20 @@ export class Simulation {
     const spin = this.hexSpin; if (!spin) return null;
     const r = Math.max(...spin.nodes.map(n => Math.hypot(n.x - spin.originX, n.z - spin.originZ)));
     return { x: spin.originX, z: spin.originZ, rotation: 0, limit: r * Math.cos(Math.PI / 6), owner: this.player.id, round: true };
+  }
+  // A round of this sim's (its shooter outside the hex) crossing into
+  // someone's hex stops at its wall (owner, v0.990a: "being inside the hex
+  // should prevent bullets and stuff from entering the hex"; the damage was
+  // already refused, but the rounds flew on in to the people inside): the
+  // fraction of a..b where it first enters one, or null.
+  shieldStop(ax, az, bx, bz) {
+    const list = this.shields; if (!list?.length) return null;
+    let best = null;
+    for (const sh of list) {
+      if (insideShield(sh, this.player.x, this.player.z) || insideShield(sh, ax, az)) continue;
+      const t = shieldEntry(sh, ax, az, bx, bz); if (t !== null && (best === null || t < best)) best = t;
+    }
+    return best;
   }
   shieldedFrom(x, z) {
     for (const sh of this.shields || []) {

@@ -382,6 +382,11 @@ export class Soundscape {
         this.lastCrop = now; this.impact(.19, .07, e.type === 'cropDust' ? 1800 : 850); this.noise(.2, .06, 2400);
       }
     }
+    // Stalks cut down (v0.990a): a dry rustle and a snap, once per cut.
+    if (e.type === 'cropCut') {
+      const now = this.context?.currentTime ?? 0;
+      if (now - (this.lastCropCut ?? -1) > .1) { this.lastCropCut = now; this.noise(.24, .07, 3400); this.impact(.08, .045, 2200); }
+    }
     if (e.type === 'explosion') {
       const power = e.count / 12;
       this.tone(145, 35, .2 + power * .18, .12 + power * .24, 'triangle');

@@ -56,7 +56,7 @@ export const COURSES = {
   lesson('spistol','sidekick',3,'tap [LMB] / [SPACE] to fire three shots','tap [FIRE] to fire three shots',{note:'one shot per tap',highlight:'sightline-ammo'}),
   lesson('spreload','sidekick reload',1,'press [R] to reload sidekick','tap [RELOAD] to reload sidekick',{note:'wait for the ammo bar to fill',highlight:'sightline-ammo'}),
   lesson('sstance','set up sightline',1,'press [E] and wait for sightline to be ready','tap [STANCE] and wait for sightline to be ready',{note:'press [E] again to stand and use sidekick',touchNote:'tap [STANCE] again to stand and use sidekick',highlight:'hex-recharge'}),
-  lesson('sscope','scope',1,'hold [RMB] / [SHIFT] to zoom out then fire','hold [AIM] to zoom out then tap [FIRE]',{note:'aim a little ahead of moving targets',touchHighlight:'touch-stream'}),
+  lesson('sscope','scope',1,'hold [RMB] / [SHIFT] to zoom out then fire','tap [AIM] to zoom out then tap [FIRE]',{note:'aim a little ahead of moving targets',touchHighlight:'touch-stream'}),
   lesson('srreload','sightline reload',1,'stay crouched and press [R] to reload sightline','stay crouched and tap [RELOAD] to reload sightline',{note:'reloading takes you out of the scope',highlight:'sightline-ammo'}),
   lesson('sload','load breach',1,'stand with [E] then press [X] to load breach','stand with [STANCE] then tap [BREACH] to load it',{note:'the yellow glow means your explosive round is ready',highlight:'extended-recharge'}),
   lesson('sbreach','fire breach',1,'press [E] then aim and fire with [LMB] / [SPACE]','tap [STANCE] then aim and tap [FIRE]',{note:'aim at the spot you want to blow up',highlight:'extended-recharge'}),

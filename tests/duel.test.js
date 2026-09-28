@@ -78,9 +78,12 @@ test('a 1V1 has one robot as asked, no targets, and scores both ways', () => {
  } finally { globalThis.document = previous; }
 });
 
-test('the 1V1 page remembers sane choices only', () => {
+test('the 1V1 page remembers sane choices only, and the robots open at normal', () => {
  const store = v => ({ getItem: () => v, setItem() {} });
- assert.equal(readDuelChoices(store('{"weapon":"shotgun","botWeapon":"static","skill":"rookie","firstTo":3}')).skill, 'rookie');
+ const kept = readDuelChoices(store('{"weapon":"shotgun","botWeapon":"static","skill":"rookie","aim":"sharper","temper":"calm","allySkill":"hard","firstTo":3,"mode":"2v2"}'));
+ assert.equal(kept.weapon, 'shotgun'); assert.equal(kept.firstTo, 3); assert.equal(kept.mode, '2v2');
+ // v0.990a: how well the robots play is not remembered: normal every visit.
+ assert.deepEqual([kept.skill, kept.aim, kept.temper, kept.allySkill, kept.allyAim, kept.allyTemper], ['normal', 'even', 'shifting', 'normal', 'even', 'shifting']);
  const bad = readDuelChoices(store('{"weapon":"x","skill":"god","firstTo":99,"aim":"??"}'));
  assert.equal(bad.skill, 'normal'); assert.equal(bad.firstTo, 5); assert.equal(bad.aim, 'even'); assert.equal(bad.botWeapon, null);
  assert.deepEqual(readDuelChoices(store('not json')).temper, 'shifting');

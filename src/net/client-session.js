@@ -19,7 +19,9 @@ import { NETWORK } from '../config/network.js';
 import { PROTOCOL_VERSION, movementInput, playerInput, applyPlayerState, applyLoadout, readMessage, unpackEvent } from './protocol.js';
 import { blend } from './host-session.js';
 import { ProjectileMirror } from './projectiles.js';
-import { mapColliders, mapHash } from '../maps.js';
+import { mapColliders, mapHash, maps, supportsMode } from '../maps.js';
+// A map the room can move to: one of ours, played online.
+const roomMap = id => typeof id === 'string' && Object.hasOwn(maps, id) && supportsMode(maps[id], 'multiplayer') ? id : null;
 
 // Seconds between our own ticks that count as us being frozen, not them.
 const STALL = 1;
@@ -53,7 +55,13 @@ export class ClientSession {
   if (!message) return;
   this.heard = this.now();
   if (message.t === 'full' || message.t === 'removed') { this.ended = String(message.reason || 'Could not join.'); return; }
+  // The host is taking the room to another map (v0.990a): online-play.js
+  // reloads this page onto it and joins the same room again.
+  if (message.t === 'moveMap') { const id = roomMap(message.map); if (id && id !== this.map.id) this.moveTo = id; return; }
   if (message.t === 'welcome') {
+   // The room is on another of our maps (a code typed on this one): go there
+   // and join again (v0.990a), rather than turning away.
+   if (message.map && message.map !== this.map.id && roomMap(message.map)) { this.moveTo = message.map; return; }
    // A different map, or another build of it: every wall and slope would disagree.
    if (message.mapHash !== undefined && message.mapHash !== mapHash(this.map)) { this.ended = 'The host is on a different map or version. Reload the page on both devices.'; return; }
    this.id = String(message.id); this.slot = message.slot; if (message.name) this.name = String(message.name);

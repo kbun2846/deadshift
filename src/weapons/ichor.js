@@ -1,7 +1,8 @@
 import { ICHOR as I, TERRAIN } from '../config/gameplay.js';
 import {endIchorGuard} from './ichor-deflect.js';
 import { targetRadius } from '../target-radius.js';
-import { ichorCutForce,ichorCutArc,ichorSpin,ichorCoverMeets } from './ichor-cut.js';
+import { ichorCutForce,ichorCutArc,ichorSpin,ichorCoverMeets,ichorSweepMeets } from './ichor-cut.js';
+import { cutCrop } from '../crops.js';
 export { I as ICHOR };
 // Varied, authored sequences: diagonal cuts, reverse sweeps and whole-body spins.
 export const ICHOR_NORMAL=[0,7,1,8,3,2,9,4,1,0,8,5];
@@ -39,6 +40,9 @@ function contact(sim,geo){const s=sim.ichor,p=sim.player,spin=ichorSpin(s.varian
  // Destroying the front crate must not let this same cut hit through it.
  const props=sim.props.filter(prop=>prop.hp>0&&inCut(prop));
  for(const prop of props){const f=force(prop);sim.hitProp(prop,{damage,damageType:'ichorSlash',x:prop.x,z:prop.z,vx:f.x,vz:f.z});}sim.volleyKills.delete(s.volley);
+ // The field's stalks fall to the blade (owner, v0.990a): every standing
+ // tile the sweep reaches, from the ground (not from under a deck).
+ if(sim.crops?.length&&!p.below)for(const crop of sim.crops)if(crop.state==='standing'&&Math.abs(sim.ground.heightAt(crop.x,crop.z)-sim.standY())<1.2&&ichorSweepMeets(p.x,p.z,s.cutX,s.cutZ,reach,spin?Math.PI*2:arc,crop))cutCrop(sim,crop,s.cutX,s.cutZ);
 }
 export function stepIchor(sim,input,dt,geo){if(sim.predictOnly)return;const s=sim.ichor,p=sim.player;
  for(const t of sim.ichorTrails)t.life-=dt;sim.ichorTrails=sim.ichorTrails.filter(t=>t.life>0);
@@ -64,14 +68,24 @@ export function stepIchor(sim,input,dt,geo){if(sim.predictOnly)return;const s=si
   if(!s.guarding&&(!p.dodgeRemaining||s.frenzy>0||press)){
    if(!p.dodgeRemaining&&input.ichorX&&s.xCooldown<=1e-8&&!s.frenzy&&p.hp>1){s.frenzy=I.hits*I.frenzyInterval;s.index=0;s.combo=(s.combo+1)%ICHOR_COMBOS.length;s.frenzyPower=s.blood/100;s.swing=0;s.xCooldown=I.xCooldown;sim.events.push({type:'ichorFrenzyStart',x:p.x,z:p.z,below:!!p.below,power:s.frenzyPower});}
    if(s.frenzy>0&&s.swing<=1e-8&&s.index<I.hits)start(sim,ICHOR_COMBOS[s.combo][s.index++],s.frenzyPower,true);
-   else if(!s.frenzy&&!s.swing&&!p.dodgeRemaining&&input.ichorE&&s.eCooldown<=1e-8&&s.blood>=I.eBlood){s.eCooldown=I.eCooldown;start(sim,3,s.blood/100);s.contact=true;s.cooldown=I.interval;sim.ichorWaves.push({id:++sim.serial,volley:++sim.volley,x:p.x,z:p.z,y:sim.standY()+.72,dx:p.aimX,dz:p.aimZ,travel:0,power:s.blood/100,damage:I.waveDamage-I.waveRoll+Math.floor(Math.random()*(I.waveRoll*2+1)),hit:[],below:!!p.below});sim.events.push({type:'ichorWave',x:p.x,z:p.z,dx:p.aimX,dz:p.aimZ});}
+   else if(!s.frenzy&&!s.swing&&!p.dodgeRemaining&&input.ichorE&&s.eCooldown<=1e-8&&s.blood>=I.eBlood){s.eCooldown=I.eCooldown;start(sim,3,s.blood/100);s.contact=true;s.cooldown=I.interval;const wave={id:++sim.serial,volley:++sim.volley,x:p.x,z:p.z,y:sim.standY()+.72,dx:p.aimX,dz:p.aimZ,travel:0,power:s.blood/100,damage:I.waveDamage-I.waveRoll+Math.floor(Math.random()*(I.waveRoll*2+1)),hit:[],below:!!p.below};sim.ichorWaves.push(wave);
+    // The wave's price (owner, v0.990a): as it leaves the blade the wielder
+    // splashes blood and loses half the damage that one hit of it deals
+    // (its rolled damage, whoever it meets or misses). It never kills: at
+    // least 1 health is left, as Frenzy's drain leaves it.
+    const cost=sim.dev.invulnerable?0:Math.max(0,Math.min(p.hp-1,wave.damage*I.waveCost));
+    sim.events.push({type:'ichorWave',id:p.id,x:p.x,z:p.z,dx:p.aimX,dz:p.aimZ,cost,below:!!p.below});
+    if(cost>0){p.hp-=cost;sim.events.push({type:'playerDamage',damage:cost,damageType:'ichorCost'});}}
    else if(!s.frenzy&&!s.swing&&press&&s.cooldown<=1e-8){start(sim,s.dashWindow>0?6:nextIchorCut(s),s.blood/100);s.cooldown=I.interval;}
   }
   p.ichor={guarding:s.guarding,guardFlash:s.guardFlash,blood:s.blood,swing:s.swing,duration:s.duration||I.interval,variant:s.variant,serial:s.serial,frenzy:s.frenzy,trail:s.trail,moving:s.moving,moveSide:s.moveSide,moveForward:s.moveForward};
  }
  for(const w of sim.ichorWaves){const length=Math.min(I.waveSpeed*dt,I.waveRange-w.travel),ex=w.x+w.dx*length,ez=w.z+w.dz*length,r=.5+(w.travel/I.waveRange)*1.7;let at=1,blocker=null;
   for(const c of sim.colliders){if(c.playerOnly)continue;const t=geo.segmentBox(w.x,w.z,ex,ez,c,.12);if(t!==null&&t<=at&&ichorCoverMeets(sim,c,w.x+w.dx*length*t,w.z+w.dz*length*t,w.y)){at=t;blocker=c;}}
+  {const wall=sim.shieldStop(w.x,w.z,ex,ez);if(wall!==null&&wall<at){at=wall;blocker=null;sim.events.push({type:'hexBlock',x:w.x+w.dx*length*wall,z:w.z+w.dz*length*wall,wall:true});}} // (v0.990a: a hex's wall stops the wave)
   for(const t of sim.targets){if(t.hp<=0||t.friendly||w.hit.includes(t.id)||Math.abs(sim.standY(t)+.72-w.y)>1.3)continue;const k=geo.segmentCircle(w.x,w.z,ex,ez,t.x,t.z,r+targetRadius(t));if(k!==null&&k<=at&&!sim.colliders.some(c=>{if(c.playerOnly)return false;const k=geo.segmentBox(w.x,w.z,t.x,t.z,c);return k!==null&&ichorCoverMeets(sim,c,w.x+(t.x-w.x)*k,w.z+(t.z-w.z)*k,w.y);})){w.hit.push(t.id);hit(sim,t,w.damage,w.dx,w.dz,'ichorWave',w.power,w.volley);}}
+  // (The blood wave mows a path through a field as it goes.)
+  if(sim.crops?.length&&!w.below)for(const crop of sim.crops)if(crop.state==='standing'&&geo.segmentBox(w.x,w.z,w.x+w.dx*length*at,w.z+w.dz*length*at,crop,r*.5)!==null)cutCrop(sim,crop,w.dx,w.dz);
   if(blocker?.propId){const prop=sim.props.find(p=>p.id===blocker.propId);if(prop)sim.hitProp(prop,{damage:w.damage,damageType:'ichorWave',x:w.x+w.dx*length*at,z:w.z+w.dz*length*at,vx:w.dx,vz:w.dz});}
   w.x+=w.dx*length*at;w.z+=w.dz*length*at;w.travel+=length*at;
   if(w.travel-(w.trailAt||0)>=.55){w.trailAt=w.travel;sim.ichorTrails.push({x:w.x,z:w.z,y:sim.standY(w),r:.65,life:I.trailLife});if(sim.ichorTrails.length>I.trailCap)sim.ichorTrails.shift();}

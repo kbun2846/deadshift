@@ -32,7 +32,7 @@ import { createDeathScreen, DEATH_MENU_DELAY, RESPAWN_TIME } from './ui/death-sc
 import { createLobbyPanel } from './ui/lobby-panel.js';
 import { createLobbyScreen } from './ui/lobby-screen.js';
 import { createWeaponPick } from './ui/weapon-pick.js';
-import { pickView } from './render/pick-view.js';
+import { pickView, lobbyView } from './render/pick-view.js';
 import { PICK, MODES, SETTINGS as MATCH_SETTINGS, SIDE_COLOURS } from './config/match.js';
 const modeLabel=document.querySelector('.brand .mode');
 import { GAME_KEYS } from './config/controls.js';
@@ -41,6 +41,9 @@ import { NETWORK } from './config/network.js';
 import { bindRifleMouse, weaponAiming,weaponGuarding,ballastInput } from './weapons/rifle-input.js';
 import { advanceAimCursor } from './ui/aim-cursor.js';
 import { createAimDamping, aimsByPoint, muzzleLateral, muzzleBearing } from './aim-damping.js';
+import { createStanceAim, resetStanceAim, stepStanceAim, glideTo, STANCE_AIM } from './weapons/stance-aim.js';
+import { inSightCone } from './weapons/sightline.js';
+import { SIGHTLINE } from './config/gameplay.js';
 import { tutorialMapFor, Tutorial } from './tutorial.js';
 import { createTutorialCard } from './ui/tutorial-card.js';
 import { installMenu } from './ui/menu.js';
@@ -48,7 +51,7 @@ import { createDuel, readDuel, DUEL_MODES } from './duel.js';
 import { createOnlinePlay } from './online-play.js';
 import { drawSim } from './net/projectiles.js';
 import { createMultiplayerHud } from './ui/multiplayer-hud.js';
-import { TAB_TITLE } from './version.js';
+import { TAB_TITLE, VERSION } from './version.js';
 import { installUiSounds } from './ui/ui-sounds.js';
 import { mapById, menuMaps } from './maps.js';
 import { targetRadius } from './target-radius.js';
@@ -88,6 +91,9 @@ const map = import.meta.env.DEV && params.get('start') === 'farm' && selectedMap
   : landmarkStart ? { ...selectedMap, spawn: { x: landmarkStart.x, z: landmarkStart.z + 6 } }
   : roomStart ? { ...selectedMap, spawn: { x: roomStart.x, z: roomStart.z } } : selectedMap;
 document.title = TAB_TITLE;
+// The version as 'v' + VERSION everywhere it shows (owner, v0.990a: "v0.990a",
+// its letter the stage: a alpha, b beta), from version.js, not the page's text.
+for (const el of document.querySelectorAll('.game-version')) el.textContent = 'v' + VERSION;
 document.querySelector('.brand .map-name').textContent = map.name.toUpperCase();
 document.querySelector('.mode').textContent=map.training?'TUTORIAL':'PRACTICE';
 let settings;
@@ -143,6 +149,14 @@ const placeButton=document.createElement('button');placeButton.id='touch-place';
 // Aim-down-sights weapons: the bottom slice of FIRE aims and fires together
 // (touch-controls.js cuts it out of FIRE; items.js adsFire).
 const aimFireButton=document.createElement('button');aimFireButton.id='touch-aimfire';aimFireButton.setAttribute('aria-label','Aim and fire');$('touch-launch').after(aimFireButton);
+// AIM + FIRE (items.js adsFire): the Nominal, the Sidekick and Sightline's
+// Sidekick (owner, v0.992a: "incorporated to sidekick everywhere same way as
+// nominal"). In Sightline's stance FIRE is whole again (the scope is its AIM
+// switch), with AIM keeping its place at the ring's bottom end; the cluster
+// is laid out again when the stance changes (syncAimFire, on the HUD tick).
+const aimFireWanted=()=>!!weaponInfo(sim.weapon)?.adsFire&&!(sim.weapon==='sightline'&&sim.sightline?.crouched);
+let aimFireShown=null;
+function syncAimFire(){const on=aimFireWanted();if(on===aimFireShown)return;aimFireShown=on;aimFireButton.hidden=!on;arrangeTouchCluster();}
 // The home screen's tutorial runs the basics; Gamemodes > Tutorial runs a weapon's own course.
 let tutorialCourse=params.get('course')==='basics'?'basics':null;
 const courseFor=weapon=>tutorialCourse==='basics'?'basics':weapon;
@@ -213,8 +227,78 @@ let inputMode = 'keyboard', dirty = true, hudTime = 0, fpsTime = 0, renderedFram
 let markerRemaining = 0, coneFlicker = 0;
 const keys = new Set(), tappedKeys = new Set();
 const touchActionResets=[];
-const aimingNow=()=>weaponAiming(sim.weapon,rifleAiming,keys);
+// The touch AIM button is a switch for Sightline's rifle, in the stance
+// (owner, v0.990a: "the aim button should toggle the zoom out, not tap to
+// hold"; v0.992a: "that's just for sightline sniper"): tap on, tap off; it
+// lets go by itself on standing up, a weapon change, death or pause. Every
+// other AIM is held: the Sidekick, Sightline's Sidekick (standing), the
+// Nominal and Ballast (and AIM + FIRE); Ichor's GUARD, a reaction, too.
+const aimSwitch=()=>sim.weapon==='sightline'&&!!sim.sightline?.crouched;
+let aimToggled=false,aimPressSwitched=false;
+const aimingNow=()=>weaponAiming(sim.weapon,rifleAiming||aimToggled,keys);
+function setAimToggle(on){
+ aimToggled=!!on;
+ const button=$('touch-stream');if(button)button.dataset.toggled=on?'on':'';
+}
 const aimDamping=createAimDamping();
+// Sightline's stance without a mouse (weapons/stance-aim.js): crouched behind
+// the rifle you cannot walk, so the walking controls (the move stick; WASD and
+// the arrows) steer the laser's end instead. A mouse aims as ever; moving it
+// takes the aim back from the keys.
+const stanceAim=createStanceAim();
+function stanceSteering(){return sim.weapon==='sightline'&&!!sim.sightline?.crouched&&!sim.player.dead&&(touchPrompts||inputMode!=='mouse');}
+function stanceOnScreen(x,z){const s=view.screenPoint(x,z,SIGHTLINE.roundHeight),w=viewWidth(),h=viewHeight(),m=STANCE_AIM.margin;return s.x>=m&&s.y>=m&&s.x<=w-m&&s.y<=h-m;}
+// The point stays on screen: a move that would take it off keeps whichever
+// half of it stays on (so it slides along the edge), and a point that starts
+// off screen (the stance taken aiming far out) comes in toward you.
+function keepStanceOnScreen(fromX,fromZ){
+ const st=stanceAim;if(stanceOnScreen(st.x,st.z))return;
+ if(stanceOnScreen(st.x,fromZ)){st.z=fromZ;return;}
+ if(stanceOnScreen(fromX,st.z)){st.x=fromX;return;}
+ if(stanceOnScreen(fromX,fromZ)){st.x=fromX;st.z=fromZ;return;}
+ const p=sim.player;
+ for(let i=0;i<24&&!stanceOnScreen(st.x,st.z);i++){st.x=p.x+(st.x-p.x)*.88;st.z=p.z+(st.z-p.z)*.88;}
+}
+// The enemies the stance's aim can know about: alive, seen (sight rays), and
+// scoped, inside the scope's view (others are hidden then).
+function stanceBodies(){
+ const p=sim.player,scoped=!!sim.sightline?.aiming,out=[];
+ for(const t of lockPool()){
+  if(t.hp!==undefined&&t.hp<=0)continue;
+  if(Math.hypot(t.x-p.x,t.z-p.z)>90||(scoped&&!inSightCone(p,t.x,t.z))||!sim.canSeeTarget(t.x,t.z))continue;
+  out.push({id:t.id,x:t.x,z:t.z,vx:t.vx||0,vz:t.vz||0});
+ }
+ return out;
+}
+// A swipe on the world in the stance, with aim assist (owner, v0.992a: "like
+// swiping on right side of screen swaps aim to whatever's in that direction,
+// like regular mobile aim"): the enemy that way on screen from the laser's
+// end (within 50 degrees of the swipe; the nearest, straighter ahead
+// preferred), glided onto (stance-aim.js glideTo). None that way: false.
+function pickStanceTarget(dx,dy){
+ if(!stanceAim.on)stepStanceAim(stanceAim,{player:sim.player,dt:0});
+ const from=view.screenPoint(stanceAim.x,stanceAim.z,SIGHTLINE.roundHeight),len=Math.hypot(dx,dy)||1,w=viewWidth(),h=viewHeight();
+ let best=null,score=Infinity;
+ for(const b of stanceBodies()){
+  if(b.id===stanceAim.focus&&Math.hypot(b.x-stanceAim.x,b.z-stanceAim.z)<1.2)continue;
+  const at=view.screenPoint(b.x,b.z,.6);if(at.x<0||at.y<0||at.x>w||at.y>h)continue;
+  const vx=at.x-from.x,vy=at.y-from.y,d=Math.hypot(vx,vy);if(d<12)continue;
+  const cos=(vx*dx+vy*dy)/(d*len);if(cos<Math.cos(50*Math.PI/180))continue;
+  const sc=d*(2-cos);if(sc<score){score=sc;best=b;}
+ }
+ if(!best)return false;
+ glideTo(stanceAim,best.id);return true;
+}
+// A finger dragged on the world in the stance moves the point like a
+// trackpad (by as far as the finger moves on screen), from where it is.
+function dragStanceAim(dx,dy){
+ if(!stanceAim.on)stepStanceAim(stanceAim,{player:sim.player,dt:0});
+ const at=view.screenPoint(stanceAim.x,stanceAim.z,SIGHTLINE.roundHeight),a=view.aim(at.x,at.y,sim.player),b=view.aim(at.x+dx,at.y+dy,sim.player);
+ if(!Number.isFinite(a.aimPointX)||!Number.isFinite(b.aimPointX))return;
+ const fx=stanceAim.x,fz=stanceAim.z;
+ stanceAim.x+=b.aimPointX-a.aimPointX;stanceAim.z+=b.aimPointZ-a.aimPointZ;
+ stepStanceAim(stanceAim,{player:sim.player,dt:0});keepStanceOnScreen(fx,fz);
+}
 let previousPlayer = { ...sim.player };
 const mouse = { x: viewWidth() * .7, y: viewHeight() * .5 };
 const cursorTarget={...mouse},prevCursor={...mouse},drawnCursor={...mouse};
@@ -230,7 +314,7 @@ const sticks = new Map();
 // tools/capture-thumbnail.mjs, which photographs the map card's picture.
 if(import.meta.env.DEV&&params.get('capture')==='thumbnail')window.__capture={view,sim,map};
 // Development only: the robots, for tools and the console.
-if(import.meta.env.DEV){window.__bots=bots;window.__duel=duel;window.__sim=sim;}
+if(import.meta.env.DEV){window.__bots=bots;window.__duel=duel;window.__sim=sim;window.__stanceAim=stanceAim;window.__stanceBodies=()=>stanceBodies();window.__pickStance=(dx,dy)=>pickStanceTarget(dx,dy);}
 view.onClatter = type => sound.clatter(type);
 view.onBloodSound=(kind,x,z)=>sound.event({type:kind==='step'?'bloodStep':'bloodPool',x,z},hearingLevel(Math.hypot(x-sim.player.x,z-sim.player.z)));
 // Lost the GPU (usually out of memory on a phone). Twice within a minute on
@@ -325,6 +409,7 @@ function returnToMenu(){
 
 function releaseInput() {
   for(const reset of touchActionResets)reset();
+  if(aimToggled)setAimToggle(false);resetStanceAim(stanceAim);
   touchAimPointer=null;
   rifleFiring=false;rifleAiming=false;firePointer=aimPointer=null;sim.shotgun.trigger=false;sim.shotgun.suppress=false;
   keys.clear(); tappedKeys.clear(); pendingQuickShot=false; pendingSeed = false; pendingLaunch = false; pendingAimPoint = null;
@@ -380,7 +465,7 @@ function aimDotPoint(){
   // steps, it stuttered; it is drawn between its last two steps like the
   // body is. Aim from the simulation: measured from the drawn body, not the
   // last step's (the camera follows the drawn one), as the cone already is.
-  if(inputMode==='mouse'&&p.assistTargetId==null&&!(targetLock.id!==null&&lockMode())){
+  if(inputMode==='mouse'&&!stanceSteering()&&p.assistTargetId==null&&!(targetLock.id!==null&&lockMode())){
    if(pointerOnUI)return cursorTarget;
    if(!smoothedCursor()||!running)return mouse;
    const k=Math.max(0,Math.min(1,accumulator/RULES.step));
@@ -394,6 +479,7 @@ function aimDotPoint(){
 // (a finger, walking, or the stick) unless turned off in Settings > Mobile, a
 // lighter one for keyboard aim, and none for a mouse.
 function assistMode(){
+ if(stanceSteering())return false; // (the stance: see stance-aim.js)
  if(touchPrompts)return settings.aimAssist?'touch':false;
  return inputMode==='mouse'?false:'keyboard';
 }
@@ -425,9 +511,14 @@ function updateHUD() {
   // The health bar has its own per-frame update in the frame loop, because the
   // tremble needs every frame; calling it again on the 80ms HUD tick was pure
   // duplication.
-  const rifle=sim.weapon==='rifle';
   updateWeaponHUD(sim,touchPrompts);$('hex-recharge').classList.remove('hidden');
-  aimOverlay.showSpread(rifle&&running);
+  // (The brackets' own frame update decides who shows them: the Nominal, the
+  // Sidekick and Sightline's pistol. This 80 ms tick used to hide them for
+  // every weapon but the Nominal, so on a phone the Sidekick's brackets
+  // blinked about twelve times a second: owner, v0.990a. It only puts them
+  // away when the game is not running.)
+  if(!running)aimOverlay.showSpread(false);
+  syncAimFire();
   abilityHUD.update(sim);
   const count = sim.seeds.length;
   $('reticle').classList.toggle('loaded', count > 0);
@@ -464,6 +555,8 @@ function event(e) {
 // the screen; a drag never fires (see touch-controls.js).
 function touchTapFire(x, y) {
   pendingLaunch = true; pendingQuickShot = true;
+  // In Sightline's stance a tap fires along the laser, wherever it lands.
+  if (stanceSteering()) { pendingAimPoint = null; return; }
   // Locked on: a tap fires at the locked target, not at the tapped spot.
   if (targetLock.id !== null && lockMode()) { pendingAimPoint = null; return; }
   inputMode = 'mouse'; setCursorTarget(x, y);
@@ -473,7 +566,7 @@ function touchTapFire(x, y) {
 // aim assist is off in Settings > Mobile) and for keyboard-only aim.
 const targetLock=createTargetLock();
 let pendingSwap=null,swipeFrom=null;
-function lockMode(){ return touchPrompts ? !!settings.aimAssist : inputMode!=='mouse'; }
+function lockMode(){ if(stanceSteering())return false; return touchPrompts ? !!settings.aimAssist : inputMode!=='mouse'; }
 // What can be locked: alive, in sight, on screen and in range. Online, only
 // other players; offline, the practice targets and dummies and the robots.
 // Players and robots are `mover`s (target-lock.js follows them differently),
@@ -565,6 +658,7 @@ window.addEventListener('keydown',e=>{
  const code=gameCode(e.code);
  if(!running||e.repeat||touchPrompts||!code?.startsWith('Arrow'))return;
  inputMode='keyboard';
+ if(sim.weapon==='sightline'&&sim.sightline?.crouched)return; // (the arrows steer the laser)
  pendingSwap={x:code==='ArrowRight'?1:code==='ArrowLeft'?-1:0,y:code==='ArrowDown'?1:code==='ArrowUp'?-1:0};
 });
 let touchAimStart = null;
@@ -621,6 +715,7 @@ const lobbyScreen=createLobbyScreen($('game'),{
  tuneRobot:(id,setup)=>online.tuneRobot(id,setup),
  tuneAllRobots:setup=>{if(online.tuneAllRobots(setup))toast('EVERY ROBOT SET',1600);},
  chooseTeam:team=>online.chooseTeam(team),
+ chooseMap:id=>{if(online.moveRoom(id))toast('MOVING THE ROOM TO '+(mapById(id).name||id).toUpperCase(),3000);},
  leave:()=>$('main-menu').click(),
  copyInvite:()=>online.copyInvite(),
  map,// s2-spawns: the lobby's map list
@@ -743,8 +838,8 @@ function syncOnlineScreens(){
   if(!weaponPick.open){closeLobby();releaseInput();weaponPick.show(me.picking.weapon||me.weapon||null);}
   weaponPick.setTimer(me.picking.left,PICK.time);
  }else if(weaponPick.open)weaponPick.hide();
- // The pick's view from high above; the lobby shows the same spot behind it.
- view.setPickView(inLobby||picking?pickView(map):null);
+ // The pick's view from high above; the lobby shows its own place (lobbyView).
+ view.setPickView(picking?pickView(map):inLobby?lobbyView(map):null);
  // The death screen steps aside while picking or while its lobby is open.
  if(deathActive&&deathMenuOpen)deathScreen.root.classList.toggle('hidden',picking||inLobby||(lobbyPanel.open&&lobbyFrom==='death'));
  choosing=inLobby||picking;
@@ -831,6 +926,23 @@ window.addEventListener('scroll', () => { view.cachedRect = null; }, { passive: 
 $('world').addEventListener('pointermove', e => {
   if(e.pointerType!=='mouse'&&e.pointerId===touchAimPointer&&running){
    e.preventDefault();
+   if(stanceSteering()){
+    const last=touchAimStart?.last||touchAimStart||{x:e.clientX,y:e.clientY};
+    if(touchAimStart&&Math.hypot(e.clientX-touchAimStart.x,e.clientY-touchAimStart.y)>=TOUCH_TAP.slop)touchAimStart.dragged=true;
+    // With aim assist a swipe picks the enemy that way (one per swipe, another
+    // every TARGET_LOCK.swipeAgain px of a long drag); with none that way, or
+    // assist off, the drag moves the laser's end like a trackpad.
+    if(settings.aimAssist&&!touchAimStart?.trackpad){
+     swipeFrom||={x:touchAimStart?.x??e.clientX,y:touchAimStart?.y??e.clientY};
+     const sx=e.clientX-swipeFrom.x,sy=e.clientY-swipeFrom.y,need=swipeFrom.count?TARGET_LOCK.swipeAgain:TARGET_LOCK.swipe;
+     if(Math.hypot(sx,sy)>=need){if(pickStanceTarget(sx,sy))swipeFrom={x:e.clientX,y:e.clientY,count:(swipeFrom.count||0)+1};else if(touchAimStart)touchAimStart.trackpad=true;}
+     if(touchAimStart)touchAimStart.last={x:e.clientX,y:e.clientY};
+     return;
+    }
+    dragStanceAim(e.clientX-last.x,e.clientY-last.y);
+    if(touchAimStart)touchAimStart.last={x:e.clientX,y:e.clientY};
+    return;
+   }
    // Aim assist on: a swipe is an arrow key. Idle, it picks the target that
    // way from the aim dot; locked, the next target that way. The cursor never
    // jumps to the finger. With no target that way the drag moves the cursor
@@ -866,7 +978,7 @@ $('world').addEventListener('pointerdown', e => {
   if(e.pointerType==='mouse')worldPress=true;
   if(e.pointerType!=='mouse'&&touchPrompts){
    if(!running||touchAimPointer!==null)return;
-   e.preventDefault();touchAimPointer=e.pointerId;inputMode='mouse';if(!lockMode())setCursorTarget(e.clientX,e.clientY);$('world').setPointerCapture(e.pointerId);
+   e.preventDefault();touchAimPointer=e.pointerId;inputMode='mouse';if(!lockMode()&&!stanceSteering())setCursorTarget(e.clientX,e.clientY);$('world').setPointerCapture(e.pointerId);
    touchAimStart={x:e.clientX,y:e.clientY,time:performance.now(),dragged:false};swipeFrom=null;return;
   }
   if(running&&usesTrigger(sim.weapon)&&(e.button===0||e.button===2)){
@@ -1077,8 +1189,28 @@ function frame(time) {
       let digitalAim = !!(manualX || manualZ);
       // No-mouse players: with a target on screen the aim sits on it (arrows
       // and swipes switch targets); otherwise the ordinary aiming below.
+      // The AIM switch lets go on standing up (or another weapon), or death.
+      if (aimToggled && (!aimSwitch() || sim.player.dead)) setAimToggle(false);
+      // Sightline's stance: a keyboard player's keys take the aim from the
+      // mouse (moving the mouse takes it back).
+      const stanceKeys = { x: Number(held('KeyD') || held('ArrowRight')) - Number(held('KeyA') || held('ArrowLeft')), z: Number(held('KeyS') || held('ArrowDown')) - Number(held('KeyW') || held('ArrowUp')) };
+      if (!touchPrompts && sim.weapon === 'sightline' && sim.sightline?.crouched && (stanceKeys.x || stanceKeys.z)) inputMode = 'keyboard';
+      const steer = stanceSteering();
+      if (!steer && stanceAim.on) resetStanceAim(stanceAim);
       const locked = lockTarget(RULES.step);
-      if (locked) {
+      if (steer) {
+        // The stick (as pushed) or the keys (a diagonal no faster than straight).
+        const stick = Math.hypot(touch.moveX, touch.moveZ) > .02, kl = Math.hypot(stanceKeys.x, stanceKeys.z) || 1;
+        const pushX = stick ? touch.moveX : stanceKeys.x / kl, pushZ = stick ? touch.moveZ : stanceKeys.z / kl;
+        const p = sim.player, fx = stanceAim.on ? stanceAim.x : NaN, fz = stanceAim.on ? stanceAim.z : NaN;
+        // Aim assist (side to side only, stance-aim.js): on a phone as Settings >
+        // Mobile has it; always for keys.
+        stepStanceAim(stanceAim, { player: p, pushX, pushZ, digital: !stick, scoped: !!sim.sightline.aiming, bodies: stanceBodies(), assist: touchPrompts ? !!settings.aimAssist : true, dt: RULES.step });
+        keepStanceOnScreen(Number.isFinite(fx) ? fx : stanceAim.x, Number.isFinite(fz) ? fz : stanceAim.z);
+        const lateral = muzzleLateral('sightline', true), bearing = muzzleBearing(p.x, p.z, stanceAim.x, stanceAim.z, lateral);
+        aimX = Math.cos(bearing); aimZ = Math.sin(bearing); aimPointX = stanceAim.x; aimPointZ = stanceAim.z; digitalAim = false;
+      }
+      else if (locked) {
         const pt = targetLock.point, dx = pt.x - sim.player.x, dz = pt.z - sim.player.z, l = Math.hypot(dx, dz) || 1;
         // The body faces the gliding aim point directly (no extra turn easing on
         // top of the glide), so the character, cone and dot sweep together.
@@ -1096,10 +1228,11 @@ function frame(time) {
       // The no-mouse lesson: Q fired while aiming with the arrow keys.
       if(tutorial){tutorial.touch=touchPrompts;tutorial.touchAiming=touchAimPointer!==null;tutorial.walking=Math.hypot(touchMove.x,touchMove.z)>.2;if(arrows.active)tutorial.arrowAim=true;if(tappedKeys.has(GAME_KEYS.shoot)&&tutorial.arrowAim&&inputMode==='keyboard')tutorial.event({type:'keyboardShot'},sim);}
       const ballast=ballastInput(rifleFiring,keys,tappedKeys);
+      const aiming = aimingNow();
       if(!online.active)bots.before(sim);
       // Freezing is a solo tool: online it would stop only the host.
       if(online.active&&sim.dev.freeze)sim.dev.freeze=false;
-      sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), surge:sim.weapon==='rifle'&&tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(usesTrigger(sim.weapon)&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),scatter:sim.weapon==='shotgun'&&tappedKeys.has('KeyX'),doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming:aimingNow(),reload:tappedKeys.has('KeyR'), ichorGuard:weaponGuarding(sim.weapon,rifleAiming,keys),ichorE:sim.weapon==='ichor'&&tappedKeys.has(GAME_KEYS.secondary),ichorX:sim.weapon==='ichor'&&tappedKeys.has('KeyX'),sidekickMine:sim.weapon==='sidekick'&&tappedKeys.has(GAME_KEYS.secondary),sidekickX:sim.weapon==='sidekick'&&tappedKeys.has('KeyX'),sightlineStance:sim.weapon==='sightline'&&tappedKeys.has(GAME_KEYS.secondary),sightlineX:sim.weapon==='sightline'&&tappedKeys.has('KeyX'),omenPrime:sim.weapon==='omen'&&tappedKeys.has(GAME_KEYS.secondary), omenVolley:sim.weapon==='omen'&&tappedKeys.has('KeyX'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
+      sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), surge:sim.weapon==='rifle'&&tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(usesTrigger(sim.weapon)&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),scatter:sim.weapon==='shotgun'&&tappedKeys.has('KeyX'),doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming,reload:tappedKeys.has('KeyR'), ichorGuard:weaponGuarding(sim.weapon,rifleAiming,keys),ichorE:sim.weapon==='ichor'&&tappedKeys.has(GAME_KEYS.secondary),ichorX:sim.weapon==='ichor'&&tappedKeys.has('KeyX'),sidekickMine:sim.weapon==='sidekick'&&tappedKeys.has(GAME_KEYS.secondary),sidekickX:sim.weapon==='sidekick'&&tappedKeys.has('KeyX'),sightlineStance:sim.weapon==='sightline'&&tappedKeys.has(GAME_KEYS.secondary),sightlineX:sim.weapon==='sightline'&&tappedKeys.has('KeyX'),omenPrime:sim.weapon==='omen'&&tappedKeys.has(GAME_KEYS.secondary), omenVolley:sim.weapon==='omen'&&tappedKeys.has('KeyX'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
         launchPointX: arrows.active?undefined:pendingAimPoint?.aimPointX, launchPointZ: arrows.active?undefined:pendingAimPoint?.aimPointZ }));
       online.afterStep();
       if(!online.active){bots.after(sim);bots.step(sim);}
@@ -1183,7 +1316,7 @@ function applyInputPreference(){
   grenadeButton.hidden=extendedButton.hidden=!extras;
   placeButton.hidden=!!extras;
   const adsFire=!!weaponInfo(sim.weapon)?.adsFire;
-  document.body.classList.toggle('ads-fire',adsFire);aimFireButton.hidden=!adsFire;
+  document.body.classList.toggle('ads-fire',adsFire);aimFireButton.hidden=!aimFireWanted();aimFireShown=!aimFireButton.hidden;
   const touchLabel=(id,label,binding)=>{
    const word=document.createElement('span');word.className='button-label';word.textContent=label;
    const key=document.createElement('small');key.className='touch-binding';key.textContent=displayKeys(binding);
@@ -1245,10 +1378,12 @@ bindAction($('touch-dodge'),()=>tappedKeys.add(GAME_KEYS.dodge));
 bindAction(placeButton,()=>{touch.seeding=true;pendingSeed=true;},()=>{touch.seeding=false;});
 bindAction(grenadeButton,()=>{const key=weaponInfo(sim.weapon)?.touchButtons?.grenade.key;if(key)tappedKeys.add(key);});
 bindAction(extendedButton,()=>{const key=weaponInfo(sim.weapon)?.touchButtons?.extended.key;if(key)tappedKeys.add(key);});
-bindAction($('touch-stream'),()=>{if(!usesTrigger(sim.weapon))keys.add('KeyC');else rifleAiming=true;},()=>{keys.delete('KeyC');rifleAiming=false;});
+// (A press is a switch or a hold by what it was when pressed: standing up
+// with AIM held down still lets go of it on the lift.)
+bindAction($('touch-stream'),()=>{aimPressSwitched=aimSwitch();if(aimPressSwitched)setAimToggle(!aimToggled);else if(!usesTrigger(sim.weapon))keys.add('KeyC');else rifleAiming=true;},()=>{keys.delete('KeyC');if(!aimPressSwitched)rifleAiming=false;});
 bindAction($('touch-launch'),()=>{
  pendingLaunch=true;pendingQuickShot=true;
- pendingAimPoint=inputMode==='mouse'&&!keyboardAim(keys,tappedKeys).active&&!(targetLock.id!==null&&lockMode())?view.aim(mouse.x,mouse.y,sim.player):null;
+ pendingAimPoint=inputMode==='mouse'&&!stanceSteering()&&!keyboardAim(keys,tappedKeys).active&&!(targetLock.id!==null&&lockMode())?view.aim(mouse.x,mouse.y,sim.player):null;
  if(usesTrigger(sim.weapon))rifleFiring=true;
 },()=>{rifleFiring=false;});
 bindAction(aimFireButton,()=>{
@@ -1289,6 +1424,7 @@ export function finishLoading(){
  let launch=null;try{launch=sessionStorage.getItem('deadshift.launch');sessionStorage.removeItem('deadshift.launch');}catch{}
  const asked=params.get('play')==='1'&&(launch===location.search||params.has('capture')||params.has('autostart'));
  if(asked)void start();
+ else if(params.get('autojoin')==='1'||params.get('autohost')==='1')menuFlow.autoRoom();/* (v0.990a: a room moved to this map, or opened on it from the host setup) */
  else{
   if(params.get('play')==='1'){const q=new URLSearchParams(location.search);for(const k of ['play','mode','duel','course','weapon'])q.delete(k);try{history.replaceState(null,'',location.pathname+(q.size?'?'+q:''));}catch{}}
   $('gamemodes').focus();

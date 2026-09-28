@@ -212,7 +212,7 @@ export class FogSheets {
  reset(mesh, initial = -1, view) {
   let drift = this.route(initial);
   if (this.terrain && view) {
-   const random = this.random, tries = initial >= 0 ? 1 : 1 + Math.round(Math.min(1, this.fog.lowBias || 0) * 2);
+   const random = this.random, tries = initial >= 0 ? 1 : 1 + Math.round(Math.min(2, this.fog.lowBias || 0) * 2);
    let best = null;
    for (let i = 0; i < tries; i++) {
     const mx = view.focus.x + this.lead.x + (random() - .5) * 1.6 * view.halfWidth;

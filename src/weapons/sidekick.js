@@ -87,6 +87,7 @@ export function stepSidekick(sim,input,dt,geo){
   let at=1,target=null,prop=null,blocked=false;
   for(const c of collidersAlong(sim.colliders,b.x,b.z,ex,ez,.035)){if(c.playerOnly)continue;const t=geo.segmentBox(b.x,b.z,ex,ez,c,.025);if(t!==null&&t<=at&&roundMeets(sim,b,c,b.x+b.dx*length*t,b.z+b.dz*length*t,b.travel+length*t)){at=t;blocked=true;prop=sim.props.find(v=>v.id===c.propId);}}
   for(const t of sim.targets){if(t.hp<=0)continue;const hit=geo.segmentCircle(b.x,b.z,ex,ez,t.x,t.z,targetRadius(t)+.025);if(hit!==null&&hit<at&&roundSees(sim,b,t,b.travel+length*hit)){at=hit;target=t;prop=null;blocked=true;}}
+  {const wall=sim.shieldStop(b.x,b.z,ex,ez);if(wall!==null&&wall<at){at=wall;target=prop=null;blocked=true;sim.events.push({type:'hexBlock',x:b.x+b.dx*length*wall,z:b.z+b.dz*length*wall,wall:true});}} // (v0.990a: a hex's wall stops it)
   b.x+=b.dx*length*at;b.z+=b.dz*length*at;b.travel+=length*at;b.y=(b.flight?sim.ground.flightAt(b.flight,b.travel):0)+TERRAIN.roundHeight;
   const shot={owner:p.id,volley:b.volley,damage:b.damage,damageType:'sidekickShot',bullet:true,vx:b.dx,vz:b.dz,x:b.x,z:b.z};
   if(target)sim.hit(target,shot);if(prop)sim.hitProp(prop,shot);

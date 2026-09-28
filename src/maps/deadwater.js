@@ -15,7 +15,12 @@ export const deadwater = {
   spawn: { x: 0, z: 7 },
   // The map card's picture: the farmhouse above the corn field.
   thumbnail: { x: 70, z: 84, height: 44 },
-  palette: { ground: '#776044', road: '#94764f' }, look: { warmth: .15 },
+  palette: { ground: '#776044', road: '#94764f' },
+  // (v0.990a, owner: "dust in deadwater should be more yellowy/dusty": the
+  // drifting dust sheets a dry ochre instead of grey-tan, and every kicked-up
+  // puff, dash trail and dust devil pulled a third of the way to it:
+  // render/map-look.js `dust`.)
+  look: { warmth: .15, fog: { colour: '#d8bc70', highlight: '#efd690' }, dust: { tint: '#dcb858', mix: .32 } },
   buildings: [
     { ...building('saloon', -12, -5, 10, 10, 2.9, 'SALOON', '#b58f70', '#687269'), angle: Math.PI / 2, doors: ['front', 'right'], windows: [{ side: 'front', offset: 3, width: 1.65 }] },
     { ...building('supplies', 12, -7, 8, 9, 2.7, 'SUPPLIES', '#c4ae8c', '#a37154'), doors: ['front', 'left'] },

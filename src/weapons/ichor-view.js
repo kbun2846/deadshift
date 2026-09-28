@@ -4,6 +4,7 @@ import { makeIchor,poseIchor,applyIchorBody } from './ichor-model.js';
 import { BloodDrops } from '../effects/blood-drops.js';
 import {castToWall} from '../effects/blood-surfaces.js';
 import { floorY } from '../render/ground-lift.js';
+export const ICHOR_FX_ORDER=3;
 import { ichorCutSign,ichorCutArc,ichorSpin,ichorCoverMeets } from './ichor-cut.js';
 import { segmentBox } from '../simulation.js';
 import { nearColliders } from '../world/collider-grid.js';
@@ -30,7 +31,12 @@ export class IchorView{
  const star=[];for(let i=0;i<16;i++){const point=j=>{const a=j*Math.PI/8,r=j%2?.16:j%4===0?1:.48;return [Math.cos(a)*r,Math.sin(a)*r,0];};star.push(0,0,0,...point(i),...point((i+1)%16));}
  const sparkGeo=new THREE.BufferGeometry();sparkGeo.setAttribute('position',new THREE.Float32BufferAttribute(star,3));this.guardSparks=batch(sparkGeo,8,1);this.guardSparks.material.side=THREE.DoubleSide;this.guardSparks.material.color.set('#ffffff');
  this.lines=batch(new THREE.BoxGeometry(1,1,1),1800,.86);this.glows=batch(new THREE.CircleGeometry(1,12).rotateX(-Math.PI/2),24,.15);const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(18000*3),3).setUsage(THREE.DynamicDrawUsage));geo.setAttribute('color',new THREE.BufferAttribute(new Float32Array(18000*3),3).setUsage(THREE.DynamicDrawUsage));geo.setDrawRange(0,0);
- this.ribbons=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:.92,side:THREE.DoubleSide,depthWrite:false,toneMapped:false}));this.ribbons.frustumCulled=false;this.ribbons.count=0;view.scene.add(this.ribbons);this.meshes=[this.lines,this.glows,this.ribbons,this.guardSparks];}
+ this.ribbons=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:.92,side:THREE.DoubleSide,depthWrite:false,toneMapped:false}));this.ribbons.frustumCulled=false;this.ribbons.count=0;view.scene.add(this.ribbons);this.meshes=[this.lines,this.glows,this.ribbons,this.guardSparks];
+ // Drawn after the ground's marks (v0.990a, owner: footprints and blood
+ // splatters show under the slashes): the stains, splatters and prints are
+ // order 2 (blood-drops.js, blood-splatter.js), so a slash's white arc and its
+ // flying blood go over them, not under.
+ for(const m of this.meshes)m.renderOrder=ICHOR_FX_ORDER;}
  clear(){this.drench?.clear();this.cuts=[];this.sparks=[];this.pools=[];this.footTime.clear();this.waveTrail.clear();this.bloodMotes=[];this.ricochets=[];this.frenzyBursts=[];for(const m of this.meshes)m.count=0;this.ribbons.geometry.setDrawRange(0,0);}
  line(ax,ay,az,bx,by,bz,width,color){const m=this.lines,i=m.count;if(i>=1800)return;const d=this.dummy;this.a.set(ax,ay,az);this.b.set(bx,by,bz).sub(this.a);d.position.copy(this.a).addScaledVector(this.b,.5);d.quaternion.setFromUnitVectors(this.up,this.a.copy(this.b).normalize());d.scale.set(width,this.b.length(),width*.55);d.updateMatrix();m.setMatrixAt(i,d.matrix);m.setColorAt(i,color);m.count++;}
  event(e){const v=this.view;
@@ -42,6 +48,14 @@ export class IchorView{
  }
  if(e.type==='ichorFrenzyStart'){if(this.frenzyBursts.length>=6)this.frenzyBursts.shift();this.frenzyBursts.push({...e,born:this.clock});}
  if(e.type==='ichorSwing'){if(this.cuts.length>=24)this.cuts.shift();this.cuts.push({...e,born:this.clock});}
+ // The wave's price (v0.990a): the wielder splashes blood as it leaves the blade.
+ if(e.type==='ichorWave'&&e.cost>0&&(e.id===v.lastSim?.player.id||v.lastSim?.canSeeEntity(e.x,e.z,.1))){
+  const y=floorY(v,e.x,e.z,e.below),n=v.qualityName==='potato'?10:v.qualityName==='performance'?16:24;
+  this.bloodSpray(e.x,e.z,y+.95,-(e.dx??1),-(e.dz??0),n,e.below,{stain:true});
+  this.bloodSpray(e.x,e.z,y+.8,e.dx??1,e.dz??0,Math.round(n/2),e.below);
+  (v.drops ||= new BloodDrops(v)).stain(e.x,y+.012,e.z,.26+Math.random()*.14);
+  v.onBloodSound?.('pool',e.x,e.z);
+ }
  if(e.type==='ichorDrip'){
   if(!v.lastSim?.canSeeEntity(e.x,e.z,.1))return;
   (v.drops ||= new BloodDrops(v)).stain(e.x,floorY(v,e.x,e.z,e.below)+.012,e.z,.21+Math.random()*.19);

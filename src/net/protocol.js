@@ -31,7 +31,10 @@ import { weaponOrDefault } from '../items.js';
 // 11: streams are waded (slower in water, with and against the current) and
 // a body can wade in under a deck (`below` in player states).
 // 12: Omen input, curses, diamonds and loadout.
-export const PROTOCOL_VERSION = 15;
+// 16 (v0.990a fixes): 'cropCut' (Ichor cuts crops down); the guard turns
+// only rounds that meet its blade (host-side rule); 'moveMap' (the host
+// takes the room to another map; the welcome's `map` moves a joiner there).
+export const PROTOCOL_VERSION = 16;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);
@@ -130,6 +133,9 @@ export function readMessage(data) {
  if (data.t === 'pick' || data.t === 'respawn') return { t: data.t };
  if (data.t === 'ping' || data.t === 'pong') return Number.isFinite(data.s) ? { t: data.t, s: data.s } : null;
  if (data.t === 'hello') return { t: 'hello', version: data.version, name: cleanName(data.name) };
+ // The host moving the room to another map (v0.990a): its id (the client
+ // checks it against its own maps before it goes).
+ if (data.t === 'moveMap') return typeof data.map === 'string' && data.map.length <= 40 ? { t: 'moveMap', map: data.map } : null;
  if (data.t === 'snapshot') {
   if (!Number.isInteger(data.tick) || !Array.isArray(data.players)) return null;
   return { ...data, players: data.players.filter(p => p && typeof p.id === 'string' && Number.isFinite(p.x) && Number.isFinite(p.z)) };

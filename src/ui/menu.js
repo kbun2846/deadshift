@@ -4,9 +4,10 @@ import {shotgunPreview} from '../weapons/shotgun-model.js';
 import { staticPreview } from './weapon-preview.js';
 import { riflePreview } from '../weapons/rifle-model.js';
 import { WEAPONS, DEFAULT_WEAPON } from '../items.js';
-import { DEFAULT_MAP, menuMaps, soloMaps } from '../maps.js';
+import { DEFAULT_MAP, menuMaps, soloMaps, multiplayerMaps } from '../maps.js';
 import { NETWORK } from '../config/network.js';
-import { savedName } from '../online-play.js';
+import { savedName, takeCarry } from '../online-play.js';
+import { pickerHTML, mapGridHTML, wirePicker } from './weapon-grid.js';
 import { createSettingsRows } from './lobby-settings.js';
 import { cleanSettings, MODES } from '../config/match.js';
 import { buildDuelMenu } from './duel-menu.js';
@@ -55,25 +56,47 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  // they can change later in the lobby), then CREATE GAME opens the room and the
  // lobby screen. The last setup is remembered.
  const SETUP_KEY='deadshift-host-settings';
- let hostSettings=(()=>{try{return cleanSettings(JSON.parse(localStorage.getItem(SETUP_KEY)||'{}'));}catch{return cleanSettings();}})();
+ // (The robots' skill is not: it opens at normal every visit, v0.990a.)
+ let hostSettings=(()=>{try{const saved=JSON.parse(localStorage.getItem(SETUP_KEY)||'{}')||{};delete saved.robotSkill;return cleanSettings(saved);}catch{return cleanSettings();}})();
  const setupRows=createSettingsRows($('host-settings'),{onChange:(key,value)=>{hostSettings={...hostSettings,[key]:value};try{localStorage.setItem(SETUP_KEY,JSON.stringify(hostSettings));}catch{}setupRows.render({settings:hostSettings,mode:hostMode,editable:true});}});
  setupRows.render({settings:hostSettings,editable:true});
  $('online-host').onclick=()=>{if(!who().name.trim()){status('Enter a username first.');$('online-name').focus();return;}status('');show('host-setup');};
  // The mode to open with (the lobby can change it), remembered like the settings.
  const MODE_KEY='deadshift-host-mode';
  let hostMode=(()=>{try{const m=localStorage.getItem(MODE_KEY);return MODES.some(x=>x.id===m)?m:'ffa';}catch{return 'ffa';}})();
+ // The map to host on (v0.990a, owner: chosen here too, not only in the
+ // lobby): a picker of the multiplayer maps, remembered; CREATE GAME on
+ // another map than this page's reloads onto it and opens the room there.
+ const MAP_KEY='deadshift-host-map',hostMaps=multiplayerMaps(map);
+ let hostMap=(()=>{try{const m=localStorage.getItem(MAP_KEY);return hostMaps.some(x=>x.id===m)?m:(hostMaps.some(x=>x.id===map.id)?map.id:hostMaps[0]?.id);}catch{return hostMaps[0]?.id;}})();
+ const hostMapRow=document.createElement('div');hostMapRow.className='round-settings host-map';
+ hostMapRow.innerHTML='<div class="round-setting duel-setting duel-pictures host-map-row"><span class="round-setting-label">map</span>'+pickerHTML('map',mapGridHTML({label:'map',maps:hostMaps,pressed:hostMap}))+'</div>';
+ $('host-mode').before(hostMapRow);
+ const hostMapPicker=wirePicker(hostMapRow.querySelector('.picker'));
+ hostMapRow.addEventListener('click',e=>{const b=e.target.closest('[data-choice]');if(!b||b.disabled)return;hostMap=b.dataset.choice;try{localStorage.setItem(MAP_KEY,hostMap);}catch{}for(const t of hostMapRow.querySelectorAll('[data-choice]'))t.setAttribute('aria-pressed',String(t.dataset.choice===hostMap));hostMapPicker.sync();});
  $('host-mode').classList.add('round-settings');
  $('host-mode').innerHTML='<div class="round-setting host-mode-row"><span class="round-setting-label">mode</span><div class="round-choices" role="group" aria-label="mode">'+MODES.map(m=>'<button type="button" class="plain-text" data-mode="'+m.id+'" aria-pressed="false">'+m.name+'</button>').join('')+'</div></div>';
  const showHostMode=()=>{for(const b of $('host-mode').querySelectorAll('[data-mode]'))b.setAttribute('aria-pressed',String(b.dataset.mode===hostMode));setupRows.render({settings:hostSettings,mode:hostMode,editable:true});};
  for(const b of $('host-mode').querySelectorAll('[data-mode]'))b.onclick=()=>{hostMode=b.dataset.mode;try{localStorage.setItem(MODE_KEY,hostMode);}catch{}showHostMode();};
  showHostMode();
- $('host-create').onclick=()=>go({role:'host',...who(),settings:hostSettings,mode:hostMode});
+ $('host-create').onclick=()=>go({role:'host',...who(),settings:hostSettings,mode:hostMode,map:hostMap});
  $('online-join-form').onsubmit=e=>{e.preventDefault();go({role:'join',code:$('online-code').value,...who()});};
  // A shared link (?join=CODE) lands straight on this page and joins.
  const invite=NETWORK.enabled&&new URLSearchParams(location.search).get('join');
  // The link fills in the room code; the username is typed here.
- if(invite&&online){$('online-code').value=invite.toUpperCase();show('online');status('Enter your username, then JOIN.');}
- else if(NETWORK.enabled&&new URLSearchParams(location.search).get('host')==='1'&&online){show('online');status('Enter your username, then HOST A GAME.');}
+ // A room carried here (v0.990a: the host picked this map, at setup or in
+ // the lobby; joiners follow a moved room): open or join it at once with the
+ // saved username, else ask for one as before.
+ // (Started by main.js once the page has loaded: autoRoom.)
+ const params=new URLSearchParams(location.search),name=savedName().trim();
+ const autoJoin=invite&&online&&params.get('autojoin')==='1'&&name,autoHost=!invite&&NETWORK.enabled&&params.get('host')==='1'&&params.get('autohost')==='1'&&online&&name;
+ if(invite&&online){$('online-code').value=invite.toUpperCase();show('online');status(autoJoin?'Joining room '+invite.toUpperCase()+'…':'Enter your username, then JOIN.');}
+ else if(autoHost){show('host-setup');status('Opening the room…');}
+ else if(NETWORK.enabled&&params.get('host')==='1'&&online){show('online');status('Enter your username, then HOST A GAME.');}
+ const autoRoom=()=>{
+  if(autoJoin)go({role:'join',code:invite,name,retry:true});
+  else if(autoHost){const carry=takeCarry();go({role:'host',name,settings:carry?.settings?cleanSettings(carry.settings):hostSettings,mode:MODES.some(m=>m.id===carry?.mode)?carry.mode:hostMode,room:carry?.code||null,carry});}
+ };
  document.querySelectorAll('.menu-back').forEach(b=>b.onclick=back);
  // The page title says which weapon list this is: a tutorial course or a match.
  const chooseWeapons=()=>{$('tutorial-basics').hidden=selectedMap!=='tutorial';document.querySelector('[data-page="weapons"] h2').textContent=selectedMap==='tutorial'?'tutorial weapons':'weapons';show('weapons');for(const card of $('weapon-options').children)card.loadPreview();};
@@ -228,5 +251,5 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const cancelOnlinePick=()=>{if(!onlinePick)return;onlinePick=onlineBack=null;document.querySelector('[data-page="weapons"] h2').textContent='weapons';};
  // The weapon page for a map (practice death screen: CHANGE WEAPON).
  const pickWeapons=id=>{selectedMap=id;weaponBack=id==='tutorial'?'modes':'maps';chooseWeapons();};
- return {back,openTab,pickOnline,cancelOnlinePick,pickWeapons,get pickingOnline(){return !!onlinePick;}};
+ return {back,openTab,pickOnline,cancelOnlinePick,pickWeapons,autoRoom,get pickingOnline(){return !!onlinePick;}};
 }

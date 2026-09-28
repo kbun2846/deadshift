@@ -70,7 +70,7 @@ export async function hostRoom(code, { config = NETWORK, server, openWait = 8000
  if (reached !== 'open') {
   const unreachable = reached === 'timeout' || ['network', 'server-error', 'socket-error', 'socket-closed'].includes(reached?.type);
   peer.destroy();
-  if (!unreachable) throw new Error(errorText(reached));
+  if (!unreachable) throw Object.assign(new Error(errorText(reached)), { type: reached?.type });
   transport.offline = true;
  } else {
   peer.on('error', error => transport.onError(new Error(errorText(error))));
@@ -120,7 +120,7 @@ export async function joinRoom(code, { config = NETWORK, server, timeout = 15000
  try {
   await new Promise((resolve, reject) => {
    const timer = setTimeout(() => reject(new Error('The host did not answer. Check the code, keep the host\'s game open in front, and try again. Some networks block direct connections (see TURN in AGENTS.md).')), timeout);
-   peer.once('error', error => { clearTimeout(timer); reject(new Error(errorText(error))); });
+   peer.once('error', error => { clearTimeout(timer); reject(Object.assign(new Error(errorText(error)), { type: error?.type })); });
    peer.once('open', id => {
     transport.id = id;
     connection = peer.connect(config.roomPrefix + code, { reliable: false, serialization: 'json' });

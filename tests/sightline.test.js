@@ -38,7 +38,7 @@ test('manual Sidekick fires 25 damage at the middle roll once per press, ten rou
 });
 test('only E crouches, halts movement, keeps regular camera until ADS, and permits rifle reload',()=>{
  const s=make();tick(s,{moveX:1},12);crouch(s);const x=s.player.x;tick(s,{moveX:1,dodge:true},20);assert.equal(s.player.x,x);assert.equal(s.player.dodgeRemaining,0);assert.equal(scopeActive(s),false);
- tick(s,{aiming:true});assert.equal(scopeActive(s),true);fire(s);tick(s,{},12);tick(s,{reload:true});assert.equal(s.sightline.rifleReload,4.2);tick(s,{},252);assert.equal(s.sightline.rifleAmmo,1);
+ tick(s,{aiming:true});assert.equal(scopeActive(s),true);fire(s);tick(s,{},12);assert.ok(s.sightline.rifleReload>4,'the rifle reloads itself once its round is away (v0.992a)');tick(s,{},252);assert.equal(s.sightline.rifleAmmo,1);
  crouch(s);assert.equal(s.sightline.crouched,false);tick(s,{moveX:1},12);assert.ok(s.player.x>x);
 });
 test('standing X loads while moving, then automatically returns to Sidekick with rifle armed',()=>{
@@ -178,12 +178,16 @@ test('setup is 1.5 times faster, still blocks fire, and E cancels immediately',(
  tick(s,{},60);fire(s);assert.equal(s.stats.launched,0);tick(s,{sightlineStance:true});assert.equal(s.sightline.setup,0);assert.equal(s.sightline.crouched,false);
  tick(s,{sightlineStance:true});tick(s,{},79);fire(s);tick(s,{},12);assert.equal(s.stats.launched,1);
 });
-test('reload exits scope while aim stays held and requires a fresh aim press afterward',()=>{
- const s=make();crouch(s);fire(s);tick(s,{aiming:true},12);assert.ok(scopeActive(s));
- tick(s,{reload:true,aiming:true});assert.equal(scopeActive(s),false);assert.ok(s.sightline.rifleReload>4);
- tick(s,{aiming:true},260);assert.equal(s.sightline.rifleAmmo,1);assert.equal(scopeActive(s),false);
- tick(s);tick(s,{aiming:true});assert.ok(scopeActive(s));
- tick(s,{aiming:true,sightlineX:true});assert.equal(scopeActive(s),false);assert.ok(s.sightline.xLoading);
+// v0.992a (owner: the laser was sometimes missing): a reload takes the scope
+// down while it runs and gives it back by itself; a held aim no longer has to
+// be let go and pressed again, and the Sidekick's reload leaves the rifle alone.
+test('a reload takes the scope down while it runs and gives it back by itself',()=>{
+ const s=make();crouch(s);tick(s,{aiming:true});assert.ok(scopeActive(s));
+ tick(s,{reload:true,aiming:true});assert.ok(scopeActive(s),'R with a round in: nothing to reload, the scope stays');
+ fire(s);tick(s,{aiming:true},12);assert.equal(s.sightline.rifleAmmo,0);assert.ok(s.sightline.rifleReload>4);assert.equal(scopeActive(s),false);
+ tick(s,{aiming:true},260);assert.equal(s.sightline.rifleAmmo,1);assert.ok(scopeActive(s),'back by itself, aim still held');
+ s.sightline.pistolReload=1.5;tick(s,{aiming:true});assert.ok(scopeActive(s),"the Sidekick's reload does not take the rifle's scope");
+ tick(s,{aiming:true},100);tick(s,{aiming:true,sightlineX:true});assert.equal(scopeActive(s),false);assert.ok(s.sightline.xLoading);
 });
 test('Breach muzzle and landing blasts spare their shooter but hurt nearby opponents with blast reactions',()=>{
  const s=make([target('near',1.81,1.1,30)]);crouch(s);s.sightline.special=true;const hp=s.player.hp;fire(s);tick(s,{},12);

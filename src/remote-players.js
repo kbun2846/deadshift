@@ -1,4 +1,5 @@
 import { makeIchor,poseIchor,applyIchorBody } from './weapons/ichor-model.js';
+import { buildingContains } from './map-kit.js';
 import { IchorDrench } from './effects/ichor-drench.js';
 import { RiflePose } from './weapons/rifle-pose.js';
 import { makeSidekick,poseSidekick,disposeSidekick } from './weapons/sidekick-model.js';
@@ -52,6 +53,14 @@ function gunModel(view, weapon) {
  }
  return byWeapon.get(weapon).clone();
 }
+
+// One of each weapon's shared model, for the shader warm-up (warm-up.js). A
+// robot's or another player's gun is drawn with these materials, which the
+// world's scope shading never wraps, so their shaders were built the first
+// time one came on screen, mid-fight (v0.990a, owner: frames lost playing a
+// robot; a headless check found 50-400 ms stalls as each robot's gun, and
+// later its hidden parts, first drew). The warm-up draws them all once.
+export const gunStandIns = (view, weapons) => weapons.map(weapon => gunModel(view, weapon));
 
 // A side's base ring is wider and brighter, so the side reads at a glance
 // (shared; never disposed).
@@ -151,6 +160,9 @@ export class RemotePlayers {
    avatar.group.rotation.y = Math.atan2(-p.aimX, -p.aimZ);
    // Hills: the base ring lies on the slope (renderer layFlat).
    if (avatar.ring && hilly(this.view)) this.view.layFlat(avatar.ring, p.x, p.z, avatar.group.rotation.y);
+   // Robots and other players print the dirt as you do (v0.990a, owner):
+   // outdoors, on dry ground, not wading under a deck (renderer stepPrints).
+   if (dt > 0 && this.view.stepPrints) { const wet = !g.flat && g.waterDepthAt?.(p.x, p.z, avatar.y) > .03, inside = !!this.view.map?.buildings?.some(b => buildingContains(b, p)); this.view.stepPrints(p.id, p.x, p.z, p.vx || 0, p.vz || 0, avatar.root.visible && !avatar.under && !wet && !inside && !p.dead && p.hp !== 0); }
    const speed = Math.hypot(p.vx, p.vz);
    const dodge = p.dodgeRemaining > 0 ? Math.sin(Math.PI * (1 - p.dodgeRemaining / RULES.dodgeDuration)) : 0;
    avatar.body.scale.set(1 + dodge * .12, 1 - dodge * .3, 1 + dodge * .12);

@@ -42,7 +42,7 @@ export const MODE_NOTES = Object.freeze({
  '3v3': 'two sides of three · robots fill empty seats',
 });
 
-export function createLobbyScreen(parent, { kick, setMode, setSetting, start, leave, copyInvite, addRobot, chooseTeam, tuneRobot, tuneAllRobots, map = null }) {
+export function createLobbyScreen(parent, { kick, setMode, setSetting, start, leave, copyInvite, addRobot, chooseTeam, tuneRobot, tuneAllRobots, chooseMap, map = null }) {
   const root = document.createElement('section');
   root.id = 'lobby-screen'; root.className = 'lobby-screen hidden'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'Lobby');
   const maps = multiplayerMaps(map); // s2-spawns: a map in progress only where it is loaded
@@ -64,10 +64,15 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
   let lastArgs = null, isHost = false, mode = 'ffa', rowsKey = '', sideKey = '', tuning = null, tunePicker = null;
   const settings = createSettingsRows($('.lobby-settings'), { onChange: (key, value) => isHost && setSetting(key, value) });
   for (const button of root.querySelectorAll('[data-mode]')) button.onclick = () => { if (isHost && !button.dataset.later) setMode(button.dataset.mode); };
-  // One map for now; picking it is already the only choice.
-  // The map: a dropdown of map pictures (weapon-grid.js), like the SOLO page;
-  // one map for now, so picking it is already the only choice.
+  // The map: a dropdown of map pictures (weapon-grid.js), like the SOLO page.
+  // The host picking another (v0.990a) takes the whole room there
+  // (online-play.js moveRoom: everyone reloads onto it and rejoins).
   const mapPicker = wirePicker(root.querySelector('.lobby-maps .picker'));
+  root.querySelector('.lobby-maps').addEventListener('click', event => {
+    const tile = event.target.closest('[data-choice]'); if (!tile || tile.disabled || !isHost) return;
+    const current = lastArgs?.lobby?.map || maps[0]?.id;
+    if (tile.dataset.choice !== current) chooseMap?.(tile.dataset.choice);
+  });
   $('#lobby-start').onclick = () => isHost && start();
   $('#lobby-leave').onclick = () => leave();
   $('.lobby-code').onclick = () => copyInvite?.();

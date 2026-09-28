@@ -54,6 +54,15 @@ export function affectCrop(sim, s, electric = false) {
   if (!electric) s.charred = true;
   sim.events.push({ type: electric ? 'cropDust' : 'cropIgnite', x: s.x, z: s.z, w: s.w, d: s.d });
 }
+// Cut down (v0.990a, owner: the katana cuts through the crops): a standing
+// tile goes, as the Static's arcs leave it, with its chaff flying along the
+// cut (`dx`, `dz`: the blade's way). A burning one burns on.
+export function cutCrop(sim, s, dx = 0, dz = 0) {
+  if (s.state !== 'standing') return false;
+  s.state = 'gone'; s.burnAge = 0;
+  sim.events.push({ type: 'cropCut', x: s.x, z: s.z, w: s.w, d: s.d, dx, dz });
+  return true;
+}
 export function cropCircle(sim, origin, radius, electric, clear) {
   for (const s of sim.crops) {
     const point = cropPoint(s, origin);

@@ -39,6 +39,7 @@
 import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER, WADE, TERRAIN, OMEN, SIGHTLINE, ICHOR } from '../config/gameplay.js';
 import { collidersAlong } from '../world/collider-grid.js';
 import { segmentBox } from '../simulation.js';
+import { cropEntityVisible } from '../crops.js';
 import { makeProfile, stepMood } from './robot-profile.js';
 import { muzzleBearing, muzzleLateral } from '../aim-damping.js';
 import { onScreenOf } from '../render/camera-framing.js';
@@ -177,7 +178,9 @@ export class RobotBrain {
    const facing = this.aimAngle ?? Math.atan2(p.aimZ, p.aimX);
    const inView = sniperSees(this.sim,e) ?? (d < SIGHT_NEAR || (d < SIGHT && Math.abs(wrap(Math.atan2(e.z - p.z, e.x - p.x) - facing)) < SIGHT_CONE));
    const room=this.sim.buildingAt(e.x,e.z),sameRoom=!room||room===this.sim.interior;
-   const visible = e.hp > 0 && inView && sameRoom && this.sim.sees(e.x, e.z, .3);
+   // (v0.990a, owner: nobody sees someone in a crop field from outside it;
+   // in the same field, only close by: crops.js cropEntityVisible.)
+   const visible = e.hp > 0 && inView && sameRoom && this.sim.sees(e.x, e.z, .3) && cropEntityVisible(this.sim.crops || [], p, e);
    let m = this.memory.get(e.id);
    if (!m) { m = { x: p.x, z: p.z, vx: 0, vz: 0, seen: -99, visible: false, hp: RULES.playerHealth }; this.memory.set(e.id, m); }
    if (e.hp <= 0) { this.memory.delete(e.id); if (this.targetId === e.id) this.targetId = null; continue; }
@@ -801,7 +804,7 @@ export class RobotBrain {
   }
   if (sim.weapon === 'rifle') this.rifle(input, target, d, shoot, visible);
   else if (sim.weapon === 'shotgun') this.shotgun(input, target, d, shoot, visible);
-  else if(sim.weapon==='ichor'){input.aiming=false;input.tapFire=shoot&&d<2.5&&sim.ichor.cooldown<=0;input.ichorE=shoot&&d>3&&d<16&&sim.ichor.eCooldown<=0&&sim.ichor.blood>=ICHOR.eBlood;if(shoot&&d<2.8&&this.xAllowed()){input.ichorX=true;this.usedX();}}
+  else if(sim.weapon==='ichor'){input.aiming=false;input.tapFire=shoot&&d<2.5&&sim.ichor.cooldown<=0;input.ichorE=shoot&&d>3&&d<16&&sim.ichor.eCooldown<=0&&sim.ichor.blood>=ICHOR.eBlood&&sim.player.hp>ICHOR.waveDamage*2;/* (v0.990a: the wave costs half its hit in health) */if(shoot&&d<2.8&&this.xAllowed()){input.ichorX=true;this.usedX();}}
   else if(sim.weapon==='sidekick')this.sidekick(input,target,d,shoot,visible);
   else if(sim.weapon==='sightline')this.sightline(input,target,d,shoot,visible);
   else if(sim.weapon==='omen')this.omen(input,target,d,shoot,visible);

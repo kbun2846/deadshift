@@ -101,6 +101,8 @@ export function makeBloodStains(parent, arm = null) {
 // sees), a few at the second stage and more at the third. Built for whatever
 // gun is held (`key` names it) from its own bounds, as a child of the gun so
 // it moves with it. Returns { key, set(level), dispose() }.
+// The largest a fleck on a gun gets (m): a gun's flecks are drops, not patches.
+export const FLECK_MAX = .055;
 export function makeGunStains(gun, key) {
  // Ichor animates inside the hand group. A box over its initial bounds stays
  // behind when the blade swings; use the blade's own flush coating instead.
@@ -110,20 +112,27 @@ export function makeGunStains(gun, key) {
    dispose() { if (coat) delete coat.userData.wetLevel; } };
  }
  const root = new THREE.Group(); root.userData.gunStains = true;
- const bounds = new THREE.Box3(), part = new THREE.Box3(), inverse = new THREE.Matrix4();
+ const part = new THREE.Box3(), inverse = new THREE.Matrix4(), parts = [];
  gun.updateMatrixWorld(true); inverse.copy(gun.matrixWorld).invert();
- // Only what is really shown (a hidden model's bounds put flecks in the air).
- gun.traverseVisible(o => { if (!o.isMesh || o.parent?.userData.gunStains || o.userData.goreMerged) return; o.geometry.computeBoundingBox?.(); part.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld).applyMatrix4(inverse); bounds.union(part); });
+ // Only what is really shown (a hidden model's bounds put flecks in the air),
+ // each shown part on its own (v0.990a: a loadout of two guns, Sightline's
+ // slung rifle and its pistol, made one box round the whole body, and flecks
+ // sized from it were half a metre across, hanging in the air: a friend's
+ // "enlarged, bugged blood" in multiplayer). Flecks lie on a part's top,
+ // sized from that part and never over FLECK_MAX.
+ gun.traverseVisible(o => { if (!o.isMesh || o.parent?.userData.gunStains || o.userData.goreMerged) return; o.geometry.computeBoundingBox?.(); part.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld).applyMatrix4(inverse); if (!part.isEmpty()) { const w = part.max.x - part.min.x, d = part.max.z - part.min.z; if (w > .01 && d > .01) parts.push({ box: part.clone(), w, d, area: w * d }); } });
  const stages = [new THREE.Group(), new THREE.Group()];
- if (!bounds.isEmpty()) {
+ if (parts.length) {
   const box = new THREE.BoxGeometry(1, 1, 1), red = new THREE.MeshLambertMaterial({ color: '#9a1622' }), dark = new THREE.MeshLambertMaterial({ color: '#6a0d16' });
   let seed = 19; const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  const w = bounds.max.x - bounds.min.x, d = bounds.max.z - bounds.min.z, top = bounds.max.y + .004;
+  const total = parts.reduce((sum, p) => sum + p.area, 0);
+  const pick = () => { let r = random() * total; for (const p of parts) { r -= p.area; if (r <= 0) return p; } return parts[parts.length - 1]; };
   stages.forEach((group, s) => {
    for (let i = 0; i < 4 + s * 5; i++) {
-    const m = new THREE.Mesh(box, random() > .4 ? red : dark), size = Math.min(w, d) * (.12 + random() * .18);
-    m.position.set(bounds.min.x + w * (.2 + .6 * random()), top, bounds.min.z + d * (.1 + .8 * random()));
-    m.rotation.y = random() * Math.PI; m.scale.set(size, .005, size * (1 + random())); group.add(m);
+    const on = pick(), b = on.box, size = Math.min(FLECK_MAX, Math.min(on.w, on.d) * (.35 + random() * .4));
+    const m = new THREE.Mesh(box, random() > .4 ? red : dark);
+    m.position.set(b.min.x + on.w * (.2 + .6 * random()), b.max.y + .004, b.min.z + on.d * (.15 + .7 * random()));
+    m.rotation.y = random() * Math.PI; m.scale.set(size, .005, size * (1 + random() * .6)); group.add(m);
    }
    gun.add(root); root.add(group); compact(group); group.visible = false;
   });

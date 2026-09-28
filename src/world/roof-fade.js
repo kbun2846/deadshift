@@ -58,6 +58,11 @@ export const ROOF_FADE = Object.freeze({ slots: 8, head: 1.6, inner: .5, outer: 
 // standing in front of it stays whole). Renderer 'wall' batches. A little
 // bigger than the old roof patch (s6-roofs: inner .5, outer 1.05 before).
 export const WALL_FADE = Object.freeze({ above: .9, ahead: true, inner: .65, outer: 1.3 });
+// A colonial building's ceiling (v0.990a, owner: running against a wall let
+// him see inside): the patch it opens, only on the line to someone behind the
+// building (on the camera's side of them, over their waist), tighter than the
+// walls' so someone beside a wall or under a front eave opens none of it.
+export const CEILING_FADE = Object.freeze({ above: .9, ahead: true, inner: .4, outer: .75, colours: ['#51463b', '#493f35'], board: .32, drop: .03 });
 // The roofs' sections (s6-roofs): the table's size (Hollow Wick uses about a
 // third), how see-through a faded section goes, its ease in and out (s), how
 // near a character's line must pass to fade it (m: a little under the body's
@@ -298,6 +303,11 @@ export function updateSections(view, dt) {
  for (let i = 0; i < S.roofs.length; i++) {
   const R = S.roofs[i], list = R.sections;
   if (!R.box) continue;
+  // A roof lifting whole (you inside, at its door or on its stoop), or not
+  // yet back: no section of it fades on its own, so it never comes off in
+  // parts (v0.990a, owner). It comes back whole, and its sections ease in
+  // again from there.
+  if (R.entry && (R.entry.lifting || R.entry.opacity < .995)) { for (let k = 0; k < list.length; k++) { const s = list[k]; s.target = 0; s.value = 0; S.values[s.index] = 0; } continue; }
   for (let k = 0; k < list.length; k++) list[k].target = 0;
   if (eye) for (let c = 0; c < n; c++) {
    const f = r.fade[c], waistY = f.z + SECTION_FADE.waist, headY = f.z + ROOF_FADE.head;
@@ -359,8 +369,9 @@ export function fadeOverlay(view, base, material, skip = null, near = 'sphere', 
 // A mesh that is itself a blended copy (a building's shell, merged on its own:
 // world/colonial-buildings.js), hidden until prepareFades shows it. `pad`: how
 // near the line must pass ('line'; the patch's outer edge and a little).
-export function registerOverlay(view, mesh, { base = mesh, skip = null, near = 'line', pad = ROOF_FADE.outer + .1, start = 0, end = 0 } = {}) {
- overlayMaterial(mesh.material);
+// `opaque` (a ceiling): shown and hidden the same way, but drawn as it is.
+export function registerOverlay(view, mesh, { base = mesh, skip = null, near = 'line', pad = ROOF_FADE.outer + .1, start = 0, end = 0, opaque = false } = {}) {
+ if (!opaque) overlayMaterial(mesh.material);
  mesh.castShadow = false; mesh.visible = false; mesh.userData.fadeOverlay = true;
  roofFade(view).overlays.push({ mesh, base, skip, near, pad, start, end, sphere: null, box: null });
  return mesh;
@@ -434,6 +445,14 @@ export function ditherFade(view, material, { key, inner = ROOF_FADE.inner, outer
 // Both variants of the roof's own material (opaque, and blended while it
 // fades as a whole) drop them; the copy stays hidden during a whole fade.
 export function fadeRoofMaterial(view, material) { sectionFade(view, material, { key: 'colonial-roof-sections' }); }
+// The ceilings' one material (world/colonial-buildings.js ceiling): boards in
+// their vertex colours, cut by CEILING_FADE's patch.
+export function ceilingMaterial(view) {
+ if (view.ceilingMaterial) return view.ceilingMaterial;
+ const material = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 1 });
+ ditherFade(view, material, { key: 'colonial-ceiling', ...CEILING_FADE });
+ return (view.ceilingMaterial = material);
+}
 export function roofOverlayMaterial(view) {
  if (view.roofOverlay) return view.roofOverlay;
  const material = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 1 });

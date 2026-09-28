@@ -129,7 +129,7 @@ export const hollowWick = {
  // team colour and blood still clears its contrast floor.
  look: { sky: '#e7e7e1', skyIntensity: 1.95, bounce: '#807a6d', sun: '#d9a070', glow: '#b58a66', glowMix: .4, sunIntensity: 1.72, haze: '#8b8782', fogNear: 34, fogFar: 120,
   grade: { warmth: .03, shade: .07, contrast: .08, saturation: .9 },
-  sunOffset: { x: -43, y: 17, z: 18 }, fog: { colour: '#aaa69e', opacity: .38, lowBias: .7 } },
+  sunOffset: { x: -43, y: 17, z: 18 }, fog: { colour: '#aaa69e', opacity: .4, lowBias: 1.6 } }, // (v0.990a, owner: more fog round the stream: lowBias .7 -> 1.6)
  // The ground's colours (render/ground-layers.js): damp low ground in the
  // stream hollow, darker still by the water; earthier banks.
  terrainLook: { bank: '#544a37', damp: '#4b4333', dampBelow: 1.45, dampDepth: .6, dampMix: .55, hollow: '#40443c', hollowBelow: .95, hollowDepth: .7, hollowMix: .6,
@@ -271,6 +271,9 @@ export const hollowWick = {
  buildings: withLife(hollowWickBuildings(BUILDING_PADS)) /* s2-buildings; s5-life flags (maps/hollow-wick-life.js) */, props: [...GRAVEYARD_PROPS, ...FIELD_WALLS /* s2-graveyard */, ...HW_PROPS /* s2-props */, ...hollowWickBuildingProps(BUILDING_PADS) /* s2-buildings */, ...HOLLOW_WICK_BREAKABLES /* s2-breakables: pumpkins, cider, apples, grain, coops, skeps, crocks, lanterns, cordwood, barrows */, ...HOLLOW_WICK_DETAIL /* stage 5: the sparse screens' fieldstone, boulders, blocks */, ...HOLLOW_WICK_DRESSING /* s5-props: stocks, pillory, rails, wagon, bier, boat... */, ...HW_LIFE /* s5-life */], fences: [], crops: HW_CROPS, // (s2-props)
  // s2-spawns: bases, teamBases, ffaSpawns, noSpawn, pickView and targets.
  ...HW_SPAWNS,
+ // Behind the lobby (v0.990a, owner): the meetinghouse, its belfry and the
+ // burying ground, as on the map's card (render/pick-view.js lobbyView).
+ lobbyView: { x: -40, z: -18, height: 40 },
  // s2-crossings: the crossings' and mill wheel's looks (render/crossing-decks.js).
  crossings: CROSSINGS,
  // Stage 2 trees (s2-trees): the woods, orchard, village trees, stumps, logs (world/tree-kinds.js, world/trees.js).

@@ -48,9 +48,13 @@ export function readDuelChoices(storage = globalThis.localStorage) {
   allyWeapon: ids.includes(saved.allyWeapon) ? saved.allyWeapon : null,
   firstTo: DUEL_FIRST_TO.includes(saved.firstTo) ? saved.firstTo : DUEL_DEFAULTS.firstTo,
  };
- for (const key of ['mode', 'skill', 'aim', 'temper', 'allySkill', 'allyAim', 'allyTemper', 'friendlyFire', 'spawn']) {
+ for (const key of ['mode', 'friendlyFire', 'spawn']) {
   const r = row(key); out[key] = r.choices.some(([v]) => v === saved[key]) ? saved[key] : DUEL_DEFAULTS[key];
  }
+ // How well the robots play always opens at normal (skill normal, aim even,
+ // temper shifting), whatever was picked on an earlier visit (owner, v0.990a:
+ // "make it so all bot settings default to normal"). A pick holds until the page closes.
+ for (const key of ['skill', 'aim', 'temper', 'allySkill', 'allyAim', 'allyTemper']) out[key] = DUEL_DEFAULTS[key];
  return out;
 }
 

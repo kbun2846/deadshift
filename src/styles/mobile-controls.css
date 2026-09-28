@@ -231,6 +231,8 @@ body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positi
 }
 body[data-controls=touch] #game #touch-controls .touch-right>#touch-launch.touch-positioned{--pad-colour:var(--ui-accent);--pad-lift:.12;color:#1b1d1c}
 body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positioned:active{--pad-colour:#f4d2d9;--pad-lift:.6;color:#161c19}
+/* The AIM switch (Sightline, the Sidekick) stays lit while it is on. */
+body[data-controls=touch] #game #touch-controls .touch-right>#touch-stream:is(.touch-shaped,.touch-positioned)[data-toggled=on]{--pad-colour:var(--ui-accent);--pad-lift:.5;color:#161c19;text-shadow:none}
 body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positioned[data-x-left]:not([data-x-left=""])::after{content:attr(data-x-left);position:absolute;left:50%;bottom:7px;translate:-50% 0;font-size:10px;font-weight:700;opacity:.85;font-variant-numeric:tabular-nums}
 
 /* Ichor keeps the liquid meter readable; the two small dials share its right side. */

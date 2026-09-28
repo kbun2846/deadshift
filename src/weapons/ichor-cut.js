@@ -10,5 +10,15 @@ export function ichorCutForce(variant,aimX,aimZ,offsetX,offsetZ){
  const x=-rz*sign+ax*push,z=rx*sign+az*push,n=Math.hypot(x,z)||1;
  return {x:x/n,z:z/n};
 }
+// Does a cut's sweep (from x, z along dirX, dirZ, `reach` m, `arc` wide; a
+// spin all round) reach this crop tile? Points along the sweep, near to far
+// (a tile is metres across: no gap between them misses one).
+export function ichorSweepMeets(x,z,dirX,dirZ,reach,arc,s){
+ const inside=(px,pz)=>Math.abs(px-s.x)<=s.w/2&&Math.abs(pz-s.z)<=s.d/2;
+ if(inside(x,z))return true;
+ const a0=Math.atan2(dirZ,dirX),steps=Math.max(2,Math.ceil(arc/.2));
+ for(let i=0;i<=steps;i++){const a=a0-arc/2+arc*i/steps,cx=Math.cos(a),cz=Math.sin(a);for(const r of [.45,reach*.5,reach*.8,reach])if(inside(x+cx*r,z+cz*r))return true;}
+ return false;
+}
 // Knee-high bases do not shield the breakable stone above them.
 export function ichorCoverMeets(sim,c,x,z,y){return !c.lowTop||y<=sim.ground.heightAt(x,z)+(c.height??2)+.04;}

@@ -60,8 +60,11 @@ export function installDevWiring(ctx) {
    if (!robotsAllowed()) return;
    const weapon = weaponFromChoice(sim.dev.robotWeapon);
    // Skill and style (bots/robot-profile.js): picked here, or at random.
-   const skill = [null, 'easy', 'normal', 'hard', 'rookie', 'expert', 'perfect'][sim.dev.robotSkill || 0] || null, style = [null, 'balanced', 'rusher', 'marksman', 'flanker', 'cautious', 'blend'][sim.dev.robotStyle || 0] || null;
-   const temper = [null, 'calm', 'shifting', 'aggressive'][sim.dev.robotTemper || 0] || null;
+   // Untouched, a robot is a normal one, as the menus' are: normal skill, a
+   // blend of styles, a shifting temper (owner, v0.990a: "make it so all bot
+   // settings default to normal"; they were random, steady).
+   const skill = [null, 'easy', 'normal', 'hard', 'rookie', 'expert', 'perfect'][sim.dev.robotSkill ?? 2] || null, style = [null, 'balanced', 'rusher', 'marksman', 'flanker', 'cautious', 'blend'][sim.dev.robotStyle ?? 6] || null;
+   const temper = [null, 'calm', 'shifting', 'aggressive'][sim.dev.robotTemper ?? 2] || null;
    const made = [];
    for (let i = 0; i < (sim.dev.robotCount || 1); i++) { const bot = bots.spawn(sim, weapon, { team: ['ffa', 'red', 'blue'][sim.dev.robotSide || 0] || 'ffa', skill, style, temper, human:body===1 }); if (bot) made.push(bot); else break; }
    const bot = made[0];

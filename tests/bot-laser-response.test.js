@@ -12,7 +12,7 @@ function notice(brain){assert.equal(respondToLaser(brain),null);brain.time=brain
 
 test('laser warning requires a loaded visible scoped rifle, a beam reaching the bot, and unobstructed height',()=>{
  const {sim,enemy}=make();assert.equal(laserThreatens(sim,enemy),true);
- for(const patch of [{rifleAmmo:0},{aiming:false},{crouched:false},{rifleReload:2},{xLoading:true},{pistolReload:1},{commit:.1},{aimBlocked:true},{aimReach:7}])assert.equal(laserThreatens(sim,{...enemy,sightline:{...enemy.sightline,...patch}}),false,JSON.stringify(patch));
+ for(const patch of [{rifleAmmo:0},{aiming:false},{crouched:false},{rifleReload:2},{xLoading:true},{commit:.1},{aimBlocked:true},{aimReach:7}])assert.equal(laserThreatens(sim,{...enemy,sightline:{...enemy.sightline,...patch}}),false,JSON.stringify(patch));
  assert.equal(laserThreatens(sim,{...enemy,visible:false}),false);assert.equal(laserThreatens(sim,{...enemy,aimX:0,aimZ:1}),false);
  sim.colliders=[{x:7,z:0,w:1,d:4,height:3}];assert.equal(laserThreatens(sim,enemy),false);
  sim.colliders=[{x:7,z:0,w:1,d:4,height:.6},{x:9,z:0,w:1,d:4,height:3,destructible:true}];assert.equal(laserThreatens(sim,enemy),true);

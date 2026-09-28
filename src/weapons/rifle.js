@@ -93,6 +93,8 @@ export function stepRifle(sim,input,dt,{segmentBox,segmentCircle}){
   let first=1,target=null,prop=null;
   for(const b of collidersAlong(sim.colliders,bullet.x,bullet.z,ex,ez,.1)){if(b.playerOnly)continue;const t=segmentBox(bullet.x,bullet.z,ex,ez,b,.025);if(t!==null&&t<=first&&roundMeets(sim,bullet,b,bullet.x+(ex-bullet.x)*t,bullet.z+(ez-bullet.z)*t,bullet.travel+travel*t)){first=t;target=null;prop=sim.props.find(v=>v.id===b.propId);}}
   for(const t of sim.targets){if(t.hp<=0)continue;const hit=segmentCircle(bullet.x,bullet.z,ex,ez,t.x,t.z,targetRadius(t)+.025);if(hit!==null&&hit<first&&roundSees(sim,bullet,t,bullet.travel+travel*hit)){first=hit;target=t;prop=null;}}
+  // (v0.990a) Someone's hex, with you outside it: the round stops at its wall.
+  const wall=sim.shieldStop(bullet.x,bullet.z,ex,ez);if(wall!==null&&wall<first){first=wall;target=prop=null;sim.events.push({type:'hexBlock',x:bullet.x+(ex-bullet.x)*wall,z:bullet.z+(ez-bullet.z)*wall,wall:true});}
   bullet.x+=(ex-bullet.x)*first;bullet.z+=(ez-bullet.z)*first;bullet.travel+=travel*first;
   if(first<1||target||prop){
    const shot={bullet:true,damage:rifleDamage(bullet.travel)*(bullet.surge?SURGE.damage:1),owner:p.id,volley:bullet.id,x:bullet.x,z:bullet.z,vx:bullet.dx,vz:bullet.dz};

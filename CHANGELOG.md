@@ -2,6 +2,33 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.992 (2026-09-28)
+
+### Aiming on phones and keyboards
+- **Sightline's stance without a mouse:** crouched, you can't walk, so the move stick (or WASD / the arrow keys) steers the laser: toward you or away is range, across is side to side, faster the further you push. It answers at once. With aim assist (Settings > Mobile), side to side only: the laser follows half of a target's sideways movement by itself and drifts onto it while you push; you do the rest, and moving targets still have to be led. A swipe on the right of the screen jumps the laser to the enemy that way; a tap anywhere fires along it.
+- **AIM on phones:** a tap-on / tap-off switch for Sightline's rifle in the stance (it lights up while on); held everywhere else. The Sidekick, and Sightline's Sidekick, get the Nominal's AIM + FIRE slice at the bottom of FIRE; in the stance FIRE is whole again.
+- **The laser is always there when it should be:** the rifle reloads itself after each shot, a reload no longer makes you let go of aim and press it again, the Sidekick's reload no longer blocks the rifle's scope, and the HUD says when there is no scope (indoors or in crops).
+- The Sidekick's spread brackets no longer flicker on phones.
+
+### Robots
+- No more stalls the first time a robot's gun comes on screen (or its hidden parts, like a reload's magazine): every weapon's gun is prepared while loading.
+- Robot skill, aim and temper open at normal every visit (SOLO and hosting); the developer tools' robots default to normal too. Robots leave footprints.
+
+### Hollow Wick and Deadwater
+- Ceilings under the colonial roofs: no more seeing into rooms from against a wall. Roofs lift whole from a doorstep.
+- More fog over Hollow Wick's stream; Deadwater's dust is a drier ochre. Hollow Wick's lobby shows the meetinghouse; its map card no longer has a line of text over the picture.
+- People in crop fields are hidden from others and from robots.
+
+### Weapons
+- Ichor cuts through crops, its guard turns only rounds that meet the blade's side, its E wave costs you half its hit in blood, and its slashes draw over footprints and blood.
+- A hex's wall stops rounds. Omen's curse marks move smoothly. Blood flecks on a held gun stay drop-sized (they were huge squares on some guns, often in multiplayer).
+
+### Multiplayer
+- Pick the map when hosting; the host can change it from the lobby (everyone moves with the room).
+
+### Look
+- The in-game corner shows just the version (like v0.992a). A new pink blood-splatter icon.
+
 ## alpha v0.990 (2026-09-27)
 
 ### Hollow Wick is out

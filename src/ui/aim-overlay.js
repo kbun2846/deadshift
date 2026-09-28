@@ -37,7 +37,7 @@ export function createAimOverlay(game){
   root.innerHTML='<svg class="charge-ring" viewBox="0 0 48 48" aria-hidden="true"><circle class="charge-ring-track" cx="24" cy="24" r="18" pathLength="100"/><circle class="charge-ring-fill" cx="24" cy="24" r="18" pathLength="100"/></svg><b></b><kbd></kbd>';
   reticleEl.append(root);return {root,fill:root.querySelector('.charge-ring-fill'),text:root.querySelector('b'),key:root.querySelector('kbd')};
  });
- let chargeShown=-1,coneBox='',spreadShown=null,lastSpreadAt=0;
+ let chargeShown=-1,coneBox='',spreadShown=null,lastSpreadAt=0,farBeyond=null;
 
  function updateChargeRing(sim,running){
   const expanding=sim.weapon==='static'?sim.hexOrbs[0]:null;
@@ -139,7 +139,7 @@ export function createAimOverlay(game){
   // The laser replaces the bloom cone and its two spread brackets.
   spreadMarker.hidden=secondarySpread.hidden=(sim.weapon!=='rifle'&&!sightline&&!sidekick)||!running||laserActive;
   // Hidden (another weapon, a respawn): the band starts fresh next time.
-  if(spreadMarker.hidden){spreadShown=null;lastSpreadAt=0;}
+  if(spreadMarker.hidden){spreadShown=null;lastSpreadAt=0;farBeyond=null;}
   if(!spreadMarker.hidden){
    const ax=p.aimPointX??p.x+p.aimX*7,az=p.aimPointZ??p.z+p.aimZ*7;
    const distance=Math.hypot(ax-p.x,az-p.z),speed=Math.hypot(p.vx,p.vz);
@@ -174,7 +174,12 @@ export function createAimOverlay(game){
    };
    const near=guide(distance);
    placeBracket(spreadMarker,near);
-   let otherDistance=distance<9?Math.max(13,distance+7):Math.max(2.5,Math.min(6,distance*.4));
+   // Which side of the aim the far bracket goes (beyond it when aiming close,
+   // short of it when aiming far), with a little hysteresis: an aim point
+   // wandering about 9 m (touch auto-range, a target standing there) flipped
+   // it from about 16 m out to 3.6 m every few frames (v0.990a).
+   farBeyond=farBeyond==null?distance<9:farBeyond?distance<10:distance<8;
+   let otherDistance=farBeyond?Math.max(13,distance+7):Math.max(2.5,Math.min(6,distance*.4));
    let far=guide(otherDistance);
    // Keep the far guide inside the viewport, including narrow portrait screens.
    for(let i=0;i<12&&(far.center.x<20||far.center.x>viewWidth()-20||far.center.y<20||far.center.y>viewHeight()-20);i++){

@@ -6,6 +6,9 @@ import { DeathView } from '../effects/death-view.js';
 import { charMaterial } from '../effects/gore.js';
 import { isDemanding } from '../settings.js';
 import { BloodDrops } from '../effects/blood-drops.js';
+import { HollowBreakFX, handlesBreak } from '../effects/breakable-effects.js';
+import { gunStandIns } from '../remote-players.js';
+import { WEAPONS } from '../items.js';
 
 export const WarmUp = {
   // Compile every program the scene will need, including the blended variant
@@ -78,6 +81,10 @@ export const WarmUp = {
   *warmSteps() {
     // The world as it stands before any staging: the scope shading's share.
     const world = new Set(this.scene.children);
+    // Hollow Wick's breakables' leavings (an instanced pool) were made on the
+    // first break, and built their shader then (v0.990a: program-check,
+    // Static on Hollow Wick, Performance): made now where the map has any.
+    if (this.map?.props?.some(p => handlesBreak(p.type))) this.hollowBreaks ||= new HollowBreakFX(this);
     // Blood drops are made on a first bleed; made now, so that bleed (a robot
     // or another player shooting you) builds no shader mid-fight.
     (this.drops ||= new BloodDrops(this)).ensure();
@@ -161,6 +168,9 @@ export const WarmUp = {
     // Burnt bodies' cracked-char material, both ways (fading or not).
     this.warmCharred ||= [charMaterial(false), charMaterial(true)];
     const rack = this.warmRack();
+    // Every weapon as a robot or another player holds it (remote-players.js):
+    // their guns' shaders, hidden parts too (a magazine shown on a reload).
+    for (const model of gunStandIns(this, WEAPONS.map(w => w.id))) rack.add(model);
     // The staged deaths' materials in their indoor-clipped form too (a body
     // under a roof, or seen from indoors), as the rack does for everything else.
     const deathKinds = new Set();

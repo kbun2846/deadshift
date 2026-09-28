@@ -48,6 +48,7 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
   let first=1,target=null,prop=null,blocked=false;
   for(const c of collidersAlong(sim.colliders,b.x,b.z,ex,ez,.1)){if(c.playerOnly)continue;const t=segmentBox(b.x,b.z,ex,ez,c,.025);if(t!==null&&t<=first&&roundMeets(sim,b,c,b.x+(ex-b.x)*t,b.z+(ez-b.z)*t,b.travel+travel*t)){first=t;target=null;prop=sim.props.find(v=>v.id===c.propId);blocked=true;}}
   for(const t of sim.targets){if(t.hp<=0)continue;const f=segmentCircle(b.x,b.z,ex,ez,t.x,t.z,targetRadius(t));if(f!==null&&f<first&&roundSees(sim,b,t,b.travel+travel*f)){first=f;target=t;prop=null;blocked=true;}}
+  {const wall=sim.shieldStop(b.x,b.z,ex,ez);if(wall!==null&&wall<first){first=wall;target=prop=null;blocked=true;sim.events.push({type:'hexBlock',x:b.x+(ex-b.x)*wall,z:b.z+(ez-b.z)*wall,wall:true});}} // (v0.990a: a hex's wall stops it)
   b.x+=(ex-b.x)*first;b.z+=(ez-b.z)*first;b.travel+=travel*first;
   if(blocked){
    // Aimed in, point blank (owner, v142): about 20 more a shell.

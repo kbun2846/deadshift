@@ -27,9 +27,10 @@ export const BASE_LOOK = Object.freeze({
   // The drifting fog sheets (fog-sheets.js): Deadwater's tan dust. `colour`
   // and `highlight` are the sheet's two tones (a map that gives only a colour
   // gets a highlight a third of the way to white), `opacity` its strength,
-  // and `lowBias` (0..1, terrain maps) how much it gathers over low ground:
-  // new sheets form over the lowest ground in view, and are up to 1 +
-  // lowBias times as thick there. Not warmed: it is the dust's own colour.
+  // and `lowBias` (0..2, terrain maps) how much it gathers over low ground:
+  // new sheets form over the lowest ground of 1 + 2 x lowBias tries in view,
+  // and are up to 1 + lowBias times as thick there (Hollow Wick 1.6: its
+  // stream hollow, v0.990a). Not warmed: it is the dust's own colour.
   fog: Object.freeze({ colour: '#d0ba8e', highlight: '#e8d6ac', opacity: .27, lowBias: 0 }),
   // s3-look: the rest of a map's grade, the same on every preset (all of it is
   // lights, fog and tone mapping: no pass, nothing per pixel added).
@@ -42,6 +43,10 @@ export const BASE_LOOK = Object.freeze({
   // in linear light, 0..1). `grade`: Extreme's grade pass over its defaults
   // (extreme-post.js EXTREME_POST.grade: warmth, shade, contrast, saturation).
   exposure: .98, fogNear: 70, fogFar: 130, glow: null, glowMix: 0, grade: null,
+  // `dust` (v0.990a): { tint, mix }: the colour the map's kicked-up dust
+  // leans to (renderer.js kickedDustColor; Deadwater's dry ochre). None: the
+  // ground's own colour, lifted, as before.
+  dust: null,
 });
 
 // A map's fog over the defaults.

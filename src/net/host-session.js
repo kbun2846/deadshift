@@ -22,7 +22,7 @@ const IDLE = Object.freeze(playerInput({}));
 // Events that other screens need to see. Everything else stays with its sim.
 export const SHARED_EVENTS = new Set(['ichorGuardStart','ichorDeflect','ichorSwing','ichorWave','ichorFrenzyStart','ichorDrip','sidekickImpact','sidekickShot','sidekickRush','sidekickMine','sidekickReload','sidekickReloaded','sightlineShot','sightlineImpact','sightlineReload','sightlineReloaded','omenShot','omenPrime','omenPrimeExpired','omenVolley','omenMark','omenCurseBeat','omenFade','omenImpact','omenBurst','explosion', 'grenadeExplosion', 'propBreak', 'propHit', 'propRestore', 'impactMark', 'rifleImpact',
  'rifleShot', 'shotgunShot', 'launch', 'sprayArc', 'hexPulse', 'hexZap', 'hexFizzle', 'pointImpact', 'wall', 'trailEnd', 'hit', 'kill',
- 'cropDust', 'cropAsh', 'syphon', 'surgeCharge', 'surgeStart', 'surgeEnd', 'scatterArm', 'scatterPrimed', 'scatterFire', 'scatterSplit', 'scatterHit', 'scatterBurst', 'dodge', 'seed', 'playerDeath', 'playerDamage', 'outgoingDamage', 'rifleReloaded', 'shotgunReload', 'grenadeThrow', 'sprayStart',
+ 'cropDust', 'cropCut', 'cropAsh', 'syphon', 'surgeCharge', 'surgeStart', 'surgeEnd', 'scatterArm', 'scatterPrimed', 'scatterFire', 'scatterSplit', 'scatterHit', 'scatterBurst', 'dodge', 'seed', 'playerDeath', 'playerDamage', 'outgoingDamage', 'rifleReloaded', 'shotgunReload', 'grenadeThrow', 'sprayStart',
  'hexBlock', 'mapReset', 'matchStart', 'matchEnd', 'roundEnd', 'respawn']);
 // Seconds between pings to each joiner (their round trip shows in the lobby
 // and on the scoreboard).
@@ -361,6 +361,9 @@ export class HostSession {
  feed() { return this.arena.feed; }
  drainFeed() { return this.newFeed.splice(0); }
  drainNotices() { return this.notices.splice(0); }
+ // Taking the room to another map (v0.990a): everyone is told, then the host
+ // reloads onto it and opens the same room again (online-play.js moveRoom).
+ moveMap(id) { this.transport.broadcast({ t: 'moveMap', map: id }); }
  close() { this.transport.close(); this.remotes.clear(); }
 }
 
