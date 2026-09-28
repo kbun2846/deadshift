@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { scopeActive,scopeFacing,SIGHTLINE } from '../weapons/sightline.js';
 import { interiorPolygons } from './vision-polygons.js';
 
 // Fragment-level concealment keeps long trails from revealing shots through gray zones.
@@ -8,6 +9,7 @@ export class InteriorVisibility {
     this.entityMaterials = new WeakMap();
     this.entityDepth = new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking});
     this.entityDistance = new THREE.MeshDistanceMaterial();
+    this.scope={value:0};this.scopeOrigin={value:new THREE.Vector2()};this.scopeFacing={value:new THREE.Vector2(1,0)};
     this.count = { value: 0 };
     this.points = { value: Array.from({ length: 40 }, () => new THREE.Vector2()) };
   }
@@ -28,6 +30,7 @@ export class InteriorVisibility {
     this.apply(root);
   }
   update(sim) {
+    const f=scopeFacing(sim.player);this.scope.value=scopeActive(sim)?Math.cos(SIGHTLINE.cone*Math.PI/360):-2;this.scopeOrigin.value.set(sim.player.x,sim.player.z);this.scopeFacing.value.set(f.x,f.z);
     if(this.lastRoom===sim.interior&&this.lastX===sim.player.x&&this.lastZ===sim.player.z)return;
     this.lastRoom=sim.interior;this.lastX=sim.player.x;this.lastZ=sim.player.z;
     const b = sim.interior; this.count.value = 0; // (an open shed too: renderer.js cameraRoom)
@@ -51,6 +54,7 @@ export class InteriorVisibility {
         const before = m.onBeforeCompile, cache = m.customProgramCacheKey.bind(m);
         m.onBeforeCompile = shader => {
           before.call(m,shader);
+          shader.uniforms.scopeLimit=this.scope;shader.uniforms.scopeOrigin=this.scopeOrigin;shader.uniforms.scopeFacing=this.scopeFacing;
           shader.uniforms.interiorCount = this.count; shader.uniforms.interiorPoints = this.points;
           shader.vertexShader = 'varying vec2 interiorWorld;\n' + shader.vertexShader;
           shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `vec4 interiorPosition = vec4(transformed,1.0);
@@ -60,8 +64,11 @@ export class InteriorVisibility {
             interiorWorld = (modelMatrix * interiorPosition).xz;
             #include <project_vertex>`);
           shader.fragmentShader = `varying vec2 interiorWorld;
+            uniform float scopeLimit; uniform vec2 scopeOrigin; uniform vec2 scopeFacing;
             uniform int interiorCount; uniform vec2 interiorPoints[40];
             bool interiorVisible() {
+              vec2 toPoint=interiorWorld-scopeOrigin;float distanceToPoint=length(toPoint);
+              ${m.userData.ownSightlineGuide?'':'if(distanceToPoint>.6 && dot(toPoint,scopeFacing)<distanceToPoint*scopeLimit)return false;'}
               if (interiorCount == 0) return true;
               for (int i=0;i<10;i++) {
                 if(i>=interiorCount) break;
@@ -78,7 +85,7 @@ export class InteriorVisibility {
             }\n` + shader.fragmentShader;
           shader.fragmentShader = shader.fragmentShader.replace('void main() {','void main() { if (!interiorVisible()) discard;');
         };
-        const key = cache(); m.customProgramCacheKey = () => key + '|interior-conceal-v3'; m.needsUpdate = true;
+        const key = cache(); m.customProgramCacheKey = () => key + '|interior-conceal-scope-v4'+(m.userData.ownSightlineGuide?'|own-guide':''); m.needsUpdate = true;
       }
     });
   }

@@ -210,7 +210,7 @@ export class Soundscape {
   }
 
   // Sounds a weapon makes, as opposed to sounds the world makes.
-  static WEAPON_EVENTS = new Set(['shotgunShot','shotgunReload','shotgunReloaded','scatterArm','scatterPrimed','scatterFire','scatterSplit','scatterBurst',
+  static WEAPON_EVENTS = new Set(['ichorGuardStart','ichorDeflect','ichorSwing','ichorWave','ichorFrenzyStart','sidekickShot','sidekickRush','sidekickMine','sidekickReload','sidekickReloaded','sightlineShot','sightlineReload','sightlineReloaded','omenShot','omenPrime','omenPrimeExpired','omenVolley','omenBurst','omenMark','omenCurseBeat','omenFade','omenReload','omenReloaded','shotgunShot','shotgunReload','shotgunReloaded','scatterArm','scatterPrimed','scatterFire','scatterSplit','scatterBurst',
     'rifleShot','rifleReload','cock','grenadeWindup','grenadeThrow',
     'sprayStart','sprayArc','hexDeploy','hexPulse','hexZap','hexFizzle','seed','launch','surgeCharge','surgeStart','surgeEnd']);
 
@@ -227,11 +227,62 @@ export class Soundscape {
   }
 
   dispatch(e) {
+    if(e.type==='ichorGuardStart'){this.tone(1700,950,.09,.025,'sine');this.noise(.06,.016,2600);return;}
+    if(e.type==='ichorDeflect'){this.impact(.028,.14,3300);this.tone(2850,1900,.22,.08,'sine');this.tone(4350,3150,.14,.04,'triangle',.008);this.tone(870,530,.065,.035,'triangle');this.noise(.04,.05,6200);return;}
+    if(e.type==='ichorSwing'){
+     // Steel sliding across a sheath: noisy scrape first, a quiet metal tail.
+     // Near-steady partials avoid the old octave slide's squeaky whistle.
+     const blood=Math.max(0,Math.min(1,e.power||0)),length=.12+blood*.11,pitch=2050+blood*950+((e.variant||0)%4)*65+Math.random()*90,gain=e.frenzy?.82:1;
+     this.impact(length*.72,.075*gain,2900+blood*1400);
+     this.noise(length,.038*gain,3500+blood*1700);
+     this.tone(pitch,pitch*.94,length,.012*gain,'sine',.007);
+     this.tone(pitch*1.47,pitch*1.40,length*.68,.006*gain,'sine',.014);return;
+    }
+    if(e.type==='ichorWave'){this.noise(.32,.14,1300);this.tone(560,160,.24,.065,'triangle');return;}
+    if(e.type==='ichorFrenzyStart'){this.tone(160,55,.30,.11,'triangle');this.noise(.22,.08,420);return;}
+    if(e.type==='bloodStep'||e.type==='bloodPool'){const step=e.type==='bloodStep',now=this.context?.currentTime??0;if(now-(this.lastBloodSound??-1)<(step?.11:.25))return;this.lastBloodSound=now;this.impact(step?.10:.06,step?.075:.045,step?430:720);this.tone(180+Math.random()*70,55,.11,.035,'sine');this.tone(390,110,.055,.016,'sine',.04);return;}
+    if(e.damageType?.startsWith('ichor')&&['hit','kill'].includes(e.type)){
+     if(e.targetKind==='robot'){this.impact(.065,.15,2700);this.tone(760+Math.random()*190,310,.18,.07,'triangle');this.tone(2100,1500,.08,.025,'sine');this.noise(.055,.05,4300);}
+     else if(e.targetKind==='player'){
+      this.impact(.085,.15,850);this.noise(.10,.11,1500);this.tone(165,48,.13,.065,'sine');this.impact(.035,.04,420,undefined,.055);
+      if(e.type==='kill'&&e.bloodLevel>=.6){const wet=Math.min(1,e.bloodLevel);this.impact(.22,.16*wet,510);this.impact(.12,.09*wet,1150,undefined,.045);this.tone(260,68,.19,.055*wet,'sine',.025);this.impact(.10,.055*wet,740,undefined,.14);}
+     }
+     else this.impact(.06,.08,1800);return;
+    }
+
+    if(e.damageType==='omenCurse'&&(e.type==='hit'||e.type==='kill'))return;
+    if(e.type==='sidekickShot'){this.impact(.055,.15,2400);this.tone(e.hand?205:180,70,.12,.12,'triangle');return;}
+    if(e.type==='sidekickMine'){this.impact(.04,.10,1900);this.tone(620,450,.10,.035,'sine');return;}
+    if(e.type==='sidekickRush'){this.tone(170,940,.42,.08,'sine');this.impact(.16,.09,3200);return;}
+    if(e.type==='sidekickReload'||e.type==='sidekickReloaded'){this.impact(.04,.1,e.type==='sidekickReload'?1800:3300);return;}
+    if(e.type==='sightlineShot'){if(e.pistol){this.impact(.055,.15,2400);this.tone(180,70,.12,.12,'triangle');}else{this.rifleShot(false);this.impact(.24,.34,1700);this.tone(95,29,.44,.3,'sine');this.tone(310,60,.2,.09,'triangle');if(e.special)this.impact(.3,.25,700);}return;}
+    if(e.type==='sightlineReload'){this.impact(.06,.09,2100);this.tone(210,85,.15,.045,'triangle');return;}
+    if(e.type==='sightlineReloaded'){this.impact(.035,.15,3300);this.tone(370,110,.1,.06,'triangle');return;}
+    if(e.type==='omenShot'){this.tone(e.kind==='base'?270:185,65,.18,.13,'triangle');this.impact(.045,.085,1800);this.tone(880,290,.16,.04,'sine');this.tone(95,48,.18,.07,'sine');return;}
+    if(e.type==='omenPrime'){this.tone(145,440,.28,.045,'triangle');this.tone(217,660,.26,.025,'sine');return;}
+    if(e.type==='omenMark'||e.type==='omenCurseBeat'){
+      // A dry click over a low, hollow chamber. Slightly inharmonic partials
+      // make it ominous without Static's crackle or a sustained audio loop.
+      this.impact(.022,.09,1250);this.tone(210,95,.055,.038,'triangle');
+      this.tone(98,73,.36,.082,'sine');this.tone(163,137,.28,.03,'sine');
+      this.tone(287,219,.19,.012,'sine');return;
+    }
+    if(e.type==='omenVolley'){this.tone(80,320,.3,.06,'sawtooth');this.tone(120,480,.24,.035,'triangle');return;}
+    if(e.type==='omenBurst'){
+      // A short rising crack, then a heavy layered detonation and smoky tail.
+      this.tone(160,760,.09,.09,'triangle');this.impact(.12,.21,2600,undefined,.085);
+      this.impact(.42,.40,520,undefined,.10);this.impact(.65,.16,160,undefined,.11);
+      this.tone(125,28,.65,.28,'sine',.10);this.tone(740,65,.4,.12,'triangle',.10);
+      this.impact(.8,.09,1200,undefined,.18);return;
+    }
+    if(e.type==='omenPrimeExpired'){this.tone(370,45,.34,.075,'triangle');this.impact(.17,.045,1200);return;}
+    if(e.type==='omenFade'){this.tone(270,65,.25,.018,'sine');return;}
+    if(e.type==='omenReload'||e.type==='omenReloaded'){this.tone(e.type==='omenReload'?180:420,120,.14,.04,'triangle');return;}
     if(e.type==='outgoingDamage'){
       const now=this.context?.currentTime??0;
       if(now-(this.lastDamageDing??-1)>.065){this.tone(1250,1190,.075,.032,'sine');this.tone(1875,1785,.055,.012,'sine',.012);this.lastDamageDing=now;}return;
     }
-    if(e.type==='playerDamage'){this.healthLoss(e.damage);return;}
+    if(e.type==='playerDamage'){if(e.damageType!=='ichorCost')this.healthLoss(e.damage);return;}
     // Surge: a rising whine and rumble for the power-up, a bright boom as it
     // lands, a falling fizz when it ends.
     if(e.type==='surgeCharge'){this.tone(90,620,SURGE.charge,.06,'sawtooth');this.tone(180,1240,SURGE.charge,.025,'triangle');this.noise(SURGE.charge,.05,300);return;}

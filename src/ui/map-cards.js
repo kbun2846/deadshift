@@ -13,11 +13,15 @@ const THUMBNAILS = import.meta.glob('../assets/thumbnails/*.webp', { eager: true
 import staticImage from '../assets/weapons/static.webp?inline';
 import rifleImage from '../assets/weapons/rifle.webp?inline';
 import shotgunImage from '../assets/weapons/shotgun.webp?inline';
+import omenImage from '../assets/weapons/omen.webp?inline';
+import ichorImage from '../assets/weapons/ichor.webp?inline';
+import sidekickImage from '../assets/weapons/sidekick.webp?inline';
+import sightlineImage from '../assets/weapons/sightline.webp?inline';
 import { registerWeaponImages, registerMapImages } from './weapon-grid.js';
 
 export const CARD_IMAGES = Object.freeze(Object.fromEntries(Object.entries(THUMBNAILS).map(([path, src]) => [path.split('/').pop().replace(/\.webp$/, ''), src]))); // s3-look
 registerMapImages(CARD_IMAGES);
-export const WEAPON_IMAGES = Object.freeze({ static: staticImage, rifle: rifleImage, shotgun: shotgunImage });
+export const WEAPON_IMAGES = Object.freeze({ ichor:ichorImage,static: staticImage, rifle: rifleImage, shotgun: shotgunImage, omen: omenImage, sightline: sightlineImage, sidekick:sidekickImage });
 registerWeaponImages(WEAPON_IMAGES); // the picture grids (weapon-grid.js)
 // Decode them now, off to one side, so the first weapon page is instant.
 for (const src of Object.values(WEAPON_IMAGES)) { const image = new Image(); image.src = src; image.decode?.().catch(() => {}); }

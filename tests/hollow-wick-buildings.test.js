@@ -191,7 +191,10 @@ test('the colonial roofs fade by whole sections (s6-roofs): every piece in one, 
   assert.deepEqual(fades(50.67, -22.74), ['cape hood1', 'cape slope-'], 'the cape\'s back stoop');
   assert.deepEqual(fades(-42.8, -17.2), ['meetinghouse portico', 'meetinghouse slope+'], 'under the portico');
   assert.deepEqual(fades(17.26, -19), ['tavern gable-', 'tavern hood2'], 'the tavern\'s side door: its hood and that gable end, not the whole roof');
-  assert.deepEqual(fades(-33.2, -39.9), ['horse-sheds slope'], 'in an open shed (outdoors): its roof over you');
+  // (v0.990a weapon merge: no occupant of any building, open sheds included,
+  // opens a patch that would show where they stand; one inside the shed has
+  // it as their room, so its whole roof lifts for them instead.)
+  assert.deepEqual(fades(-33.2, -39.9), [], 'in an open shed: no patch (its roof lifts whole for you as your room)');
 });
 
 test('an eave facing north runs on less (the camera looks from the south: its strip hid whoever stood there)', async () => {

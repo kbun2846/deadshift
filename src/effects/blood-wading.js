@@ -14,7 +14,7 @@ import { compact } from './gore.js';
 export const WADING = Object.freeze({ soak: 1.6, dry: 150, prints: 8, stride: .55, speed: .5, stages: [.12, .42, .72] });
 
 export class Wading {
- constructor() { this.level = 0; this.wet = 0; this.walked = 0; this.side = 1; this.last = null; }
+ constructor() { this.drench = 0; this.level = 0; this.wet = 0; this.walked = 0; this.side = 1; this.last = null; }
  // sources: [{ x, z, r }] pools on the ground this frame. drops: BloodDrops
  // (prints), map for the floor height. Returns the level.
  update(x, z, vx, vz, dt, sources, drops, map) {
@@ -30,8 +30,9 @@ export class Wading {
  // A footstep just landed (renderer.js places them, the same steps as the
  // dirt prints): if the boots are still wet and off the pool, how strong a
  // blood print it leaves (1 fresh .. fainter), else 0.
- takePrint() { if (this.wet <= 0 || this.inside) return 0; const k = this.wet / WADING.prints; this.wet--; return k; }
- reset() { this.level = 0; this.wet = 0; this.walked = 0; this.last = null; this.inside = false; }
+ soakIchor(blood,dt) { if(!(dt>0))return;const target=Math.max(0,Math.min(1,(blood-40)/60));this.drench=Math.max(0,this.drench-dt/WADING.dry,Math.min(target,this.drench+dt*2));this.level=Math.max(this.level,this.drench);if(blood>=100)this.wet=Math.max(this.wet,24); }
+ takePrint() { if (this.wet <= 0 || this.inside) return 0; const k = Math.min(1,this.wet / WADING.prints); this.wet--; return k; }
+ reset() { this.drench = 0; this.level = 0; this.wet = 0; this.walked = 0; this.last = null; this.inside = false; }
 }
 
 // Blood on a gunslinger (avatar space: legs are boxes at x ±.15 up to .27 m,
@@ -101,6 +102,13 @@ export function makeBloodStains(parent, arm = null) {
 // gun is held (`key` names it) from its own bounds, as a child of the gun so
 // it moves with it. Returns { key, set(level), dispose() }.
 export function makeGunStains(gun, key) {
+ // Ichor animates inside the hand group. A box over its initial bounds stays
+ // behind when the blade swings; use the blade's own flush coating instead.
+ if (key === 'ichor') {
+  const coat = gun.getObjectByName('ichor-blood-channel');
+  return { key, set(level) { if (coat) coat.userData.wetLevel = Math.max(0, Math.min(1, level)); },
+   dispose() { if (coat) delete coat.userData.wetLevel; } };
+ }
  const root = new THREE.Group(); root.userData.gunStains = true;
  const bounds = new THREE.Box3(), part = new THREE.Box3(), inverse = new THREE.Matrix4();
  gun.updateMatrixWorld(true); inverse.copy(gun.matrixWorld).invert();

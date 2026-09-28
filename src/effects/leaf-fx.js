@@ -37,7 +37,7 @@ export const LEAF_WINDOW = { x: 20, z: 15 };
 const FADE_LOW = .45, FADE_SPAN = .9; // canopy-only colours are gone by FADE_LOW m over the ground
 const LEAF_SIZE = [.13, .2];
 const GROUND_KICK = [[LITTER_BROWNS[0], .3], [LITTER_BROWNS[1], .25], [LITTER_BROWNS[2], .2], [CANOPY_GROUND[0], .09], [CANOPY_GROUND[1], .08], [CANOPY_GROUND[2], .08]];
-const CANOPY_FALL = [['#c49a3a', .3], ['#c0612b', .25], ['#b8923c', .2], ['#a4552a', .17], ['#8e2f22', .08]];
+const CANOPY_FALL = [['#c49a3a', .3], [CANOPY_GROUND[1], .25], ['#b8923c', .2], ['#a4552a', .17], ['#8e2f22', .08]];
 const pick = (weighted, r = Math.random()) => { r *= weighted.reduce((a, [, w]) => a + w, 0); for (const [c, w] of weighted) if ((r -= w) <= 0) return c; return weighted[0][0]; };
 const wholeOf = n => Math.floor(n) + (Math.random() < n - Math.floor(n) ? 1 : 0);
 
@@ -56,7 +56,7 @@ function canopyClumps(view, map) {
   if (t.kind === 'apple') continue;
   let seed = Math.floor(t.x * 131 + t.z * 977) >>> 0;
   const r = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
-  for (let k = 0; k < 3; k++) out.push({ x: t.x + (r() - .5) * 3 * t.s, y: ground.heightAt(t.x, t.z) + (3.8 + r() * 1.5) * t.s, z: t.z + (r() - .5) * 3 * t.s, r: 1.1 * t.s, colour: t.kind === 'maple' ? '#c0612b' : pick(CANOPY_FALL, r()) });
+  for (let k = 0; k < 3; k++) out.push({ x: t.x + (r() - .5) * 3 * t.s, y: ground.heightAt(t.x, t.z) + (3.8 + r() * 1.5) * t.s, z: t.z + (r() - .5) * 3 * t.s, r: 1.1 * t.s, colour: t.kind === 'maple' ? CANOPY_GROUND[1] : pick(CANOPY_FALL, r()) });
  }
  return out;
 }

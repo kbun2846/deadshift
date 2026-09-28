@@ -18,7 +18,17 @@
 //     thing") after the shot-spot fix went onto every map: a robot that
 //     reaches a spot it picked for a clear shot and still has none marks it
 //     bad and looks again, instead of standing there (it was hills only).
-//     static, rifle, shotgun and hosted unchanged.
+//     static, rifle, shotgun and hosted unchanged. (v0.990a merge: robots
+//     re-recorded once more with the weapon session's damage-arc fields and
+//     indoor bot rules below in it: 299bae72.)
+//   - robots and hosted: owner-requested directional damage arc (2026-09-26)
+//     adds sourceDX/sourceDZ to playerDamage. Audited all five replays with
+//     only those new fields omitted: every pre-change hash still matches.
+//     Health, movement, death force and the three solo replays are unchanged.
+//   - hosted only: owner-requested indoor bot perception/tactics (2026-09-27).
+//     This replay spends 99 robot ticks in rail-freight-hall/supplies and 420
+//     ticks remembering a witnessed room entry. Those rules intentionally change
+//     this fight; all four other replay hashes and repeat determinism match.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation } from '../src/simulation.js';
@@ -30,7 +40,7 @@ import { ClientSession } from '../src/net/client-session.js';
 
 // Recorded with Node 22.22 (V8 12.4.254). Math is deterministic within one engine build;
 // a different Node major may need a re-record on untouched code, never on new code.
-export const GOLDEN = { static: '8500a3fd', rifle: '5c57348a', shotgun: 'dc6257e4', robots: 'd841874d', hosted: 'bb4e727d' };
+export const GOLDEN = { static: '8500a3fd', rifle: '5c57348a', shotgun: 'dc6257e4', robots: '299bae72', hosted: 'a4dc5523' };
 
 const map = maps.deadwater;
 function seeded(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }

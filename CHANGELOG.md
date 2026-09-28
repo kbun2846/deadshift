@@ -2,6 +2,29 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.990 (2026-09-27)
+
+### Hollow Wick is out
+- Hollow Wick is in the menus: the second map card on the Practice page, on the SOLO page and in the lobby's map list, no developer tools needed. Deadwater is still the default.
+- Its card picture is new: the meetinghouse and its belfry, the burying ground below it with the hearse house, and the woods' autumn line down its side.
+- A stronger dusk: the light is about a quarter lower, the glow warmer, the haze and fog darker. Coats, team colours and blood still stand out on every ground (the burnt-orange leaves lying on the ground are a shade brighter so blood never hides in them).
+- Standing under a roof's edge now lifts that whole front section of the roof, not a small circle, and the see-through patch walls open round people is bigger.
+- Nobody inside a building, open sheds included, can be seen from outside it, and their roof never opens a patch that would show where they stand. Inside a shed, its roof lifts for you as your room.
+
+### New weapons: Omen, Sightline, Sidekick and Ichor
+- **Omen:** orange diamonds and a creeping curse. Prime a shot, then rupture its mark just before it fades.
+- **Sightline:** a long rifle and a modest Sidekick pistol. Press E to crouch and set up for precise, slow, hard-hitting rounds with a public laser and a narrow scoped view; X loads the explosive Breach round.
+- **Sidekick:** a quick sidearm on its own. E plants hidden mines (two at a time), X is Rush: eight seconds with a second gun, running faster and firing both.
+- **Ichor:** a blood-fed katana. Flowing cuts that hit harder the more blood it holds, a dash slash, a guard on right mouse / left shift that soaks 40-60 damage, and Frenzy at full blood. Fresh blood trails speed you up.
+- Each has its deaths, sounds, tutorial, robot tactics (robots use Sightline's lanes and scans, and fight indoors only with what they have seen), and a menu picture; Ichor's now fills its card.
+- A damage indicator shows where hits come from.
+
+### Robots
+- Robots pick their firing spots correctly on every map (Deadwater's robots included).
+
+### Performance
+- No more small hitches the first time a roof comes into view, the first Static orb flies, or a new tumbleweed rolls in: their shaders are built while loading again. Hollow Wick's town is still 71 draws a frame on Potato and 162 on Performance.
+
 ## alpha v0.985 (2026-09-26)
 
 ### Hollow Wick (developer tools > World > Map in progress)

@@ -19,6 +19,62 @@ test('the tutorial keeps its lighter targets',async()=>{
  assert.deepEqual(sim.targets.map(t=>t.maxHp),[100,75,100,75,100]);
 });
 
+test('solo target health refills boards and dummies, without healing them on unrelated dev changes',()=>{
+ const sim=make(),board=sim.targets[0];
+ sim.hit(board,{damage:50,damageType:'gunshot'});
+ sim.dev.targetHealth=1000;sim.syncTargetHealth();
+ assert.deepEqual(sim.targets.map(t=>[t.hp,t.maxHp]),[[1000,1000],[1000,1000]]);
+ assert.equal(board.bulletHits,0);
+ sim.hit(board,{damage:36});sim.syncTargetHealth();
+ assert.equal(board.hp,964,'syncing another control must not refill a damaged target');
+ for(const hp of [100,250,500]){
+  sim.dev.targetHealth=hp;sim.syncTargetHealth();
+  assert.ok(sim.targets.every(t=>t.hp===hp&&t.maxHp===hp));
+ }
+ assert.equal(sim.player.maxHp,500);
+ assert.deepEqual(sim.props.map(p=>p.hp),[5,5,5]);
+});
+
+test('target health survives target respawns and map resets but Normal and clearing overrides restore defaults',()=>{
+ const sim=make(),board=sim.targets[0];
+ sim.hit(board,{damage:250});const wait=board.respawn;
+ sim.dev.targetHealth=1000;sim.syncTargetHealth();
+ assert.deepEqual([board.hp,board.maxHp,board.respawn],[0,1000,wait],'do not resurrect a downed target');
+ sim.respawnTargets();sim.step({});assert.equal(board.hp,1000);
+ sim.resetWorld();assert.ok(sim.targets.every(t=>t.hp===1000&&t.maxHp===1000));
+ sim.reset();assert.ok(sim.targets.every(t=>t.hp===1000&&t.maxHp===1000));
+ sim.dev.targetHealth=0;sim.syncTargetHealth();
+ assert.deepEqual(sim.targets.map(t=>[t.hp,t.maxHp]),[[250,250],[300,300]]);
+ sim.dev.targetHealth=500;sim.syncTargetHealth();
+ sim.dev={speed:1};sim.syncTargetHealth();
+ assert.deepEqual(sim.targets.map(t=>[t.hp,t.maxHp]),[[250,250],[300,300]],'dev reset and lock clear the override');
+});
+
+test('Normal restores authored tutorial health and invalid target overrides cannot create immortal targets',async()=>{
+ const {tutorialMapFor}=await import('../src/tutorial.js');const sim=new Simulation(tutorialMapFor('rifle'));
+ const normal=sim.targets.map(t=>t.maxHp);
+ sim.dev.targetHealth=1000;sim.syncTargetHealth();assert.ok(sim.targets.every(t=>t.hp===1000));
+ for(const value of [0,undefined,NaN,Infinity,-1]){
+  sim.dev.targetHealth=value;sim.syncTargetHealth();
+  assert.deepEqual(sim.targets.map(t=>t.hp),normal);
+  assert.deepEqual(sim.practiceTargets().map(t=>t.maxHp),normal);
+ }
+});
+
+test('target health ignores robot and player proxies and is not applied by online or prediction sims',()=>{
+ const sim=make();
+ const robot={id:'target',kind:'robot',hp:150,maxHp:500};
+ const player={id:'dummy',kind:'player',hp:200,maxHp:500};
+ sim.targets.push(robot,player);sim.dev.targetHealth=1000;sim.syncTargetHealth();
+ assert.deepEqual([robot.hp,robot.maxHp,player.hp,player.maxHp],[150,500,200,500]);
+ for(const flag of ['worldAuthority','predictOnly']){
+  const online=make();online[flag]=flag==='predictOnly';online.dev.targetHealth=1000;
+  online.syncTargetHealth();
+  assert.deepEqual(online.targets.map(t=>[t.hp,t.maxHp]),[[250,250],[300,300]]);
+  assert.deepEqual(online.practiceTargets().map(t=>t.maxHp),[250,300]);
+ }
+});
+
 test('health values are explicit for players, targets, dummies and breakable cover', () => {
   const sim = make(); assert.equal(sim.player.hp, 500); assert.equal(sim.player.maxHp, 500);
   assert.deepEqual(sim.targets.map(t => [t.hp, t.maxHp]), [[250, 250], [300, 300]]);

@@ -23,7 +23,7 @@ export const weaponChoices = ({ random = true } = {}) => [
 export const weaponFromChoice = n => WEAPONS[(Number(n) || 0) - 1]?.id ?? null;
 
 const picture = id => {
- if (id) return WEAPON_IMAGES[id] ? `<img src="${WEAPON_IMAGES[id]}" alt="" decoding="async" draggable="false">` : '';
+ if (id) return WEAPON_IMAGES[id] ? `<img src="${WEAPON_IMAGES[id]}" data-weapon-art="${esc(id)}" alt="" decoding="async" draggable="false">` : '';
  // Random: every weapon, small and fanned, behind a question mark.
  const fan = WEAPONS.filter(w => WEAPON_IMAGES[w.id]).slice(0, 3)
   .map((w, i, all) => `<img src="${WEAPON_IMAGES[w.id]}" alt="" decoding="async" draggable="false" style="--fan:${i - (all.length - 1) / 2}">`).join('');

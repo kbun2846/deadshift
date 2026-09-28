@@ -5,6 +5,16 @@ import {DEV_TOGGLES,DEV_WINDOW_KEY,clampWindowPosition,readWindowPosition,refill
 import {Simulation} from '../src/simulation.js';
 import {maps} from '../src/maps.js';
 import {GRAPHICS} from '../src/settings.js';
+import {optionsFor,BULK_KEYS} from '../src/ui/dev-options.js';
+
+test('both dev surfaces offer solo target health with per-target defaults, outside bulk overrides',()=>{
+ for(const where of ['window','settings']){
+  const option=optionsFor(where).find(o=>o.key==='targetHealth');
+  assert.equal(option.section,'world');assert.equal(option.kind,'select');assert.equal(option.fallback,0);
+  assert.deepEqual(option.options.map(([value])=>Number(value)),[0,100,250,500,1000]);
+ }
+ assert.ok(!BULK_KEYS.includes('targetHealth'));
+});
 
 test('the window is kept wholly on screen, whatever was saved',()=>{
  const viewport={width:1280,height:800},size={width:208,height:320};
@@ -34,9 +44,9 @@ test('corrupt or missing storage never breaks the window',()=>{
 });
 
 test('every toggle names a real override the simulation reads',()=>{
- const SOURCE=['simulation.js','weapons/rifle.js','weapons/shotgun.js','weapons/grenade.js','weapons/surge.js','weapons/scatter.js','bots/bot-match.js','main.js','render/renderer.js'].map(f=>readFileSync(new URL('../src/'+f,import.meta.url),'utf8')).join('\n');
+ const SOURCE=['simulation.js','weapons/rifle.js','weapons/shotgun.js','weapons/omen.js','weapons/grenade.js','weapons/surge.js','weapons/scatter.js','bots/bot-match.js','main.js','render/renderer.js'].map(f=>readFileSync(new URL('../src/'+f,import.meta.url),'utf8')).join('\n');
  const known=new Set(['ammo','orbs','cooldowns','stamina','invulnerable','teleport','speed',
-  'rifleInstantReload','shotgunInstantReload','grenadeCooldown',
+  'rifleInstantReload','shotgunInstantReload','omenInstantReload','omenCooldowns','grenadeCooldown',
   'oneHit','ghost','freezeTargets','hideHud','noRecoil','endlessSurge',
   'robotPassive','robotHoldFire','robotFreeze','robotStayDead','robotSeeAll',
   'freeze','noKnockback','regen','fastSeeds','instantHex','rapidFire','noSpread','shotgunRapid','robotMinds']);
@@ -95,7 +105,7 @@ test('the aim cone carries a faint but unmistakably red interior',()=>{
 test('both Ballast and Nominal draw the zone, and only while loaded and ready',()=>{
  const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
  const overlay=readFileSync(new URL('../src/ui/aim-overlay.js',import.meta.url),'utf8');
- const gate=overlay.slice(overlay.indexOf("cone.classList.toggle('unloaded'"),overlay.indexOf("cone.classList.toggle('unloaded'")+260);
+ const gate=overlay.slice(overlay.indexOf("cone.classList.toggle('unloaded'"),overlay.indexOf("  if(sim.weapon==='shotgun')"));
  assert.ok(gate.includes('sim.shotgun.ammo>0'),'Ballast still needs a shell');
  assert.ok(gate.includes('sim.rifle.ammo>0'),'Nominal needs a round chambered');
  assert.ok(gate.includes('sim.rifle.reload<=0'),'and no magazine on the way in');
@@ -150,3 +160,5 @@ test('freeze game: the world holds still (shots in the air, timers) while you st
  assert.ok(sim.player.x>x+1,'you still walk');
  sim.dev.freeze=false;sim.step({moveX:0,moveZ:0,aimX:1,aimZ:0});assert.ok(sim.time>time);
 });
+
+test('Human AI is explicitly named and spawnable in the O-menu and settings, outside bulk overrides',()=>{for(const where of ['window','settings']){const list=optionsFor(where);assert.ok(list.some(o=>o.key==='robotBody'&&o.label.toLowerCase().includes('human')));assert.ok(list.some(o=>o.key==='spawnHumanBot'&&o.kind==='action'&&o.section==='robots'));}assert.ok(!BULK_KEYS.includes('robotBody'));});

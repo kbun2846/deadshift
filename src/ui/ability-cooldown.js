@@ -3,13 +3,13 @@ import { displayKeys } from '../config/keybinds.js';
 import { setText, setStyle, setAttr } from './dom-writes.js';
 export function bindAbilityCooldown(root){
  const status=root.querySelector('.hex-recharge-center span'),fill=root.querySelector('.hex-fill'),key=root.querySelector('kbd');
- return ({remaining,duration,binding,label,text})=>{
-  remaining=Math.max(0,Math.min(duration,remaining));const ready=remaining<1e-8;
-  setText(status,text??(ready?'READY':Math.ceil(remaining)));const word=text!=null;if(root.classList.contains('word')!==word)root.classList.toggle('word',word);setText(key,displayKeys(binding));
+ return ({remaining,duration,binding,label,text,disabled=false})=>{
+  remaining=Math.max(0,Math.min(duration,remaining));const ready=remaining<1e-8&&!disabled;
+  setText(status,text??(ready?'READY':Math.ceil(remaining)));const word=text!=null&&!/^\d+(\.\d+)?$/.test(String(text));if(root.classList.contains('word')!==word)root.classList.toggle('word',word);setText(key,displayKeys(binding));
   setStyle(fill,'strokeDashoffset',remaining/duration*100);if(root.classList.contains('ready')!==ready)root.classList.toggle('ready',ready);
   setAttr(root,'aria-valuemin','0');setAttr(root,'aria-valuemax',duration);
   setAttr(root,'aria-valuenow',Number((duration-remaining).toFixed(1)));
-  setAttr(root,'aria-label',label);setAttr(root,'aria-valuetext',ready?'Ready':Math.ceil(remaining)+' seconds remaining. '+label);setAttr(root,'title',label);
+  setAttr(root,'aria-label',label);setAttr(root,'aria-disabled',String(disabled));setAttr(root,'aria-valuetext',disabled?label:ready?'Ready':Math.ceil(remaining)+' seconds remaining. '+label);setAttr(root,'title',label);
  };
 }
 export function addAbilityCooldown(parent,id){

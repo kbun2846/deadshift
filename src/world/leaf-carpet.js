@@ -33,7 +33,9 @@ import { detailClearance } from './terrain-details.js';
 export const LITTER_BROWNS = ['#8a6a3e', '#7a5a34', '#5a4632'];
 // The canopies' colours that may lie on the ground (in the carpet, and a
 // falling or kicked leaf that has landed).
-export const CANOPY_GROUND = ['#9c8a3c', '#c0612b', '#8e7a3a'];
+// (v0.990a: burnt orange #c86a2c on the ground, a shade brighter than the
+// canopy's #c0612b, so unlit blood still stands out under the stronger dusk.)
+export const CANOPY_GROUND = ['#9c8a3c', '#c86a2c', '#8e7a3a'];
 // Canopy only: they may fall, but never lie on the ground.
 export const CANOPY_ONLY = ['#a4552a', '#8e2f22'];
 export const GROUND_LEAF_COLOURS = [...LITTER_BROWNS, ...CANOPY_GROUND];

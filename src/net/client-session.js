@@ -151,9 +151,12 @@ export class ClientSession {
   this.pending = this.pending.filter(input => input.seq > (state.lastSeq || 0));
   const replay = this.scratch, p = this.local.player;
   replay.weapon = this.local.weapon; replay.dev = { speed: 1 }; replay.surge = { ...this.local.surge }; replay.otherPlayers = this.local.otherPlayers;
+  if(replay.weapon==='ichor'){replay.ichor={...this.local.ichor,...state.ichor};replay.ichorTrails=this.local.ichorTrails;}
+  if(replay.weapon==='sidekick')replay.sidekick={...this.local.sidekick,...state.sidekick};
+  if(replay.weapon==='sightline')replay.sightline={...this.local.sightline,...state.sightline};
   replay.props = this.local.props; replay.colliders = this.local.colliders; replay.crops = this.local.crops;
   applyPlayerState(replay.player, state); replay.player.hp = Math.max(1, state.hp || 1); replay.player.dead = false;
-  for (const input of this.pending) { replay.step(movementInput(input)); replay.drainEvents(); }
+  for (const input of this.pending) { replay.step(movementInput(input,this.local.weapon)); replay.drainEvents(); }
   const r = replay.player, dx = r.x - p.x, dz = r.z - p.z, error = Math.hypot(dx, dz);
   this.correction = error;
   if (error > this.config.snapDistance) { p.x = r.x; p.z = r.z; }
@@ -181,7 +184,7 @@ export class ClientSession {
   if (this.pending.length > 120) this.pending.shift();
   // (With the shape of this screen, so the host's robots never fire from off it.)
   this.transport.send('host', { t: 'input', inputs: this.pending.slice(-this.config.inputRedundancy), ack: this.ack, ...(this.aspect ? { aspect: this.aspect } : {}) });
-  return alive ? movementInput(input) : movementInput({});
+  return alive ? movementInput(input,this.local.weapon) : movementInput({});
  }
 
  // This screen's width / height (main.js, every frame: it changes when a

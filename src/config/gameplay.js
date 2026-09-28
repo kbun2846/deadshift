@@ -85,6 +85,18 @@ export const MOUSE_VOLLEY_ASSIST = Object.freeze({ radius: .6, pull: .06 });
 // the centre — a heavy shot should feel heavier where it actually lands.
 export const SPLASH = Object.freeze({ edge: .28, heavyCore: .06, heavyFrom: 4, heavyFull: 12 });
 
+// Omen: deliberate diamonds, one E curse and a three-projectile X covenant.
+export const OMEN = Object.freeze({
+ damage:36, minDamage:22.5, interval:.42, magazine:4, reload:1.8, speed:30,
+ fullRange:12, falloff:22, range:26, spread:.025,
+ muzzle:.88, lateral:.27, radius:.085,
+ primeDamage:49.5, primeWindow:5, primeCooldown:10, curseDuration:3.5, tick:.5, tickDamage:10.8, curseTickVariance:1.8, curseRollStep:.9,
+ curseBeat:1,
+ blastDamage:135, lateDamage:171, curseBlastVariance:13.5, lateWindow:1, blastRadius:2.5, splash:67.5, splashEdge:18, blastCap:198,
+ volleyDamage:45, volleyCount:3, volleySpeed:20, volleyTurn:1.8, volleyLife:1.5,
+ volleyDuration:4, volleyCooldown:40, volleyRange:24,
+});
+
 // ---- Nominal (rifle) ----
 // Baseline conventional weapon: metres, seconds, damage per bullet.
 export const RIFLE=Object.freeze({interval:.165,magazine:28,reload:1.95,damage:22,minDamage:16,effectiveRange:10,falloffEnd:22,maxRange:55,magazineLife:30,bulletSpeed:90,aimMoveMultiplier:.55,maxStamina:3,stationaryStamina:1.3,
@@ -170,3 +182,21 @@ export const AIM_ASSIST = Object.freeze({
 // The tutorial's targets stay lighter than practice's (RULES.targetHealth /
 // dummyHealth), so a lesson's shots stay short.
 export const TUTORIAL_TARGET_HEALTH = Object.freeze({ target: 100, dummy: 75 });
+
+// Sightline: the rifle and its modest semi-automatic sidearm share E/X.
+export const SIGHTLINE=Object.freeze({dodges:2,dashRechargeScale:.95,pistolMagazine:10,pistolDamage:25,pistolDamageRoll:2,pistolReload:2,pistolInterval:.28,pistolRange:22,pistolSpeed:65,reload:4.2,damageMin:493,damageMax:505,commit:.16,speed:114,hipSpread:.26,turnRate:.35,turnAcceleration:1.1,pistolTurnRate:3.6,setupDuration:4/3,standDuration:.42,drawDuration:.28,cone:45,scopeScale:1.46,scopeLeadShare:.76,scopeElevationRate:.006,scopeElevationMax:.06,muzzleForward:1.73,muzzleLateral:.4,roundHeight:1.28,muzzleRadius:1.5,muzzleDamage:80,hearingScale:1.5,xCooldown:50,blastRadius:4.5,blastCore:1.3,blastDamage:300,blastEdge:40});
+
+// Bot room fights use short bursts and deliberate pauses; probing never tracks a hidden body.
+export const BOT_INTERIOR=Object.freeze({memory:10,wait:3.2,waitJitter:2.4,burst:.32,pause:.85,pauseJitter:.55,probeBurst:.16,probePause:2.5,probeJitter:1.8});
+export const BOT_SIGHTLINE=Object.freeze({sidekickRange:8,travel:6,travelJitter:4,scan:7,scanJitter:3,lostWait:2.4,reposition:1.6,scanTurn:.24,dwell:.45,settle:.18,settleSkill:.3});
+
+// Noticing a laser takes time; each chosen escape lasts long enough to read.
+export const BOT_LASER=Object.freeze({width:.7,hotWidth:1.05,reactionMin:.18,reactionMax:.65,notice:.12,linger:.65,step:2.8,chargeRange:20,hold:1.6,holdJitter:.8,dodgeGap:1.8});
+
+// Standalone Sidekick. Sightline's backup retains its separate 25 +/- 2 tuning.
+export const SIDEKICK=Object.freeze({magazine:10,damage:30,damageRoll:2,reload:2,interval:.28,range:22,speed:65,
+ mineLimit:2,mineDamage:200,mineRoll:30,mineRadius:3.6,mineCore:.9,mineTrigger:.7,mineArm:1,mineCooldown:30,
+ duration:8,summon:.55,fireRate:1.75,moveSpeed:1.2,xCooldown:45});
+
+// Ichor: rapid contact-timed katana swings and eight committed Frenzy cuts.
+export const ICHOR=Object.freeze({damage:30,maxDamage:85,interval:.24,contact:.067,range:2.15,arc:2.9,meterMax:100,gain:7.5,gainRoll:1,waveGain:13,waveGainRoll:1.5,decayDelay:7,decay:3,bleedDuration:8,trailSpeed:1.20,trailLife:18,trailCap:160,dodges:2,dashRechargeScale:1.12,eCooldown:6,eBlood:50,waveDamage:70,waveRoll:10,waveSpeed:19,waveRange:17,xCooldown:50,hits:12,frenzyInterval:.20,frenzyDamage:180,frenzyMax:540,healthDrain:80/2.4,splash:.22,dashGrace:.24,dashDamage:1.15,dashReach:.3,frenzyMove:1.3,fullMove:1.05,fullRecharge:1.2,attackMove:.88,regenThreshold:90,regen:6,parryStart:.04,parryEnd:.095,parryRecovery:.28,parryFacing:.55,guardCooldown:20,guardCapacity:50,guardRoll:10,guardMove:.9,chainWindow:.85,chainStep:.07,chainMax:.21,shortArc:1.85,midArc:2.3});

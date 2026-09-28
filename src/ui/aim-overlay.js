@@ -1,12 +1,16 @@
 // Everything drawn at the aim point: the aim dot itself, the charge ring
 // around it, Ballast's shot cone and Nominal's spread brackets and zone.
 // Owns its own elements; main.js hands it the game state once a frame.
+import { pistolSpread,SIGHTLINE } from '../weapons/sightline.js';
+import { sightlineAimPlane } from '../weapons/sightline-flight.js';
 import { RULES } from '../config/gameplay.js';
 import { SHOTGUN, shotgunSpread, shotgunReach } from '../weapons/shotgun.js';
 import { SCATTER } from '../config/gameplay.js';
 import { rifleSpread, rifleAim, RIFLE_MUZZLE } from '../weapons/rifle.js';
 import { viewWidth, viewHeight } from '../viewport.js';
-import { setStyle, setAttr } from './dom-writes.js';
+import { setStyle, setAttr, setText } from './dom-writes.js';
+import { displayKeys } from '../config/keybinds.js';
+import { omenReadouts } from './omen-state.js';
 
 // Static's expanding hex fills a ring round the aim dot
 // that starts pink and runs to red. For the hex, red means the boundary is
@@ -28,6 +32,11 @@ export function createAimOverlay(game){
  const spreadMarker=document.createElement('div');spreadMarker.id='rifle-spread';spreadMarker.className='rifle-spread';spreadMarker.innerHTML='<i></i><i></i>';game.append(spreadMarker);
  const secondarySpread=spreadMarker.cloneNode(true);secondarySpread.id='rifle-spread-secondary';secondarySpread.classList.add('secondary-spread');secondarySpread.hidden=true;game.append(secondarySpread);
  const reticleEl=game.querySelector('#reticle'),chargeRing=game.querySelector('#charge-ring'),chargeFill=chargeRing.querySelector('.charge-ring-fill');
+ const omenTimers=Array.from({length:2},()=>{
+  const root=document.createElement('div');root.className='omen-cursor-timer';root.hidden=true;
+  root.innerHTML='<svg class="charge-ring" viewBox="0 0 48 48" aria-hidden="true"><circle class="charge-ring-track" cx="24" cy="24" r="18" pathLength="100"/><circle class="charge-ring-fill" cx="24" cy="24" r="18" pathLength="100"/></svg><b></b><kbd></kbd>';
+  reticleEl.append(root);return {root,fill:root.querySelector('.charge-ring-fill'),text:root.querySelector('b'),key:root.querySelector('kbd')};
+ });
  let chargeShown=-1,coneBox='',spreadShown=null,lastSpreadAt=0;
 
  function updateChargeRing(sim,running){
@@ -58,8 +67,12 @@ export function createAimOverlay(game){
  // state: { sim, view, running, coneFlicker, aiming, point } where point is
  // the screen position of the aim dot.
  function update({sim,view,running,coneFlicker,aiming,point}){
-  const coneWeapon=sim.weapon==='shotgun'||sim.weapon==='rifle';
-  setStyle(cone,'display',running&&coneWeapon&&!sim.player.dead?'block':'none');
+  const sidekick=sim.weapon==='sidekick',sightline=sim.weapon==='sightline',sniper=sightline&&sim.sightline.crouched;if(sightline)aiming=sim.sightline.aiming;
+  const laserActive=!!(sniper&&aiming&&view.sightlineView?.aimEnd);
+  if(sightline&&aiming){const p=sim.player,r=Math.hypot(p.aimPointX-p.x,p.aimPointZ-p.z);point=view.screenPoint(p.x+p.aimX*r-p.aimZ*.22,p.z+p.aimZ*r+p.aimX*.22,.77);}
+  if(laserActive){const end=view.sightlineView.aimEnd;point=view.screenPoint(end.x,end.z,end.y-view.gy(end.x,end.z));}
+  const coneWeapon=sim.weapon==='shotgun'||sim.weapon==='rifle'||sightline||sidekick;
+  setStyle(cone,'display',running&&coneWeapon&&!sim.player.dead&&!laserActive?'block':'none');
   cone.classList.toggle('firing',coneFlicker>0);
   // The zone is a statement about what this shot would cover, so an empty or
   // mid-reload breech has nothing to say. The guide edges stay up regardless.
@@ -70,7 +83,7 @@ export function createAimOverlay(game){
   cone.classList.toggle('scatter',scatter);
   // Still charging (the first 3 s): fainter and pulsing faster.
   cone.classList.toggle('priming',scatter&&(sim.scatter.armedFor||0)<SCATTER.prime);
-  cone.classList.toggle('unloaded',sim.weapon==='shotgun'
+  cone.classList.toggle('unloaded',sidekick?sim.sidekick.reload>0||sim.sidekick.ammo+(sim.sidekick.active?sim.sidekick.offAmmo:0)<=0:sightline?(sniper?sim.sightline.rifleAmmo<=0||sim.sightline.rifleReload>0:sim.sightline.pistolAmmo<=0||sim.sightline.pistolReload>0):sim.weapon==='shotgun'
    ? !(sim.shotgun.ammo>0)&&!scatter
    : !(sim.rifle.ammo>0&&sim.rifle.reload<=0));
   if(sim.weapon==='shotgun'){
@@ -104,6 +117,18 @@ export function createAimOverlay(game){
   }
 
   updateChargeRing(sim,running);
+  const omen=sim.weapon==='omen'&&running&&!sim.player.dead?omenReadouts(sim.omen):null;
+  let timerSlot=0;
+  for(let i=0;i<2;i++){
+   const ui=omenTimers[i],state=omen&&(i===0?omen.primary:omen.secondary),show=!!state?.live;
+   ui.root.hidden=!show;setAttr(ui.root,'data-omen-optimal',String(!!state?.optimal));if(!show)continue;
+   const side=point.x>viewWidth()-110?-1:1;
+   setStyle(ui.root,'left',(side===1?26+timerSlot*42:-64-timerSlot*42)+'px');timerSlot++;
+   setStyle(ui.root,'top',(point.y<24?12:-20)+'px');
+   setStyle(ui.root,'--charge-color',state.optimal?'var(--omen-hot)':i===1?'var(--omen-purple)':state.state==='charging'?'var(--x-charging)':'var(--x-active)');
+   setStyle(ui.fill,'strokeDasharray',`${Math.max(0,Math.min(1,1-state.remaining/state.duration))*100} 100`);
+   setText(ui.text,state.remaining.toFixed(1));setText(ui.key,displayKeys(state.binding));setAttr(ui.root,'title',state.label);
+  }
   // The guides are drawn from where the body is drawn (between ticks), not
   // from the last fixed step: read off the step position, the brackets and
   // the red band stepped against the smoothly moving player and camera and
@@ -111,7 +136,8 @@ export function createAimOverlay(game){
   const s=sim.player,rp=view.player?.position,dx=rp?rp.x-s.x:0,dz=rp?rp.z-s.z:0;
   const p=dx||dz?{...s,x:s.x+dx,z:s.z+dz,aimPointX:s.aimPointX!=null?s.aimPointX+dx:undefined,aimPointZ:s.aimPointZ!=null?s.aimPointZ+dz:undefined}:s;
   place(point.x, point.y);
-  spreadMarker.hidden=secondarySpread.hidden=sim.weapon!=='rifle'||!running;
+  // The laser replaces the bloom cone and its two spread brackets.
+  spreadMarker.hidden=secondarySpread.hidden=(sim.weapon!=='rifle'&&!sightline&&!sidekick)||!running||laserActive;
   // Hidden (another weapon, a respawn): the band starts fresh next time.
   if(spreadMarker.hidden){spreadShown=null;lastSpreadAt=0;}
   if(!spreadMarker.hidden){
@@ -122,25 +148,27 @@ export function createAimOverlay(game){
    // distances, so each shows the band bullets actually fall in there.
    // The convergence floor belongs to the barrel alone — applying it to the
    // bracket too is what dragged the near one out to arm's length.
-   const aim=rifleAim(p,distance),target=rifleSpread(distance,speed,aiming,!!sim.surge?.active);
+   const plane=sightline?sightlineAimPlane(sim,p,sniper):null;
+   const aim=plane||rifleAim(p,distance),target=sidekick?pistolSpread(distance,speed,aiming):sightline?(sniper?(aiming?0:SIGHTLINE.hipSpread):pistolSpread(distance,speed,aiming)):rifleSpread(distance,speed,aiming,!!sim.surge?.active);
+   const project=(x,z,lift=0)=>view.screenPoint(x,z,plane?plane.height(x,z)-view.gy(x,z):lift);
    // Eased, so the band widens and narrows as you speed up and stop instead of stepping.
    const now=performance.now(),step=Math.min(.1,(now-(lastSpreadAt||now))/1000);lastSpreadAt=now;
    spreadShown=spreadShown==null?target:spreadShown+(target-spreadShown)*(1-Math.exp(-step*14));
    const spread=spreadShown;
    // Hip-fire recoil knocks the whole cone off line (rifle.js kickRifle).
-   const heading=aim.angle+(sim.rifle?.sway||0);
+   const heading=aim.angle+(sightline?0:sim.rifle?.sway||0);
    const dirX=Math.cos(heading),dirZ=Math.sin(heading),perpX=-dirZ,perpZ=dirX;
    // One helper for both the brackets and the zone: the centre of the band at
    // a given range, and the two world points its edges sit on.
    const band=range=>{
-    const travel=Math.max(.35,range-RIFLE_MUZZLE.forward);
+    const travel=Math.max(.35,range-(plane?.forward??RIFLE_MUZZLE.forward));
     const cx=aim.x+dirX*travel,cz=aim.z+dirZ*travel,error=Math.tan(spread)*travel;
     return {cx,cz,error};
    };
    const guide=range=>{
     const {cx,cz,error}=band(range);
-    const center=view.screenPoint(cx,cz);
-    const edge=view.screenPoint(cx+perpX*error,cz+perpZ*error);
+    const center=project(cx,cz);
+    const edge=project(cx+perpX*error,cz+perpZ*error);
     return {center,width:Math.max(8,Math.hypot(edge.x-center.x,edge.y-center.y)*2),
      angle:Math.atan2(edge.y-center.y,edge.x-center.x)};
    };
@@ -159,8 +187,8 @@ export function createAimOverlay(game){
    // the red says "between these", not "everything in front of you".
    const flank=range=>{
     const {cx,cz,error}=band(range);
-    return [view.screenPoint(cx-perpX*error,cz-perpZ*error,.77),
-            view.screenPoint(cx+perpX*error,cz+perpZ*error,.77)];
+    return [project(cx-perpX*error,cz-perpZ*error,.77),
+            project(cx+perpX*error,cz+perpZ*error,.77)];
    };
    const [nl,nr]=flank(Math.min(distance,otherDistance));
    const [fl,fr]=flank(Math.max(distance,otherDistance));

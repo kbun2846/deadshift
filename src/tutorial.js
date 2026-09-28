@@ -1,5 +1,5 @@
 import { WEAPONS, weapon as weaponById } from './items.js';
-import { RIFLE, SURGE, TUTORIAL_TARGET_HEALTH } from './config/gameplay.js';
+import { RIFLE, SURGE, OMEN, TUTORIAL_TARGET_HEALTH } from './config/gameplay.js';
 import { displayKeys } from './config/keybinds.js';
 // The training range and its courses.
 //
@@ -39,28 +39,58 @@ export function tutorialMapFor(weapon) {
 // { id, title, goal, keys, touch, note?, touchNote?, highlight? }
 const lesson = (id, title, goal, keys, touch, extra = {}) => ({ id, title, goal, keys, touch, ...extra });
 export const COURSES = {
+ ichor:[
+ lesson('icut','cut',3,'get close and hold [LMB] / [SPACE] to cut','get close and hold [FIRE] to cut',{note:'hits fill blood and make the blade stronger',highlight:'ichor-blood'}),
+ lesson('iguard','deflect',1,'hold [RMB] / [SHIFT] to raise your blade','hold [GUARD] to raise your blade',{note:'raise or lower it freely · 20 seconds to recharge after it breaks',highlight:'ichor-deflect-recharge'}),
+ lesson('iwave','blood slash',1,'fill blood halfway then press [E]','fill blood halfway then tap [SLASH]',{note:'keep cutting targets to reach the middle mark',highlight:'hex-recharge'}),
+ lesson('ifrenzy','frenzy',1,'get close and press [X] then steer with [WASD]','get close and tap [FRENZY] then steer',{note:'keep steering through the combo · it costs health',highlight:'extended-recharge'}),
+ lesson('iblood','blood',1,'land another hit to finish','land another hit to finish',{note:'at full blood people leave trails that speed you up',highlight:'ichor-blood'}),
+ ],
+ sidekick:[
+  lesson('kfire','shoot',3,'tap [LMB] / [SPACE] to fire three shots','tap [FIRE] to fire three shots',{note:'one shot per tap',highlight:'seed-pips'}),
+  lesson('kreload','reload',1,'press [R] to reload','tap [RELOAD] to reload',{note:'wait for the ammo bar to fill',highlight:'seed-pips'}),
+  lesson('kmine','mine',1,'press [E] to place a mine','tap [MINE] to place a mine',{note:'enemies set it off · place two then wait 30 seconds for two more',highlight:'hex-recharge'}),
+  lesson('krush','rush',5,'press [X] then hold [LMB] / [SPACE] to fire','tap [RUSH] then hold [FIRE]',{note:'eight seconds of unlimited ammo and faster movement',highlight:'extended-recharge'}),
+ ],
+ sightline:[
+  lesson('spistol','sidekick',3,'tap [LMB] / [SPACE] to fire three shots','tap [FIRE] to fire three shots',{note:'one shot per tap',highlight:'sightline-ammo'}),
+  lesson('spreload','sidekick reload',1,'press [R] to reload sidekick','tap [RELOAD] to reload sidekick',{note:'wait for the ammo bar to fill',highlight:'sightline-ammo'}),
+  lesson('sstance','set up sightline',1,'press [E] and wait for sightline to be ready','tap [STANCE] and wait for sightline to be ready',{note:'press [E] again to stand and use sidekick',touchNote:'tap [STANCE] again to stand and use sidekick',highlight:'hex-recharge'}),
+  lesson('sscope','scope',1,'hold [RMB] / [SHIFT] to zoom out then fire','hold [AIM] to zoom out then tap [FIRE]',{note:'aim a little ahead of moving targets',touchHighlight:'touch-stream'}),
+  lesson('srreload','sightline reload',1,'stay crouched and press [R] to reload sightline','stay crouched and tap [RELOAD] to reload sightline',{note:'reloading takes you out of the scope',highlight:'sightline-ammo'}),
+  lesson('sload','load breach',1,'stand with [E] then press [X] to load breach','stand with [STANCE] then tap [BREACH] to load it',{note:'the yellow glow means your explosive round is ready',highlight:'extended-recharge'}),
+  lesson('sbreach','fire breach',1,'press [E] then aim and fire with [LMB] / [SPACE]','tap [STANCE] then aim and tap [FIRE]',{note:'aim at the spot you want to blow up',highlight:'extended-recharge'}),
+ ],
+ omen:[
+  lesson('ofire','shoot',OMEN.magazine,'hold [LMB] / [SPACE] to fire all four shots','hold [FIRE] to fire all four shots',{note:'shots take time to reach the target',highlight:'seed-pips'}),
+  lesson('oreload','reload',1,'press [R] to reload','tap [RELOAD] to reload',{note:'wait for all four rounds to fill',highlight:'seed-pips',touchHighlight:'touch-hex'}),
+  lesson('ocurse','curse',1,'press [E] then shoot a target to curse it','tap [CURSE] then shoot a target to curse it',{note:'fire within five seconds or you lose the shot',highlight:'hex-recharge',touchHighlight:'touch-grenade'}),
+  lesson('orupture','rupture',1,'curse a target then press [E] again to explode it','curse a target then tap [CURSE] again to explode it',{note:'wait for the shot to hit and explode it before the timer runs out',highlight:'hex-recharge',touchHighlight:'touch-grenade'}),
+  lesson('olate','last second',1,'curse a target then press [E] again when the timer pulses','curse a target then tap [CURSE] again when the timer pulses',{note:'waiting until the last second makes the explosion stronger',highlight:'hex-recharge',touchHighlight:'touch-grenade'}),
+  lesson('ocovenant','covenant',1,'press [X] then press [X] again after the shots hit','tap [COVENANT] then tap it again after the shots hit',{note:'curse several targets at once then explode them before the timer ends',highlight:'extended-recharge',touchHighlight:'touch-extended'}),
+ ],
  basics: [
-  lesson('walk', 'walk', TUTORIAL_ZONES.length, 'hold [W] [A] [S] [D] and walk into the pink zone', 'drag anywhere on the left side to walk into the pink zone',
+  lesson('walk', 'walk', TUTORIAL_ZONES.length, 'use [W] [A] [S] [D] to walk into the pink zone', 'drag on the left to walk into the pink zone',
    { note: 'follow the pink arrow' }),
   lesson('dash', 'dodge', 5, 'hold a direction and press [Q] to dodge through a crate', 'drag on the left to move and tap [DODGE] to dodge through a crate',
-   { note: 'each weapon carries its own number of dodges and they refill after a moment', highlight: 'dodge-stamina', touchHighlight: 'touch-dodge' }),
+   { note: 'your dodges refill over time', highlight: 'dodge-stamina', touchHighlight: 'touch-dodge' }),
   // Touch only: the right thumb aims while the left walks. Skipped on keys.
   lesson('aimhold', 'aim while walking', 3, '', 'walk with your left thumb and swipe your right thumb toward a target',
-   { touchNote: 'a swipe locks on like an arrow key and the next swipe moves on', touchOnly: true }),
+   { touchNote: 'swipe again to aim at another target', touchOnly: true }),
   lesson('shoot', 'shoot', 3, 'aim with the mouse and press [LMB] / [SPACE] to hit a target', 'tap a target to fire at it',
-   { note: '[SPACE] does the same as [LMB]', touchNote: 'a quick tap fires and a drag never does' }),
+   { note: 'hit a target three times', touchNote: 'tap to shoot and swipe to aim' }),
   // Keyboard only: the whole game plays without a mouse. Skipped on touch.
   lesson('nomouse', 'no mouse', 3, 'aim with [↑] [←] [↓] [→] and press [SPACE] to fire', '',
-   { note: 'an arrow locks onto the target that way and holding it leads a running player', keyboard: true }),
+   { note: 'hold an arrow to aim ahead of a moving target', keyboard: true }),
   lesson('map', 'map', 1, 'press [M] to open the map', 'tap [MAP] up top', { note: 'press [M] again to close it', touchNote: 'tap close when you are done', highlight: 'map-toggle' }),
  ],
  static: [
   lesson('orbs', 'place orbs', 24, 'hold [E] and place two full loads of orbs', 'hold [PLACE] and place two full loads of orbs', { note: 'stand still and they refill faster', highlight: 'seed-pips' }),
-  lesson('volley', 'volley', 3, 'place four or more orbs then press [LMB] / [SPACE] to fire them at a target', 'place four or more orbs then tap [LAUNCH] at a target',
-   { note: 'more orbs hit much harder so never fire fewer than four · they leave slow then speed up so lead a moving target', highlight: 'seed-pips' }),
-  lesson('stream', 'stream', 3, 'get close and hold [C] on a target', 'get close and hold [STREAM] on a target', { note: 'stay on one target to ramp it up · it drinks orbs fast', highlight: 'seed-pips' }),
-  lesson('pulse', 'hex', 3, 'press [X] to throw out the hex then [X] again to pulse it', 'tap [HEX] to throw out the hex then tap it again to pulse it',
-   { note: 'the hex needs ten orbs in hand (the x mark on the orb bar) · its sides zap enemies · shots from outside cannot hurt anyone inside and teammates can step in · leave it and it spins a moment before fading', highlight: 'hex-recharge' }),
+  lesson('volley', 'volley', 3, 'place at least four orbs then press [LMB] / [SPACE] to hit a target', 'place at least four orbs then tap [LAUNCH] to hit a target',
+   { note: 'more orbs deal more damage', highlight: 'seed-pips' }),
+  lesson('stream', 'stream', 3, 'get close and hold [C] on a target', 'get close and hold [STREAM] on a target', { note: 'keep hitting the same target to deal more damage', highlight: 'seed-pips' }),
+  lesson('pulse', 'hex', 3, 'press [X] to make a hex then [X] again to pulse it', 'tap [HEX] to make a hex then tap it again to pulse it',
+   { note: 'needs ten orbs and blocks shots from outside', highlight: 'hex-recharge' }),
  ],
  rifle: [
   lesson('single', 'single shots', 5, 'tap [LMB] / [SPACE] once to fire a single shot', 'tap [FIRE] once for a single shot', { note: 'let go between shots', highlight: 'seed-pips' }),
@@ -69,21 +99,20 @@ export const COURSES = {
    { note: 'standing still tightens it more', highlight: 'rifle-spread', touchHighlight: 'touch-stream' }),
   lesson('reload', 'reload', 2, 'fire a shot then press [R]', 'fire a shot then tap [RELOAD]', { note: `a mag holds ${RIFLE.magazine} rounds`, highlight: 'seed-pips', touchHighlight: 'touch-hex' }),
   lesson('grenade', 'grenade', 2, 'press [E] to throw a grenade', 'tap [NADE] to throw one', { note: 'stay clear of where it lands', highlight: 'hex-recharge' }),
-  lesson('nova', 'nova', 1, 'press [X] for nova', 'tap [NOVA]', { note: `${SURGE.charge} seconds to power up then ${SURGE.duration} seconds of double damage, no reloading, faster feet, tighter shots and less damage taken · ends on a full mag`, highlight: 'extended-recharge' }),
+  lesson('nova', 'nova', 1, 'press [X] and wait for nova to start', 'tap [NOVA] and wait for it to start', { note: `${SURGE.duration} seconds of double damage with no reloads`, highlight: 'extended-recharge' }),
  ],
  shotgun: [
-  lesson('sfire', 'fire', 4, 'press [LMB] / [SPACE] for each shell and fire two full loads', 'tap [FIRE] for each shell and fire two full loads', { note: 'every shot throws you back so press [R] to reload', touchNote: 'every shot throws you back so tap [RELOAD] to reload', highlight: 'seed-pips' }),
-  lesson('saim', 'aim in', 2, 'hold [RMB] / [SHIFT] and fire', 'hold [AIM] and fire', { note: 'a tighter cone lands more pellets further out · the red hits hard and the fade past it less and less', touchHighlight: 'touch-stream' }),
+  lesson('sfire', 'fire', 4, 'tap [LMB] / [SPACE] for each shot and fire four times', 'tap [FIRE] for each shot and fire four times', { note: 'press [R] to reload after two shots', touchNote: 'tap [RELOAD] after two shots', highlight: 'seed-pips' }),
+  lesson('saim', 'aim in', 2, 'hold [RMB] / [SHIFT] and fire', 'hold [AIM] and fire', { note: 'aiming in keeps more pellets on target', touchHighlight: 'touch-stream' }),
   lesson('double', 'double', 2, 'press [E] to fire both shells', 'tap [DOUBLE] to fire both shells', { note: 'needs two shells loaded', highlight: 'seed-pips' }),
   lesson('sreload', 'reload', 2, 'press [R] to reload', 'tap [RELOAD] to reload', { note: 'you get two shells', highlight: 'seed-pips' }),
-  lesson('blast', 'blast', 1, 'press [X] to ready the blast, let it charge for 3 seconds, then [X] again to fire it', 'tap [BLAST] to ready it, let it charge for 3 seconds, then tap it again to fire', { note: 'the red cone shows where the shells spread and split · it is short range so get close', highlight: 'hex-recharge' }),
+  lesson('blast', 'blast', 1, 'press [X] and wait three seconds then press [X] again to fire', 'tap [BLAST] and wait three seconds then tap it again to fire', { note: 'get close so more of the blast hits', highlight: 'hex-recharge' }),
  ],
 };
-// Shown when a course is done (owner, v138): where to go next and how the
-// team games read.
+// Course completion only points to tutorial/practice actions.
 export const COURSE_DONE_NOTES = Object.freeze({
- basics: 'solo: you and your robots against robots · multiplayer: host a room and fill seats with robots · in team games every side has its colour (amber, cyan, violet) on hats and rings · friendly fire is on: teammates take half',
- weapon: 'after a death, [CHANGE WEAPON] picks what you come back with',
+ basics: 'try a weapon tutorial next or start a solo match',
+ weapon: 'you can keep practicing here',
 });
 export const COURSE_NAMES = Object.freeze({ basics: 'basics', ...Object.fromEntries(WEAPONS.map(w => [w.id, w.name.toLowerCase()])) });
 
@@ -159,6 +188,15 @@ export class Tutorial {
   if (id === 'grenade' && !sim.grenades.length) sim.grenadeCooldown = 0;
   if (id === 'nova' && sim.surge?.phase === 'idle') sim.surge.cooldown = 0;
   if (id === 'blast' && sim.scatter) sim.scatter.cooldown = 0;
+  if(this.course==='ichor'&&!this.complete){sim.ichor.eCooldown=sim.ichor.xCooldown=0;}
+  if(this.course==='sidekick'&&!this.complete){sim.sidekick.mineCooldown=0;if(!sim.sidekick.active&&!sim.sidekick.summon)sim.sidekick.xCooldown=0;}
+  if(this.course==='sightline'&&!this.complete&&sim.sightline&&!sim.sightline.special)sim.sightline.xCooldown=0;
+  if (this.course === 'omen' && !this.complete && sim.omen) {
+   // Only the range lends back cooldowns. Keep live curses and their flight
+   // clocks intact so misses and late presses teach the real timing.
+   if (!sim.omen.primed && !sim.omen.marks.some(m => m.kind === 'e') && !sim.omenBolts.some(b => b.kind === 'e')) sim.omen.primeCooldown = 0;
+   if (sim.omen.volleyLeft <= 0) sim.omen.volleyCooldown = 0;
+  }
   return before !== this.index * 100 + this.count;
  }
 
@@ -166,6 +204,27 @@ export class Tutorial {
   if (this.complete || this.ready) return false;
   const id = this.lesson.id, hit = e.type === 'hit' || e.type === 'kill';
   switch (id) {
+   case 'icut':case 'iblood': return (e.type==='hit'||e.type==='kill')&&e.damageType?.startsWith('ichor')&&this.credit();
+   case 'iguard':return e.type==='ichorGuardStart'&&this.credit();
+   case 'iwave':return e.type==='ichorWave'&&this.credit();
+   case 'ifrenzy':return e.type==='ichorFrenzyStart'&&this.credit();
+   case 'kfire': return e.type==='sidekickShot'&&this.credit();
+   case 'kreload': return e.type==='sidekickReloaded'&&this.credit();
+   case 'kmine': return e.type==='sidekickMine'&&this.credit();
+   case 'krush': return e.type==='sidekickShot'&&e.dual&&this.credit();
+   case 'spistol': return e.type==='sightlineShot'&&e.pistol&&this.credit();
+   case 'spreload': return e.type==='sightlineReloaded'&&!e.rifle&&this.credit();
+   case 'sstance': return e.type==='sightlineStance'&&e.crouched&&this.credit();
+   case 'sscope': return e.type==='sightlineShot'&&!e.pistol&&sim.sightline.aiming&&this.credit();
+   case 'srreload': return e.type==='sightlineReloaded'&&e.rifle&&this.credit();
+   case 'sload': return e.type==='sightlineReloaded'&&e.special&&this.credit();
+   case 'sbreach': return e.type==='sightlineShot'&&e.special&&this.credit();
+   case 'ofire': return e.type==='omenShot'&&this.credit();
+   case 'oreload': return e.type==='omenReloaded'&&this.credit();
+   case 'ocurse': return e.type==='omenMark'&&e.kind==='e'&&this.credit();
+   case 'orupture': return e.type==='omenBurst'&&e.kind==='e'&&this.credit();
+   case 'olate': return e.type==='omenBurst'&&e.kind==='e'&&e.power>OMEN.blastDamage/OMEN.lateDamage&&this.credit();
+   case 'ocovenant': return e.type==='omenBurst'&&e.kind==='x'&&this.credit();
    case 'dash': return e.type === 'propBreak' && e.dashed && isCrate(e.id) && this.credit();
    case 'shoot': return hit && e.volley !== undefined && this.credit(e.volley);
    case 'map': return e.type === 'mapOpened' && this.credit();

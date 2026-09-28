@@ -44,7 +44,7 @@ test('Hollow Wick is lit as an overcast dusk from the palette, Deadwater as befo
  assert.ok(look.sunOffset.y / Math.hypot(look.sunOffset.x, look.sunOffset.z) < .4, 'a low sun');
  assert.ok(look.sunOffset.x < 0 && look.sunOffset.z > 0 && -look.sunOffset.x > look.sunOffset.z, 'from the west-south-west');
  assert.ok(look.sunIntensity < BASE_LOOK.sunIntensity, 'a weak sun');
- assert.equal(look.haze, '#9c9892');
+ assert.equal(look.haze, '#8b8782'); // (v0.990a: darker with the stronger dusk; was #9c9892)
  assert.ok(look.fogNear < 40 && look.fogFar > 100, 'the haze starts inside the view (camera about 31 m away)');
  // Unlit effects keep their colours: the default exposure.
  assert.equal(look.exposure, BASE_LOOK.exposure);
@@ -57,10 +57,13 @@ test('Hollow Wick is lit as an overcast dusk from the palette, Deadwater as befo
  assert.equal(mapLook(maps.deadwater).sun, warmColor(BASE_LOOK.sun, maps.deadwater.look.warmth), 'no glow on Deadwater');
 });
 
-test('the dusk comes from the light, not darker ground: the ground is as bright on screen as before', () => {
+// (v0.990a, owner: a stronger dusk. The ground was kept as bright as the old
+// daylight grey, 92-115%; it is now dimmed on purpose to 65-80% of it, by the
+// light alone, with the contrast floors below still met.)
+test('the dusk comes from the light, not darker ground: the ground dimmed to about three quarters of the old daylight', () => {
  const mean = l => texels.reduce((sum, t) => sum + C.luminance(C.litOnScreen(t.linear, l, t.sun)), 0) / texels.length;
  const now = mean(look), before = mean(BEFORE);
- assert.ok(now > before * .92 && now < before * 1.15, `ground luminance ${now.toFixed(4)} vs ${before.toFixed(4)}`);
+ assert.ok(now > before * .65 && now < before * .8, `ground luminance ${now.toFixed(4)} vs ${before.toFixed(4)}`);
  // Shade is soft (overcast): shaded ground keeps most of the light.
  const g = C.groundLight(look, 0), s = C.groundLight(look, 1);
  assert.ok(g[1] / s[1] > .6, 'shade keeps over 60% of the light');

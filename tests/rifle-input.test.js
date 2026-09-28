@@ -3,6 +3,10 @@ import { gameCode } from '../src/config/keybinds.js';
 import assert from 'node:assert/strict';
 import {bindRifleMouse,weaponAiming} from '../src/weapons/rifle-input.js';
 
+test('Omen has no Shift or right-button aim mode',()=>{
+ for(const pointer of [false,true])for(const keys of [new Set(),new Set(['ShiftLeft'])])assert.equal(weaponAiming('omen',pointer,keys),false);
+});
+
 test('Shift aims in on every weapon, and releases independently of the pointer',()=>{
  const keys=new Set(['ShiftLeft']);
  for(const weapon of ['rifle','shotgun','static'])

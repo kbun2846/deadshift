@@ -111,8 +111,8 @@ export function buildRobotBody(view, body, ally = false, skin = ROBOT_SKINS[0], 
  v.cylinder(.05, 1.26, .02, .012, .16, c.iron, body, 4).userData.deathPart = 'head';
  // Shoulder and the player's gun arm, with a cuff.
  v.box(-.29, .78, 0, .1, .1, .16, k.dark, body);
- v.box(.27, .69, -.2, .16, .16, .38, k.body, body);
- v.box(.27, .69, -.03, .18, .18, .06, k.trim, body);
+ v.box(.27, .69, -.2, .16, .16, .38, k.body, body).userData.deathPart='arm';
+ v.box(.27, .69, -.03, .18, .18, .06, k.trim, body).userData.deathPart='arm';
  // An ally's pennant, flying off the antenna.
  if (ally) v.box(.14, 1.3, .02, .16, .09, .02, ALLY_COLOURS.pennant, body).userData.deathPart = 'head';
  v.batch(body);

@@ -5,9 +5,16 @@ import * as gameplay from '../src/config/gameplay.js';
 import {WEAPON_UI} from '../src/ui/weapon-hud.js';
 import {COURSE_NAMES} from '../src/tutorial.js';
 
+test('Omen controls and touch layout offer no aim-in action',()=>{
+ const omen=weapon('omen');assert.equal(omen.touchButtons.aim,undefined);
+ assert.ok(!omen.controls.some(([name])=>name==='Aim in'));
+ assert.ok(!omen.hints.keyboard.some(([,name])=>name==='AIM'));
+ assert.ok(!omen.hints.touch.some(([name])=>name==='AIM'));
+});
+
 test('every item has a unique id, and weapons and skins stay separate',()=>{
  assert.equal(new Set(ITEMS.map(i=>i.id)).size,ITEMS.length);
- assert.deepEqual(WEAPONS.map(w=>w.id),['static','rifle','shotgun']);
+ assert.deepEqual(WEAPONS.map(w=>w.id),['static','rifle','shotgun','omen','sightline','sidekick','ichor']);
  assert.ok(WEAPONS.every(w=>w.kind===ITEM_KIND.WEAPON&&gameplay[w.stats]),'each weapon points at its tuning block');
  assert.ok(SKINS.every(s=>s.kind===ITEM_KIND.SKIN&&weapon(s.appliesTo)&&!('stats' in s)),'skins are visual only');
  assert.equal(item('nope'),null);assert.equal(weapon('static.default'),null);

@@ -137,12 +137,12 @@ test('practice targets: 6, 10, 14 and 20 m from the green, one 2.5 m above and o
  for (const t of map.targets) { assert.ok(ground.bankDistance(t.x, t.z) >= 0, t.id + ' dry'); assert.equal(ground.deckAt(t.x, t.z), -1); }
 });
 
-test('Hollow Wick is playable in every mode but offered only where it is loaded', () => {
+test('Hollow Wick is playable in every mode and offered from every map (released in v0.990a)', () => {
  assert.ok(supportsMode(map, 'multiplayer') && supportsMode(map, 'practice'));
- assert.ok(!menuMaps().includes(map) && workMaps().includes(map));
- assert.ok(!multiplayerMaps().includes(map), 'not in the lobby list from another map');
+ assert.ok(menuMaps().includes(map) && !workMaps().includes(map));
+ assert.ok(multiplayerMaps().includes(map), 'in the lobby list from another map');
  assert.ok(multiplayerMaps(map).includes(map) && multiplayerMaps(maps.deadwater).every(m => m.menu));
- assert.ok(!soloMaps(maps.deadwater).includes(map) && soloMaps(map).includes(map));
+ assert.ok(soloMaps(maps.deadwater).includes(map) && soloMaps(map).includes(map));
  assert.equal(multiplayerMaps()[0].id, 'deadwater', 'the default multiplayer map is unchanged');
 });
 

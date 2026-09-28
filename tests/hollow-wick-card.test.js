@@ -1,5 +1,5 @@
 // s3-look: Hollow Wick's map card (maps.js `card`, maps/hollow-wick-card.js):
-// a name, one short line and a picture, and still dev-only.
+// a name, one short line and a picture; in the menus since v0.990a.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, statSync, readFileSync } from 'node:fs';
@@ -27,15 +27,17 @@ test('Hollow Wick\'s card picture ships with the game', { todo: !existsSync(pict
  assert.match(readFileSync(new URL('../src/ui/map-cards.js', import.meta.url), 'utf8'), /import\.meta\.glob\('\.\.\/assets\/thumbnails\/\*\.webp'/);
 });
 
-test('the map picker shows the line; the map stays dev-only', () => {
+test('the map picker shows the line; the map is in the menus (v0.990a)', () => {
  const html = mapGridHTML({ label: 'map', maps: [maps.deadwater, hw], pressed: 'deadwater' });
  assert.ok(html.includes(`title="Hollow Wick: ${hw.card.line}"`));
  assert.ok(html.includes(`title="${maps.deadwater.name}" >`), "Deadwater's tile as before");
- // Dev only (Developer tools > World > Map in progress) until the owner says otherwise.
- assert.equal(hw.menu, false);
- assert.ok(!menuMaps().includes(hw));
- assert.ok(workMaps().includes(hw));
- assert.ok(!soloMaps().includes(hw) && soloMaps(hw).includes(hw), 'offered only once it is loaded');
- assert.ok(!multiplayerMaps().includes(hw));
+ // Released (owner, v0.990a): the Practice map page, SOLO and the lobby,
+ // from any map; no longer under Developer tools > World > Map in progress.
+ assert.equal(hw.menu, true);
+ assert.deepEqual(menuMaps().map(m => m.id), ['deadwater', 'hollow-wick']);
+ assert.ok(!workMaps().includes(hw));
+ assert.ok(soloMaps().includes(hw) && soloMaps(maps.deadwater).includes(hw), 'offered from any map');
+ assert.ok(multiplayerMaps().includes(hw) && multiplayerMaps()[0] === maps.deadwater, 'in the lobby list; Deadwater still the default');
+ assert.ok(hw.card.thumbnail.lift >= 1 && hw.card.thumbnail.lift <= 1.5, "the card's lift is gentle");
  assert.equal(maps.deadwater.card, undefined);
 });

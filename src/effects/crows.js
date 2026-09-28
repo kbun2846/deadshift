@@ -58,7 +58,7 @@ export class Crows {
     this.wings = new THREE.InstancedMesh(crowWingGeometry(), new THREE.MeshLambertMaterial({ color: CROW_LOOK.wing, flatShading: true, side: THREE.DoubleSide }), max * 2);
     for (const m of [this.bodies, this.wings]) {
       m.name = 'crows'; m.frustumCulled = false; m.castShadow = m.receiveShadow = false;
-      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); view.scene.add(m);
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); view.scene.add(m); view.interiorVisibility?.apply(m);
     }
     this.m = new THREE.Matrix4(); this.w = new THREE.Matrix4(); this.q = new THREE.Quaternion(); this.e = new THREE.Euler(0, 0, 0, 'YXZ');
     this.p = new THREE.Vector3(); this.s = new THREE.Vector3(1, 1, 1); this.one = new THREE.Vector3(1, 1, 1).multiplyScalar(CROW_LOOK.scale);

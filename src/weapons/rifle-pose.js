@@ -5,25 +5,35 @@ import { GRENADE } from './grenade.js';
 const UP=new THREE.Vector3(0,1,0);
 const ease=t=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
 export class RiflePose{
- constructor(player){
+ constructor(player,{sleeveColor='#49716b',skinColor='#d6b58a'}={}){
   this.body=player.userData.body;this.gun=player.userData.gun;this.staticArm=player.userData.staticArm;
   this.root=new THREE.Group();this.body.add(this.root);
-  const sleeve=new THREE.MeshLambertMaterial({color:'#49716b'}),skin=new THREE.MeshLambertMaterial({color:'#d6b58a'});
+  const sleeve=new THREE.MeshLambertMaterial({color:sleeveColor}),skin=new THREE.MeshLambertMaterial({color:skinColor});
   const bone=new THREE.BoxGeometry(1,1,1),palm=new THREE.BoxGeometry(.115,.10,.14);
   this.arms=[1,-1].map(side=>{
    const upper=new THREE.Mesh(bone,sleeve),lower=new THREE.Mesh(bone,sleeve),hand=new THREE.Group();
    hand.add(new THREE.Mesh(palm,skin));this.root.add(upper,lower,hand);
    return {side,upper,lower,hand,shoulder:new THREE.Vector3(),elbow:new THREE.Vector3(),target:new THREE.Vector3()};
   });
-  this.offHand=this.arms[1].hand;this.delta=new THREE.Vector3();this.grip=new THREE.Vector3();
+  this.offHand=this.arms[1].hand;this.delta=new THREE.Vector3();this.grip=new THREE.Vector3();this.sidekickGrip=new THREE.Vector3();this.armAxis=new THREE.Vector3();this.armBend=new THREE.Vector3();
   this.throwBack=new THREE.Vector3(-.37,1.02,.12);this.throwRelease=new THREE.Vector3(-.28,1.04,-.53);this.throwFollow=new THREE.Vector3(-.28,.60,-.62);
  }
  segment(mesh,a,b,width){
   this.delta.subVectors(b,a);mesh.position.copy(a).add(b).multiplyScalar(.5);
   mesh.scale.set(width,this.delta.length(),width*.9);mesh.quaternion.setFromUnitVectors(UP,this.delta.normalize());
  }
+ solveSightlineArm(arm,katana=false){
+  // Fixed limb lengths: a distant draw/reload target must never stretch a sleeve.
+  const upper=.33,lower=.35,axis=this.armAxis.subVectors(arm.target,arm.shoulder),distance=Math.max(.025,Math.min(upper+lower-.005,axis.length()));
+  axis.normalize();arm.target.copy(arm.shoulder).addScaledVector(axis,distance);
+  const along=(upper*upper-lower*lower+distance*distance)/(2*distance),height=Math.sqrt(Math.max(0,upper*upper-along*along));
+  const pole=this.armBend.set(katana?arm.side*.47:arm.side<0?-.15:.65,.48,katana?-.12:arm.side<0?-.70:-.25).sub(arm.shoulder);
+  pole.addScaledVector(axis,-pole.dot(axis)).normalize();
+  arm.elbow.copy(arm.shoulder).addScaledVector(axis,along).addScaledVector(pole,height);
+ }
  update(sim,focus,settle,recoil){
-  const active=sim.weapon==='rifle'||sim.weapon==='shotgun';this.root.visible=active;if(this.staticArm)this.staticArm.visible=!active;
+  const sightline=sim.weapon==='sightline',sidekick=sim.weapon==='sidekick';
+  const active=sim.weapon==='ichor'||sim.weapon==='rifle'||sim.weapon==='shotgun'||sightline||sidekick;this.root.visible=active;if(this.staticArm)this.staticArm.visible=!active;
   if(!active)return;
   // Plant the torso, dip the head toward the sights, and damp the running sway.
   this.body.position.y-=focus*.035+settle*.012;
@@ -40,6 +50,38 @@ export class RiflePose{
     if(off){arm.elbow.set(-.19,.51,.02);arm.target.set(.28,.64,-.18+recoil*.08);}
     else{arm.elbow.set(.30,.65,-.21+recoil*.06);}
    }
+   if(sightline){
+    const s=sim.sightline,pack=this.gun.getObjectByName('sightline-loadout'),pose=pack?.userData.sightlinePose,h=pose?.drawBlend||0,rifle=pack?.getObjectByName('sightline-rifle'),pistol=pack?.getObjectByName('sightline-pistol');
+    if(rifle&&pistol){
+     const weapon=rifle;rifle.updateMatrix();pistol.updateMatrix();
+     {
+      this.grip.set(off?-.01:0,off?-.065:-.12,off?.04:.10);
+      if(s.rifleReload>0&&weapon===rifle){const phase=1-s.rifleReload/4.2;
+       if(off&&phase>.20&&phase<.75)this.grip.copy(rifle.getObjectByName('sightline-loading-round').position);
+       else if(!off&&(phase<.20||phase>.75))this.grip.set(.18,.01,.06+rifle.getObjectByName('sightline-bolt').position.z);
+      }
+      arm.target.copy(this.grip.applyMatrix4(weapon.matrix).applyMatrix4(this.gun.matrix));
+      this.sidekickGrip.set(0,-.12,.10);
+      if(s.pistolReload>0&&off)this.sidekickGrip.set(0,-.24-.23*Math.sin((1-s.pistolReload/2)*Math.PI),.08);
+      this.sidekickGrip.applyMatrix4(pistol.matrix).applyMatrix4(this.gun.matrix);
+      if(off&&!s.pistolReload)this.sidekickGrip.set(-.34,.55,-.20);
+      arm.target.lerpVectors(this.sidekickGrip,arm.target,ease((h-(off?.78:.17))/(off?.18:.22)));
+     }
+     if(off)arm.shoulder.set(-.22,.78,-.09);
+     this.solveSightlineArm(arm);
+    }
+   }
+   if(sidekick){
+    const pack=this.gun.getObjectByName('sidekick-loadout'),held=pack?.getObjectByName(off?'sidekick-off':'sidekick-main');
+    if(held){held.updateMatrix();arm.target.set(0,-.12,.10).applyMatrix4(held.matrix).applyMatrix4(this.gun.matrix);
+     if(off){const reach=pack.userData.sidekickPose?.reach||0;this.sidekickGrip.set(-.30,.52,-.06);arm.target.lerpVectors(this.sidekickGrip,arm.target,reach);}
+     this.solveSightlineArm(arm);
+    }
+   }
+   if(sim.weapon==='ichor'){
+    const pack=this.gun.getObjectByName('ichor-loadout'),blade=pack?.getObjectByName('ichor-blade');
+    if(blade){blade.updateMatrix();arm.target.set(0,0,off?.19:.025).applyMatrix4(blade.matrix).applyMatrix4(this.gun.matrix);this.solveSightlineArm(arm,true);}
+   }
    const age=sim.time-sim.grenadeThrowTime;
    if(off&&sim.weapon==='shotgun'&&sim.shotgun.reload>0){const phase=1-sim.shotgun.reload/SHOTGUN.reload;arm.target.set(-.1,.52+Math.sin(phase*Math.PI*4)*.07,-.10);}
    if(off&&sim.weapon==='rifle'&&age>=0&&age<.64){
@@ -55,6 +97,7 @@ export class RiflePose{
    this.segment(arm.lower,arm.elbow,arm.target,.13);
    arm.hand.position.copy(arm.target);arm.hand.quaternion.copy(this.gun.quaternion);
    arm.hand.rotation.z=off?-.3-focus*.12:.12;
+   if(sim.weapon==='ichor'){const blade=this.gun.getObjectByName('ichor-blade');if(blade){arm.hand.quaternion.copy(this.gun.quaternion).multiply(blade.quaternion);arm.hand.rotateZ(off?-.35:.35);}}
   }
  }
 }

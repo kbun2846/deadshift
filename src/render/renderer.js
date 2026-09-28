@@ -1,3 +1,9 @@
+import { ScopeShading } from './scope-shading.js';
+import { IchorView } from '../weapons/ichor-view.js';
+import { SidekickView } from '../weapons/sidekick-view.js';
+import { SightlineView } from '../weapons/sightline-view.js';
+import { scopeActive, scopeFacing, inSightCone, sightlineCamera, SIGHTLINE } from '../weapons/sightline.js';
+import { OmenView } from '../weapons/omen-view.js';
 import {ShotgunView} from '../weapons/shotgun-view.js';
 import * as THREE from 'three';
 
@@ -91,6 +97,7 @@ import { WaterDrips } from '../effects/water-drips.js';
 import { WADE } from '../config/gameplay.js';
 import { WarmUp } from './warm-up.js';
 import { Vision } from './vision.js';
+import { roomShowsEntity } from './vision-polygons.js';
 import { graveBreak } from '../world/graveyard.js'; // s2-graveyard
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -122,7 +129,7 @@ const BOX_TEMPLATES = new Map();
 export class WorldView {
   constructor(canvas, map, qualityName='balanced') {
     this.bufferSize = new THREE.Vector2(); this.map = map; this.canvas = canvas; this.materials = new Map(); this.materialColors = new WeakMap(); this.initialQuality = qualityName;
-    this.interiorVisibility = new InteriorVisibility();
+    this.interiorVisibility = new InteriorVisibility();this.scopeShading=new ScopeShading();
     this.groundMaterials = new Set(); this.textureCache = new Map(); this.quality = GRAPHICS[qualityName] || GRAPHICS.balanced;
     // Multisampling on the screen itself only for tiers that draw straight to
     // it; Performance and Balanced draw off-screen (crisp-output.js), where
@@ -376,7 +383,7 @@ export class WorldView {
     // The weapon views build their meshes (the rifle's smoke, the shotgun's
     // pellets, the grenade's range marker) when made, so they are made here,
     // before the warm-up, rather than on the first frame of play after it.
-    this.rifleView = new RifleView(this); this.shotgunView = new ShotgunView(this); this.grenadeView = new GrenadeView(this);
+    this.rifleView = new RifleView(this); this.shotgunView = new ShotgunView(this); this.grenadeView = new GrenadeView(this); this.omenView = new OmenView(this); this.sightlineView=new SightlineView(this);this.sidekickView=new SidekickView(this);this.ichorView=new IchorView(this);
     this.orderGround();
     // The warm-up runs from main.js (warmProgramsParallel, awaited while the
     // loading screen shows); `programsWarmed` is set there.
@@ -885,18 +892,20 @@ export class WorldView {
 
   aim(clientX, clientY, player) {
     const rect = this.canvasRect();
+    const lift=this.lastSim?.weapon==='sightline'&&this.lastSim.sightline.crouched?SIGHTLINE.roundHeight:.7;
     this.aimNDC ||= new THREE.Vector2();
     this.raycaster.setFromCamera(this.aimNDC.set((clientX - rect.left) / rect.width * 2 - 1, -(clientY - rect.top) / rect.height * 2 + 1), this.camera);
     if (hilly(this)) {
-      // Hills: where the ray meets the ground (lifted by the same .7 as the
+      // Hills: where the ray meets the ground (lifted by the weapon aim height as the
       // flat plane), marched in quarter metres across the ground's height
       // band and then halved down to a centimetre.
-      if (this.aimOnGround(this.raycaster.ray, this.aimHit)) {
+      if (this.aimOnGround(this.raycaster.ray, this.aimHit,lift)) {
         this.cursorWorld.copy(this.aimHit);
         return { aimX: this.aimHit.x - player.x, aimZ: this.aimHit.z - player.z, aimPointX: this.aimHit.x, aimPointZ: this.aimHit.z };
       }
       return { aimX: player.aimX, aimZ: player.aimZ };
     }
+    this.aimPlane.constant=-lift;
     if (this.raycaster.ray.intersectPlane(this.aimPlane, this.aimHit)) {
       this.cursorWorld.copy(this.aimHit);
       return { aimX: this.aimHit.x - player.x, aimZ: this.aimHit.z - player.z, aimPointX: this.aimHit.x, aimPointZ: this.aimHit.z };
@@ -904,8 +913,8 @@ export class WorldView {
     return { aimX: player.aimX, aimZ: player.aimZ };
   }
 
-  aimOnGround(ray, out) {
-    const o = ray.origin, d = ray.direction, g = this.ground, lift = .7;
+  aimOnGround(ray, out, lift=.7) {
+    const o = ray.origin, d = ray.direction, g = this.ground;
     if (d.y > -1e-4) return false;
     const above = (t) => o.y + d.y * t - (g.heightAt(o.x + d.x * t, o.z + d.z * t) + lift);
     // From where the ray drops to the ground's highest point to its lowest.
@@ -1028,6 +1037,7 @@ export class WorldView {
   // Sparks off a robot (bots/): an electric crackle at the hit, steel chips,
   // and a flash of the effects light; bigger on a kill.
   robotHit(e) {
+    if(e.damageType==='omenCurse'){this.omenView.event({...e,type:'omenTick'});return;}
     const kill = e.type === 'kill';
     this.fx.electric(e.x, .8, e.z, kill ? 1.4 : .7, { ring: kill });
     this.burst(e.x, e.z, kill ? 18 : 5, 'hit', ROBOT_CHIP);
@@ -1047,6 +1057,10 @@ export class WorldView {
   // Orb ids are made unique per player (projectiles.js), and so are the beam
   // ids of their launches and trails.
   netEvent(e, shooter, slot = 0) {
+    if(e.type.startsWith('ichor')){this.ichorView.event(e);return;}
+    if(e.type.startsWith('sidekick')){this.sidekickView.event({...e,remote:true});return;}
+    if(e.type.startsWith('sightline')){this.sightlineView.event({...e,remote:true});return;}
+    if(e.type.startsWith('omen')){this.omenView.event({...e,remote:true});return;}
     if (!shooter) shooter = { x: e.x ?? 0, z: e.z ?? 0, aimX: 1, aimZ: 0 };
     const base = (slot + 1) * 1e6;
     // Their stain, one per player (the slot), like yours below.
@@ -1106,6 +1120,13 @@ export class WorldView {
   }
 
   event(e) {
+    if(e.type.startsWith('ichor')){this.ichorView.event(e);return;}
+    if(e.type.startsWith('sidekick')){this.sidekickView.event(e);return;}
+    if(e.type.startsWith('sightline')){this.sightlineView.event(e);return;}
+    if(e.type.startsWith('omen')){this.omenView.event(e);return;}
+    // Curse damage has its own crimson pulse, never Static's blue aftershock
+    // or the robots' generic electric spit. Death/body events still run normally.
+    if(e.damageType==='omenCurse'&&['hit','kill','playerHit'].includes(e.type)){this.omenView.event({...e,type:'omenTick'});return;}
     // The stream (effects/water-effects.js): a shot or blast into the water splashes (in place of the dust), blood spreads on it.
     if (this.waterFX?.event(e)) return;
     // Your body and your stain from the last death stay; the ones before go
@@ -1231,7 +1252,8 @@ export class WorldView {
       if (beam) { beam.endX = e.x; beam.endZ = e.z; beam.finished = true; }
     }
     if (e.type === 'hit' || e.type === 'kill') {
-      if (e.targetKind === 'dummy') {
+      if(e.damageType?.startsWith('ichor')&&['player','robot'].includes(e.targetKind)){this.ichorView.hit(e);}
+      else if (e.targetKind === 'dummy') {
         this.burst(e.x, e.z, e.type === 'kill' ? 30 : 5, 'dust');
         if (e.type === 'kill') this.breakProp({ ...e, propType: 'hay', scale: .65 });
         else this.burst(e.x, e.z, 4, 'hit');
@@ -1256,7 +1278,7 @@ export class WorldView {
   }
 
   // Off with the blood: a respawn, a restart.
-  cleanPlayer() { this.wading?.reset(); this.player.userData.bloodStains?.set(0); this.gunStains?.set(0); }
+  cleanPlayer() { this.ichorView?.drench?.clear(); this.wading?.reset(); this.player.userData.bloodStains?.set(0); this.gunStains?.set(0); }
 
   // Blood on the ground that can be walked through: death stains (not wall
   // splats or fading ones), bodies and an explosion's pool.
@@ -1265,6 +1287,7 @@ export class WorldView {
     for (const splat of this.blood?.splats || []) if (!splat.leaving && !splat.wall) out.push({ x: splat.mesh.position.x, z: splat.mesh.position.z, r: splat.mesh.userData.size * .28 });
     const d = this.deathView; if (d?.event && (d.corpse || d.pool)) out.push({ x: d.event.x, z: d.event.z, r: d.pool ? 1 : .6 });
     for (const entry of this.remoteCorpses?.bodies.values() || []) out.push({ x: entry.x, z: entry.z, r: .6 });
+    for(const t of this.ichorView?.pools||[])out.push(t);
     return out;
   }
 
@@ -1278,6 +1301,7 @@ export class WorldView {
     this.bleeds.set(key, { streak, at: now });
     let amount = Math.min(BLEED.max, 1 + streak * BLEED.step) * Math.max(.5, Math.min(1.6, (e.damage || 25) / 35));
     if (e.blast) amount *= BLEED.blast;
+    if(e.damageType?.startsWith('ichor'))amount*=2.5+(e.bloodLevel||0)*5.5;
     if (same) amount *= .3;
     const dx = e.directionX || 0, dz = e.directionZ || 0, length = Math.hypot(dx, dz) || 1;
     const count = Math.round((2 + 4 * amount) * this.quality.effects), colour = this.bloodColour ||= new THREE.Color('#8a1019');
@@ -1335,6 +1359,7 @@ export class WorldView {
   }
 
   explosion(e) {
+    if(e.damageType==='sightlineBlast')this.sightlineView.breachBurst(e);
     this.surfaceMarks.enqueue('explosion',e);
     this.leafFX?.blast(e); // s3-leaves: a burst of leaves out of the woods' litter
     // Orb blasts grow one step per landed orb (orbBlastScale); grenades stay full size.
@@ -1549,6 +1574,7 @@ export class WorldView {
     else {
       if (this.wasDead) { this.wasDead = false; this.cleanPlayer(); }
       if (active && !ghost) {
+        this.wading.soakIchor(sim.weapon==='ichor'?sim.ichor.blood:0,dt);
         const level = this.wading.update(renderX, renderZ, p.vx, p.vz, dt, this.bloodSources, this.drops ||= new BloodDrops(this), this.map);
         this.player.userData.bloodStains.set(level);
         // The gun in the hand gets it too (rebuilt for each weapon held).
@@ -1576,6 +1602,7 @@ export class WorldView {
     this.rifleView.update(sim,fdt);
     if(!this.shotgunView)this.shotgunView=new ShotgunView(this);
     this.shotgunView.update(sim,fdt);
+    this.omenView.update(sim,fdt); this.sightlineView.update(sim,fdt);this.sidekickView.update(sim,fdt);this.ichorView.update(sim,fdt);
     this.scatterView?.update(sim,fdt);
     this.orbBeams?.update(fdt);
     if(!this.grenadeView)this.grenadeView=new GrenadeView(this);
@@ -1590,19 +1617,24 @@ export class WorldView {
     // (An open shed, the forge, the horse sheds, the woodshed, is a room like
     // any other for you inside it: the camera comes in and the shroud greys
     // what its walls hide (owner, stage 5 review; the stage 4 audit had them
-    // outdoors). To everyone else it stays outdoors: its roof opens over
-    // whoever is in it (world/roof-fade.js).)
-    const cameraRoom = sim.interior, blend = cut ? 1 : 1 - Math.exp(-cameraRate * dt);
+    // outdoors). Occupants of any other room, including sheds, stay concealed;
+    // only your own entry fades the roof (world/roof-fade.js).
+    const scoped=scopeActive(sim),scopeAim=scopeFacing(p),scopeFrame=scoped?sightlineCamera(this.camera.aspect,scopeAim.x,scopeAim.z,sim.standY()):null;
+    const cameraRoom = scoped?null:sim.interior, blend = cut ? 1 : 1 - Math.exp(-cameraRate * dt);
     const deathCamera=this.deathView?.active?this.deathView.cameraFrame(this.camera.aspect):null;
     // Online weapon pick: straight down on the pick spot from high above
     // (setPickView), before the death or room camera.
     const pick = this.pickCamera;
     if (pick) { this.focus.x = pick.x; this.focus.z = pick.z; this.cameraHeight = pick.height; }
     else {
-    this.focus.x = deathCamera?deathCamera.x:lerp(this.focus.x, cameraRoom && !cameraRoom.followCamera ? cameraRoom.x : renderX, blend);
-    this.focus.z = deathCamera?deathCamera.z:lerp(this.focus.z, cameraRoom && !cameraRoom.followCamera ? cameraRoom.z : renderZ, blend);
-    this.cameraHeight = deathCamera?deathCamera.height:lerp(this.cameraHeight, cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT, cut ? 1 : 1 - Math.exp(-5.7 * dt));
+    this.focus.x = deathCamera?deathCamera.x:lerp(this.focus.x, cameraRoom && !cameraRoom.followCamera ? cameraRoom.x : renderX+(scoped?scopeAim.x*scopeFrame.lead:0), blend);
+    this.focus.z = deathCamera?deathCamera.z:lerp(this.focus.z, cameraRoom && !cameraRoom.followCamera ? cameraRoom.z : renderZ+(scoped?scopeAim.z*scopeFrame.lead:0), blend);
+    this.cameraHeight = deathCamera?deathCamera.height:lerp(this.cameraHeight, cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT*(scoped?scopeFrame.scale:1), cut ? 1 : 1 - Math.exp(-5.7 * dt));
     }
+    // Zoom height must not count as travel through the map's ground haze.
+    // Preserve horizontal fog while removing the extra vertical camera distance.
+    const scopeFogLift=sim.weapon==='sightline'?Math.max(0,this.cameraHeight-OUTDOOR_CAMERA_HEIGHT)*Math.hypot(1,CAMERA_TILT):0;
+    this.scene.fog.near=this.look.fogNear+scopeFogLift;this.scene.fog.far=this.look.fogFar+scopeFogLift;
     // Hills: the camera rides the ground under what it follows, smoothed
     // (about 4/s) so it glides over bumps instead of bobbing on them. Over a
     // deck it rides the ground under it unless you are up on that deck (the
@@ -1610,7 +1642,7 @@ export class WorldView {
     // it stays down with you).
     if (hilly(this)) {
       const g = this.ground, underDeck = !pick && !deathCamera && g.deckAt(this.focus.x, this.focus.z) >= 0 && (this.playerUnder || g.deckAt(renderX, renderZ) < 0);
-      const want = cameraRoom && !cameraRoom.followCamera && !pick && !deathCamera ? cameraRoom.baseY || 0 : underDeck ? g.drawnHeightAt(this.focus.x, this.focus.z) : this.gy(this.focus.x, this.focus.z);
+      const want = scoped?sim.standY():cameraRoom && !cameraRoom.followCamera && !pick && !deathCamera ? cameraRoom.baseY || 0 : underDeck ? g.drawnHeightAt(this.focus.x, this.focus.z) : this.gy(this.focus.x, this.focus.z);
       this.focus.y = cut ? want : lerp(this.focus.y, want, 1 - Math.exp(-4 * dt));
     }
     this.kick.multiplyScalar(Math.exp(-15 * dt)); this.shake *= Math.exp(-this.shakeDecay * dt);
@@ -1822,8 +1854,9 @@ export class WorldView {
     // room, never who is in it (world/roof-fade.js shownInside). One function,
     // made once; no roofs of that kind, nothing changes.
     const rooms = this.roofSections?.roofs.length ? (this.roomGuard ||= p => shownInside(this, this.lastSim, p)) : null;
-    const ground = this.ground, sees = !hilly(this) ? (rooms && indoors ? p => rooms(p) && indoors(p) : rooms || indoors) : p => (!indoors || indoors(p)) && (!rooms || rooms(p)) &&
+    const ground = this.ground, worldSees = !hilly(this) ? (rooms && indoors ? p => rooms(p) && indoors(p) : rooms || indoors) : p => (!indoors || indoors(p)) && (!rooms || rooms(p)) &&
       (p.ally || (this.teamRing && p.ring === this.teamRing) || ground.sightClear(sim.player.x, sim.player.z, p.x, p.z, sim.player.below ? ground.drawnHeightAt(sim.player.x, sim.player.z) : undefined, p.below ? ground.drawnHeightAt(p.x, p.z) : undefined));
+    const scopedVision=scopeActive(sim),sees=other=>roomShowsEntity(sim,other)&&(!worldSees||worldSees(other))&&(!scopedVision||inSightCone(sim.player,other.x,other.z));
     if (this.remotePlayers?.length || this.remote) (this.remote ||= new RemotePlayers(this)).update(this.remotePlayers || [], elapsed, fdt, this.bloodSources || [], sees);
     if (this.blobShadows?.enabled) {
       const movers = [];
@@ -1902,7 +1935,7 @@ export class WorldView {
     // The see-through patches: who is out there now, and which blended copies draw (roof-fade.js).
     prepareFades(this);
     if (this.lastSim) {
-      this.updateVision(this.lastSim); this.interiorVisibility.update(this.lastSim);
+      this.updateVision(this.lastSim); this.interiorVisibility.update(this.lastSim); this.scopeShading.update(this.lastSim);
       const apply = root => this.interiorVisibility.apply(root);
       // Static buildings/terrain are intentionally excluded and remain visible through gray fog.
       for (const g of this.shots.values()) apply(g);
@@ -1910,7 +1943,10 @@ export class WorldView {
       for (const g of this.electric.arcs.objects) apply(g);
       for (const g of this.electric.pulseParts()) apply(g);
       this.particlePool.forEach(apply); this.rings.forEach(r => apply(r.mesh));
-      for (const mesh of this.fx.meshes) if (mesh.visible) apply(mesh);
+      for (const mesh of [...this.fx.meshes,...this.omenView.meshes,...this.sightlineView.meshes,...this.sidekickView.meshes,...this.ichorView.meshes]) if (mesh.visible) apply(mesh);
+      for(const mesh of [...(this.rifleView?.batches||[]),...[this.shotgunView?.pellets,this.shotgunView?.shellTrails].filter(Boolean)])apply(mesh);
+      for(const flight of this.birds?.flights||[]){apply(flight.group);if(flight.shadow)apply(flight.shadow);}
+      for(const model of this.grenadeView?.items.values()||[])apply(model);
       // Orb beams and blast shells hide indoors like every other effect.
       if (this.orbBeams?.mesh.visible) apply(this.orbBeams.mesh);
       if (this.scatterView?.mesh.visible) apply(this.scatterView.mesh);
@@ -2000,7 +2036,7 @@ export class WorldView {
         // very same step, the same size and shape (blood-wading.js).
         if (!sim.roofId && !this.playerWet) { this.footprints.push({ x: fx, z: fz, angle, age: 0 }); if (this.footprints.length > 160) this.footprints.shift(); }
         const wet = this.wading?.takePrint() || 0;
-        if (wet) (this.drops ||= new BloodDrops(this)).print(fx, fz, angle, wet, this.map);
+        if (wet&&!this.playerWet) { (this.drops ||= new BloodDrops(this)).print(fx, fz, angle, wet, this.map, sim.player.below);if(this.wading.drench>.85)for(let k=0;k<2;k++){const bx=fx+(Math.random()-.5)*.27,bz=fz+(Math.random()-.5)*.27;this.drops.stain(bx,floorY(this,bx,bz,sim.player.below)+.013,bz,.07+Math.random()*.08);} }
       }
     }
     const fade = this.footMesh.geometry.attributes.fade;
@@ -2085,6 +2121,7 @@ export class WorldView {
   // Debris only (online map reset): the world's marks and leftovers, not the
   // camera, the players or anything in flight.
   clearDebris() {
+    this.omenView?.clear();this.sightlineView?.clear();this.sidekickView?.clear();this.ichorView?.clear();
     this.orbBeams?.clear(); this.deathView?.clear(); this.surgeView?.clear(); this.remoteCorpses?.clear(); this.robotWrecks?.clear(); this.robotScrap?.clear(); this.scatterView?.clear(); this.drops?.clear(); this.bleeds?.clear();
     this.blood?.clear?.();
     this.surfaceMarks.clear(); this.cropView.reset();
@@ -2112,7 +2149,7 @@ export class WorldView {
     this.hollowBreaks?.clear(); // s2-breakables
     this.leafFX?.clear(); // s3-leaves
     this.remote?.clear();
-    this.rifleView?.clear();this.shotgunView?.clear();
+    this.rifleView?.clear();this.shotgunView?.clear();this.omenView?.clear();this.sightlineView?.clear();this.sidekickView?.clear();this.ichorView?.clear();
     this.grenadeView?.clear();
     for(const g of this.targets.values()){g.userData.coverHiddenTime=0;g.visible=true;}
     this.cameraHeight = OUTDOOR_CAMERA_HEIGHT;

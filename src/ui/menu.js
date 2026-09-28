@@ -95,7 +95,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  for(const weapon of weapons){
   const card=document.createElement('article');card.className='weapon-card';card.dataset.name=weapon.name;
   const select=document.createElement('button');select.className='weapon-choice';select.setAttribute('aria-label','Select '+weapon.name);
-  const picture=document.createElement('img');picture.alt=weapon.previewAlt;picture.className='weapon-preview';
+  const picture=document.createElement('img');picture.alt=weapon.previewAlt;picture.className='weapon-preview';picture.dataset.weaponArt=weapon.id;
   const title=document.createElement('span');title.className='weapon-name';
   const label=document.createElement('span');label.className='button-label';label.textContent=weapon.name;title.append(label);
   const description=document.createElement('span');description.className='weapon-description';description.textContent=weapon.description;
@@ -176,9 +176,9 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const generalControls=[
   ['Move','WASD / drag anywhere on the left half','On touch the stick appears wherever your thumb lands.'],
   ['Aim','Mouse / arrow keys / swipe on the right half','Movement sets facing when not aiming independently. Arrows and swipes lock onto the target that way; a running player pulls ahead of the lock, and holding an arrow leads them. Tap a spot on the world to fire at it.'],
-  ['Aim in','Hold Shift / right mouse button / AIM','Slows the walk and steadies the cursor on every weapon; Nominal and Ballast also tighten their spread.'],
+  ['Aim in','Hold Shift / right mouse button / AIM','Slows the walk and steadies the cursor on every weapon; Nominal, Ballast and Omen also tighten their spread.'],
   ['Dodge','Q / DODGE','Rolls the way you are moving, or the way you are facing when standing still, and breaks through breakable scenery. Each weapon carries its own number of dodges (see Weapons); they refill after a moment.'],
-  ['Weapon ability','X / the weapon\'s ability button','Static: the hex. Nominal: the nova. Ballast: the blast. See Weapons.'],
+  ['Weapon ability','X / the weapon\'s ability button','Static: the hex. Nominal: the nova. Ballast: the blast. Omen: the covenant. See Weapons.'],
   ['Scores','Tab / SCORES (online)','Hold to see the round\'s scoreboard.'],
   ['Map','M / map button; M or Escape closes'],
   ['Pause / resume','Esc / pause button'],

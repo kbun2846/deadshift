@@ -74,7 +74,7 @@ export const LUMPY = `transformed *= 1.0 + .26 * (fract(sin(dot(position, vec3(1
 
 // `clear` holds the player's position: smoke thins out right around them,
 // so a cloud never sits over the one thing the player has to see.
-function puffMaterial(clear) {
+export function puffMaterial(clear) {
  const material = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false });
  material.onBeforeCompile = shader => {
   shader.uniforms.clearPlayer = clear;

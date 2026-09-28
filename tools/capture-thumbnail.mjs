@@ -54,6 +54,9 @@ const dataUrl = await page.evaluate(() => {
  return view.renderer.domElement.toDataURL('image/png');
 });
 console.log('vulture', JSON.stringify(await page.evaluate(() => window.__vulture)));
+// A card's `lift` (v0.990a): brighter (and a touch more contrast) for the card
+// only, where a dark map reads as a murky square (Hollow Wick's dusk).
+const lift = Number(process.env.LIFT || await page.evaluate(() => { const m = window.__capture.map; return (window.__spot ? 0 : (m.thumbnail || m.card?.thumbnail)?.lift) || 1; }));
 mkdirSync('src/assets/thumbnails', { recursive: true });
 const png = `/tmp/thumbnail-${mapId}.png`;
 writeFileSync(png, Buffer.from(dataUrl.split(',')[1], 'base64'));
@@ -63,7 +66,9 @@ if (process.env.DRY) { console.log('wrote ' + png); process.exit(0); }
 // 920 x 1140 captured (Extreme's 2x); shipped at 690 x 855 (enough for a 3x phone), WebP.
 execFileSync('python3', ['-c', `
 from PIL import Image, ImageFilter
+from PIL import ImageEnhance
 im = Image.open('${png}').convert('RGB').resize((690, 855), Image.LANCZOS)
+if ${lift} != 1: im = ImageEnhance.Contrast(ImageEnhance.Brightness(im).enhance(${lift})).enhance(1 + (${lift} - 1) * .27)
 im = im.filter(ImageFilter.UnsharpMask(radius=1.2, percent=35, threshold=2))
 im.save('src/assets/thumbnails/${mapId}.webp', 'WEBP', quality=82, method=6)
 `]);

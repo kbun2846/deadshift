@@ -144,6 +144,38 @@ test('copy is lowercase and plain, with key names as capital keycaps',()=>{
  assert.ok(COURSES.basics[0].keys.includes('[W] [A] [S] [D]'));
 });
 
+test('Omen teaches six lessons without aim-in and credits late timing rather than a lucky damage roll',()=>{
+ const t=new Tutorial('omen'),sim={omen:{aiming:true}};
+ assert.deepEqual(t.lessons.map(l=>l.id),['ofire','oreload','ocurse','orupture','olate','ocovenant']);
+ const events=[{type:'omenShot',kind:'base'},{type:'omenReloaded'},
+  {type:'omenMark',kind:'e'},{type:'omenBurst',kind:'e',power:135/171},
+  {type:'omenBurst',kind:'e',power:153/171},{type:'omenBurst',kind:'x',power:135/171}];
+ for(const e of events){
+  t.event({type:'rifleShot'},sim);assert.equal(t.count,0);
+  if(t.lesson.id==='olate'){
+   t.event({type:'omenBurst',kind:'e',power:135/171},sim);
+   t.event({type:'omenBurst',kind:'x',power:1},sim);assert.equal(t.count,0,'early or X bursts cannot pass the E timing lesson');
+  }
+  for(let n=0;n<t.goal;n++)t.event(e,sim);
+  assert.ok(t.ready,t.lesson.id);t.advance();
+ }
+ assert.ok(t.complete);
+ assert.ok(!JSON.stringify(COURSES.omen).includes('[C]'));
+ assert.ok(COURSES.omen.find(l=>l.id==='orupture').touch.includes('[CURSE] again'));
+});
+
+test('Omen range cooldown help preserves active prime, flight and curse timers and stays out of other courses',()=>{
+ const sim=new Simulation(tutorialMapFor('omen'));sim.weapon='omen';const t=new Tutorial('omen');
+ sim.omen.primeCooldown=8;sim.omen.volleyCooldown=30;t.update(sim,STEP);
+ assert.equal(sim.omen.primeCooldown,0);assert.equal(sim.omen.volleyCooldown,0);
+ sim.omen.primeCooldown=8;sim.omen.volleyCooldown=30;sim.omen.primed=true;sim.omen.primeLeft=2;sim.omen.volleyLeft=2;
+ t.update(sim,STEP);assert.equal(sim.omen.primeCooldown,8);assert.equal(sim.omen.primeLeft,2);assert.equal(sim.omen.volleyCooldown,30);
+ sim.omen.primed=false;sim.omenBolts=[{kind:'e'}];t.update(sim,STEP);assert.equal(sim.omen.primeCooldown,8);
+ sim.omenBolts=[];sim.omen.marks=[{kind:'e',left:1}];t.update(sim,STEP);assert.equal(sim.omen.primeCooldown,8);assert.equal(sim.omen.marks[0].left,1);
+ sim.omen.marks=[];new Tutorial('rifle').update(sim,STEP);assert.equal(sim.omen.primeCooldown,8);
+ t.index=t.lessons.length;t.update(sim,STEP);assert.equal(sim.omen.primeCooldown,8);
+});
+
 test('two full loads: two Nominal magazines and 4 Ballast shells',()=>{
  const sim={spray:{active:false}},r=new Tutorial("rifle"),M=RIFLE.magazine;
  r.index=COURSES.rifle.findIndex(l=>l.id==='auto');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createOutgoingFeedback} from '../src/ui/outgoing-feedback.js';
+import {createOutgoingFeedback,OUTGOING_ANCHOR_BEAT} from '../src/ui/outgoing-feedback.js';
 import {Simulation} from '../src/simulation.js';
 import {Soundscape} from '../src/audio.js';
 const make=()=>new Simulation({width:40,depth:40,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});
@@ -11,7 +11,7 @@ test('one-shot kill distinguishes a fresh lethal attack from follow-up or sustai
  s.events=[];const c=target();s.hit(c,{damage:200,volley:4});s.time+=.05;s.hit(c,{damage:300,volley:4});assert.equal(s.events.find(e=>e.type==='kill').oneShot,true);
  s.events=[];const d=target();s.hit(d,{damage:200,volley:5});s.time+=.2;s.hit(d,{damage:300,volley:5});assert.equal(s.events.find(e=>e.type==='kill').oneShot,false);
 });
-test('outgoing totals accumulate per entity, roll prior damage into a subtotal before the latest addition, refresh and stay anchored',()=>{
+test('outgoing totals accumulate per entity, preserve subtotals and periodically move to the latest hit',()=>{
  const previous=globalThis.document;const element=()=>({children:[],style:{},append(n){this.children.push(n);},remove(){this.removed=true;}});globalThis.document={createElement:element};
  try{const parent=element(),f=createOutgoingFeedback(parent),sim={time:1,canSeeEntity:()=>true},view={screenPoint:(x,z)=>({x:x*10,y:z*10})};
  f.add({id:'a',maxHp:500,volley:1,x:10,z:20,damage:100,hp:400},1);f.update(sim,view);const n=parent.children[0].children[0],total=n.children[0],addition=n.children[1];assert.equal(total.textContent,100);assert.equal(addition.style.display,'none');assert.equal(n.style.color,'#80caff');const left=n.style.transform.split(',')[0];
@@ -20,13 +20,60 @@ test('outgoing totals accumulate per entity, roll prior damage into a subtotal b
  sim.time=1.25;f.add({id:'a',maxHp:500,volley:2,x:12,z:20,damage:10,hp:100},1.25);f.update(sim,view);assert.equal(total.textContent,400);assert.equal(addition.children[1].textContent,'+30');
  sim.time=1.8;f.add({id:'a',maxHp:500,volley:3,x:15,z:20,damage:40,hp:60},1.8);f.update(sim,view);
  assert.equal(total.textContent,440);assert.equal(addition.children[0].textContent,400);assert.equal(addition.children[1].textContent,'+40');assert.equal(addition.children.length,2);
+ const movedLeft=n.style.transform.split(',')[0];assert.notEqual(movedLeft,left,'the existing total catches up to the new hit position');
  sim.time=2.8;f.update(sim,view);assert.ok(addition.style.opacity>0&&addition.style.opacity<1);assert.equal(n.style.opacity,1);
  sim.time=3.1;f.update(sim,view);assert.equal(addition.style.display,'none');assert.equal(total.textContent,440);assert.equal(n.style.opacity,1);
- sim.time=3.6;f.add({id:'a',maxHp:500,volley:3,x:15,z:20,damage:50,hp:50},3.6);f.update(sim,view);assert.equal(total.textContent,490);assert.equal(addition.children[0].textContent,440);assert.equal(addition.children[1].textContent,'+50');assert.equal(n.style.opacity,1);assert.equal(n.style.transform.split(',')[0],left);
+ sim.time=3.6;f.add({id:'a',maxHp:500,volley:3,x:15,z:20,damage:50,hp:50},3.6);f.update(sim,view);assert.equal(total.textContent,490);assert.equal(addition.children[0].textContent,440);assert.equal(addition.children[1].textContent,'+50');assert.equal(n.style.opacity,1);assert.equal(n.style.transform.split(',')[0],movedLeft);
  f.add({id:'b',volley:3,x:15,z:20,damage:70,hp:300},3.6);f.update(sim,view);assert.equal(parent.children[0].children.length,2);assert.equal(parent.children[0].children[1].children[0].textContent,70);
  sim.time=6.11;f.add({id:'a',maxHp:500,volley:4,x:20,z:20,damage:80,hp:420},6.11);f.update(sim,view);assert.equal(n.removed,true);assert.equal(parent.children[0].children[2].children[0].textContent,80);
  sim.time=0;f.update(sim,view);assert.equal(parent.children[0].children[2].removed,true);
  }finally{globalThis.document=previous;}
+});
+
+test('every weapon keeps its running damage total while following successive moving-target hit positions',t=>{
+ const previous=globalThis.document,element=()=>({children:[],style:{},append(n){this.children.push(n);},remove(){this.removed=true;}});
+ globalThis.document={createElement:element};t.after(()=>{globalThis.document=previous;});
+ const xOf=node=>Number(/translate\(([-\d.]+)px/.exec(node.style.transform)[1]);
+ const types={static:'electric',rifle:'gunshot',shotgun:'ballast',omen:'omenCurse'};
+ for(const [weapon,damageType] of Object.entries(types)){
+  const sim=make(),parent=element(),f=createOutgoingFeedback(parent),projected=[];
+  sim.weapon=weapon;sim.canSeeEntity=()=>true;
+  const target={id:'moving',kind:'player',x:2,z:4,hp:1000,maxHp:1000};
+  const view={screenPoint:(x,z)=>{projected.push({x,z});return{x:x*10,y:z*10};}};
+  let firstNode,initialX;
+  for(let hit=0;hit<=6;hit++){
+   sim.time=1+hit*.1;target.x=2+hit;target.z=4+hit*2;
+   sim.hit(target,{damage:10,damageType,volley:hit});
+   f.add(sim.drainEvents().find(e=>e.type==='outgoingDamage'),sim.time);f.update(sim,view);
+   const node=parent.children[0].children[0];
+   if(!hit){firstNode=node;initialX=xOf(node);}
+   assert.equal(node,firstNode,weapon+': no replacement/fade-in');
+   assert.equal(node.children[0].textContent,(hit+1)*10,weapon+': total never resets');
+   const anchorHit=Math.floor(hit/3)*3;
+   assert.equal(xOf(node),initialX+anchorHit*10,weapon+': only re-anchor every .3 seconds');
+   assert.deepEqual(projected.at(-1),{x:2+anchorHit,z:4+anchorHit*2});
+  }
+  const position=xOf(firstNode);target.x=30;sim.time=2;f.update(sim,view);
+  assert.equal(xOf(firstNode),position,'without another hit it stays at the last damaged location');
+ }
+ assert.equal(OUTGOING_ANCHOR_BEAT,.3);
+});
+
+test('rapid same-volley ticks use the latest position on the next beat and keep targets independent',t=>{
+ const previous=globalThis.document,element=()=>({children:[],style:{},append(n){this.children.push(n);},remove(){this.removed=true;}});
+ globalThis.document={createElement:element};t.after(()=>{globalThis.document=previous;});
+ const parent=element(),f=createOutgoingFeedback(parent),seen=[],sim={time:1,canSeeEntity:(x,z)=>{seen.push([x,z]);return x<20;}},view={screenPoint:(x,z)=>({x:x*10,y:z*10})};
+ f.add({id:'a',x:1,z:1,damage:10,hp:490,maxHp:500,volley:1},1);f.update(sim,view);
+ for(let tick=1;tick<=20;tick++){sim.time=1+tick*.01;f.add({id:'a',x:tick+1,z:2,damage:1,hp:490-tick,maxHp:500,volley:1},sim.time);f.update(sim,view);assert.deepEqual(seen.at(-1),[1,1]);}
+ f.add({id:'b',x:3,z:7,damage:20,hp:480,maxHp:500,volley:1},sim.time);
+ sim.time=1.3;f.update(sim,view);
+ const [a,b]=parent.children[0].children;
+ assert.equal(a.children[0].textContent,30);assert.equal(a.children[1].style.display,'none','pellets retain same-shell grouping');
+ assert.equal(a.style.display,'none','visibility uses the relocated anchor');assert.equal(b.style.display,'');
+ assert.deepEqual(seen.slice(-2),[[21,2],[3,7]]);
+ f.clear();sim.time=0;f.add({id:'a',x:5,z:6,damage:8,hp:492,maxHp:500},0);f.update(sim,view);
+ assert.equal(a.removed,true);assert.equal(b.removed,true);assert.equal(parent.children[0].children.at(-1).children[0].textContent,8);
+ assert.deepEqual(seen.at(-1),[5,6],'a new life has no pending old position');
 });
 test('green feedback uses strictly below 25 percent of each entity maximum health',()=>{
  const previous=globalThis.document,element=()=>({children:[],style:{},append(n){this.children.push(n);},remove(){}});

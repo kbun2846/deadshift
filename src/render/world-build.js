@@ -847,7 +847,12 @@ export const WorldBuild = {
     const geo = new THREE.IcosahedronGeometry(radius, 0), edges = new THREE.EdgesGeometry(geo); geo.dispose();
     const g = new THREE.Group();
     // Pale straw stays legible on both dark soil and the ochre street.
-    g.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: '#ead7a7', transparent: true, opacity: .78 })));
+    // (v0.990a merge: each new one's material gets the scope's grey too, as
+    // the warm-up gives the first three, so a tumbleweed rolling in mid-game
+    // asks for the program they warmed: tools/program-check.mjs.)
+    const material = new THREE.LineBasicMaterial({ color: '#ead7a7', transparent: true, opacity: .78 });
+    this.scopeShading?.material(material);
+    g.add(new THREE.LineSegments(edges, material));
     g.position.set(x, radius, z); g.rotation.set(Math.random() * 3, Math.random() * 3, 0);
     g.userData = { radius, age: 0, life: 52 + Math.random() * 24, speed: .7 + Math.random() * .6, drift: -.2 + Math.random() * .4 };
     this.scene.add(g); this.tumbleweeds.push(g);

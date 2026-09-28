@@ -3,8 +3,8 @@
 // stoops' hoods hid the hat of anyone standing there, your own and, worse, an
 // opponent's; an eave or a tall roof does the same to someone by a wall; the
 // trees' limbs, merged into the scenery, hid a body north of a trunk). Every
-// character the view draws who is OUTSIDE every building (an open shed counts
-// as outdoors) opens a see-through patch round the point that stands between
+// character the view draws who is OUTSIDE every building (including open
+// sheds) opens a see-through patch round the point that stands between
 // the camera and their head (on the line from the head to the camera: the
 // camera looks down from the south, so a point `rise` m above the head hides
 // what is about `rise` x CAMERA_TILT m north of it mid-screen, more toward the
@@ -84,7 +84,7 @@ export function roofFade(view) {
  const add = p => {
   if (n >= ROOF_FADE.slots) return;
   const buildings = view.map?.buildings;
-  if (buildings) for (let i = 0; i < buildings.length; i++) { const b = buildings[i]; if (!b.open && buildingContains(b, p)) return; }
+  if (buildings) for (let i = 0; i < buildings.length; i++) { const b = buildings[i]; if (buildingContains(b, p)) return; }
   fade[n++].set(p.x, p.z, p.y, 1);
  };
  const addAvatar = a => { if (a.root?.visible && a.root.parent) add(a.root.position); };
@@ -329,7 +329,8 @@ export function updateSections(view, dt) {
 // a remote player or robot at `p`? Not while they stand inside a closed
 // building with a sectioned roof, unless you are inside it too (`sim.roofId`)
 // or its roof is lifting for you (you in its doorway: renderer.js fades it
-// as a whole). An open shed is outdoors, as for the fade list.
+// as a whole). An open shed's occupants are left to roomShowsEntity
+// (render/vision-polygons.js): since v0.990a nobody outside a shed sees who is in it.
 export function shownInside(view, sim, p) {
  const roofs = view.roofSections?.roofs; if (!roofs) return true;
  for (let i = 0; i < roofs.length; i++) {

@@ -26,9 +26,9 @@ const MAP_LIST = [
   { map: dryCreek, modes: ['practice'], menu: false },
   // The hills system's proving ground (stage 0 of Hollow Wick).
   { map: hillTest, modes: ['practice'], menu: false },
-  // Being built (AGENTS.md > Adding a map, the staged process).
-  // s2-spawns: every mode (bases, FFA points, robots), still dev-only.
-  { map: hollowWick, modes: ['practice', 'multiplayer'], menu: false, card: HOLLOW_WICK_CARD /* s3-look */ },
+  // Every mode (bases, FFA points, robots). Released to the menus in v0.990a
+  // (owner): the Practice map page, SOLO and the lobby's map list.
+  { map: hollowWick, modes: ['practice', 'multiplayer'], menu: true, card: HOLLOW_WICK_CARD /* s3-look */ },
 ];
 
 for (const entry of MAP_LIST) Object.assign(entry.map, { modes: entry.modes, menu: entry.menu }, entry.card ? { card: entry.card } : {}); // (s3-look: card)

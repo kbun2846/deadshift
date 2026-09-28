@@ -47,3 +47,8 @@ export function projectVisionPolygon(points,camera,width,height,y=.7) {
   }
   return vertices.map(p=>({x:(p.x/p.w*.5+.5)*width,y:(.5-p.y/p.w*.5)*height}));
 }
+
+// Open sheds also conceal occupants from an observer under a different roof.
+export function roomShowsEntity(sim,p) {
+ const room=sim.buildingAt(p.x,p.z);return !room||room===sim.interior;
+}

@@ -41,6 +41,11 @@ input,textarea,[contenteditable=true]{-webkit-user-select:text;user-select:text}
 #weapon .weapon-readout{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 7px;color:#fff;text-shadow:0 1px 3px #14221c;font-family:Arial,sans-serif}
 #weapon .weapon-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--weapon-accent)}
 #weapon .weapon-count{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+/* A broad, faceted infinity mark matches the HUD's heavy, flat shapes.
+   Keep the text and its line box for accessibility and a steady ammo row. */
+#weapon .weapon-count[data-unlimited="true"]{position:relative;min-width:44px;color:transparent;text-shadow:none}
+#weapon .weapon-count[data-unlimited="true"]::after{content:'';position:absolute;right:0;bottom:-2px;width:44px;height:22px;background:var(--weapon-accent);--infinity-icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2044%2022%22%3E%3Cpath%20d%3D%22M22%2011%2014%204H8L4%208v6l4%204h6L30%204h6l4%204v6l-4%204h-6Z%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%224.5%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E");-webkit-mask:var(--infinity-icon) center/contain no-repeat;mask:var(--infinity-icon) center/contain no-repeat;filter:drop-shadow(0 1px 2px #14221c);pointer-events:none}
+
 #weapon .seed-pips{gap:4px;margin:0 0 7px}
 #weapon .seed-pips.tutorial-highlight{outline-offset:3px;border-radius:3px}
 #weapon .seed-pips i{height:10px;min-width:0;border-radius:1px;box-shadow:none}
@@ -157,6 +162,9 @@ input,textarea,[contenteditable=true]{-webkit-user-select:text;user-select:text}
 .weapon-card{min-width:0;border:1px solid #424846;border-radius:7px;overflow:hidden;background:#242928;align-self:start}
 #game .weapon-card .weapon-choice{display:block;width:100%;height:auto;min-height:390px;margin:0;padding:0 0 18px;border:0;border-radius:0;white-space:normal;text-align:left}
 .weapon-preview{display:block;width:100%;aspect-ratio:5/6;object-fit:cover;background:transparent}
+/* Slightly larger Omen and Sightline artwork in every selector, including
+   copied picker thumbnails. Independent scale preserves the hover lift. */
+#game img:is([data-weapon-art="omen"],[data-weapon-art="sightline"]){scale:1.12}
 .weapon-card:has(.weapon-choice:focus-visible){border-color:var(--ui-accent)}
 @media(hover:hover){.weapon-card:has(.weapon-choice:hover){border-color:var(--ui-accent)}}
 .weapon-name{display:block;position:relative;height:40px;overflow:hidden;margin:14px 0 12px}
@@ -666,8 +674,8 @@ body[data-controls=touch] #game .top-actions .icon-button svg{width:18px;height:
 .damage-feedback span.outgoing-heal{color:#7ff0a6;font-size:23px;font-weight:800;letter-spacing:.06em;-webkit-text-stroke:.8px #10251a;paint-order:stroke fill;text-shadow:0 2px 3px #080b0bf2}
 
 /* Gunfire you can hear, by direction (ui/fire-indicator.js). */
-.fire-indicator{position:absolute;inset:0;width:100%;height:100%;z-index:5;pointer-events:none}
-body:not(.playing) .fire-indicator,body.dying .fire-indicator{display:none}
+.fire-indicator,.damage-indicator{position:absolute;inset:0;width:100%;height:100%;z-index:5;pointer-events:none}
+body:not(.playing) .fire-indicator,body.dying .fire-indicator,body:not(.playing) .damage-indicator,body.dying .damage-indicator{display:none}
 
 /* Weapon picture grids (ui/weapon-grid.js): robot weapon on the 1V1 page and
    in the dev window. Small tiles in the weapon pick's look (rounded, see-through,
@@ -879,3 +887,69 @@ body[data-controls=touch].duel-on.playing #game .health-hud{top:calc(max(8px,env
 #game .keybinds>.settings-note{margin:0 0 14px}
 /* s3-look: a map card's one line (maps.js `card`), over the top of its picture. */
 #game .map-choice .map-line{position:absolute;top:12px;left:12px;right:12px;display:block;font:italic 13px/1.35 Georgia,'Times New Roman',serif;color:#ece4d2;text-align:center;text-shadow:0 1px 3px #000d,0 0 10px #000a;pointer-events:none;letter-spacing:.01em}
+
+/* Two carried mines, filled like ammo; both recharge after the pair is used. */
+#weapon .sidekick-mines{display:flex;align-items:center;gap:7px;height:15px;margin:1px 0 7px;color:var(--weapon-accent);font-size:9px;font-weight:700;letter-spacing:.07em;text-shadow:0 1px 3px #14221c}
+#weapon .sidekick-mines[hidden]{display:none}
+#weapon .sidekick-mines span{margin-right:3px}
+#weapon .sidekick-mines i{position:relative;display:block;width:24px;height:12px;border:1px solid #96a28e;border-radius:50%;background:linear-gradient(to top,var(--weapon-accent) var(--mine-fill),#14211fee var(--mine-fill));box-shadow:0 1px 2px #0008}
+#weapon .sidekick-mines i::after{content:'';position:absolute;left:9px;top:3px;width:4px;height:4px;border-radius:50%;background:#425849}
+#weapon .sidekick-mines i[data-ready="true"]::after{background:#6bd78e;box-shadow:0 0 0 1px #274332}
+
+#weapon[data-weapon="ichor"] #seed-pips i { border-color:#843c49; }
+#weapon[data-weapon="ichor"] #seed-pips i.available { background:#c54c5f; box-shadow:0 0 7px #bd263c44; }
+#weapon[data-weapon="ichor"] #seed-pips i.spent::after { background:#c54c5f; }
+#weapon[data-weapon="ichor"] .weapon-count { color:#e598a1; }
+
+/* Ichor's blood sits between dash stamina and its weapon name. */
+#weapon[data-weapon="ichor"] #seed-pips,#weapon[data-weapon="ichor"] .weapon-count{display:none}
+.ichor-blood{position:relative;margin-top:10px;height:43px;color:#fff4df;isolation:isolate}
+.ichor-blood[hidden]{display:none}
+.ichor-blood svg{position:absolute;inset:0;width:100%;height:48px;overflow:visible;will-change:transform}
+.ichor-blood-track{fill:none;stroke:#b9817b42;stroke-width:.85;vector-effect:non-scaling-stroke}
+.ichor-blood-liquid{fill:#e72d3e}
+.ichor-blood-shade{fill:#ce293b}.ichor-blood-drops{fill:#ed3042}
+.ichor-blood-readout{color:#d4c7b8;position:absolute;top:4px;left:11px;right:11px;height:24px;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:800;letter-spacing:.12em;text-shadow:0 1px 2px #241e1b88}
+.ichor-blood-readout strong{font-size:18px;letter-spacing:.03em;font-variant-numeric:tabular-nums}
+.ichor-blood[data-full="true"] .ichor-blood-liquid{fill:#f13243}
+.ichor-blood[data-full="true"] .ichor-blood-track{stroke:#bd807966}
+@media(max-width:760px){.ichor-blood{margin-top:8px}.ichor-blood-readout{font-size:12px}.ichor-blood-readout strong{font-size:16px}}
+
+/* The two dials fit inside the weapon panel's reserved height on every viewport. */
+#game #weapon[data-weapon="ichor"]{width:min(280px,calc(100vw - 150px));min-height:160px;padding:26px 0 0;bottom:max(40px,env(safe-area-inset-bottom))}
+#weapon[data-weapon="ichor"] .ichor-blood{margin:3px 0 4px;height:44px}
+#weapon[data-weapon="ichor"] #hex-recharge{top:0;bottom:auto}
+#weapon[data-weapon="ichor"] #extended-recharge{top:82px;bottom:auto}
+#weapon[data-weapon="ichor"] .weapon-title{color:#e18b94}
+@media(max-width:480px){#game #weapon[data-weapon="ichor"]{left:calc(50% - 28px);min-height:140px;padding-top:18px}#weapon[data-weapon="ichor"] #extended-recharge{top:70px}}
+
+#weapon[data-weapon=ichor] [data-ichor-full=true]{color:#f34359}
+#weapon[data-weapon=ichor] [data-ichor-full=true]::before{content:"";position:absolute;inset:-5px;border:3px solid #f32f4c66;border-radius:46% 53% 45% 54%;box-shadow:0 0 13px #ee203b88,inset 0 0 9px #e6213c66;animation:ichor-blood-pulse .85s ease-in-out infinite;pointer-events:none}
+#weapon[data-weapon=ichor] [data-ichor-full=true]::after{content:"";position:absolute;inset:7px -5px -8px;background:radial-gradient(ellipse at 20% 82%,#e82d46 0 2px,transparent 3px),radial-gradient(ellipse at 72% 94%,#e82d46 0 2px,transparent 3px);animation:ichor-blood-pulse .85s ease-in-out infinite reverse;pointer-events:none}
+#touch-controls [data-ichor-full=true]{border-color:#f2455a!important;box-shadow:0 0 13px #ec294477;animation:ichor-blood-pulse .85s ease-in-out infinite}
+@keyframes ichor-blood-pulse{0%,100%{opacity:.6;transform:scale(.97)}50%{opacity:1;transform:scale(1.045)}}
+
+/* Half blood unlocks Ichor's E; the marker shares the liquid bar's motion. */
+.ichor-blood-threshold{fill:none;stroke:#bca99a80;stroke-width:1.2;vector-effect:non-scaling-stroke}
+.ichor-blood[data-wave-ready=true] .ichor-blood-threshold{stroke:#f0dcc3d9}
+#weapon [data-ichor-locked=true],#touch-controls [data-ichor-locked=true]{filter:saturate(.15);opacity:.55;box-shadow:none}
+
+
+
+/* Blood texture grows with the meter; keep labels and cooldown rings clear. */
+.ichor-blood-veins{fill:none;stroke:#711322;stroke-width:2.8;stroke-linecap:round}
+.ichor-blood-rim{fill:none;stroke:#f17677;stroke-width:.75;opacity:.5;stroke-linecap:round}
+.ichor-blood-shade{fill:#a11b2d}.ichor-blood-liquid{fill:#d62b3b}
+.ichor-blood[data-full=true] .ichor-blood-liquid{fill:#e22b3d}
+#weapon .hex-recharge svg.ichor-ability-blood,#touch-controls svg.ichor-ability-blood{position:absolute;inset:-12%;width:124%;height:124%;overflow:visible;pointer-events:none;transform:none;z-index:0}
+.ichor-ability-blood .blood-edge{fill:#8e1528}.ichor-ability-blood .blood-beads{fill:#dc2942}.ichor-ability-blood .blood-runs{fill:none;stroke:#e84956;stroke-width:1.5;stroke-linecap:round}
+
+/* Guard uses the shared circular cooldown, with only its bindings and seconds. */
+#weapon[data-weapon=ichor] #ichor-deflect-recharge{left:auto;right:calc(100% + 20px);top:42px;width:66px;height:66px;color:#ead4d7}
+#ichor-deflect-recharge .hex-recharge-center{gap:4px}
+#weapon #ichor-deflect-recharge .hex-recharge-center kbd{display:block;max-width:48px;text-align:center;white-space:pre-line;font-size:9px;line-height:1.15;letter-spacing:.025em;color:inherit}
+#ichor-deflect-recharge .hex-recharge-center span:empty{display:none}
+#weapon #ichor-deflect-recharge .hex-recharge-center span{font-size:19px}
+#ichor-deflect-recharge[data-state=active]{color:#fff!important}
+#ichor-deflect-recharge[data-state=cooldown]{color:#c96d7f!important}
+@media(max-width:480px){#game #weapon[data-weapon=ichor]{min-height:196px}#weapon[data-weapon=ichor] #ichor-deflect-recharge{left:0;right:auto;top:122px;width:60px;height:60px}}

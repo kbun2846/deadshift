@@ -76,6 +76,8 @@ export const WarmUp = {
   },
 
   *warmSteps() {
+    // The world as it stands before any staging: the scope shading's share.
+    const world = new Set(this.scene.children);
     // Blood drops are made on a first bleed; made now, so that bleed (a robot
     // or another player shooting you) builds no shader mid-fight.
     (this.drops ||= new BloodDrops(this)).ensure();
@@ -86,7 +88,7 @@ export const WarmUp = {
     // The detail-effect pools sit hidden until something happens, and compile
     // only compiles what is visible: shown for the warm-up, so the first
     // grenade or gunshot does not stop the game for a second to build shaders.
-    const fxMeshes = [...(this.fx?.meshes || []), this.orbBeams?.mesh, this.scatterView?.mesh].filter(Boolean);
+    const fxMeshes = [...(this.fx?.meshes || []), ...(this.omenView?.meshes || []),...(this.sightlineView?.meshes||[]),...(this.sidekickView?.meshes||[]),...(this.ichorView?.meshes||[]),...(this.rifleView?.batches||[]),this.shotgunView?.pellets,this.shotgunView?.shellTrails, this.orbBeams?.mesh, this.scatterView?.mesh].filter(Boolean);
     for (const mesh of fxMeshes) { this.interiorVisibility.apply(mesh); mesh.visible = true; }
     // On Extreme the scene is drawn into the composer's (linear) render target,
     // not the (sRGB) canvas, and the output colour space is part of every
@@ -97,6 +99,7 @@ export const WarmUp = {
     // variants), so that happens here, while loading, instead of on the first
     // shot. The next frame draws over it.
     const compile = function* () {
+      this.scopeShading.apply(this.scene, world);
       const previous = this.renderer.getRenderTarget();
       // For that one draw everything in the scene is shown, hidden things too
       // (a pooled effect waiting for its first use, the grenade in the hand),
@@ -190,8 +193,34 @@ export const WarmUp = {
     for (const mesh of fxMeshes) mesh.visible = mesh.count > 0;
     const roofMaterials = this.roofs.flatMap(r => r.materials);
     if (!roofMaterials.length) return;
+    // Each kind of roof's two shaders (opaque, and blended for a whole-roof
+    // fade), each drawn now and held by a kept stand-in (v0.990a). A colonial
+    // roof is made transparent, so its opaque shader was only ever built on
+    // the first roof to come into view, mid-game when the spawn showed none
+    // (tools/program-check.mjs, Hollow Wick on Performance: now and then one);
+    // and three destroys a program when its last material leaves it, so every
+    // roof switching over at once could free the other. The stand-ins share
+    // the roofs' hooks and keys (not copied by clone()), and the scope shading
+    // is told they are done so it does not wrap them twice.
+    for (const old of this.warmRoofKept || []) old.dispose();
+    this.warmRoofKept = [];
+    const holders = new THREE.Group(), kinds = new Set();
+    for (const roof of this.roofs) for (const m of roof.materials) {
+      const kind = m.type + '|' + m.customProgramCacheKey();
+      if (kinds.has(kind)) continue; kinds.add(kind);
+      let source = null; roof.group?.traverse(o => { if (!source && o.isMesh && o.material === m) source = o; });
+      for (const transparent of [false, true]) {
+        const clone = m.clone(); clone.transparent = transparent;
+        clone.onBeforeCompile = m.onBeforeCompile; clone.customProgramCacheKey = m.customProgramCacheKey;
+        this.scopeShading.materials.add(clone);
+        const mesh = new THREE.Mesh(source?.geometry || this.warmGeometry, clone); mesh.frustumCulled = false;
+        holders.add(mesh); this.warmRoofKept.push(clone);
+      }
+    }
+    this.scene.add(holders);
     for (const m of roofMaterials) m.transparent = true;
     yield* compile();
+    this.scene.remove(holders);
     // Put them back and have three re-pick the opaque shader, rather than leave
     // them holding the transparent one the second compile just attached.
     for (const m of roofMaterials) { m.transparent = false; m.needsUpdate = true; }

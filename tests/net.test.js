@@ -60,6 +60,32 @@ function place(r, who, x, z) {
 
 const street = { x: map.spawn.x, z: map.spawn.z };
 
+test('a joiner primes, marks and ruptures with Omen through host authority',t=>{
+ t.mock.method(Math,'random',()=>0);
+ const r=room({weapons:['static','omen']});place(r,'host',0,6);place(r,0,0,0);
+ r.tick([{omenPrime:true,fire:true,aimX:0,aimZ:1}]);
+ for(let i=0;i<30;i++)r.tick([{aimX:0,aimZ:1}]);
+ const caster=[...r.host.remotes.values()][0].sim;
+ assert.equal(caster.omen.marks.length,1);assert.ok(r.hostSim.player.hp<=450.5);
+ assert.equal(r.joined[0].sim.omen.marks.length,1,'own timer arrives in host snapshots');
+ const before=r.hostSim.player.hp;r.tick([{omenPrime:true}]);
+ for(let i=0;i<8;i++)r.tick();
+ assert.ok(r.hostSim.player.hp<=before-121.5);assert.equal(caster.omen.marks.length,0);
+ assert.equal(r.joined[0].sim.omen.marks.length,0);assert.ok(r.joined[0].sim.omen.primeCooldown>0);
+});
+
+test('a joiner receives the hit and curse bearings from the host for its damage arc', t => {
+ t.mock.method(Math,'random',()=>.5);
+ const r=room({weapons:['omen','rifle']});place(r,'host',0,0);place(r,0,0,6);
+ const client=r.joined[0].session;client.drainEvents();
+ r.tick({host:{omenPrime:true,fire:true,aimX:0,aimZ:1}});
+ for(let i=0;i<70;i++)r.tick();
+ const hits=client.drainEvents().filter(({by,e})=>by===client.id&&e.type==='playerDamage').map(({e})=>e);
+ assert.ok(hits.some(e=>e.damage>40),'projectile hit delivered');
+ assert.ok(hits.some(e=>e.damage>=9&&e.damage<=12.6),'force-free curse tick delivered');
+ assert.ok(hits.every(e=>Math.abs(e.sourceDX)<.001&&e.sourceDZ<-.99),'both point back toward the caster');
+});
+
 test('room codes are short, readable and forgiving to type', () => {
  const code = makeRoomCode();
  assert.equal(code.length, NETWORK.codeLength);
@@ -434,7 +460,7 @@ test('the weapon pick: GO goes in at once; at zero you go in with your pick, or 
  assert.ok(!seats[0].present && seats[0].picking.weapon === 'rifle', 'picked but waiting for GO or the timer');
  for (let i = 0; i < 10 * 60; i++) r.tick();
  assert.ok(seats[0].present && seats[0].weapon === 'rifle', 'the timer sends in the picked weapon');
- assert.ok(seats[1].present && ['static', 'rifle', 'shotgun'].includes(seats[1].weapon), 'nothing picked: a random weapon');
+ assert.ok(seats[1].present && ['static', 'rifle', 'shotgun', 'omen', 'sightline', 'sidekick'].includes(seats[1].weapon), 'nothing picked: a random weapon');
  assert.equal(b.session.me.present, true);
 });
 

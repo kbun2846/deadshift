@@ -17,6 +17,7 @@ test('every weapon entry is complete', () => {
    const b = w.touchButtons?.[slot];
    assert.ok(b?.label && b.binding && b.key && b.aria, w.id + ' touch button ' + slot);
   }
+  if(w.hints.touch.some(([name])=>name==='AIM'))assert.ok(w.touchButtons.aim?.binding,w.id+' touch aim binding');
  }
  assert.equal(new Set(WEAPON_IDS).size, WEAPON_IDS.length, 'ids are unique');
 });
@@ -39,7 +40,7 @@ test('every map says where it can be played, and the menus read that', () => {
  }
  assert.ok(maps[DEFAULT_MAP]);
  assert.equal(mapById('nowhere'), maps[DEFAULT_MAP]);
- assert.deepEqual(menuMaps().map(m => m.id), ['deadwater']);
+ assert.deepEqual(menuMaps().map(m => m.id), ['deadwater', 'hollow-wick']); // (v0.990a: Hollow Wick released)
  assert.ok(multiplayerMaps().length >= 1 && multiplayerMaps().every(m => supportsMode(m, 'multiplayer')));
  assert.ok(!supportsMode(maps['dry-creek'], 'multiplayer'));
 });

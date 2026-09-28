@@ -1,0 +1,40 @@
+#weapon[data-weapon="omen"] #seed-pips { gap: 7px; padding: 5px 3px; justify-content: space-around; }
+#game #weapon[data-weapon="omen"] #seed-pips i { flex: 0 0 18px; width: 18px; height: 18px; background: #482831; border-color: #853e4d; border-radius: 1px; transform: rotate(45deg) scale(.76); }
+#game #weapon[data-weapon="omen"] #seed-pips i.available { background: #c65d6c; border-color: #eb9494; box-shadow: 0 0 6px #ba244b44; }
+#game #weapon[data-weapon="omen"] #seed-pips i.spent { background: #482831; border-color: #853e4d; }
+#game #weapon[data-weapon="omen"] #seed-pips[data-reloading="true"] i { background: linear-gradient(to top,#ef9892 var(--refill),#482831 var(--refill)); }
+#weapon[data-weapon="omen"] .weapon-status { color: #d7818b; }
+#game .reticle .omen-cursor-timer { position:absolute; top:-20px; width:38px; height:38px; pointer-events:none; color:var(--charge-color); font:700 11px/1 Arial,sans-serif; text-shadow:0 1px 3px #131b1b; }
+#game .reticle .omen-cursor-timer[hidden] { display:none; }
+#game .reticle .omen-cursor-timer .charge-ring { width:38px; height:38px; }
+#game .reticle .omen-cursor-timer b { position:absolute; left:0; top:10px; width:100%; text-align:center; }
+#game .reticle .omen-cursor-timer kbd { position:absolute; top:22px; left:0; width:100%; padding:0; border:0; background:none; text-align:center; font:700 8px/1 Arial,sans-serif; color:inherit; }
+body[data-controls="touch"] #game #touch-controls #touch-extended[data-weapon="omen"] .button-label { font-size: 10px!important; letter-spacing: -.3px; }
+
+/* Covenant's longer name stays inside the dial; numbers keep their usual size. */
+#game #weapon[data-weapon="omen"] #extended-recharge.word .hex-recharge-center span { font-size:9px; letter-spacing:0; white-space:nowrap; }
+body[data-controls="touch"] #game #weapon[data-weapon="omen"] #extended-recharge.word .hex-recharge-center span { font-size:7.5px; letter-spacing:-.15px; }
+#game { --omen-purple:#c58aff; }
+#game #weapon[data-weapon="omen"] #extended-recharge[data-x-state="ready"],
+#game #weapon[data-weapon="omen"] #extended-recharge[data-x-state="active"] { --x:var(--omen-purple); --x-face:#2c193de8; --x-glow:#b45bffc4; }
+#game #weapon[data-weapon="omen"] #extended-recharge[data-x-state="cooldown"] { --x:#92739e; --x-face:#241b2cdd; --x-glow:#78399835; }
+body[data-controls="touch"] #game #touch-controls .touch-right>#touch-extended[data-weapon="omen"]:is([data-x-state="ready"],[data-x-state="active"]) { --x:var(--omen-purple); --pad-colour:#573575; color:#edd9ff; }
+body[data-controls="touch"] #game #touch-controls .touch-right>#touch-extended[data-weapon="omen"][data-x-state="ready"] { animation-name:omen-covenant-ready; }
+@keyframes omen-covenant-ready { 0% { --pad-colour:#c58aff; color:#251232; } 100% { --pad-colour:#573575; color:#edd9ff; } }
+
+/* The final damage-bonus second: the existing fill beats coral to hot ivory.
+   No extra orbiting rim; the countdown and key stay readable throughout. */
+#game { --omen-hot:#ff9079; --omen-peak:#ffe5c6; }
+#game #weapon[data-weapon="omen"] .hex-recharge[data-omen-optimal="true"],
+#game #weapon[data-weapon="omen"] #extended-recharge[data-omen-optimal="true"] { --x:var(--omen-hot); --x-face:#401d25f0; --x-glow:#ff583fc9; --omen-ring-width:6; --omen-ring-peak:8; }
+#game #weapon[data-weapon="omen"] .hex-recharge[data-omen-optimal="true"] .hex-fill,
+#game .reticle .omen-cursor-timer[data-omen-optimal="true"] .charge-ring-fill { animation:omen-detonate-ring .48s ease-in-out infinite; opacity:1; }
+#game .reticle .omen-cursor-timer[data-omen-optimal="true"] { --omen-ring-width:4; --omen-ring-peak:5.5; filter:drop-shadow(0 0 5px #ff583faa); }
+body[data-controls="touch"] #game #touch-controls .touch-right>button[data-x-state="active"][data-omen-optimal="true"],
+body[data-controls="touch"] #game #touch-controls .touch-right>#touch-extended[data-weapon="omen"][data-omen-optimal="true"] { --x:var(--omen-hot); --pad-colour:#753545; color:var(--omen-peak); }
+body[data-controls="touch"] #game #touch-controls .touch-right>button[data-omen-optimal="true"]>.button-label { animation:omen-detonate-label .48s ease-in-out infinite; }
+@keyframes omen-detonate-ring { 0%,100% { stroke:var(--omen-hot); stroke-width:var(--omen-ring-width); } 50% { stroke:var(--omen-peak); stroke-width:var(--omen-ring-peak); } }
+@keyframes omen-detonate-label { 0%,100% { color:var(--omen-hot); text-shadow:0 0 2px #ff583f66; } 50% { color:var(--omen-peak); text-shadow:0 0 7px #ff583fcc; } }
+@media(prefers-reduced-motion:reduce) {
+ #game [data-omen-optimal="true"] .hex-fill,#game [data-omen-optimal="true"] .charge-ring-fill,#game [data-omen-optimal="true"]>.button-label { animation:none!important; }
+}

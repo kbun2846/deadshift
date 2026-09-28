@@ -23,7 +23,11 @@ export class DeathCorpse{
    if((gun&&node===gun)||node===view.grenadeView?.held||!node.visible)return;
    if(reaction.headless&&node.userData.deathPart==='head'||reaction.kneeling&&node.userData.deathPart==='leg')return;
    if(node.isMesh&&!node.material.transparent){
-    const mesh=new THREE.Mesh(node.geometry,char||node.material);mesh.matrix.copy(inverse).multiply(node.matrixWorld);mesh.matrixAutoUpdate=false;this.body.add(mesh);
+    let geometry=node.geometry,material=char||node.material;
+    // A soaked live avatar restores its original assets on respawn. Its fallen
+    // body owns this colour snapshot until corpse cleanup.
+    if(geometry.userData.ichorDrench){geometry=geometry.clone();this.geometries.push(geometry);if(!char){material=material.clone();this.materials.push(material);}}
+    const mesh=new THREE.Mesh(geometry,material);mesh.matrix.copy(inverse).multiply(node.matrixWorld);mesh.matrixAutoUpdate=false;this.body.add(mesh);
    }
    for(const child of node.children)walk(child);
   };

@@ -36,12 +36,15 @@
 //    rather than chasing across the map, goes first for whoever is hurting
 //    you, and stands between you and them when you are nearly dead.
 // Nothing here touches the DOM or three.js.
-import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER, WADE, TERRAIN } from '../config/gameplay.js';
+import { RULES, RIFLE, SHOTGUN, GRENADE, SCATTER, WADE, TERRAIN, OMEN, SIGHTLINE, ICHOR } from '../config/gameplay.js';
 import { collidersAlong } from '../world/collider-grid.js';
 import { segmentBox } from '../simulation.js';
 import { makeProfile, stepMood } from './robot-profile.js';
 import { muzzleBearing, muzzleLateral } from '../aim-damping.js';
 import { onScreenOf } from '../render/camera-framing.js';
+import { rememberRoom,roomPlan,paceRoomFire } from './interior-tactics.js';
+import { sniperSees,sniperClear,planSniper,sniperInput } from './sightline-tactics.js';
+import { respondToLaser,sniperLineClear } from './laser-response.js';
 
 const TAU = Math.PI * 2;
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -49,6 +52,10 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // How each weapon likes to fight.
 export const STYLE = Object.freeze({
+ ichor:{near:1,far:1.7,speed:ICHOR.waveSpeed,reach:ICHOR.waveRange},
+ sidekick:{near:5,far:10,speed:65,reach:22},
+ sightline:{near:12,far:19,speed:SIGHTLINE.speed,reach:32},
+ omen: {near:6,far:11,speed:30,reach:22},
  rifle: { near: 6.5, far: 14, speed: RIFLE.bulletSpeed, reach: 30 },
  shotgun: { near: 2.2, far: 5.2, speed: 85, reach: 7.5 },
  static: { near: 3.5, far: 9, speed: 30, reach: 16 },
@@ -129,6 +136,7 @@ export class RobotBrain {
  reset() {
   this.memory.clear(); this.path = null; this.goal = null; this.hp = null; this.targetId = null; this.investigate = null;
   this.mode = this.leader ? 'follow' : 'patrol'; this.watch = null; this.shotSpot = null; this.coverUntil = 0; this.aimAngle = null;
+  this.roomPlan=null;this.roomBurstUntil=this.roomPauseUntil=0;this.sniper=null;this.laserResponse=null;
  }
 
  // One tick. `world`: { enemies: [{ id, x, z, vx, vz, hp, maxHp }], noises:
@@ -148,7 +156,8 @@ export class RobotBrain {
   this.thinkClock -= dt;
   if (this.thinkClock <= 0) { this.thinkClock = .1 + this.random() * .04; this.think(world); }
   const target = this.targetId != null ? this.memory.get(this.targetId) : null;
-  this.move(dt, input, world, target);
+  planSniper(this,dt,target,world);
+  if(!this.sniper?.want)this.move(dt, input, world, target);
   this.aim(dt, input, target);
   this.act(dt, input, target, world);
   this.debug.mode = this.mode; this.debug.path = this.path;
@@ -166,11 +175,13 @@ export class RobotBrain {
   for (const e of world.enemies) {
    const d = Math.hypot(e.x - p.x, e.z - p.z);
    const facing = this.aimAngle ?? Math.atan2(p.aimZ, p.aimX);
-   const inView = d < SIGHT_NEAR || (d < SIGHT && Math.abs(wrap(Math.atan2(e.z - p.z, e.x - p.x) - facing)) < SIGHT_CONE);
-   const visible = e.hp > 0 && inView && this.sim.sees(e.x, e.z, .3);
+   const inView = sniperSees(this.sim,e) ?? (d < SIGHT_NEAR || (d < SIGHT && Math.abs(wrap(Math.atan2(e.z - p.z, e.x - p.x) - facing)) < SIGHT_CONE));
+   const room=this.sim.buildingAt(e.x,e.z),sameRoom=!room||room===this.sim.interior;
+   const visible = e.hp > 0 && inView && sameRoom && this.sim.sees(e.x, e.z, .3);
    let m = this.memory.get(e.id);
-   if (!m) { m = { x: e.x, z: e.z, vx: 0, vz: 0, seen: -99, visible: false, hp: e.hp }; this.memory.set(e.id, m); }
+   if (!m) { m = { x: p.x, z: p.z, vx: 0, vz: 0, seen: -99, visible: false, hp: RULES.playerHealth }; this.memory.set(e.id, m); }
    if (e.hp <= 0) { this.memory.delete(e.id); if (this.targetId === e.id) this.targetId = null; continue; }
+   if (!visible) rememberRoom(this,m);
    if (visible) {
     // A new sighting takes a moment to react to; less where it was already
     // aiming (pre-aimed at the corner they went round).
@@ -182,18 +193,20 @@ export class RobotBrain {
     // Velocity smoothed from what it sees.
     m.vx += ((e.vx || 0) - m.vx) * .35; m.vz += ((e.vz || 0) - m.vz) * .35;
     m.x = e.x; m.z = e.z; m.seen = this.time; m.hp = e.hp; m.maxHp = e.maxHp;
-    m.weapon = e.weapon || m.weapon; m.aimX = e.aimX ?? m.aimX; m.aimZ = e.aimZ ?? m.aimZ; m.loud = !!e.loud; m.reloading = !!e.reloading;
+    m.room=room?.id||null;delete m.shelter;
+    m.weapon = e.weapon || m.weapon; m.sightline=e.sightline?{...e.sightline}:undefined;m.below=!!e.below; m.aimX = e.aimX ?? m.aimX; m.aimZ = e.aimZ ?? m.aimZ; m.loud = !!e.loud; m.reloading = !!e.reloading;
    }
    m.visible = visible; m.id = e.id; m.human = !!e.human; m.aspect = e.aspect || 0;
    // (Developer tools: "robots know where everyone is".)
-   if (world.seeAll && !visible && e.hp > 0) { m.x = e.x; m.z = e.z; m.vx = e.vx || 0; m.vz = e.vz || 0; m.seen = this.time - .3; m.hp = e.hp; m.maxHp = e.maxHp; }
+   if (world.seeAll && sameRoom && !visible && e.hp > 0) { m.x = e.x; m.z = e.z; m.vx = e.vx || 0; m.vz = e.vz || 0; m.seen = this.time - .3; m.hp = e.hp; m.maxHp = e.maxHp; }
   }
   // Callouts: what teammates (and, for an ally, you) can see right now.
   if (world.intel) {
    for (const e of world.enemies) {
     const c = world.intel.get(e.id), m = this.memory.get(e.id);
     if (!c || !m || m.visible || e.hp <= 0) continue;
-    if (this.time - m.seen > .3) { m.x = c.x; m.z = c.z; m.vx = c.vx; m.vz = c.vz; m.seen = this.time - .3; m.hp = e.hp; m.maxHp = e.maxHp; m.told = true; }
+    const room=this.sim.buildingAt(c.x,c.z);if(room&&room!==this.sim.interior)continue;
+    if (this.time - m.seen > .3) { m.x = c.x; m.z = c.z; m.vx = c.vx; m.vz = c.vz; m.seen = this.time - .3; m.hp = c.hp??m.hp; m.maxHp = c.maxHp??m.maxHp; m.told = true; m.room=room?.id||null;delete m.shelter; }
    }
   }
   // Heard: gunfire, blasts. Known roughly (a couple of metres off).
@@ -268,6 +281,10 @@ export class RobotBrain {
  // Ballast's Scatter)?
  abilityReady() {
   const sim = this.sim;
+  if(sim.weapon==='ichor')return sim.ichor.xCooldown<=0&&!sim.ichor.frenzy&&sim.player.hp>100;
+  if(sim.weapon==='sidekick')return sim.sidekick.xCooldown<=0&&!sim.sidekick.active&&!sim.sidekick.summon;
+  if(sim.weapon==='sightline')return !sim.sightline.special&&!sim.sightline.xLoading&&sim.sightline.xCooldown<=0;
+  if(sim.weapon==='omen')return sim.omen.volleyCooldown<=0;
   if (sim.weapon === 'rifle') return sim.surge?.phase === 'idle' && sim.surge.cooldown <= 0;
   if (sim.weapon === 'shotgun') return !!sim.scatter && sim.scatter.cooldown <= 0;
   return sim.hexCooldown <= 0 && sim.ammo >= RULES.hexCost;
@@ -300,6 +317,8 @@ export class RobotBrain {
    }
    if (score < bestScore) { bestScore = score; best = m; }
   }
+  const laser=respondToLaser(this);
+  if(laser)best=this.memory.get(laser.id)||best;
   this.targetId = best ? best.id : null;
   // Nothing to fight here: a teammate in a fight nearby (squad.js `rally`)
   // is where to go (help them), unless an investigation is fresher.
@@ -309,6 +328,7 @@ export class RobotBrain {
   const hpShare = p.hp / (p.maxHp || RULES.playerHealth);
   const empty = this.outOfAmmo();
   const known = best, seen = best?.visible;
+  if(seen||!known||this.roomPlan?.id!==known.id)this.roomPlan=null;
   const prev = this.mode;
   const fromLead = lead ? Math.hypot(lead.x - p.x, lead.z - p.z) : 0;
   // Near enough to you (an ally) to go after something there.
@@ -328,7 +348,8 @@ export class RobotBrain {
   const inCover = !!known && prev === 'cover' && (this.coverWhy === 'reload' ? empty && this.time - this.coverFrom < 6 : this.time < this.coverUntil);
   const lowLead = lead && lead.hp / (lead.maxHp || RULES.playerHealth) < .35;
   // (Hurt cover is rarer: nobody heals, so hiding only buys a moment.)
-  if (inCover || (why && this.time - (this.coverEnded || -9) > (why === 'hurt' ? pf.coverRest : 1.5))) { this.mode = 'cover'; if (!inCover) this.coverWhy = why; }
+  if(laser){this.mode=laser.kind;if(laser.kind==='cover'){this.coverWhy='laser';this.coverUntil=laser.until;}}
+  else if (inCover || (why && this.time - (this.coverEnded || -9) > (why === 'hurt' ? pf.coverRest : 1.5))) { this.mode = 'cover'; if (!inCover) this.coverWhy = why; }
   // Stand between you and whoever is on you, when you are nearly dead.
   else if (seen && lowLead && hpShare > .5 && Math.hypot(known.x - lead.x, known.z - lead.z) < 14) this.mode = 'guard';
   // An ally does not chase a fight away from you: it falls back to you,
@@ -339,7 +360,7 @@ export class RobotBrain {
   else if (this.investigate && this.time - this.investigate.at < 10 && leashed(this.investigate)) this.mode = 'investigate';
   else this.mode = lead ? 'follow' : 'patrol';
   if (prev === 'cover' && this.mode !== 'cover') this.coverEnded = this.time;
-  if (this.mode === 'cover') {
+  if (this.mode === 'cover'&&!laser) {
    if (prev !== 'cover') { this.coverFrom = this.time; this.coverUntil = this.time + (this.coverWhy === 'hurt' ? 1.5 : 2.5) + this.random() * 1.2; }
    if (prev !== 'cover' || !this.goal || this.time - this.pathAt > 1.5) {
     // (Searches are shared out between robots: a few per tick, so a crowd
@@ -350,14 +371,15 @@ export class RobotBrain {
    // Nowhere to hide: fight instead.
    if (!this.goal) { this.mode = seen ? 'engage' : known ? 'hunt' : lead ? 'follow' : 'patrol'; this.coverEnded = this.time; }
   }
-  if (this.mode === 'cover') {
+  if(laser){this.goal=laser.goal;}
+  else if (this.mode === 'cover') {
   } else if (this.mode === 'guard') {
    const dx = known.x - lead.x, dz = known.z - lead.z, d = Math.hypot(dx, dz) || 1;
    const spot = { x: lead.x + dx / d * Math.min(2.4, d * .5), z: lead.z + dz / d * Math.min(2.4, d * .5) };
    this.goal = Math.hypot(spot.x - p.x, spot.z - p.z) > 1 ? spot : null;
   } else if (this.mode === 'engage') {
    const d = Math.hypot(known.x - p.x, known.z - p.z);
-   if (!shotClear(sim.colliders, p.x, p.z, known.x, known.z, .04, sim.ground)) {
+   if (!(sim.weapon==='sightline'?sniperClear(this,known.x,known.z):shotClear(sim.colliders, p.x, p.z, known.x, known.z, .04, sim.ground))) {
     // No clear shot from here: the nearest place that has one, at a range
     // the weapon likes (round the side of their cover), else toward them.
     // (Stage 4 audit: a spot whose centre had a line, reached, where the
@@ -379,6 +401,9 @@ export class RobotBrain {
     this.goal = { x: lead.x + gx / gl * 10, z: lead.z + gz / gl * 10, chase: true };
    }
   } else if (this.mode === 'hunt') {
+   const room=roomPlan(this,known);
+   if(room)this.goal=room.goal;
+   else if(this.targetId!==null){
    // Where they probably went: the last sighting, carried on along their
    // heading for a moment.
    const age = Math.min(1.6, this.time - known.seen);
@@ -386,6 +411,7 @@ export class RobotBrain {
    // There, or can see there and they are not: search round about.
    const gd = Math.hypot(this.goal.x - p.x, this.goal.z - p.z);
    if (gd < 1.2 || (gd < 7 && this.time - known.seen > 1 && sim.sees(this.goal.x, this.goal.z, .3))) this.lose(known);
+   }
   } else if (this.mode === 'investigate') {
    this.goal = this.investigate;
    if (Math.hypot(this.goal.x - p.x, this.goal.z - p.z) < 1.5) this.investigate = null;
@@ -422,6 +448,7 @@ export class RobotBrain {
   const g = this.goal, p = this.sim.player, w = this.watch;
   if (!g || this.mode === 'engage' || this.mode === 'guard') { this.watch = null; return; }
   const d = Math.hypot(g.x - p.x, g.z - p.z);
+  if(this.mode==='hunt'&&this.roomPlan&&this.roomPlan.kind!=='push'&&d<1.4){this.watch=null;return;}
   if (d < 1.6 && this.mode === 'follow') { this.watch = null; this.followNudge = 0; return; }
   if (!w || Math.hypot(g.x - w.x, g.z - w.z) > 3 || w.mode !== this.mode) { this.watch = { x: g.x, z: g.z, best: d, at: this.time, mode: this.mode }; return; }
   if (d < w.best - .5) { w.best = d; w.at = this.time; return; }
@@ -453,6 +480,10 @@ export class RobotBrain {
 
  outOfAmmo() {
   const sim = this.sim;
+  if(sim.weapon==='ichor')return false;
+  if(sim.weapon==='sidekick')return !sim.sidekick.active&&(sim.sidekick.reload>0||sim.sidekick.ammo<=0);
+  if(sim.weapon==='sightline')return sim.sightline.crouched?sim.sightline.rifleReload>0||!sim.sightline.rifleAmmo:sim.sightline.pistolReload>0||!sim.sightline.pistolAmmo;
+  if(sim.weapon==='omen')return sim.omen.reload>0||sim.omen.ammo<=0;
   if (sim.weapon === 'rifle') return sim.rifle.reload > 0 || sim.rifle.ammo <= 0;
   if (sim.weapon === 'shotgun') return sim.shotgun.reload > 0 || sim.shotgun.ammo <= 0;
   return sim.ammo + sim.seeds.length < 2;
@@ -464,7 +495,7 @@ export class RobotBrain {
  // ~12 m of them, you a little more often than the other robots. (`hunch`:
  // how often; a 1V1 raises it, two players looking for each other.)
  wanderSpot(world = null) {
-  const p = this.sim.player, pool = (world?.enemies || []).filter(e => e.hp > 0);
+  const p = this.sim.player, pool = (world?.enemies || []).filter(e => e.hp > 0 && !this.sim.buildingAt(e.x,e.z));
   if (pool.length && this.random() < (this.hunch ?? .34)) {
    const weights = pool.map(e => e.human ? 1.6 : 1), total = weights.reduce((a, b) => a + b, 0);
    let r = this.random() * total, pick = pool[0];
@@ -523,7 +554,7 @@ export class RobotBrain {
    if (this.leader && Math.hypot(c.x - this.leader.x, c.z - this.leader.z) > 12) continue;
    const score = walk + Math.max(0, 9 - fromEnemy) * 1.5 - Math.min(3, nav.clearance[i]) * .3 + this.wetCost(c);
    if (score >= bestScore) continue;
-   if (shotClear(this.sim.colliders, enemy.x, enemy.z, c.x, c.z, .3, this.sim.ground)) continue;
+   if (enemy.weapon==='sightline'?sniperLineClear(this.sim,enemy,c.x,c.z):shotClear(this.sim.colliders, enemy.x, enemy.z, c.x, c.z, .3, this.sim.ground)) continue;
    bestScore = score; best = c;
   }
   return best;
@@ -680,11 +711,15 @@ export class RobotBrain {
   const sim = this.sim, p = sim.player, style = STYLE[sim.weapon] || STYLE.static;
   let tx, tz;
   // Hunting, it keeps its gun on where they went (the corner they rounded).
-  if (target && (target.visible || this.time - target.seen < 1.5 || this.mode === 'hunt')) {
+  const room=this.mode==='hunt'&&this.roomPlan?.id===target?.id?this.roomPlan:null;
+  if(this.sniper?.mode==='scan'){tx=p.x+Math.cos(this.sniper.angle)*24;tz=p.z+Math.sin(this.sniper.angle)*24;this.aimPoint=null;}
+  else if(room){tx=room.aim.x;tz=room.aim.z;this.aimPoint={x:tx,z:tz,d:Math.hypot(tx-p.x,tz-p.z)};}
+  else if (target && (target.visible || this.time - target.seen < 1.5 || this.mode === 'hunt')) {
    const d = Math.hypot(target.x - p.x, target.z - p.z);
    // Lead by the projectile's flight time (and a little of the robot's own
    // reaction), aim error settling as it tracks.
-   const lead = (d / style.speed + .04) * this.pf.lead;
+   const speed=sim.weapon==='sightline'&&!sim.sightline.crouched?SIGHTLINE.pistolSpeed:style.speed;
+   const lead = (d / speed + (sim.weapon==='sightline'&&sim.sightline.crouched?SIGHTLINE.commit:.04)) * this.pf.lead;
    const age = target.visible ? 0 : Math.min(.8, this.time - target.seen);
    tx = target.x + target.vx * (lead + age); tz = target.z + target.vz * (lead + age);
    const settle = Math.exp(-dt / this.pf.settle);
@@ -724,7 +759,7 @@ export class RobotBrain {
   }
   // A hand, not a snap: the turn is limited and eases in.
   // Like a player's mouse aim: the barrel's line through the point, not the body's.
-  const want = muzzleBearing(p.x, p.z, tx, tz, muzzleLateral(this.sim.weapon));
+  const want = muzzleBearing(p.x, p.z, tx, tz, muzzleLateral(this.sim.weapon,this.sim.sightline?.crouched));
   if (this.aimAngle == null) this.aimAngle = Math.atan2(p.aimZ, p.aimX);
   const delta = wrap(want - this.aimAngle), max = (target?.visible ? this.pf.turn : this.pf.turn * .45) * dt;
   this.aimAngle = wrap(this.aimAngle + clamp(delta * Math.min(1, dt * 14), -max, max));
@@ -739,16 +774,17 @@ export class RobotBrain {
   const sim = this.sim, p = sim.player, t = this.time;
   const visible = target?.visible;
   const d = target ? Math.hypot(target.x - p.x, target.z - p.z) : Infinity;
-  const lined = visible && this.aimPoint && shotClear(sim.colliders, p.x, p.z, this.aimPoint.x, this.aimPoint.z, .04, sim.ground) && !(this.friends.length && this.friendInWay(this.aimPoint.x, this.aimPoint.z));
+  const probe=!visible&&this.mode==='hunt'&&this.roomPlan?.id===target?.id&&this.roomPlan?.kind==='probe';
+  const lined = (visible||probe) && this.aimPoint && (sim.weapon==='sightline'&&sim.sightline.crouched?sniperClear(this,this.aimPoint.x,this.aimPoint.z):shotClear(sim.colliders, p.x, p.z, this.aimPoint.x, this.aimPoint.z, .04, sim.ground)) && !(this.friends.length && this.friendInWay(this.aimPoint.x, this.aimPoint.z));
   const ready = t - this.acquiredAt > (this.reaction ??= this.pf.reaction[0] + this.random() * (this.pf.reaction[1] - this.pf.reaction[0]));
   const onTarget = this.aimOff < (Math.atan2(.5, Math.max(1, d)) + .03) * this.pf.trigger;
   const open = this.openFire(target, d);
   this.holding = !!target && visible && !open;
-  const shoot = visible && lined && ready && onTarget && open;
+  const shoot = (visible||probe) && lined && ready && onTarget && open;
   // Dodge: a grenade at its feet, stuck, or just hit hard with stamina to spare.
   if (this.wantDodge) {
    input.dodge = true; input.moveX = this.wantDodge.x; input.moveZ = this.wantDodge.z; this.wantDodge = null;
-  } else if (p.stamina >= RULES.dodgeStaminaCost && t - (this.dodgedAt ?? -9) > 1.2 && target && this.threatened(target, world) && this.random() < this.pf.tech * .5) {
+  } else if (p.stamina >= RULES.dodgeStaminaCost && t - (this.dodgedAt ?? -9) > 1.2 && target && this.threatened(target, world) && !(target.weapon==='sightline'&&target.sightline?.aiming) && this.random() < this.pf.tech * .5) {
    // It saw them line up on it and fire: out of the way, across their line.
    const dx = target.x - p.x, dz = target.z - p.z, dd = Math.hypot(dx, dz) || 1, side = this.nav.walkable(p.x, p.z, p.x - dz / dd * 2.5 * this.strafe, p.z + dx / dd * 2.5 * this.strafe) ? this.strafe : -this.strafe;
    input.dodge = true; input.moveX = -dz / dd * side; input.moveZ = dx / dd * side; this.dodgedAt = t;
@@ -765,7 +801,12 @@ export class RobotBrain {
   }
   if (sim.weapon === 'rifle') this.rifle(input, target, d, shoot, visible);
   else if (sim.weapon === 'shotgun') this.shotgun(input, target, d, shoot, visible);
+  else if(sim.weapon==='ichor'){input.aiming=false;input.tapFire=shoot&&d<2.5&&sim.ichor.cooldown<=0;input.ichorE=shoot&&d>3&&d<16&&sim.ichor.eCooldown<=0&&sim.ichor.blood>=ICHOR.eBlood;if(shoot&&d<2.8&&this.xAllowed()){input.ichorX=true;this.usedX();}}
+  else if(sim.weapon==='sidekick')this.sidekick(input,target,d,shoot,visible);
+  else if(sim.weapon==='sightline')this.sightline(input,target,d,shoot,visible);
+  else if(sim.weapon==='omen')this.omen(input,target,d,shoot,visible);
   else this.staticGun(input, target, d, shoot, visible, lined);
+  paceRoomFire(this,input,target);
  }
 
  // How much higher its ground is than `who`'s (0 on flat maps).
@@ -814,9 +855,28 @@ export class RobotBrain {
   const p = this.sim.player, dx = p.x - target.x, dz = p.z - target.z, d = Math.hypot(dx, dz) || 1;
   if (d > (STYLE[target.weapon]?.reach || 16)) return false;
   const off = Math.abs(wrap(Math.atan2(dz, dx) - Math.atan2(target.aimZ, target.aimX)));
-  return off < Math.atan2(.9, d) + .05 && (target.loud || (world.noises || []).some(n => Math.hypot(n.x - target.x, n.z - target.z) < 1.5));
+  return off < Math.atan2(.9, d) + .05 && (target.weapon==='sightline'&&target.sightline?.crouched&&target.sightline?.aiming&&target.sightline?.rifleAmmo>0&&this.laserResponse?.id===target.id&&!!this.laserResponse.kind&&this.time>=this.laserResponse.readyAt || target.loud || (world.noises || []).some(n => Math.hypot(n.x - target.x, n.z - target.z) < 1.5));
  }
 
+ sidekick(input,target,d,shoot,visible){
+  const s=this.sim.sidekick;input.aiming=visible&&d>8&&!s.active;
+  input.fire=!!s.active&&shoot;input.tapFire=shoot&&!s.active&&s.cooldown<=0;
+  input.reload=!s.active&&!s.summon&&!s.reload&&(s.ammo<=0||!visible&&s.ammo<6);
+  input.sidekickMine=visible&&d<9&&s.mineCharges>0&&s.mineCooldown<=0&&this.sim.sidekickMines.every(m=>Math.hypot(m.x-this.sim.player.x,m.z-this.sim.player.z)>3);
+  if(shoot&&d<16&&this.xAllowed()){input.sidekickX=true;this.usedX();}
+ }
+ sightline(input,target,d,shoot,visible){
+  sniperInput(this,input,target,d,shoot,visible);
+ }
+ omen(input,target,d,shoot,visible){
+  const s=this.sim.omen;
+  input.fire=shoot;input.aiming=visible&&d>7;
+  input.reload=!s.reload&&(s.ammo<=0||!visible&&s.ammo<OMEN.magazine);
+  const curse=s.marks.find(m=>m.kind==='e');
+  input.omenPrime=curse?curse.left<.35+(1-this.pf.tech)*.5:shoot&&!s.primed&&s.primeCooldown<=0;
+  if(s.volleyLeft>0)input.omenVolley=s.volleyLeft<.45&&s.marks.some(m=>m.kind==='x');
+  else if(shoot&&this.xAllowed()){input.omenVolley=true;this.usedX();}
+ }
  rifle(input, target, d, shoot, visible) {
   const sim = this.sim, r = sim.rifle, t = this.time;
   // Aimed in at range, where the spread matters (a skilled robot from 6 m).
@@ -920,4 +980,3 @@ export class RobotBrain {
   if (seeds < wantSeeds && sim.ammo > 0 && sim.seedCooldown <= 0 && !saveForHex) input.seed = true;
  }
 }
-

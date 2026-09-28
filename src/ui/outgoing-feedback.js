@@ -1,6 +1,9 @@
 import {damageFeedbackSize,damageFeedbackScale,damageFeedbackTilt} from './damage-feedback.js';
 import { setText, setStyle } from './dom-writes.js';
 const ADDITION_LIFE=1.2;
+// Catch up to the latest hit position on a readable beat, not on every pellet
+// or stream tick. Moving the anchor never restarts the accumulated total.
+export const OUTGOING_ANCHOR_BEAT=.3;
 // Damage numbers are whole and always rounded down, so a figure on screen is
 // never more than what actually landed.
 const format=damage=>Math.floor(Number(damage)||0);
@@ -32,17 +35,21 @@ export function createOutgoingFeedback(parent){
     item.tilt=damageFeedbackTilt(item.tilt);item.additionTilt=damageFeedbackTilt(item.additionTilt);
    }
    item.damage+=e.damage;item.hp=e.hp;item.maxHp=e.maxHp;item.volley=e.volley;item.updated=time;
+   if(Number.isFinite(e.x)&&Number.isFinite(e.z)){
+    item.hitX=e.x;item.hitZ=e.z;item.anchorPending=e.x!==item.x||e.z!==item.z;
+   }
    return;
   }
   const node=document.createElement('span'),total=document.createElement('b'),addition=document.createElement('small');
   const subtotalNode=document.createElement('em'),addedNode=document.createElement('em');addition.append(subtotalNode);addition.append(addedNode);
   node.className='outgoing-number';node.append(total);node.append(addition);root.append(node);
-  items.push({...e,born:time,updated:time,subtotal:e.damage,subtotalNode,added:0,addedNode,node,total,addition,tilt:damageFeedbackTilt(),additionTilt:damageFeedbackTilt(),offset:(Math.random()-.5)*32});
+  items.push({...e,born:time,updated:time,anchorAt:time,hitX:e.x,hitZ:e.z,anchorPending:false,subtotal:e.damage,subtotalNode,added:0,addedNode,node,total,addition,tilt:damageFeedbackTilt(),additionTilt:damageFeedbackTilt(),offset:(Math.random()-.5)*32});
  },update(sim,view){
   expire(sim.time);
   items.forEach(i=>{const age=sim.time-i.born,sinceHit=sim.time-i.updated;
+   if(i.anchorPending&&sim.time-i.anchorAt+1e-8>=OUTGOING_ANCHOR_BEAT){i.x=i.hitX;i.z=i.hitZ;i.anchorAt=sim.time;i.anchorPending=false;}
    setText(i.subtotalNode,format(i.subtotal));setText(i.addedNode,'+'+format(i.added));
-   // The total pops back in, in place and with its new tilt, each time it grows.
+   // The same total pops with each hit and periodically catches up to its target.
    setStyle(i.total,'transform',`rotate(${i.tilt}deg) scale(${damageFeedbackScale(sinceHit)})`);
    setStyle(i.addedNode,'transform',`rotate(${i.additionTilt}deg)`);
    setStyle(i.addition,'opacity',Math.max(0,Math.min(1,(ADDITION_LIFE-sinceHit)/.3)));

@@ -25,15 +25,14 @@ test('the fade list: characters outside every building, packed from the first sl
  const view = fakeView(), { fade, count, update } = roofFade(view);
  assert.equal(roofFade(view).fade, fade, 'one list per view');
  update();
- // You (outside), b (outside) and d (under an open shed's roof, which is
- // outdoors: stage 5 review); a stands inside the building; c is hidden.
- assert.equal(count.value, 3);
+ // You and b are outside. Both room and open-shed occupants are excluded:
+ // no circular transparent patch may give away a hidden person's position.
+ assert.equal(count.value, 2);
  assert.deepEqual(fade[0].toArray(), [10, 5, 2, 1]);
  assert.deepEqual(fade[1].toArray(), [-20, 3, 1, 1]);
- assert.deepEqual(fade[2].toArray(), [40.5, .5, 0, 1]);
- for (let i = 3; i < ROOF_FADE.slots; i++) assert.equal(fade[i].w, 0);
+ for (let i = 2; i < ROOF_FADE.slots; i++) assert.equal(fade[i].w, 0);
  // Once a frame: a second call in the same frame changes nothing.
- view.player.position.set(0, 0, 0); update(); assert.equal(count.value, 3);
+ view.player.position.set(0, 0, 0); update(); assert.equal(count.value, 2);
  // Next frame: you walked inside.
  view.remote.avatars.delete('d'); view.renderer.info.render.frame = 2; update();
  assert.equal(count.value, 1); assert.deepEqual(fade[0].toArray(), [-20, 3, 1, 1]); assert.equal(fade[1].w, 0);

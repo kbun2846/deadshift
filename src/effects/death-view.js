@@ -64,7 +64,7 @@ export class DeathView{
    this.particles.push({vx:Math.cos(a)*speed+direction.x*push,vz:Math.sin(a)*speed+direction.y*push,vy:1.4+(i%7)*.22,y:.35+(i%5)*.15,size:.035+(i%4)*.011});
   }
   this.boneBank=makeBoneBank();this.bones=new THREE.Group();view.scene.add(this.bones);this.boneParticles=[];
-  for(let i=0;i<11;i++){
+  for(let i=0;i<(event.damageType?.startsWith('ichor')?8:11);i++){
    const kind=i===0?5:i===1?3:Math.floor(Math.random()*5),organ=i>=8,model=(organ?this.boneBank.organs[i-8]:this.boneBank.models[kind]).clone();this.bones.add(model);
    const a=Math.random()*Math.PI*2,speed=.45+Math.random()*.8,push=directed?1.7+Math.random()*1.5:0;
    const scale=.85+Math.random()*.3;model.scale.setScalar(scale);

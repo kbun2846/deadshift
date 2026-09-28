@@ -1,11 +1,14 @@
+import { makeSightlineRifle } from './sightline-model.js';
+import { makeOmen } from './omen-model.js';
 import * as THREE from 'three';
+import { makeIchor } from './ichor-model.js';
 import { makeRifle } from './rifle-model.js';
 import { makeShotgun } from './shotgun-model.js';
 import { makeGrenade } from './grenade-model.js';
 
 // The weapon pictures the menus ship (tools/capture-weapons.mjs renders these
 // into src/assets/weapons/*.webp). Photo-only: the guns you hold in the game
-// are unchanged. All three share one studio (the same warm key and cool fill,
+// are unchanged. All weapons share one studio (the same warm key and cool fill,
 // camera angle, framing and tone), are flat shaded and low poly like the rest
 // of the game (prisms, not smooth cylinders; no gloss), and each gets extra
 // photo detail and its signature beside it: the Static with a charged orb, the
@@ -151,9 +154,92 @@ function shotgunGun() {
  return { scene, gun };
 }
 
-const BUILD = { static: staticGun, rifle: rifleGun, shotgun: shotgunGun };
+// The same compact Sidekick in both portraits: broad steel facets, a walnut
+// grip and a few readable mechanical details instead of surface noise.
+function sidekickPhotoModel() {
+ const gun=new THREE.Group(),steel='#53615c',edge='#929b86',dark='#26332f',brass='#b39b61';
+ const outline=new THREE.Shape();
+ outline.moveTo(-.055,-.047);outline.lineTo(.055,-.047);outline.lineTo(.055,.032);
+ outline.lineTo(.037,.059);outline.lineTo(-.037,.059);outline.lineTo(-.055,.032);outline.closePath();
+ add(gun,new THREE.ExtrudeGeometry(outline,{depth:.35,bevelEnabled:false}),steel,0,0,-.235);
+ // A narrow top rail and rear notch keep the muzzle silhouette clean.
+ box(gun,0,.060,-.061,.069,.014,.326,edge);
+ box(gun,0,.071,-.238,.024,.022,.033,brass);
+ for(const x of [-.034,.034])box(gun,x,.081,.083,.018,.025,.035,dark);
+ box(gun,0,-.063,-.046,.094,.035,.30,dark);
+ prism(gun,-.265,.037,.07,edge,8,0,-.004);
+ prism(gun,-.303,.028,.007,'#111b18',8,0,-.004);
+ prism(gun,-.308,.019,.004,'#080e0d',8,0,-.004);
+ // Ejection port, slide edge and a compact catch on the side facing the studio.
+ box(gun,.056,.018,-.075,.004,.033,.083,dark);
+ box(gun,.060,.017,-.065,.004,.017,.047,'#a0926c');
+ for(const side of [-1,1]){
+  box(gun,side*.056,-.033,-.065,.005,.008,.276,'#768279');
+  for(let i=0;i<4;i++)box(gun,side*.057,.005,.022+i*.020,.006,.044,.007,'#35423d');
+  bolt(gun,side*.050,-.067,.075,.008,brass);
+ }
+ box(gun,.057,-.060,.003,.014,.011,.047,edge);
+ const grip=new THREE.Group();grip.position.set(0,-.155,.065);grip.rotation.x=-.25;gun.add(grip);
+ box(grip,0,0,0,.090,.198,.104,dark);
+ for(const side of [-1,1]){
+  box(grip,side*.047,.001,0,.009,.161,.082,'#805c3b');
+  box(grip,side*.053,.001,-.030,.003,.145,.008,'#a47e51');
+  for(let i=0;i<4;i++)box(grip,side*.054,-.048+i*.029,.004,.003,.006,.055,'#533d2a');
+  for(const y of [-.067,.068])bolt(grip,side*.056,y,.007,.007,brass);
+ }
+ box(grip,0,-.107,0,.105,.026,.115,edge);
+ // An open guard and simple bent trigger read even at the small card size.
+ box(gun,0,-.109,-.122,.056,.077,.016,dark);
+ box(gun,0,-.147,-.066,.062,.014,.126,dark);
+ const trigger=box(gun,0,-.106,-.038,.021,.055,.015,brass);trigger.rotation.x=-.30;
+ // All detail is photo-only; keep the held weapon's familiar proportions.
+ return gun;
+}
 
-// One studio for all three: the same lights, tone, camera direction, and
+const BUILD = { ichor:()=>{const gun=makeIchor();gun.rotation.set(.08,0,-.18);const scene=new THREE.Group();scene.add(gun);return {scene,gun};}, sidekick:()=>{const gun=sidekickPhotoModel();gun.rotation.set(.12,0,-.16);const scene=new THREE.Group();scene.add(gun);return {scene,gun};}, sightline:()=>{const scene=new THREE.Group(),rifle=makeSightlineRifle(),pistol=sidekickPhotoModel();// Remove unused animated effects so their hidden bounds cannot shrink the portrait.
+for(const name of ['sightline-loading-round','sightline-breach-light']){const part=rifle.getObjectByName(name);part.removeFromParent();part.traverse(o=>o.geometry?.dispose());}
+for(const name of ['sightline-leg-left','sightline-leg-right'])rifle.getObjectByName(name).rotation.x=-Math.PI/2;
+rifle.rotation.z=-.16;pistol.position.set(.1,-.48,.15);pistol.rotation.set(.1,0,.28);pistol.scale.setScalar(1.25);scene.add(rifle,pistol);return {scene,gun:scene};}, omen:()=>{const gun=makeOmen(3,false);gun.rotation.set(.12,0,-.16);const scene=new THREE.Group();scene.add(gun);return {scene,gun};}, static: staticGun, rifle: rifleGun, shotgun: shotgunGun };
+
+// Ichor (v0.990a, owner: "make the katana fit better in its thumbnail"): a
+// sword is long and thin, so framing its box's corners left it a small shallow
+// sliver in a big empty card, seen nearly edge-on. Instead it is turned in the
+// camera's own frame: the tip up and to the right along the card's diagonal,
+// the handle and guard low left, the steel's flat face toward the camera
+// (tipped a little up, so the key light runs down the edge and the blood
+// channel shows), then framed on its actual points (every vertex projected,
+// not the box's corners) and centred with a view offset, filling ~92% of the
+// card's diagonal.
+const ICHOR_PHOTO = { angle: .9, face: .5, fill: .92 };
+function fitAlongDiagonal(gun, camera) {
+ const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1), back = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 2);
+ const tip = right.clone().multiplyScalar(Math.cos(ICHOR_PHOTO.angle)).addScaledVector(up, Math.sin(ICHOR_PHOTO.angle)).normalize();
+ // The flat face's normal: toward the camera, leaning up the screen, square to the tip.
+ const face = back.clone().multiplyScalar(Math.cos(ICHOR_PHOTO.face)).addScaledVector(up, Math.sin(ICHOR_PHOTO.face));
+ face.addScaledVector(tip, -face.dot(tip)).normalize();
+ // The model's tip runs along -z and its flat face along +y (ichor-model.js).
+ const z = tip.clone().negate(), x = new THREE.Vector3().crossVectors(face, z);
+ const centre = new THREE.Box3().setFromObject(gun).getCenter(new THREE.Vector3());
+ gun.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, face, z)); gun.rotation.reorder('XYZ');
+ gun.position.set(0, 0, 0); gun.updateMatrixWorld(true);
+ gun.position.copy(centre).sub(new THREE.Box3().setFromObject(gun).getCenter(new THREE.Vector3())); gun.updateMatrixWorld(true);
+ // Its points on screen, at zoom 1.
+ camera.zoom = 1; camera.clearViewOffset(); camera.updateProjectionMatrix();
+ const v = new THREE.Vector3();
+ let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+ gun.traverse(o => {
+  if (!o.isMesh || !o.visible) return;
+  const pos = o.geometry.attributes.position;
+  for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).project(camera); x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y); }
+ });
+ camera.zoom = Math.min(2 * ICHOR_PHOTO.fill / (x1 - x0), 2 * ICHOR_PHOTO.fill / (y1 - y0));
+ // Centred: the view offset shifts the picture by the points' middle (at this zoom).
+ const W = SIZE.width, H = SIZE.height, cx = (x0 + x1) / 2 * camera.zoom, cy = (y0 + y1) / 2 * camera.zoom;
+ camera.setViewOffset(W, H, cx * W / 2, -cy * H / 2, W, H);
+ camera.updateProjectionMatrix();
+}
+
+// One studio for every weapon: the same lights, tone, camera direction, and
 // framing fitted to each weapon's bounds (it fills the card and bleeds a
 // little off its sides, like the old pictures).
 export function weaponPhoto(id) {
@@ -177,7 +263,8 @@ export function weaponPhoto(id) {
   const p = new THREE.Vector3(i & 1 ? bounds.max.x : bounds.min.x, i & 2 ? bounds.max.y : bounds.min.y, i & 4 ? bounds.max.z : bounds.min.z).project(camera);
   ex = Math.max(ex, Math.abs(p.x)); ey = Math.max(ey, Math.abs(p.y));
  }
- camera.zoom = Math.min(1.3 / ex, 1.15 / ey); camera.updateProjectionMatrix();
+ camera.zoom = Math.min((id==='ichor'?.96:id==='sightline'?1.04:1.3) / ex, (id==='ichor'?.96:1.15) / ey); camera.updateProjectionMatrix();
+ if (id === 'ichor') fitAlongDiagonal(gun, camera);
  renderer.render(scene, camera);
  const url = renderer.domElement.toDataURL('image/png');
  scene.traverse(o => o.geometry?.dispose()); flat.forEach(m => m.dispose()); flat.clear(); renderer.dispose(); renderer.forceContextLoss();

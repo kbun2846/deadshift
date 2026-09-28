@@ -10,7 +10,7 @@
 // lot at once.
 import * as THREE from 'three';
 import { castToWall, floorHeight } from './blood-surfaces.js';
-import { groundY, hilly } from '../render/ground-lift.js';
+import { groundY, floorY, hilly } from '../render/ground-lift.js';
 
 export const DROP_CAP = Object.freeze({ potato: 90, performance: 180, balanced: 420, quality: 700, extreme: 1000 });
 // Per victim: each hit within `window` seconds of the last adds `step` to the
@@ -113,7 +113,7 @@ export class BloodDrops {
  // with the tread showing as lighter bars. Fainter as `strength` falls, from
  // 1 (fresh out of the pool). Its own instances (a boot-shaped texture), in
  // a ring of PRINT_CAP.
- print(x, z, angle, strength, map) {
+ print(x, z, angle, strength, map, below = false) {
   if (!this.prints) {
    const geometry = new THREE.PlaneGeometry(2, 2); geometry.rotateX(-Math.PI / 2);
    this.printMaterial = new THREE.MeshBasicMaterial({ map: typeof document === 'undefined' ? null : (BloodDrops.bootTexture ||= bootTexture()), color: '#ffffff', transparent: true, depthWrite: false,
@@ -123,7 +123,7 @@ export class BloodDrops {
    this.prints.setColorAt(0, SHADES[0]); this.view.scene.add(this.prints); this.printNext = 0; this.printUsed = 0;
   }
   const d = this.dummy, i = this.printNext;
-  d.position.set(x, floorHeight(map, x, z) + .006, z); d.rotation.set(0, angle, 0); d.scale.set(.095, 1, .18); d.updateMatrix();
+  d.position.set(x, (below ? floorY(this.view,x,z,true) : floorHeight(map, x, z)) + .006, z); d.rotation.set(0, angle, 0); d.scale.set(.095, 1, .18); d.updateMatrix();
   this.prints.setMatrixAt(i, d.matrix); this.prints.setColorAt(i, SHADES[1].clone().lerp(new THREE.Color('#9a4a40'), (1 - strength) * .8));
   this.printNext = (i + 1) % PRINT_CAP; this.printUsed = Math.min(this.printUsed + 1, PRINT_CAP); this.prints.count = this.printUsed;
   this.prints.instanceMatrix.needsUpdate = true; if (this.prints.instanceColor) this.prints.instanceColor.needsUpdate = true;

@@ -122,9 +122,14 @@ export const hollowWick = {
  // colour x 3.15 in linear light), the low weak WSW sun (#d9a070) through the west's dusk glow
  // (#b58a66), fog-grey haze (#9c9892) that starts inside the view, and Extreme's grade duller and
  // cooler in the shade. Exposure stays at the default, so unlit effects keep their colours.
- look: { sky: '#e7e7e1', skyIntensity: 2.32, bounce: '#807a6d', sun: '#d9a070', glow: '#b58a66', glowMix: .3, sunIntensity: 2.1, haze: '#9c9892', fogNear: 34, fogFar: 120,
-  grade: { warmth: .03, shade: .06, contrast: .06, saturation: .9 },
-  sunOffset: { x: -43, y: 17, z: 18 }, fog: { colour: '#b9b6ae', opacity: .38, lowBias: .7 } },
+ // v0.990a (owner: "make the dusk stronger"): the light about a quarter down
+ // (sky 2.32 -> 1.95, sun 2.1 -> 1.72), more of the glow in the sun, the haze
+ // and fog sheets a shade darker, a touch more contrast on Extreme. The ground
+ // reads about 72% as bright as the old daylight grey (was 95%); every coat,
+ // team colour and blood still clears its contrast floor.
+ look: { sky: '#e7e7e1', skyIntensity: 1.95, bounce: '#807a6d', sun: '#d9a070', glow: '#b58a66', glowMix: .4, sunIntensity: 1.72, haze: '#8b8782', fogNear: 34, fogFar: 120,
+  grade: { warmth: .03, shade: .07, contrast: .08, saturation: .9 },
+  sunOffset: { x: -43, y: 17, z: 18 }, fog: { colour: '#aaa69e', opacity: .38, lowBias: .7 } },
  // The ground's colours (render/ground-layers.js): damp low ground in the
  // stream hollow, darker still by the water; earthier banks.
  terrainLook: { bank: '#544a37', damp: '#4b4333', dampBelow: 1.45, dampDepth: .6, dampMix: .55, hollow: '#40443c', hollowBelow: .95, hollowDepth: .7, hollowMix: .6,

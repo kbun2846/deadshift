@@ -1,3 +1,4 @@
+import {tryIchorDeflect,ichorGuardFor,endIchorGuard} from './weapons/ichor-deflect.js';
 import {recordBallastDamage} from './weapons/ballast-damage.js';
 import {isPlayable,confinePlayableMovement} from './playable-area.js';
 import {resetShotgun,stepShotgun,SHOTGUN} from './weapons/shotgun.js';
@@ -20,7 +21,11 @@ import { usesTrigger } from './items.js';
 
 // Each trigger weapon's own tick (fire, reload, its extras). Static's orbs,
 // hex and stream run inline in step() below. A new weapon adds its line here.
-const WEAPON_STEPS = { rifle: stepRifle, shotgun: stepShotgun };
+import { resetOmen, stepOmen, clearOmen } from './weapons/omen.js';
+import { resetSightline, stepSightline, prepareSightline, stepSightlineScope, SIGHTLINE } from './weapons/sightline.js';
+import { resetSidekick,stepSidekick,stepSidekickMobility,stepSidekickMines,SIDEKICK } from './weapons/sidekick.js';
+import {resetIchor,stepIchor,ichorOnTrail,ICHOR} from './weapons/ichor.js';
+const WEAPON_STEPS = { rifle: stepRifle, shotgun: stepShotgun, omen: stepOmen, sightline: stepSightline, sidekick: stepSidekick, ichor:stepIchor };
 export { RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH };
 
 
@@ -154,16 +159,36 @@ export class Simulation {
   practiceTargets() {
     if (this.noTargets) return [];
     return this.map.targets.map(t => {
-      const maxHp = t.maxHp ?? (t.kind === 'dummy' ? RULES.dummyHealth : RULES.targetHealth);
+      const maxHp = this.practiceTargetHealth(t);
       return { ...t, baseX: t.x, spawnX: t.x, spawnZ: t.z, hp: maxHp, maxHp, respawn: 0, flash: 0 };
     });
+  }
+  practiceTargetHealth(target) {
+    const override = this.dev.targetHealth;
+    return this.worldAuthority && !this.predictOnly && Number.isFinite(override) && override > 0
+      ? override : target.maxHp ?? (target.kind === 'dummy' ? RULES.dummyHealth : RULES.targetHealth);
+  }
+  // Dev: changing health refills standing practice targets. Downed targets
+  // keep their respawn timer; Normal restores each map-authored health value.
+  // Never touch the player/robot proxies used by solo bots or online play.
+  syncTargetHealth() {
+    if (!this.worldAuthority || this.predictOnly) return;
+    for (const target of this.targets) {
+      if (target.kind === 'robot' || target.kind === 'player') continue;
+      const original = this.map.targets.find(t => t.id === target.id);
+      if (!original) continue;
+      const maxHp = this.practiceTargetHealth(original);
+      if (target.maxHp === maxHp) continue;
+      target.maxHp = maxHp;
+      if (target.hp > 0) { target.hp = maxHp; target.bulletHits = 0; target.flash = 0; }
+    }
   }
   // How close another player's centre can come to ours: two body radii.
   touchingPlayer() { const p = this.player, limit = RULES.radius * 2; return this.otherPlayers.some(o => !(o.hp <= 0) && Math.hypot(o.x - p.x, o.z - p.z) < limit); }
 
   reset() {
     this.dev.speed=1;
-    resetRifle(this);resetShotgun(this);
+    resetRifle(this);resetShotgun(this);resetOmen(this);resetSightline(this);resetSidekick(this);resetIchor(this);
     resetGrenades(this); resetSurge(this); resetScatter(this);
     this.time = 0; this.serial = 0; this.volley = 0; this.shots = []; this.hexOrbs = []; this.hexSpin = null; this.hexCooldown = 0; this.events = [];
     this.player = this.freshPlayer('local', this.map.spawn);
@@ -191,7 +216,7 @@ export class Simulation {
   // Online: back into the world after dying or picking a weapon. A fresh body
   // and a full loadout, but the world (props, crops, the clock) is untouched.
   respawn(at, id = this.player.id) {
-    resetRifle(this); resetShotgun(this); resetGrenades(this); resetSurge(this, true); resetScatter(this, true);
+    resetRifle(this); resetShotgun(this); resetGrenades(this); resetSurge(this, true); resetScatter(this, true); resetOmen(this,true); resetSightline(this,true);resetSidekick(this,true);resetIchor(this,true);
     this.shots = []; this.hexOrbs = []; this.hexSpin = null; this.hexCooldown = 0;
     this.volleyKills = new Map(); this.volleys = new Map(); this.seedCooldown = 0;
     this.ammo = RULES.maxSeeds; this.rechargeProgress = 0; this.rechargeWait = 0; this.firstRefill = false;
@@ -203,12 +228,12 @@ export class Simulation {
   // The parked orbs a launch commands: on hills only those the caster can see
   // (a retaining wall hides the ledge above them); every one on a flat map.
   launchableSeeds() { const p = this.player; return this.ground.flat ? this.seeds : this.seeds.filter(s => this.ground.sightClear(p.x, p.z, s.x, s.z, this.ownGround())); }
-  // One dodge per weapon; Ballast gets two (owner's call, v0.83).
-  get maxStamina(){return this.weapon==='shotgun'?SHOTGUN.dodges:RULES.maxStamina;}
+  // Ballast and the Sightline/Sidekick loadout have two dodge charges.
+  get maxStamina(){return this.weapon==='ichor'?ICHOR.dodges:this.weapon==='sightline'?SIGHTLINE.dodges:this.weapon==='shotgun'?SHOTGUN.dodges:RULES.maxStamina;}
   // Nominal has no self-movement of its own, so holding a position is the one
   // thing it trades for. Standing still pays it back in dodges, matching the
   // stationary bonus Static already gets on its ammo pool.
-  get staminaRate(){return this.weapon==='rifle'&&Math.hypot(this.player.vx,this.player.vz)<.15?RIFLE.stationaryStamina:1;}
+  get staminaRate(){return this.weapon==='ichor'?1/ICHOR.dashRechargeScale:this.weapon==='sightline'?1/SIGHTLINE.dashRechargeScale:this.weapon==='rifle'&&Math.hypot(this.player.vx,this.player.vz)<.15?RIFLE.stationaryStamina:1;}
   get rechargeRate() { return Math.hypot(this.player.vx, this.player.vz) < .15 ? RULES.stationaryRecharge : 1; }
   get rechargeInterval() { return RULES.rechargeInterval / (this.firstRefill ? 1.4 : 1); }
   get interior() { return this.map.buildings.find(b => buildingContains(b, this.player)) || null; }
@@ -364,7 +389,9 @@ export class Simulation {
     const frozen=!!this.dev.freeze;
     if(frozen)input={moveX:input.moveX,moveZ:input.moveZ,aimX:input.aimX,aimZ:input.aimZ,aimPointX:input.aimPointX,aimPointZ:input.aimPointZ,autoRange:input.autoRange,smoothAim:input.smoothAim,dodge:input.dodge};
     if(usesTrigger(this.weapon))input={...input,spray:false,hex:false,seed:false,launch:false};
+    if(['omen','ichor'].includes(this.weapon)&&input.aiming)input={...input,aiming:false};
     if (this.worldAuthority && !frozen) stepCrops(this, dt, (a, b) => !this.colliders.some(c => !c.playerOnly && segmentBox(a.x, a.z, b.x, b.z, c) !== null));
+    if(!frozen)stepSidekickMines(this,dt,segmentBox);
     // Dead: what you already fired keeps flying and landing (blast shells,
     // grenades, bullets, pellets); you do nothing new.
     if(this.player.dead){const idle={aimX:this.player.aimX,aimZ:this.player.aimZ};if(!this.dev.freeze){stepScatter(this,idle,dt,{segmentBox,segmentCircle});stepGrenades(this,idle,dt,segmentBox);if(this.weapon!=='static')WEAPON_STEPS[this.weapon]?.(this,idle,dt,{segmentBox,segmentCircle});}return;}
@@ -383,6 +410,8 @@ export class Simulation {
       this.spray = { active: true, warmup: RULES.sprayWarmup, credit: 0, exhausted: false, effectClock: 0, volley: ++this.volley };
       this.events.push({ type: 'sprayStart', x: p.x, z: p.z });
     }
+    input=prepareSightline(this,input);
+    if(!frozen)stepSidekickMobility(this,input,dt);
     const wasDodging = p.dodgeRemaining > 0;
     p.dodgeRemaining = Math.max(0, p.dodgeRemaining - dt);
     const staminaWaiting = Math.min(dt, p.staminaWait); p.staminaWait -= staminaWaiting;
@@ -392,10 +421,12 @@ export class Simulation {
     const length = Math.hypot(input.moveX || 0, input.moveZ || 0);
     const ix = length ? (input.moveX || 0) / Math.max(1, length) : 0;
     const iz = length ? (input.moveZ || 0) / Math.max(1, length) : 0;
-    let moveSpeed=RULES.speed*(input.aiming?RIFLE.aimMoveMultiplier:1)*(this.surge?.active?SURGE.speed:1);
+    let moveSpeed=RULES.speed*(ichorOnTrail(this)?ICHOR.trailSpeed:1)*(this.weapon==='ichor'&&this.ichor.blood>=ICHOR.meterMax?ICHOR.fullMove:1)*(this.weapon==='sidekick'&&this.sidekick.active>0?SIDEKICK.moveSpeed:1)*(this.weapon==='ichor'&&this.ichor.frenzy>0?ICHOR.frenzyMove+.3*Math.sin(Math.PI*Math.min(1,(this.ichor.duration-this.ichor.swing)/(this.ichor.duration||1))):1)*(input.aiming?RIFLE.aimMoveMultiplier:1)*(this.surge?.active?SURGE.speed:1);
+    if(this.weapon==='ichor'&&this.ichor.swing>0)moveSpeed*=ICHOR.attackMove;
+    if(this.weapon==='ichor'&&this.ichor.guarding)moveSpeed*=ICHOR.guardMove;
     // Hills: walking up a slope is slower, down one a little quicker.
     if (!this.ground.flat && length) moveSpeed *= this.slopeFactor(ix, iz) * this.wadeFactor(ix, iz);
-    if (wasDodging && !p.dodgeRemaining) { p.vx = ix * moveSpeed; p.vz = iz * moveSpeed; }
+    if (wasDodging && !p.dodgeRemaining) { p.vx = ix * moveSpeed; p.vz = iz * moveSpeed;if(this.weapon==='ichor')this.ichor.dashWindow=ICHOR.dashGrace; }
     // A dodge pressed a moment too early (still mid-dodge, or a charge just
     // short) is held for RULES.dodgeBuffer and happens the instant it can,
     // instead of being dropped.
@@ -434,7 +465,7 @@ export class Simulation {
     if (hasAim) {
       const desired = input.autoRange ? assistAim(p, this.assistTargets(), Math.atan2(input.aimZ, input.aimX), input.autoRange) : Math.atan2(input.aimZ, input.aimX), current = Math.atan2(p.aimZ, p.aimX);
       const delta = Math.atan2(Math.sin(desired - current), Math.cos(desired - current));
-      const limit = this.spray.active ? RULES.sprayTurnRate * dt : Math.PI;
+      const limit = this.weapon==='sightline'&&input.aiming&&!this.sightline.crouched ? SIGHTLINE.pistolTurnRate*dt : this.spray.active ? RULES.sprayTurnRate * dt : Math.PI;
       // Ease digital aim along the shortest arc, keeping shots and the model aligned.
       let turn = delta;
       if (input.smoothAim) {
@@ -472,6 +503,7 @@ export class Simulation {
     const usePoint = pointed && !lock;
     p.aimPointX = usePoint ? input.aimPointX : p.x + p.aimX * p.aimReach;
     p.aimPointZ = usePoint ? input.aimPointZ : p.z + p.aimZ * p.aimReach;
+    stepSightlineScope(this,dt);
     if(frozen)return;
     stepSurge(this,input,dt,{breakAround:(x,z,r)=>this.breakAround(x,z,r)});
     stepScatter(this,input,dt,{segmentBox,segmentCircle});
@@ -1214,10 +1246,23 @@ export class Simulation {
     }
   }
 
+  deflect(target,shot){
+    if(target.hp<=0||shot.owner===target.id||this.shields?.length&&this.shieldedFrom(target.x,target.z))return false;
+    const deflected=tryIchorDeflect(target,shot);
+    if(deflected){
+      const x=deflected.x,z=deflected.z;deflected.y=this.standY(target)+.74;
+      for(const c of collidersAlong(this.colliders,x,z,x+deflected.dx*deflected.range,z+deflected.dz*deflected.range,.03)){if(c.playerOnly)continue;const t=segmentBox(x,z,x+deflected.dx*deflected.range,z+deflected.dz*deflected.range,c,.025);if(t!==null)deflected.range*=t;}
+      if(!this.ground.flat)deflected.range=Math.min(deflected.range,this.ground.flight(x,z,deflected.dx,deflected.dz,deflected.range,this.standY(target)).stop);
+      this.events.push(deflected);return deflected.blocked;
+    }
+    return false;
+  }
+
   hit(target, shot) {
     if (target.hp <= 0 || shot.owner === target.id) return;
     // Inside someone's hex, and this came from outside it: nothing lands.
     if (!shot.environmental && this.shields?.length && this.shieldedFrom(target.x, target.z)) { this.events.push({ type: 'hexBlock', x: target.x, z: target.z }); return; }
+    if(!shot.deflectChecked){const blocked=this.deflect(target,shot);if(blocked){if(blocked>=shot.damage)return;shot={...shot,damage:shot.damage-blocked};}}
     // A teammate (friendly fire on) takes only their share, here, so the
     // numbers, the hit marker and any KILL match what really landed.
     if (target.friendly && target.share !== undefined && target.share !== 1) shot = { ...shot, damage: shot.damage * target.share };
@@ -1249,7 +1294,7 @@ export class Simulation {
       }
     }
     if (killed || !shot.environmental) this.events.push({ type: killed ? 'kill' : 'hit', x: target.x, z: target.z, volley: shot.volley,
-      id:target.id, damageType:ballast&&killed?'ballastFatal':shot.damageType, oneShot:killed&&oneShot&&!shot.environmental, electric:!!shot.electric, blast:!!shot.blast, damage:dealt, targetKind: target.kind, directionX: shot.vx || 0, directionZ: shot.vz || 0 });
+      id:target.id, ...((shot.damageType==='omenCurse'||shot.damageType?.startsWith('ichor'))?{below:!!target.below}:null), ...(shot.bloodLevel!=null?{bloodLevel:shot.bloodLevel}:{}),damageType:ballast&&killed?'ballastFatal':shot.damageType, oneShot:killed&&oneShot&&!shot.environmental, electric:!!shot.electric, blast:!!shot.blast, damage:dealt, targetKind: target.kind, directionX: shot.vx || 0, directionZ: shot.vz || 0 });
   }
 
   damageEnvironment(entity, damage) {
@@ -1257,7 +1302,7 @@ export class Simulation {
     this.hit(entity, { damage, owner: 'crop-fire', environmental: true });
   }
 
-  damagePlayer(damage, owner, environmental = false, selfBlast = false, impact = null, damageType = environmental?'fire':selfBlast?'explosion':'gunshot') {
+  damagePlayer(damage, owner, environmental = false, selfBlast = false, impact = null, damageType = environmental?'fire':selfBlast?'explosion':'gunshot', source = null) {
     if (this.dev.invulnerable || this.dev.ghost || !owner || owner === this.player.id && !selfBlast || this.player.hp <= 0 || !Number.isFinite(damage) || damage <= 0) return 0;
     // Surge takes the edge off everything (not your own blasts' push, just damage).
     if (this.surge?.active) damage *= SURGE.taken;
@@ -1266,13 +1311,26 @@ export class Simulation {
     const dealt = Math.min(this.player.hp, !environmental && this.player.dodgeRemaining > 0 ? Math.max(1, Math.round(damage * RULES.dodgeDamageMultiplier)) : damage);
     if(damageType==='ballast'){recordBallastDamage(this.player,dealt,this.time,owner);if(dealt>=this.player.hp)damageType='ballastFatal';}
     this.player.hp -= dealt;
-    this.events.push({type:'playerDamage',damage:dealt});
+    const event = {type:'playerDamage',damage:dealt};
+    // Force points away from the hit's origin. Curses/streams without force
+    // use the caster's position; keep this UI bearing separate from death force.
+    let dx = -(impact?.x || 0), dz = -(impact?.z || 0);
+    let length = Math.hypot(dx, dz);
+    if (!(length > 1e-6 && Number.isFinite(length)) && source) {
+      dx = source.x - this.player.x; dz = source.z - this.player.z; length = Math.hypot(dx, dz);
+    }
+    if (length > 1e-6 && Number.isFinite(length)) { event.sourceDX = dx / length; event.sourceDZ = dz / length; }
+    this.events.push(event);
     if(this.player.hp<=0)this.killPlayer(impact,damageType);
     return dealt;
   }
 
   killPlayer(impact=null,damageType='impact'){
     const p=this.player;if(p.dead)return;
+    if(this.ichor)endIchorGuard(this.ichor);
+    clearOmen(this);
+    if(this.ichor){this.ichor.guarding=this.ichor.guardHeld=false;this.ichor.guardStrength=this.ichor.guardShots=this.ichor.guardFlash=0;this.ichor.frenzy=this.ichor.swing=0;this.ichorBleeds=[];this.ichorWaves=[];}delete this.player.ichor;
+    this.sidekickMines=[];if(this.sidekick){this.sidekick.active=this.sidekick.summon=0;}delete this.player.sidekick;
     // A nova ends (its cooldown runs) and a readied blast is dropped.
     if(this.surge&&this.surge.phase!=='idle'&&!this.predictOnly)endSurge(this,false);
     if(this.scatter)this.scatter.armed=false;
@@ -1303,7 +1361,8 @@ export class Simulation {
   hitPlayerProjectile(ax, az, bx, bz, shot) {
     if (shot.owner === this.player.id) return 0;
     if (segmentCircle(ax, az, bx, bz, this.player.x, this.player.z, this.playerHitRadius + (shot.radius || 0)) === null) return 0;
-    const damage=this.damagePlayer(shot.damage, shot.owner,false,false,{x:bx-ax,z:bz-az},shot.damageType||(shot.electric?'electric':'gunshot'));
+    const blocked=this.deflect({...this.player,...ichorGuardFor(this)},{...shot,vx:bx-ax,vz:bz-az});if(blocked>=shot.damage)return 0;
+    const damage=this.damagePlayer(shot.damage-blocked, shot.owner,false,false,{x:bx-ax,z:bz-az},shot.damageType||(shot.electric?'electric':'gunshot'));
     if(damage&&shot.electric)this.events.push({type:'playerHit',id:this.player.id,x:this.player.x,z:this.player.z,electric:true});
     return damage;
   }
@@ -1328,6 +1387,10 @@ export class Simulation {
   // weapon untouched. `propRestore` (quiet) for each broken prop and then
   // `mapReset` tell the renderer, which clears blood, marks and bodies.
   resetWorld() {
+    this.ichorTrails=[];
+    clearOmen(this);
+    if(this.ichor){this.ichor.guarding=this.ichor.guardHeld=false;this.ichor.guardStrength=this.ichor.guardShots=this.ichor.guardFlash=0;this.ichor.frenzy=this.ichor.swing=0;this.ichorBleeds=[];this.ichorWaves=[];}delete this.player.ichor;
+    this.sidekickMines=[];if(this.sidekick){this.sidekick.active=this.sidekick.summon=0;}delete this.player.sidekick;
     for (const prop of this.props) {
       if (prop.hp === null) continue;
       if (prop.hp <= 0) this.events.push({ type: 'propRestore', id: prop.id, x: prop.x, z: prop.z, propType: prop.type, quiet: true });

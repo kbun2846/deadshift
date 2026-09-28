@@ -1,3 +1,9 @@
+import { makeIchor,poseIchor,applyIchorBody } from './weapons/ichor-model.js';
+import { IchorDrench } from './effects/ichor-drench.js';
+import { RiflePose } from './weapons/rifle-pose.js';
+import { makeSidekick,poseSidekick,disposeSidekick } from './weapons/sidekick-model.js';
+import { makeSightline,poseSightline } from './weapons/sightline-model.js';
+import { makeOmen } from './weapons/omen-model.js';
 // Other players in an online game. Same silhouette as your own gunslinger so
 // the world stays consistent, in a colourway of their own, one per player slot
 // (coat, arms, hat band, scarf and base ring), so you never lose track of which
@@ -24,6 +30,10 @@ function gunModel(view, weapon) {
  if (!byWeapon.has(weapon)) {
   let model;
   if (weapon === 'rifle') model = makeRifle(2);
+  else if (weapon === 'ichor') model = makeIchor();
+  else if (weapon === 'sidekick') model = makeSidekick();
+  else if (weapon === 'sightline') model = makeSightline();
+  else if (weapon === 'omen') model = makeOmen(2);
   else if (weapon === 'shotgun') model = makeShotgun(2);
   else {
    // Static: pale-blue receiver, charge rails, yellow muzzle collar.
@@ -80,7 +90,7 @@ export class RemotePlayers {
   v.cylinder(0, 1.09, 0, .239, .075, c.band, body, 8).userData.deathPart = 'head';
   v.box(0, .84, .04, .44, .1, .4, c.collar, body);
   const scarf = v.box(-.1, .7, .32, .16, .3, .06, c.collar, body); scarf.rotation.x = -.3;
-  v.box(.27, .69, -.2, .16, .16, .38, c.arm, body);
+  v.box(.27, .69, -.2, .16, .16, .38, c.arm, body).userData.deathPart='arm';
   v.batch(body);
   // Blood from walking through pools (blood-wading.js), like yours.
   const stains = loose ? null : makeBloodStains(body);
@@ -125,7 +135,7 @@ export class RemotePlayers {
    const ringColour = p.ring || avatar.ringColour;
    if (avatar.ring && avatar.shownRing !== ringColour) { avatar.shownRing = ringColour; avatar.ring.material.color.set(ringColour); avatar.ring.material.opacity = p.ring ? .95 : avatar.ringOpacity; if (p.ring) { avatar.ownRing ??= avatar.ring.geometry; avatar.ring.geometry = TEAM_RING(); } else if (avatar.ownRing) avatar.ring.geometry = avatar.ownRing; }
    const weapon = p.weapon || 'static';
-   if (avatar.weapon !== weapon) { avatar.hand.clear(); avatar.hand.add(gunModel(this.view, weapon)); avatar.weapon = weapon; }
+   if (avatar.weapon !== weapon) { disposeSidekick(avatar.hand);avatar.hand.clear(); avatar.hand.add(gunModel(this.view, weapon)); avatar.weapon = weapon; }
    // (Hills: wading under a deck, on the ground below it. The drawn position
    // trails the snapshots, so one that has just waded out stays under until
    // it is clear of the deck instead of popping up onto it; stepping off a
@@ -144,11 +154,25 @@ export class RemotePlayers {
    const speed = Math.hypot(p.vx, p.vz);
    const dodge = p.dodgeRemaining > 0 ? Math.sin(Math.PI * (1 - p.dodgeRemaining / RULES.dodgeDuration)) : 0;
    avatar.body.scale.set(1 + dodge * .12, 1 - dodge * .3, 1 + dodge * .12);
+   avatar.body.rotation.y=0;avatar.body.rotation.x=0;
+   if(weapon==='sidekick')poseSidekick(avatar.hand,p.sidekick||{},time);
+   if(weapon==='sightline'){const pose=poseSightline(avatar.hand,p.sightline||{},time,dt);avatar.body.scale.y*=1-.27*pose.bodyCrouch;}
    avatar.body.position.y = Math.sin(time * 17) * .022 * speed / 7;
    avatar.body.rotation.z = Math.sin(time * 8.5) * .018 * speed / 7;
+   if(weapon==='ichor'){
+    const pose=poseIchor(avatar.hand,p.ichor||{},time);
+    if(!avatar.ichorArms){avatar.ichorArms=new RiflePose({userData:{body:avatar.body,gun:avatar.hand}},{sleeveColor:avatar.colours.arm,skinColor:avatar.robot?avatar.colours.coat:'#d6b58a'});avatar.fixedArms=avatar.body.children.filter(o=>o.userData.deathPart==='arm');}
+    for(const arm of avatar.fixedArms)arm.visible=false;
+    avatar.ichorArms.update({weapon:'ichor',ichor:p.ichor||{},time,grenadeThrowTime:-10},0,0,0);
+    applyIchorBody(avatar.body,pose);
+   }else if(avatar.ichorArms){avatar.ichorArms.root.visible=false;for(const arm of avatar.fixedArms)arm.visible=true;}
    // A robot sheds armour and sparks as it is damaged (bots/robot-wear.js).
    if (avatar.robot && p.hp != null && dt > 0) wear(this.view, avatar, p.hp / (p.maxHp || 500), dt);
-   if (avatar.stains && dt > 0) avatar.stains.set(avatar.wading.update(p.x, p.z, p.vx, p.vz, dt, pools, this.view.drops, this.view.map));
+   if (avatar.stains && dt > 0) {
+    avatar.wading.soakIchor(weapon==='ichor'?p.ichor?.blood||0:0,dt);avatar.stains.set(avatar.wading.update(p.x,p.z,p.vx,p.vz,dt,pools,this.view.drops,this.view.map));
+    if(avatar.wading.drench>0||avatar.drench){avatar.drench??=new IchorDrench(avatar.body,avatar.ichorArms?.root);avatar.drench.set(avatar.wading.drench);}
+    if(avatar.root.visible&&avatar.wading.drench>.4&&speed>.6){avatar.wading.walked+=Math.min(.5,speed*dt);if(avatar.wading.walked>=.55){avatar.wading.walked%=.55;avatar.wading.side*=-1;const angle=Math.atan2(p.vx,p.vz),off=.15*avatar.wading.side,wet=avatar.wading.takePrint();if(wet&&!this.view.ground.wetAt?.(p.x,p.z))this.view.drops?.print(p.x+Math.cos(angle)*off,p.z-Math.sin(angle)*off,angle,wet,this.view.map,avatar.under);}}
+   }
   }
   for (const [id, avatar] of this.avatars) if (!avatar.seen) this.remove(id);
   this.anyUnder = anyUnder;
@@ -162,16 +186,18 @@ export class RemotePlayers {
   const avatar = this.build(null, slot, true, side);
   avatar.hand.add(gunModel(this.view, weapon || 'static'));
   avatar.root.position.set(x, groundY(this.view, x, z), z); avatar.group.rotation.y = Math.atan2(-aimX, -aimZ);
+  const soaked=[...this.avatars.values()].find(a=>a.slot===slot)?.wading?.drench||0;
+  if(soaked&&!avatar.robot){avatar.drench=new IchorDrench(avatar.body);avatar.drench.set(soaked);for(const key of ['coat','arm','legs'])avatar.colours[key]='#'+new THREE.Color(avatar.colours[key]).lerp(new THREE.Color('#9c202d'),soaked*.9).getHexString();}
   avatar.root.updateMatrixWorld(true);
-  avatar.dispose = () => avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun && !o.userData.surgeShell) { if (!o.geometry.userData.shared) o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });
+  avatar.dispose = () => {avatar.drench?.clear();avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun && !o.userData.surgeShell) { if (!o.geometry.userData.shared) o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });};
   return avatar;
  }
 
  remove(id) {
-  const avatar = this.avatars.get(id); if (!avatar) return;
+  const avatar = this.avatars.get(id); if (!avatar) return;disposeSidekick(avatar.hand);
   // A nova on this body ends with it (its white copy shares the body's shapes).
   this.view.surgeView?.dropBody(avatar.body);
-  avatar.root.removeFromParent(); avatar.stains?.dispose();
+  avatar.drench?.clear(); avatar.root.removeFromParent(); avatar.stains?.dispose();
   // The merged body geometry is this avatar's own; its material is shared with
   // the world and stays. The base ring's material is its own.
   avatar.root.traverse(o => { if (o.isMesh && !o.userData.sharedGun && !o.userData.surgeShell) { if (!o.geometry.userData.shared) o.geometry.dispose(); if (o.material.transparent) o.material.dispose(); } });

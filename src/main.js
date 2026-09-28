@@ -1,3 +1,5 @@
+import './styles/omen.css';
+import './styles/sightline.css';
 // deadshift, by killerbunny2846.
 import {bindTouchAction} from './ui/touch-action.js';
 import { installMobileBrowser, enterFullscreen } from './ui/mobile-browser.js';
@@ -36,7 +38,7 @@ const modeLabel=document.querySelector('.brand .mode');
 import { GAME_KEYS } from './config/controls.js';
 import { gameCode, displayKeys } from './config/keybinds.js';
 import { NETWORK } from './config/network.js';
-import { bindRifleMouse, weaponAiming,ballastInput } from './weapons/rifle-input.js';
+import { bindRifleMouse, weaponAiming,weaponGuarding,ballastInput } from './weapons/rifle-input.js';
 import { advanceAimCursor } from './ui/aim-cursor.js';
 import { createAimDamping, aimsByPoint, muzzleLateral, muzzleBearing } from './aim-damping.js';
 import { tutorialMapFor, Tutorial } from './tutorial.js';
@@ -57,6 +59,7 @@ import { WorldView } from './render/renderer.js';
 import { Soundscape, hearingLevel, HEARING } from './audio.js';
 import { hollowAmbience } from './hollow-ambience.js'; // s3-sound: Hollow Wick's crows and soundscape
 import { createFireIndicator } from './ui/fire-indicator.js';
+import { createDamageIndicator } from './ui/damage-indicator.js';
 import { validateSettings, RenderBudget, AdaptiveResolution } from './settings.js';
 import { installSettingsPanel } from './ui/settings-panel.js';
 import {keyboardAim} from './keyboard-aim.js';
@@ -114,19 +117,20 @@ const damageFeedback=createDamageFeedback($('game'));
 const outgoingFeedback=createOutgoingFeedback($('game'));
 addWatermark($('game'));
 const fireIndicator=createFireIndicator($('game'));
+const damageIndicator=createDamageIndicator($('game'));
 // Sound carries only so far (audio.js HEARING): how loud an event is from
 // where you stand, from its own position or, failing that, its shooter's.
 function heard(e,shooter){
  const x=e.x??shooter?.x,z=e.z??shooter?.z;
  if(!Number.isFinite(x)||!Number.isFinite(z))return {level:1,x:null,z:null};
- return {level:hearingLevel(Math.hypot(x-sim.player.x,z-sim.player.z)),x,z};
+ return {level:hearingLevel(Math.hypot(x-sim.player.x,z-sim.player.z)/(e.hearingScale||1)),x,z};
 }
 // Someone else firing within earshot: a pink arc on the side it came from.
-const FIRING=new Set(['rifleShot','shotgunShot','launch','sprayArc','hexPulse','scatterFire']);
+const FIRING=new Set(['ichorSwing','ichorWave','ichorFrenzyStart','sidekickShot','sightlineShot','omenShot','omenVolley','rifleShot','shotgunShot','launch','sprayArc','hexPulse','scatterFire']);
 function otherEvent(e,shooter,slot){
  const {level,x,z}=heard(e,shooter);
  hollow?.event(e,shooter,slot); // s3-sound
- if(NET_SOUNDS.has(e.type))sound.event(e,level);
+ if(NET_SOUNDS.has(e.type)||e.damageType?.startsWith('ichor')&&['hit','kill'].includes(e.type))sound.event(e,level);
  if(FIRING.has(e.type)&&x!==null&&level>HEARING.silent&&running&&!deathActive){
   const me=view.screenPoint(sim.player.x,sim.player.z),at=view.screenPoint(shooter?.x??x,shooter?.z??z);
   fireIndicator.add(Math.atan2(at.y-me.y,at.x-me.x),Math.min(1,.25+level*.9));
@@ -179,6 +183,7 @@ const deathScreen=createDeathScreen($('game'),{
 });
 function beginDeath(){
  if(deathActive)return;
+ damageIndicator.clear();
  deathActive=true;deathElapsed=0;running=false;paused=false;mapOpen=false;settingsOpen=false;
  releaseInput();accumulator=0;sound.clearFlights();
  document.body.classList.remove('paused');document.body.classList.add('dying');
@@ -227,6 +232,7 @@ if(import.meta.env.DEV&&params.get('capture')==='thumbnail')window.__capture={vi
 // Development only: the robots, for tools and the console.
 if(import.meta.env.DEV){window.__bots=bots;window.__duel=duel;window.__sim=sim;}
 view.onClatter = type => sound.clatter(type);
+view.onBloodSound=(kind,x,z)=>sound.event({type:kind==='step'?'bloodStep':'bloodPool',x,z},hearingLevel(Math.hypot(x-sim.player.x,z-sim.player.z)));
 // Lost the GPU (usually out of memory on a phone). Twice within a minute on
 // Extreme means it is too heavy for this device: step down to Quality.
 const contextLosses=[];
@@ -337,6 +343,7 @@ function setPaused(value) {
 }
 
 function reset() {
+  damageIndicator.clear();
   if(deathPick){deathPick=false;weaponPick.hide();}
   if(nextWeapon){sim.weapon=weaponOrDefault(nextWeapon);nextWeapon=null;applyInputPreference();}
   deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');
@@ -437,7 +444,7 @@ function event(e) {
   // fires six times a second and a long blink would just look like flicker.
   if(e.type==='shotgunShot')coneFlicker=.12;
   if(e.type==='rifleShot')coneFlicker=.055;
-  if(e.type==='playerDamage'){damageFeedback.add(e.damage,sim.time);buzz(e.damage>=40?HAPTICS.heavy:HAPTICS.hurt,{enabled:settings.vibration,touch:touchPrompts});}
+  if(e.type==='playerDamage'){damageFeedback.add(e.damage,sim.time);if(e.damageType!=='ichorCost')damageIndicator.hit(e,view);buzz(e.damage>=40?HAPTICS.heavy:HAPTICS.hurt,{enabled:settings.vibration,touch:touchPrompts});}
   if(e.type==='kill'&&e.targetKind!=='player')buzz(HAPTICS.kill,{enabled:settings.vibration,touch:touchPrompts});
   if(e.type==='outgoingDamage')outgoingFeedback.add(e,sim.time);
   // You killed a player (or a robot): KILL where they fell.
@@ -701,7 +708,7 @@ function onlineMenus(on){
 function clearDeath(){
  if(deathActive){deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');}
  // Nothing from the last life pops up in the new one.
- damageFeedback.clear();outgoingFeedback.clear();
+ damageFeedback.clear();outgoingFeedback.clear();damageIndicator.clear();
  if(lobbyFrom==='death')closeLobby();
  view.deathView?.release();
 }
@@ -745,7 +752,7 @@ function syncOnlineScreens(){
 }
 function enterOnline(){onlineMenus(true);syncOnlineScreens();}
 // Loud enough to hear from anyone's gun; the rest stay with their owner.
-const NET_SOUNDS=new Set(['rifleShot','shotgunShot','launch','explosion','grenadeExplosion','propBreak','hexPulse','sprayStart','surgeCharge','surgeStart','scatterFire','scatterBurst']);
+const NET_SOUNDS=new Set(['ichorDeflect','ichorGuardStart','ichorSwing','ichorWave','ichorFrenzyStart','sidekickShot','sidekickRush','sidekickMine','sidekickReload','sidekickReloaded','sightlineShot','omenShot','omenVolley','omenBurst','omenPrime','omenMark','omenCurseBeat','omenFade','rifleShot','shotgunShot','launch','explosion','grenadeExplosion','propBreak','hexPulse','sprayStart','surgeCharge','surgeStart','scatterFire','scatterBurst']);
 function netEvents(){
  const myId=online.myId,isClient=!online.isHost;
  for(const {by,e,shooter,slot} of online.events()){
@@ -1041,7 +1048,7 @@ function frame(time) {
   // still playing, so the simulation keeps running with your hands off.
   const stepping = running || (online.active && started);
   // The shape of this screen, for the robots' off-screen rule (a phone turns).
-  const aspect = view.camera.aspect; bots.viewAspect = aspect; online.session?.setAspect?.(aspect);
+  const aspect = view.camera.aspect; bots.viewAspect = aspect; sim.viewAspect = aspect; online.session?.setAspect?.(aspect);
   if (stepping) {
     // Dev game speed stretches or squeezes time; online sim.dev is reset so it is always 1 there.
     // (Game speed is a solo tool: online it would change everyone's clock.)
@@ -1049,7 +1056,7 @@ function frame(time) {
     while (accumulator >= RULES.step && (running || (online.active && started))) {
       previousPlayer = { ...sim.player };
       prevCursor.x=mouse.x;prevCursor.y=mouse.y;
-      if(smoothedCursor()&&inputMode==='mouse')advanceAimCursor(mouse,cursorTarget,RULES.step,aimingNow(),sim.weapon);
+      if(smoothedCursor()&&inputMode==='mouse')advanceAimCursor(mouse,cursorTarget,RULES.step,aimingNow(),sim.weapon,sim.sightline?.crouched);
       const held = key => keys.has(key) || tappedKeys.has(key);
       // The thumb's direction eases in over ~0.1 s, so a flick across the stick
       // turns the walk rather than snapping it.
@@ -1076,14 +1083,14 @@ function frame(time) {
         // The body faces the gliding aim point directly (no extra turn easing on
         // top of the glide), so the character, cone and dot sweep together.
         // Trigger guns turn so the barrel's line (not the body's) meets it.
-        const lateral = aimsByPoint(sim.weapon) ? muzzleLateral(sim.weapon) : 0, bearing = lateral && l > lateral + .3 ? muzzleBearing(sim.player.x, sim.player.z, pt.x, pt.z, lateral) : Math.atan2(dz, dx);
+        const lateral = aimsByPoint(sim.weapon) ? muzzleLateral(sim.weapon,sim.sightline?.crouched) : 0, bearing = lateral && l > lateral + .3 ? muzzleBearing(sim.player.x, sim.player.z, pt.x, pt.z, lateral) : Math.atan2(dz, dx);
         aimX = Math.cos(bearing); aimZ = Math.sin(bearing); aimPointX = pt.x; aimPointZ = pt.z; digitalAim = false;
         if (arrows.active && !touchPrompts) inputMode = 'keyboard';
       }
       else if (digitalAim) { aimX = manualX; aimZ = manualZ; inputMode = 'keyboard'; }
       else if (inputMode === 'mouse') {
         const cursorAim = view.aim(mouse.x, mouse.y, sim.player);
-        ({ aimX, aimZ, aimPointX, aimPointZ } = aimsByPoint(sim.weapon) ? aimDamping.apply(cursorAim, sim.player, 1 / 60, muzzleLateral(sim.weapon)) : cursorAim);
+        ({ aimX, aimZ, aimPointX, aimPointZ } = aimsByPoint(sim.weapon) ? aimDamping.apply(cursorAim, sim.player, 1 / 60, muzzleLateral(sim.weapon,sim.sightline?.crouched)) : cursorAim);
       }
       else if (moveX || moveZ) { aimX = moveX; aimZ = moveZ; digitalAim = true; }
       // The no-mouse lesson: Q fired while aiming with the arrow keys.
@@ -1092,7 +1099,7 @@ function frame(time) {
       if(!online.active)bots.before(sim);
       // Freezing is a solo tool: online it would stop only the host.
       if(online.active&&sim.dev.freeze)sim.dev.freeze=false;
-      sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), surge:sim.weapon==='rifle'&&tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(sim.weapon==='rifle'&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),scatter:sim.weapon==='shotgun'&&tappedKeys.has('KeyX'),doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming:aimingNow(),reload:tappedKeys.has('KeyR'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
+      sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), surge:sim.weapon==='rifle'&&tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(usesTrigger(sim.weapon)&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),scatter:sim.weapon==='shotgun'&&tappedKeys.has('KeyX'),doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming:aimingNow(),reload:tappedKeys.has('KeyR'), ichorGuard:weaponGuarding(sim.weapon,rifleAiming,keys),ichorE:sim.weapon==='ichor'&&tappedKeys.has(GAME_KEYS.secondary),ichorX:sim.weapon==='ichor'&&tappedKeys.has('KeyX'),sidekickMine:sim.weapon==='sidekick'&&tappedKeys.has(GAME_KEYS.secondary),sidekickX:sim.weapon==='sidekick'&&tappedKeys.has('KeyX'),sightlineStance:sim.weapon==='sightline'&&tappedKeys.has(GAME_KEYS.secondary),sightlineX:sim.weapon==='sightline'&&tappedKeys.has('KeyX'),omenPrime:sim.weapon==='omen'&&tappedKeys.has(GAME_KEYS.secondary), omenVolley:sim.weapon==='omen'&&tappedKeys.has('KeyX'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
         launchPointX: arrows.active?undefined:pendingAimPoint?.aimPointX, launchPointZ: arrows.active?undefined:pendingAimPoint?.aimPointZ }));
       online.afterStep();
       if(!online.active){bots.after(sim);bots.step(sim);}
@@ -1139,7 +1146,8 @@ function frame(time) {
   hudTime += dt; if (hudTime >= .08) { updateHUD(); hudTime = 0; keepAwake(running && !deathActive); }
   damageFeedback.update(sim,view);outgoingFeedback.update(sim,view);
   if(started&&!paused)duel.frame(dt);
-  {const rp=view.player.position,me=view.screenPoint(rp.x,rp.z);fireIndicator.update(running&&!deathActive?dt:10,me.x,me.y,viewWidth(),viewHeight());}
+  {const rp=view.player.position,me=view.screenPoint(rp.x,rp.z);fireIndicator.update(running&&!deathActive?dt:10,me.x,me.y,viewWidth(),viewHeight());
+   if(running&&!deathActive)damageIndicator.update(dt,me.x,me.y,viewWidth(),viewHeight());else damageIndicator.clear();}
   if(deathActive){
    deathElapsed+=dt;
    if(!deathMenuOpen&&!duel.over&&deathElapsed>=DEATH_MENU_DELAY){
@@ -1182,13 +1190,16 @@ function applyInputPreference(){
    $(id).replaceChildren(word,key);
   };
   if(extras){
+   extendedButton.dataset.weapon=sim.weapon;
    touchLabel('touch-extended',extras.extended.label,extras.extended.binding);touchLabel('touch-grenade',extras.grenade.label,extras.grenade.binding);
    extendedButton.setAttribute('aria-label',extras.extended.aria);grenadeButton.setAttribute('aria-label',extras.grenade.aria);
   }
   updateWeaponHUD(sim,touchPrompts);
   touchLabel('touch-launch',extras?'FIRE':'LAUNCH','LMB / SPACE');
   touchLabel('touch-hex',extras?'RELOAD':'HEX',extras?'R':'X');
-  touchLabel('touch-stream',extras?'AIM':'STREAM',extras?extras.aim.binding:'C');
+  $('touch-hex').hidden=sim.weapon==='ichor';
+  $('touch-stream').hidden=!!extras&&!extras.aim;
+  if(!extras||extras.aim)touchLabel('touch-stream',extras?(extras.aim.label||'AIM'):'STREAM',extras?extras.aim.binding:'C');
   touchLabel('touch-dodge','DODGE','Q');
   touchLabel('touch-place','PLACE','E');
   touchLabel('touch-aimfire','AIM','+ FIRE');
@@ -1283,6 +1294,3 @@ export function finishLoading(){
   $('gamemodes').focus();
  }
 }
-
-
-

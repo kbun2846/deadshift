@@ -52,14 +52,14 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
   if(blocked){
    // Aimed in, point blank (owner, v142): about 20 more a shell.
    const damage=b.damage*shotgunFalloff(b.travel)*(b.aimed&&b.travel<=SHOTGUN.range*.25?SHOTGUN.aimClose:1);
-   if(target){const contact=shotgunPelletContact(b,target);if(contact>0){const key=b.volley+':'+target.id,hit=hits.get(key)||{target,damage:0,vx:b.forwardX,vz:b.forwardZ,volley:b.volley};hit.damage+=damage*contact;hits.set(key,hit);}}
+   if(target){const contact=shotgunPelletContact(b,target),paid=damage*contact;if(paid>0){const remaining=paid-sim.deflect(target,{owner:p.id,bullet:true,pellet:true,damage:paid,damageType:'ballast',x:b.x,z:b.z,vx:b.dx,vz:b.dz});if(remaining>0){const key=b.volley+':'+target.id,hit=hits.get(key)||{target,damage:0,vx:b.forwardX,vz:b.forwardZ,volley:b.volley};hit.damage+=remaining;hits.set(key,hit);}}}
    else if(prop)sim.hitProp(prop,{damage,owner:p.id,volley:b.volley,x:b.x,z:b.z,vx:b.dx,vz:b.dz});
    sim.events.push({type:'rifleImpact',x:b.x,z:b.z});b.dead=true;
   }else if(b.stop!==undefined&&b.travel>=end-1e-8)sim.events.push({type:'rifleImpact',x:b.x,z:b.z,ground:true});
   if(b.travel>=end-1e-8)b.dead=true;
  }
  for(const h of hits.values()){
-  sim.hit(h.target,{...h,owner:p.id,damageType:'ballast',bullet:true});
+  sim.hit(h.target,{...h,owner:p.id,damageType:'ballast',bullet:true,deflectChecked:true});
   const push=1*Math.min(1,h.damage/shotgunDamage());
   let fraction=1;
   for(const c of sim.colliders){const f=segmentBox(h.target.x,h.target.z,h.target.x+h.vx*push,h.target.z+h.vz*push,c,.5);if(f!==null)fraction=Math.min(fraction,Math.max(0,f-.01));}

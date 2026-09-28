@@ -43,6 +43,7 @@ const multipliers = [['0.5', '½×'], ['1', '1×'], ['2', '2×'], ['4', '4×']];
 const takenScales = [['0', 'None'], ['0.5', '½×'], ['1', '1×'], ['2', '2×']];
 const healths = [['500', '500'], ['1000', '1000'], ['2000', '2000'], ['100', '100']];
 const robotHealths = [['500', '500 (normal)'], ['100', '100'], ['250', '250'], ['1000', '1000']];
+const targetHealths = [['0', 'Normal (per target)'], ['100', '100'], ['250', '250'], ['500', '500'], ['1000', '1000']];
 const orbCounts = Array.from({ length: 11 }, (_, i) => [String(i + 2), (i + 2) + ' orbs']);
 
 export const DEV_OPTIONS = Object.freeze([
@@ -82,12 +83,15 @@ export const DEV_OPTIONS = Object.freeze([
   { weapon: 'rifle', kind: 'toggle', key: 'noSpread', label: 'No spread (laser)' },
   { weapon: 'rifle', kind: 'action', key: 'surgeNow', label: 'Nova now (skip power-up)', button: 'Nova' },
 
+  { weapon: 'omen', kind:'toggle', key:'omenInstantReload', label:'Instant reload', bulk:true },
+  { weapon: 'omen', kind:'toggle', key:'omenCooldowns', label:'No curse cooldowns', bulk:true },
   { weapon: 'shotgun', kind: 'toggle', key: 'shotgunInstantReload', label: 'Instant reload', bulk: true },
   { weapon: 'shotgun', kind: 'toggle', key: 'shotgunRapid', label: 'No delay between shots' },
   { weapon: 'shotgun', kind: 'action', key: 'scatterNow', label: 'Ready the blast now', button: 'Ready' },
 
   { section: 'world', kind: 'action', key: 'spawnBird', label: 'Spawn bird', button: 'Spawn' },
   { section: 'world', kind: 'toggle', key: 'freezeTargets', label: 'Freeze moving targets' },
+  { section: 'world', kind: 'select', key: 'targetHealth', label: 'Target health (solo)', options: targetHealths, fallback: 0 },
   { section: 'world', kind: 'action', key: 'respawnTargets', label: 'Bring targets back', button: 'Respawn' },
   { section: 'world', kind: 'action', key: 'restoreProps', label: 'Rebuild broken props', button: 'Rebuild' },
   { section: 'world', kind: 'action', key: 'breakNearby', label: 'Break props around me', button: 'Break' },
@@ -98,6 +102,8 @@ export const DEV_OPTIONS = Object.freeze([
   { section: 'world', kind: 'select', key: 'workMap', label: 'Map in progress', options: workMaps().map((m, i) => [String(i), m.name]), fallback: 0 },
   { section: 'world', kind: 'action', key: 'loadWorkMap', label: 'Load that map', button: 'Load' },
 
+  { section:'robots',kind:'select',key:'robotBody',label:'AI body · human or robot',options:[['0','Robot'],['1','Human AI · bleeds']],fallback:0 },
+  {section:'robots',kind:'action',key:'spawnHumanBot',label:'Spawn Human AI (bleeds)',button:'Spawn human'},
   { section: 'robots', kind: 'select', key: 'robotWeapon', label: 'Robot weapon', options: weaponChoices().map(([value, name]) => [value, name]), grid: 'weapons', fallback: 0 },
   { section: 'robots', kind: 'select', key: 'robotSide', label: 'Robot side', options: [['0', 'Enemy (free for all)'], ['1', 'Enemy team'], ['2', 'Ally (your team)']], fallback: 0 },
   { section: 'robots', kind: 'select', key: 'robotSkill', label: 'Robot skill', options: [['0', 'Random'], ['4', 'Rookie'], ['1', 'Easy'], ['2', 'Normal'], ['3', 'Hard'], ['5', 'Expert'], ['6', 'Perfect']], fallback: 0 },
@@ -112,7 +118,7 @@ export const DEV_OPTIONS = Object.freeze([
   { section: 'robots', kind: 'toggle', key: 'robotStayDead', label: 'Robots stay dead' },
   { section: 'robots', kind: 'toggle', key: 'robotSeeAll', label: 'Robots know where everyone is' },
   { section: 'robots', kind: 'toggle', key: 'robotMinds', label: 'Show what robots are thinking' },
-  { section: 'robots', kind: 'action', key: 'spawnRobot', label: 'Spawn robot (solo)', button: 'Spawn' },
+  { section: 'robots', kind: 'action', key: 'spawnRobot', label: 'Spawn practice bot (solo)', button: 'Spawn' },
   { section: 'robots', kind: 'action', key: 'spawnBrawl', label: 'Spawn a brawl (4, free for all)', button: 'Spawn' },
   { section: 'robots', kind: 'action', key: 'hurtRobots', label: 'Damage every robot 100', button: 'Hurt' },
   { section: 'robots', kind: 'action', key: 'destroyRobots', label: 'Destroy every robot', button: 'Destroy' },

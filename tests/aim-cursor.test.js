@@ -58,3 +58,9 @@ test('an unknown weapon falls back to the loose profile',()=>{
  advanceAimCursor(fallback,target,1/60,false);
  assert.equal(named.x,fallback.x);
 });
+
+test('Sightline scoped cursor has slight weight, lighter than normal focused aim',()=>{
+ const settle=(aiming,weapon='sightline',sniper=true)=>{const cursor={x:0,y:0},target={x:600,y:0};for(let frame=1;frame<180;frame++){advanceAimCursor(cursor,target,1/60,aiming,weapon,sniper);if(cursor.x>=570)return frame;}};
+ const hip=settle(false),scope=settle(true),heavy=settle(true,'rifle');
+ assert.ok(scope>hip);assert.ok(scope<heavy);assert.ok(scope<=12);assert.equal(settle(true,'sightline',false),hip);
+});

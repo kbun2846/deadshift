@@ -12,6 +12,7 @@ import { installDevTools } from './dev-tools.js';
 import { createDevWindow } from './dev-window.js';
 import { createDevUnlockDialog } from './dev-unlock-dialog.js';
 import { weaponFromChoice } from './weapon-grid.js';
+import { weapon as weaponInfo } from '../items.js';
 import { workMaps } from '../maps.js';
 
 export function installDevWiring(ctx) {
@@ -27,6 +28,8 @@ export function installDevWiring(ctx) {
   if (!unlocked) closeDevPanel();
  }
  function devChanged() {
+  if (ctx.online().active) delete sim.dev.targetHealth;
+  else sim.syncTargetHealth();
   ctx.changed();
   document.body.classList.toggle('dev-hide-hud', !!sim.dev.hideHud);
   devTools.sync(); devWindow.sync();
@@ -53,17 +56,18 @@ export function installDevWiring(ctx) {
   },
   // Robots (bots/): a solo game only. Weapon, side, skill and style as set
   // in the tools (or at random), as many as "Robots per spawn".
-  spawnRobot: () => {
+  spawnRobot: (body=sim.dev.robotBody) => {
    if (!robotsAllowed()) return;
    const weapon = weaponFromChoice(sim.dev.robotWeapon);
    // Skill and style (bots/robot-profile.js): picked here, or at random.
    const skill = [null, 'easy', 'normal', 'hard', 'rookie', 'expert', 'perfect'][sim.dev.robotSkill || 0] || null, style = [null, 'balanced', 'rusher', 'marksman', 'flanker', 'cautious', 'blend'][sim.dev.robotStyle || 0] || null;
    const temper = [null, 'calm', 'shifting', 'aggressive'][sim.dev.robotTemper || 0] || null;
    const made = [];
-   for (let i = 0; i < (sim.dev.robotCount || 1); i++) { const bot = bots.spawn(sim, weapon, { team: ['ffa', 'red', 'blue'][sim.dev.robotSide || 0] || 'ffa', skill, style, temper }); if (bot) made.push(bot); else break; }
+   for (let i = 0; i < (sim.dev.robotCount || 1); i++) { const bot = bots.spawn(sim, weapon, { team: ['ffa', 'red', 'blue'][sim.dev.robotSide || 0] || 'ffa', skill, style, temper, human:body===1 }); if (bot) made.push(bot); else break; }
    const bot = made[0];
-   toast(!bot ? 'ROBOT LIMIT REACHED' : made.length > 1 ? made.length + ' ROBOTS IN' : [bot.name, bot.make, String(bot.sim.weapon === 'rifle' ? 'nominal' : bot.sim.weapon === 'shotgun' ? 'ballast' : 'static'), bot.profile.label].join(' · ').toUpperCase());
+   toast(!bot ? 'ROBOT LIMIT REACHED' : made.length > 1 ? made.length + ' ROBOTS IN' : [bot.name, bot.make, weaponInfo(bot.sim.weapon)?.name || bot.sim.weapon, bot.profile.label].join(' · ').toUpperCase());
   },
+  spawnHumanBot: () => hooks.spawnRobot(1),
   // Four enemies, every weapon and skill at random, free for all.
   spawnBrawl: () => {
    if (!robotsAllowed()) return;
@@ -92,8 +96,8 @@ export function installDevWiring(ctx) {
    if (sim.weapon !== 'shotgun' || !sim.scatter) { toast('BALLAST ONLY'); return; }
    sim.scatter.cooldown = 0; sim.scatter.armed = true; sim.events.push({ type: 'scatterArm', x: sim.player.x, z: sim.player.z });
   },
-  killTargets: () => { let n = 0; for (const t of sim.targets) if (t.hp > 0 && t.kind !== 'robot') { sim.hit(t, { damage: t.hp, owner: 'dev' }); n++; } toast(n + ' TARGETS DOWN'); },
-  removeRobots: () => { const n = bots.count; bots.clear(); view.robotWrecks?.clear(); view.remote?.clear(); toast(n + ' ROBOTS REMOVED'); },
+  killTargets: () => { let n = 0; for (const t of sim.targets) if (t.hp > 0 && t.kind !== 'robot' && t.kind !== 'player') { sim.hit(t, { damage: t.hp, owner: 'dev' }); n++; } toast(n + ' TARGETS DOWN'); },
+  removeRobots: () => { const n = bots.count; for(const b of bots.bots)if(b.human)view.remoteCorpses?.remove(b.slot); bots.clear(); view.robotWrecks?.clear(); view.remote?.clear(); toast(n + ' ROBOTS REMOVED'); },
   // Looks only: the same event a real volley sends, with no damage behind it.
   previewBlast: () => {
    const p = sim.player, count = sim.dev.blastOrbs || 6, blast = explosionFor(count);

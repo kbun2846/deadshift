@@ -27,7 +27,9 @@ const TRUNK = '#231d1a', BARK = '#3b322c', STUMP_TOP = '#4a3f36', ROOT_EARTH = '
 const MAPLE_YELLOW = '#c49a3a', BURNT_ORANGE = '#c0612b', OCHRE = '#b8923c', RUST = '#a4552a', RED = '#8e2f22';
 const WOODS_LEAVES = [[MAPLE_YELLOW, .3], [BURNT_ORANGE, .25], [OCHRE, .2], [RUST, .17], [RED, .08]];
 const LITTER = ['#8a6a3e', '#7a5a34', '#5a4632'];
-const CARPET = ['#c0612b', '#94803e'];
+// (v0.990a: the carpet's burnt orange a shade brighter than the canopy's,
+// #c86a2c: under the stronger dusk #c0612b came within 13.9 of unlit blood.)
+const CARPET = ['#c86a2c', '#94803e'];
 // Everything the trees lay on the ground (their drifts and beds): readable
 // under a body like the leaf carpet (tests/hollow-wick-look.test.js).
 export const TREE_DRIFT_COLOURS = Object.freeze([...LITTER, ...CARPET]);

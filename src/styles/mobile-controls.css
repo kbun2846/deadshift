@@ -57,8 +57,8 @@ body[data-controls=touch] #game #weapon .dodge-stamina{margin:0 0 7px;width:60px
 body[data-controls=touch] #game #weapon .weapon-status{margin-bottom:0;font-size:10px}
 body[data-controls=touch] #game #weapon .hex-recharge{left:auto;right:72px;top:10px;width:54px;height:54px}
 body[data-controls=touch] #game #weapon .secondary-cooldown{right:8px;top:10px}
-body[data-controls=touch] #game #weapon:not([data-weapon=rifle]){padding-right:78px}
-body[data-controls=touch] #game #weapon:not([data-weapon=rifle]) .hex-recharge{right:14px}
+body[data-controls=touch] #game #weapon:not([data-weapon=rifle]):not([data-weapon=omen]):not([data-weapon=ichor]){padding-right:78px}
+body[data-controls=touch] #game #weapon:not([data-weapon=rifle]):not([data-weapon=omen]):not([data-weapon=ichor]) .hex-recharge{right:14px}
 body[data-controls=touch] #game #weapon .hex-range{left:calc(100% + 5px);width:5px}
 body[data-controls=touch] #game #weapon .hex-recharge-center span{font-size:18px}
 body[data-controls=touch] #game #weapon .hex-recharge.ready .hex-recharge-center span{font-size:9px;letter-spacing:0}
@@ -232,3 +232,18 @@ body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positi
 body[data-controls=touch] #game #touch-controls .touch-right>#touch-launch.touch-positioned{--pad-colour:var(--ui-accent);--pad-lift:.12;color:#1b1d1c}
 body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positioned:active{--pad-colour:#f4d2d9;--pad-lift:.6;color:#161c19}
 body[data-controls=touch] #game #touch-controls .touch-right>button.touch-positioned[data-x-left]:not([data-x-left=""])::after{content:attr(data-x-left);position:absolute;left:50%;bottom:7px;translate:-50% 0;font-size:10px;font-weight:700;opacity:.85;font-variant-numeric:tabular-nums}
+
+/* Ichor keeps the liquid meter readable; the two small dials share its right side. */
+body[data-controls=touch].playing #game #weapon[data-weapon=ichor]{width:min(390px,calc(100vw - 32px));min-height:122px;left:50%;bottom:calc(12px + env(safe-area-inset-bottom));padding:8px 124px 0 0}
+body[data-controls=touch] #game #weapon[data-weapon=ichor] #hex-recharge{left:auto;right:62px;top:32px;width:52px;height:52px}
+body[data-controls=touch] #game #weapon[data-weapon=ichor] #extended-recharge{left:auto;right:3px;top:32px;width:52px;height:52px}
+body[data-controls=touch] #game #weapon[data-weapon=ichor] .ichor-blood-readout{left:5px;right:5px;font-size:10px;letter-spacing:.05em}
+body[data-controls=touch] #game #weapon[data-weapon=ichor] .ichor-blood-readout strong{font-size:14px}
+@media(orientation:landscape){body[data-controls=touch].playing #game #weapon[data-weapon=ichor]{width:min(360px,calc(100vw - 270px));padding-right:112px}body[data-controls=touch] #game #weapon[data-weapon=ichor] #hex-recharge{right:55px}body[data-controls=touch] #game #weapon[data-weapon=ichor] #extended-recharge{right:0}}
+
+/* Third Ichor circle tucks below E/X without narrowing the liquid meter. */
+body[data-controls=touch].playing #game #weapon[data-weapon=ichor]{min-height:160px}
+body[data-controls=touch] #game #weapon[data-weapon=ichor] #ichor-deflect-recharge{left:auto;right:32px;top:94px;width:52px;height:52px}
+body[data-controls=touch] #game #weapon[data-weapon=ichor] #ichor-deflect-recharge kbd{font-size:8px;max-width:41px}
+body[data-controls=touch] #game #weapon[data-weapon=ichor] #ichor-deflect-recharge .hex-recharge-center{gap:2px}
+body[data-controls=touch] #game #weapon[data-weapon=ichor] #ichor-deflect-recharge .hex-recharge-center span{font-size:15px}

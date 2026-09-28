@@ -20,7 +20,7 @@ const STALL = 1;
 
 const IDLE = Object.freeze(playerInput({}));
 // Events that other screens need to see. Everything else stays with its sim.
-export const SHARED_EVENTS = new Set(['explosion', 'grenadeExplosion', 'propBreak', 'propHit', 'propRestore', 'impactMark', 'rifleImpact',
+export const SHARED_EVENTS = new Set(['ichorGuardStart','ichorDeflect','ichorSwing','ichorWave','ichorFrenzyStart','ichorDrip','sidekickImpact','sidekickShot','sidekickRush','sidekickMine','sidekickReload','sidekickReloaded','sightlineShot','sightlineImpact','sightlineReload','sightlineReloaded','omenShot','omenPrime','omenPrimeExpired','omenVolley','omenMark','omenCurseBeat','omenFade','omenImpact','omenBurst','explosion', 'grenadeExplosion', 'propBreak', 'propHit', 'propRestore', 'impactMark', 'rifleImpact',
  'rifleShot', 'shotgunShot', 'launch', 'sprayArc', 'hexPulse', 'hexZap', 'hexFizzle', 'pointImpact', 'wall', 'trailEnd', 'hit', 'kill',
  'cropDust', 'cropAsh', 'syphon', 'surgeCharge', 'surgeStart', 'surgeEnd', 'scatterArm', 'scatterPrimed', 'scatterFire', 'scatterSplit', 'scatterHit', 'scatterBurst', 'dodge', 'seed', 'playerDeath', 'playerDamage', 'outgoingDamage', 'rifleReloaded', 'shotgunReload', 'grenadeThrow', 'sprayStart',
  'hexBlock', 'mapReset', 'matchStart', 'matchEnd', 'roundEnd', 'respawn']);
@@ -227,7 +227,7 @@ export class HostSession {
     if (input) { remote.last = input; remote.lastSeq = input.seq; }
     // No input this tick: keep walking the way they were for a moment (a late
     // packet), never repeating a press; a longer silence means stand still.
-    const held = remote.silent < .25 ? { ...playerInput({ ...remote.last }), dodge: false, launch: false, tapFire: false, grenade: false, doubleShot: false, reload: false, hex: false, surge: false, scatter: false, quickShot: false } : IDLE;
+    const held = remote.silent < .25 ? { ...playerInput({ ...remote.last }), ichorE:false,ichorX:false,sidekickMine:false,sidekickX:false,sightlineStance:false,sightlineX:false,omenPrime:false, omenVolley:false, dodge: false, launch: false, tapFire: false, grenade: false, doubleShot: false, reload: false, hex: false, surge: false, scatter: false, quickShot: false } : IDLE;
     remote.sim.dev = { speed: 1 };
     this.arena.stepSeat(remote.seat, input || held);
     const events = remote.sim.drainEvents();
@@ -348,8 +348,8 @@ export class HostSession {
  // sims on the same clock as its own, so they blend with the same alpha.
  others(alpha = 1) {
   const list = [...this.remotes.values()].filter(r => r.seat.present && !r.seat.dead)
-   .map(r => ({ ...blend(r.id, r.name, r.previous, r.sim.player, alpha), weapon: r.seat.weapon, slot: r.slot, team: r.seat.team, hp: r.sim.player.hp, maxHp: r.sim.player.maxHp }));
-  for (const s of this.robotSeats()) if (s.present && !s.dead) list.push({ ...blend(s.id, s.name, s.previous || s.sim.player, s.sim.player, alpha), weapon: s.weapon, slot: s.slot, team: s.team, robot: true, hp: s.sim.player.hp, maxHp: s.sim.player.maxHp });
+   .map(r => ({ ...blend(r.id, r.name, r.previous, r.sim.player, alpha), weapon: r.seat.weapon, ...(r.sim.player.ichor?{ichor:{...r.sim.player.ichor}}:{}),...(r.sim.player.sidekick?{sidekick:{...r.sim.player.sidekick}}:{}), ...(r.sim.player.sightline?{sightline:{...r.sim.player.sightline}}:{}), slot: r.slot, team: r.seat.team, hp: r.sim.player.hp, maxHp: r.sim.player.maxHp }));
+  for (const s of this.robotSeats()) if (s.present && !s.dead) list.push({ ...blend(s.id, s.name, s.previous || s.sim.player, s.sim.player, alpha), weapon: s.weapon, ...(s.sim.player.ichor?{ichor:{...s.sim.player.ichor}}:{}),...(s.sim.player.sidekick?{sidekick:{...s.sim.player.sidekick}}:{}), ...(s.sim.player.sightline?{sightline:{...s.sim.player.sightline}}:{}), slot: s.slot, team: s.team, robot: true, hp: s.sim.player.hp, maxHp: s.sim.player.maxHp });
   return list;
  }
 
@@ -374,6 +374,7 @@ export function blend(id, name, a, b, alpha) {
   id, name,
   x: a.x + (b.x - a.x) * alpha, z: a.z + (b.z - a.z) * alpha,
   vx: b.vx, vz: b.vz, aimX: Math.cos(angle), aimZ: Math.sin(angle), dodgeRemaining: b.dodgeRemaining || 0,
+  ...(b.ichor?{ichor:{...b.ichor}}:{}),...(b.sidekick?{sidekick:{...b.sidekick}}:{}), ...(b.sightline?{sightline:{...b.sightline}}:{}),
   // (Hills: wading under a deck.)
   ...(b.below ? { below: true } : {}),
  };

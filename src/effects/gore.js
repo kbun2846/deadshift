@@ -16,8 +16,9 @@
 // `GoreBurst` throws severed limbs and flesh with an explosion's bones.
 // `detail`: 0 potato, 1 performance, 2 balanced, 3 quality and extreme.
 import * as THREE from 'three';
+import { makeBoneBank } from './death-bones.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { groundY, hilly } from '../render/ground-lift.js';
+import { groundY, floorY, hilly } from '../render/ground-lift.js';
 
 export const GORE_DETAIL = Object.freeze({ potato: 0, performance: 1, balanced: 2, quality: 3, extreme: 3 });
 
@@ -215,7 +216,7 @@ export class GoreBurst {
   const m = materials(), geo = geometries();
   this.event = event; this.group = new THREE.Group(); view.scene.add(this.group); this.own = [];
   // Hills: every piece lands on the ground under it (0 on a flat map).
-  this.gy = (x, z) => groundY(view, x, z);
+  this.gy = (x, z) => floorY(view, x, z, event.below);
   const mat = color => { const x = new THREE.MeshLambertMaterial({ color, flatShading: true }); this.own.push(x); return x; };
   const coat = mat(colours.coat), arm = mat(colours.arm), legs = mat(colours.legs), skin = mat(colours.skin || '#d6b58a');
   let dx = event.directionX || 0, dz = event.directionZ || 0; const directed = Math.hypot(dx, dz) > .001;
@@ -240,6 +241,7 @@ export class GoreBurst {
   const wound = new THREE.Mesh(geo.box, m.blood); wound.scale.set(.26, .02, .22); wound.position.y = .045; torso.add(wound);
   for (let i = 0; i < 3; i++) { const rib = new THREE.Mesh(geo.rib, m.bone); rib.scale.setScalar(.8); rib.rotation.x = -Math.PI / 2; rib.position.set(0, .06, (i - 1) * .06); torso.add(rib); }
   kinds.push(torso);
+  if(event.damageType?.startsWith('ichor')){this.organBank=makeBoneBank();kinds.push(this.organBank.organs[0].clone(),this.organBank.organs[1].clone());const heart=new THREE.Group();for(const side of [-1,1]){const lobe=new THREE.Mesh(geo.chunk,m.flesh);lobe.scale.set(.095,.12,.075);lobe.position.set(side*.05,.02,0);lobe.rotation.z=side*.35;heart.add(lobe);}kinds.push(heart);}
   // Each piece one draw (its parts' colours per vertex); the colour materials
   // were only needed to carry those colours.
   for (const model of kinds) compact(model);
@@ -284,7 +286,7 @@ export class GoreBurst {
   });
   this.chunks.instanceMatrix.needsUpdate = this.darkChunks.instanceMatrix.needsUpdate = true;
  }
- dispose() { disposeMerged(this.group); this.group.removeFromParent(); this.chunks.dispose(); this.darkChunks.dispose(); this.own.forEach(x => x.dispose()); }
+ dispose() { this.organBank?.dispose();disposeMerged(this.group); this.group.removeFromParent(); this.chunks.dispose(); this.darkChunks.dispose(); this.own.forEach(x => x.dispose()); }
 }
 
 // The weapon left on the ground: its own materials, darkened (dust and blood

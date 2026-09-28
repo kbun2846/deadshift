@@ -23,8 +23,8 @@ import { usesTrigger } from './items.js';
 // to the facing. So the body turns a little left of the cursor's bearing,
 // just enough that the barrel's line runs through the cursor (owner: the
 // shot, the cone and the gun on the cursor, not the body's centre).
-export const MUZZLE_LATERAL = Object.freeze({ rifle: .27, shotgun: .20 });
-export const muzzleLateral = weapon => MUZZLE_LATERAL[weapon] || 0;
+export const MUZZLE_LATERAL = Object.freeze({ sidekick: .27, sightline: .4, rifle: .27, shotgun: .20, omen: .27 });
+export const muzzleLateral = (weapon,crouched=true) => weapon==='sightline'&&!crouched?.22:MUZZLE_LATERAL[weapon] || 0;
 export function muzzleBearing(px, pz, tx, tz, lateral = 0) {
  const dx = tx - px, dz = tz - pz, d = Math.max(Math.hypot(dx, dz), lateral + .3);
  return Math.atan2(dz, dx) - (lateral ? Math.asin(lateral / d) : 0);

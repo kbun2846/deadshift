@@ -1,0 +1,17 @@
+[data-weapon="sightline"]{--weapon-accent:#e8b46c}
+[data-weapon="sightline"] #extended-recharge[data-x-state="active"]{--x-active:#ffb241;filter:drop-shadow(0 0 7px #dc913655)}
+[data-weapon="sightline"] .hex-recharge.word .hex-recharge-center span{font-size:9px;letter-spacing:0}
+#weapon[data-weapon="sightline"]>.weapon-readout,#weapon[data-weapon="sightline"]>#seed-pips{display:none}
+.sightline-ammo{position:relative;height:78px;margin-bottom:3px;min-width:0}
+.sightline-ammo[hidden]{display:none}
+.sightline-ammo-row{position:absolute;inset:0 0 auto;transform-origin:left top;transform:translate(0,43px) scale(.65);opacity:.72;transition:transform .42s cubic-bezier(.2,.7,.2,1),opacity .3s;color:#c4c6bc}
+.sightline-ammo-row[data-active=true]{transform:translate(0,0) scale(1);opacity:1;color:#e8b46c}
+.sightline-ammo-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font:600 11px/16px Arial,sans-serif;letter-spacing:.08em;text-shadow:0 1px 3px #14221c}
+.sightline-ammo-label b{font-size:16px;letter-spacing:0;color:#fff;font-variant-numeric:tabular-nums}
+.sightline-pips{display:flex;gap:4px;height:19px;align-items:center}
+.sightline-pips i{flex:1;height:12px;border:1px solid #82908b;border-radius:1px;background:linear-gradient(to top,#e8b46c var(--fill),#14211fee var(--fill));box-shadow:0 0 0 1px #ffffff45}
+.sightline-ammo-row[data-gun=rifle] .sightline-pips i{--round-ink:#e8b46c;position:relative;flex:0 1 150px;max-width:85%;height:20px;border:0;border-radius:0;box-shadow:none;background:#adbaae;clip-path:polygon(0 5%,7% 5%,7% 14%,68% 14%,77% 28%,86% 28%,100% 50%,86% 72%,77% 72%,68% 86%,7% 86%,7% 95%,0 95%)}
+.sightline-ammo-row[data-gun=rifle] .sightline-pips i::before{content:"";position:absolute;inset:2px;clip-path:inherit;background:linear-gradient(to right,var(--round-ink) var(--fill),#14211f var(--fill))}
+.sightline-ammo-row[data-armed=true] .sightline-pips i{background:#ffb241;filter:drop-shadow(0 0 4px #ff922a)}
+.sightline-ammo-row[data-gun=rifle][data-armed=true] .sightline-pips i{--round-ink:#ffb241}
+@media(prefers-reduced-motion:reduce){.sightline-ammo-row{transition-duration:.01s}}

@@ -1,3 +1,5 @@
+import {ichorGuardFor} from '../weapons/ichor-deflect.js';
+import { clearOmen } from '../weapons/omen.js';
 // The multiplayer rules on the host: rounds of a mode in one shared world.
 //
 // Every player keeps their own Simulation (their body, weapon, ammo, orbs,
@@ -226,7 +228,7 @@ export class Arena {
   }
   world.colliders = mapColliders(this.map);
   world.crops.forEach((crop, i) => { const clean = fresh.crops[i]; if (clean) { for (const key of Object.keys(crop)) delete crop[key]; Object.assign(crop, clean); } });
-  for (const seat of this.seats.values()) this.handWorld(seat.sim);
+  for (const seat of this.seats.values()) {clearOmen(seat.sim);this.handWorld(seat.sim);}
   this.handWorld(this.worldSim);
   if (this.targets.length) this.targets = fresh.targets;
   this.pendingEvents.push({ type: 'mapReset' });
@@ -378,7 +380,7 @@ export class Arena {
 
  // Right before a seat's sim steps.
  before(seat) {
-  const sim = seat.sim;
+  const sim = seat.sim; sim.viewAspect=seat.aspect||16/9;
   this.handWorld(sim);
   seat.proxies = new Map();
   // Every hex in the round shields whoever is inside it from outside fire
@@ -393,7 +395,7 @@ export class Arena {
   const players = living.filter(other => this.hostile(seat, other) || ff).map(other => {
    const p = other.sim.player;
    const friend = !this.hostile(seat, other);
-   const proxy = { id: other.id, kind: other.robot ? 'robot' : 'player', team: other.team, friendly: friend, share: friend ? FRIENDLY_SHARE : 1, x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false, ...(p.below ? { below: true } : {}) };
+   const proxy = { ...ichorGuardFor(other.sim), id: other.id, kind: other.robot ? 'robot' : 'player', team: other.team, friendly: friend, share: friend ? FRIENDLY_SHARE : 1, x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false, ...(p.below ? { below: true } : {}) };
    seat.proxies.set(other.id, { proxy, before: p.hp, seat: other, x0: p.x, z0: p.z });
    return proxy;
   });
@@ -440,7 +442,7 @@ export class Arena {
    const owner = attacker ? attacker.id : 'crop-fire';
    const vp = victim.sim.player, hpBefore = vp.hp;
    // damagePlayer applies the victim's own dodge reduction; fire is environmental.
-   const dealt = victim.sim.damagePlayer(lost, owner, !attacker, false, impact.x || impact.z ? impact : null, attacker ? damageType : 'fire');
+   const dealt = victim.sim.damagePlayer(lost, owner, !attacker, false, impact.x || impact.z ? impact : null, attacker ? damageType : 'fire', attacker?.sim.player);
    if (this.counting) {
     victim.stats.taken += dealt;
     if (attacker && attacker !== victim && !friendly) attacker.stats.dealt += dealt;

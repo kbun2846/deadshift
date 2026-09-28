@@ -29,7 +29,7 @@ export function createWeaponPick(parent, { pick, go, back }) {
   let selected = null;
   const choices = [...root.querySelectorAll('.weapon-pick-choice:not(.weapon-pick-soon)')];
   // Shipped pictures go in at once (map-cards.js), so the grid is whole on first show.
-  for (const button of choices) { const src = WEAPON_IMAGES[button.dataset.weapon]; if (src) { const img = button.querySelector('img'); img.decoding = 'async'; img.src = src; } }
+  for (const button of choices) { const img = button.querySelector('img'); img.dataset.weaponArt = button.dataset.weapon; const src = WEAPON_IMAGES[button.dataset.weapon]; if (src) { img.decoding = 'async'; img.src = src; } }
   const mark = id => {
     selected = id;
     for (const button of choices) button.setAttribute('aria-pressed', String(button.dataset.weapon === id));
