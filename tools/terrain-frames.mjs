@@ -25,7 +25,7 @@ for (const quality of presets) {
  page.on('pageerror', e => errors.push(e.message));
  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
  await page.addInitScript(q => {
-  localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q, fps: 1, motion: false }));
+  localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q, qualityAuto: false, fps: 1, motion: false }));
   let seed = 20260925; Math.random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
  }, quality);
  await page.goto(`http://127.0.0.1:${port}/?play=1&map=${mapId}&weapon=rifle&capture=thumbnail`);

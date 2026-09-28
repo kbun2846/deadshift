@@ -24,7 +24,13 @@ test('shader warm-up runs after the tier is applied, and again on a tier change'
  const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
  assert.ok(main.indexOf('view.warmProgramsParallel()')>main.indexOf('new WorldView('),'main.js warms the built view');
  const setQuality=r.slice(r.indexOf('\n  setQuality('),r.indexOf('\n  reliefTexture('));
- assert.ok(/if \(this\.programsWarmed\) this\.warmPrograms\(\);/.test(setQuality),'a later preset change re-warms');
+ assert.ok(/if \(this\.programsWarmed && !deferWarm\) this\.warmPrograms\(\);/.test(setQuality),'a later preset change re-warms');
+ // v0.995a (owner: a preset change froze the game): changeQuality holds the
+ // drawing and re-warms through compileAsync instead of all at once.
+ const change=r.slice(r.indexOf('\n  changeQuality('),r.indexOf('\n  setQuality('));
+ assert.ok(change.includes('this.holdRender = true')&&change.includes('setQuality(this.wantedQuality, { deferWarm: true })')&&change.includes('await this.warmProgramsParallel()'));
+ assert.ok(/render\(\) \{[^}]*this\.holdRender\) return;/.test(r),'nothing is drawn meanwhile');
+ assert.ok(main.includes('view.changeQuality('),'the settings go through it');
 });
 
 test('the effects light is dimmed, never hidden, during play',()=>{

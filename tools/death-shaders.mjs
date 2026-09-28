@@ -6,7 +6,7 @@ const q = process.argv[2] || 'extreme';
 const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 for (const type of ['gunshot', 'explosion', 'fire', 'ballastFatal', 'electric']) {
  const p = await b.newPage({ viewport: { width: 900, height: 560 } });
- await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q })), q);
+ await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q, qualityAuto: false })), q);
  await p.goto('http://127.0.0.1:5173/?play=1&weapon=rifle&map=deadwater&capture=thumbnail'); await p.waitForFunction(() => document.body.classList.contains('playing'), null, { timeout: 180000 });
  await p.waitForTimeout(1000);
  const count = () => p.evaluate(() => window.__capture.view.renderer.info.programs.length);

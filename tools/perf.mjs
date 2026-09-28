@@ -23,7 +23,7 @@ const summary = [];
 for (const q of qs) {
 const p = await b.newPage({ viewport: { width: +(process.env.W || 400), height: +(process.env.H || 250) } });
 const errs = []; p.on('pageerror', e => errs.push(e.message));
-await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q })), q);
+await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q, qualityAuto: false })), q);
 await p.goto(`http://127.0.0.1:${port}/?play=1&weapon=${w}&map=${mapId}&capture=thumbnail`);
 await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: 90000 });
 // Teleport: the dev-only window.__capture handle (sim + view), then a camera cut.

@@ -59,7 +59,8 @@ export function installButtonTypography(root){
    const baseline=(size-fa-fd)/2+fa,top=baseline-ascent;
    const inkWidth=m.actualBoundingBoxLeft+m.actualBoundingBoxRight;
    const available=Math.max(1,button.clientWidth-20);
-   const height=button.classList.contains('weapon-choice')?40:button.clientHeight-parseFloat(css.paddingBottom);
+   // (A weapon card's name fits its own box, whose height the layout sets.)
+   const height=button.classList.contains('weapon-choice')?(button.querySelector('.weapon-name')?.clientHeight||40):button.clientHeight-parseFloat(css.paddingBottom);
    const sx=Math.min(.86,available/Math.max(1,inkWidth,m.width)),sy=height*1.08/(ascent+descent);
    fits.push({button,label,css,m,top,inkWidth,available,height,sx,sy,group:button.closest('#touch-controls')?button:button.parentElement});
   }

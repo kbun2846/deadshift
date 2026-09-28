@@ -644,7 +644,7 @@ let trailCanvasTexture = null;
 function trailTexture() {
  if (trailCanvasTexture) return trailCanvasTexture;
  const size = 256, cell = size / 2, canvas = document.createElement('canvas'); canvas.width = canvas.height = size;
- const ctx = canvas.getContext('2d'), random = seeded(1790);
+ const ctx = canvas.getContext('2d', { willReadFrequently: true }), random = seeded(1790); // (read back below: a CPU canvas reads fast)
  const blob = (x, y, r, colour, alpha) => { ctx.globalAlpha = alpha; ctx.fillStyle = colour; ctx.beginPath(); ctx.ellipse(x, y, r * (.7 + random() * .6), r * (.7 + random() * .6), random() * 3, 0, Math.PI * 2); ctx.fill(); };
  // (Dried brown-red, never the fresh #8c1c2a: it has been there a long time.)
  const shades = ['#34170f', '#3f1d14', '#2b140d', '#482619'];

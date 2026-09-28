@@ -64,6 +64,7 @@ import { hollowAmbience } from './hollow-ambience.js'; // s3-sound: Hollow Wick'
 import { createFireIndicator } from './ui/fire-indicator.js';
 import { createDamageIndicator } from './ui/damage-indicator.js';
 import { validateSettings, RenderBudget, AdaptiveResolution } from './settings.js';
+import { gpuInfo, detectTier, autoQuality, AutoQualityWatch } from './device-tier.js';
 import { installSettingsPanel } from './ui/settings-panel.js';
 import {keyboardAim} from './keyboard-aim.js';
 import { overheadMapSVG } from './ui/overhead-map.js';
@@ -101,6 +102,11 @@ const detectedInput=detectedControls({coarsePointer:matchMedia('(pointer: coarse
 const deviceDefaults={mobile:detectedInput==='touch'};
 try { settings = validateSettings(JSON.parse(localStorage.getItem('deadshift-settings') || '{}'),deviceDefaults); }
 catch { settings = validateSettings({},deviceDefaults); }
+// The graphics preset for this device (device-tier.js), unless one was chosen
+// by hand in Settings > Graphics: Performance, Balanced or Quality.
+const deviceTier=detectTier({gpu:gpuInfo(),mobile:deviceDefaults.mobile,cores:navigator.hardwareConcurrency||0,memory:navigator.deviceMemory||0});
+if(settings.qualityAuto)settings.quality=autoQuality(deviceTier.tier,settings.qualityAutoStep);
+const autoWatch=new AutoQualityWatch();
 const sim = new Simulation(map), sound = new Soundscape(), budget = new RenderBudget(settings.fps);
 // Robots (bots/): spawned from the developer tools in a solo game.
 const bots = new BotMatch(map, { createSim: m => new Simulation(m) });
@@ -314,7 +320,7 @@ const sticks = new Map();
 // tools/capture-thumbnail.mjs, which photographs the map card's picture.
 if(import.meta.env.DEV&&params.get('capture')==='thumbnail')window.__capture={view,sim,map};
 // Development only: the robots, for tools and the console.
-if(import.meta.env.DEV){window.__bots=bots;window.__duel=duel;window.__sim=sim;window.__stanceAim=stanceAim;window.__stanceBodies=()=>stanceBodies();window.__pickStance=(dx,dy)=>pickStanceTarget(dx,dy);}
+if(import.meta.env.DEV){window.__bots=bots;window.__duel=duel;window.__sim=sim;window.__stanceAim=stanceAim;window.__stanceBodies=()=>stanceBodies();window.__pickStance=(dx,dy)=>pickStanceTarget(dx,dy);window.__weaponPick=()=>weaponPick;}
 view.onClatter = type => sound.clatter(type);
 view.onBloodSound=(kind,x,z)=>sound.event({type:kind==='step'?'bloodStep':'bloodPool',x,z},hearingLevel(Math.hypot(x-sim.player.x,z-sim.player.z)));
 // Lost the GPU (usually out of memory on a phone). Twice within a minute on
@@ -442,6 +448,22 @@ function reset() {
   duel.reset();
   previousPlayer = { ...sim.player }; dirty = true; devTools.syncSpeed();updateHUD();
   if(tutorial&&started)$('tutorial-guide').classList.remove('hidden');
+}
+
+// A graphics preset change (renderer.js changeQuality): a small note while
+// the new shaders build, the last frame held on screen meanwhile. It waits two
+// frame first (and a task) so the note is on screen before the preset work.
+const graphicsBusy=document.createElement('div');graphicsBusy.id='graphics-busy';graphicsBusy.className='graphics-busy hidden';graphicsBusy.setAttribute('role','status');graphicsBusy.innerHTML='<i aria-hidden="true"></i><span>APPLYING GRAPHICS</span>';$('game').append(graphicsBusy);
+let graphicsChanges=0;
+function changeGraphics(name){
+ // (Held from now: no frame is queued for the GPU while the note paints.)
+ view.wantedQuality=name;view.holdRender=true;graphicsChanges++;graphicsBusy.classList.remove('hidden');
+ requestAnimationFrame(()=>setTimeout(()=>{
+  view.changeQuality(view.wantedQuality).catch(error=>console.error(error)).finally(()=>{
+   if(--graphicsChanges<=0){graphicsChanges=0;graphicsBusy.classList.add('hidden');}
+   adaptiveResolution.reset();dirty=true;
+  });
+ },0));
 }
 
 function toggleAudio() {
@@ -904,11 +926,13 @@ $('resume').addEventListener('click', () => setPaused(false));
 $('reset').addEventListener('click', () => { reset(); setPaused(false); });
 bindTouchAction($('audio'),{press:toggleAudio});
 const settingsPanel=installSettingsPanel(settings,{
- setQuality:name=>{if(view.qualityName!==name)view.setQuality(name);},
+ setQuality:name=>{if((view.wantedQuality??view.qualityName)!==name)changeGraphics(name);},
  setMotion:on=>{view.motion=on;},setFps:fps=>{budget.fps=fps;},
  setVolumes:volume=>sound.setVolumes(volume),
  setScreen:applyScreen,
  changed:()=>{dirty=true;updateHUD();},
+ // Settings > Graphics > AUTO: the preset device-tier.js picks for this device.
+ autoQuality:()=>autoQuality(deviceTier.tier,settings.qualityAutoStep),
 });
 const selectMenus=installSelectMenus($('settings-panel'));
 $('mute-all').onclick=toggleAudio;
@@ -1266,6 +1290,12 @@ function frame(time) {
     // frame, drawn or skipped, so it never lags the pointer.
     updateReticle();
     if(running&&!document.hidden){view.setResolutionScale(adaptiveResolution.sample(dt,renderDelta>0,settings.quality,settings.fps));view.setStrain(adaptiveResolution.strained);}
+    // An automatic preset well short of its frame target steps down at the
+    // next start (one smooth for long enough a step lower climbs back).
+    if(running&&!document.hidden&&settings.qualityAuto&&!view.holdRender){
+     const move=autoWatch.sample(dt,renderDelta>0?1:0,Math.min(settings.fps||60,60),settings.qualityAutoStep);
+     if(move){settings.qualityAutoStep=Math.max(-2,Math.min(0,settings.qualityAutoStep+move));try{localStorage.setItem('deadshift-settings',JSON.stringify(settings));}catch{}}
+    }
     else adaptiveResolution.reset();
     fpsTime += dt;
     if (fpsTime >= 1) { measuredFPS = Math.round(renderedFrames / fpsTime); fpsTime = 0; renderedFrames = 0; }

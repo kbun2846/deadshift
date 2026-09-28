@@ -26,7 +26,7 @@ const runs = flags.map ? PRESETS.map((q, i) => [q, WEAPONS[i % 3], flags.map]) :
 for (const [q,w,map] of runs) {
  const p = await b.newPage({ viewport: { width: 1280, height: 800 } });
  const errs=[]; p.on('pageerror',e=>errs.push('PE '+e.message)); p.on('console',m=>{if(['error','warning'].includes(m.type()))errs.push(m.type()+' '+m.text().slice(0,160))});
- await p.addInitScript(q=>localStorage.setItem('deadshift-settings',JSON.stringify({quality:q})),q);
+ await p.addInitScript(q=>localStorage.setItem('deadshift-settings',JSON.stringify({quality:q,qualityAuto:false})),q);
  await p.goto(`${base}/?play=1&weapon=${w}&map=${map}&capture=thumbnail`);
  await p.waitForFunction(()=>document.body.classList.contains('playing'),null,{timeout:LOAD_TIMEOUT});
  // shoot/move a bit
@@ -52,7 +52,7 @@ async function walk(map) {
  const errs = [], warns = [];
  p.on('pageerror', e => errs.push('PE ' + e.message));
  p.on('console', m => { if (m.type() === 'error') errs.push('error ' + m.text().slice(0, 160)); else if (m.type() === 'warning') warns.push(m.text().slice(0, 160)); });
- await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q })), PRESETS[0]);
+ await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q, qualityAuto: false })), PRESETS[0]);
  await p.goto(`${base}/?play=1&weapon=static&map=${map}&capture=thumbnail`);
  await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: LOAD_TIMEOUT });
  if (spot) await p.evaluate(s => { const { sim, view } = window.__capture; Object.assign(sim.player, { x: s.x, z: s.z, vx: 0, vz: 0 }); view.cameraCut = true; }, spot);

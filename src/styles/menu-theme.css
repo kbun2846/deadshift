@@ -151,8 +151,13 @@ input,textarea,[contenteditable=true]{-webkit-user-select:text;user-select:text}
 
 
 
-#game .menu-shell [data-page=weapons]{width:min(640px,100%)}
-.weapon-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;max-height:calc(100dvh - 200px);overflow-y:auto;padding:3px 3px 12px}
+/* The weapons page: a picture and a name per weapon, no descriptions (owner,
+   v0.995a: "remove all weapon descriptions in weapon select menus and make
+   them fit easier when in the horizontal and vertical modes ... on mobile").
+   Tiles as many across as fit: four on a computer, three on an upright
+   phone (every weapon in view), one row on a phone on its side. */
+#game .menu-shell [data-page=weapons]{width:min(720px,100%)}
+.weapon-options{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;max-height:calc(100dvh - 200px);overflow-y:auto;padding:3px 3px 12px}
 .weapon-scroll-frame{position:relative}
 .weapon-scroll-frame .weapon-options{scrollbar-width:none}
 .weapon-scroll-frame .weapon-options::-webkit-scrollbar{display:none}
@@ -160,17 +165,29 @@ input,textarea,[contenteditable=true]{-webkit-user-select:text;user-select:text}
 .weapon-scroll-frame.has-more .weapon-scroll-cue{opacity:1}
 .weapon-scroll-cue svg{display:block;width:100%;height:100%;fill:var(--ui-accent);stroke:#191c1c;stroke-width:2;stroke-linejoin:round}
 .weapon-card{min-width:0;border:1px solid #424846;border-radius:7px;overflow:hidden;background:#242928;align-self:start}
-#game .weapon-card .weapon-choice{display:block;width:100%;height:auto;min-height:390px;margin:0;padding:0 0 18px;border:0;border-radius:0;white-space:normal;text-align:left}
-.weapon-preview{display:block;width:100%;aspect-ratio:5/6;object-fit:cover;background:transparent}
+#game .weapon-card .weapon-choice{display:block;width:100%;height:auto;margin:0;padding:0 0 10px;border:0;border-radius:0;white-space:normal;text-align:left}
+.weapon-preview{display:block;width:100%;aspect-ratio:1;object-fit:cover;background:transparent}
 /* Slightly larger Omen and Sightline artwork in every selector, including
    copied picker thumbnails. Independent scale preserves the hover lift. */
 #game img:is([data-weapon-art="omen"],[data-weapon-art="sightline"]){scale:1.12}
 .weapon-card:has(.weapon-choice:focus-visible){border-color:var(--ui-accent)}
 @media(hover:hover){.weapon-card:has(.weapon-choice:hover){border-color:var(--ui-accent)}}
-.weapon-name{display:block;position:relative;height:40px;overflow:hidden;margin:14px 0 12px}
+.weapon-name{display:block;position:relative;height:34px;overflow:hidden;margin:8px 0 0}
 .weapon-name>.button-label{position:absolute;left:10px;top:0;font:inherit;line-height:32px;white-space:nowrap;transform-origin:0 0;pointer-events:none}
-#game button .weapon-description{display:block;padding:0 12px;font-family:Arial,Helvetica,sans-serif!important;font-size:13px;font-weight:400;line-height:1.6;letter-spacing:0;text-transform:none!important;color:inherit}
-@media(max-width:480px){.weapon-options{gap:10px}.weapon-preview{aspect-ratio:4/5}#game .weapon-card .weapon-choice{min-height:330px}#game button .weapon-description{font-size:12px;padding:0 10px}.weapon-options{max-height:calc(100dvh - 170px)}}
+/* (button-typography.js fits each name to its .weapon-name box.) */
+@media(max-width:480px){.weapon-options{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:calc(100dvh - 170px)}.weapon-name{height:24px;margin-top:6px}#game .weapon-card .weapon-choice{padding-bottom:7px}}
+/* On its side: the heading beside the back arrow, the tiles in one row
+   (two on the smallest phones), all in view. */
+@media(max-height:520px) and (orientation:landscape){
+ #game .menu-shell [data-page=weapons]{width:min(1000px,100%)}
+ #game .menu-shell [data-page=weapons]>.menu-back{float:left;margin:0 14px 0 0}
+ #game .menu-shell [data-page=weapons]>h2{margin:0 0 12px;line-height:40px}
+ #game .menu-shell [data-page=weapons] .weapon-scroll-frame{clear:both}
+ .weapon-options{grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;max-height:calc(100dvh - 96px)}
+ .weapon-name{height:22px;margin-top:5px}
+ #game .weapon-card .weapon-choice{padding-bottom:6px}
+ .weapon-scroll-cue{bottom:14px}
+}
 
 
 /* Shared player health: restrained pink, with a brief trailing damage segment. */
@@ -576,7 +593,10 @@ body.mp-between #weapon,body.mp-between #reticle,body.mp-between .health-hud,bod
 #game button.weapon-pick-go{width:auto;min-width:140px;height:46px;min-height:46px;margin:0;padding:0 28px;border:0;border-radius:12px;background:var(--ui-accent);color:#151718;font:900 22px/46px Arial Black,Arial,sans-serif;letter-spacing:.08em;box-shadow:0 6px 16px #0005;transition:transform .14s ease,filter .14s}
 #game button.weapon-pick-go:not(:disabled):hover,#game button.weapon-pick-go:focus-visible{transform:translateY(-2px) scale(1.03);filter:brightness(1.06);outline:none}
 #game button.weapon-pick-go:disabled{opacity:.45;cursor:default}
-@media(max-width:520px){#game .weapon-pick-grid{gap:8px}#game button.weapon-pick-choice{border-radius:12px;padding:5px 3px}#game .weapon-pick-name{font-size:8px;letter-spacing:.06em}#game .weapon-pick-art{inset:4px 4px 18px}}
+@media(max-width:520px){#game .weapon-pick-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}#game button.weapon-pick-choice{border-radius:12px;padding:5px 3px}#game .weapon-pick-name{font-size:9px;letter-spacing:.06em}#game .weapon-pick-art{inset:4px 4px 18px}}
+/* The in-game weapon pick on a phone on its side: every weapon in one row,
+   the card a little tighter (v0.995a, owner: weapon menus to fit on phones). */
+@media(max-height:520px) and (orientation:landscape){#game .weapon-pick{padding:8px}#game .weapon-pick-card{width:min(900px,100%);max-height:calc(100dvh - 16px);padding:12px 16px}#game .weapon-pick-head{margin-bottom:8px}#game .weapon-pick-grid{grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px}#game .weapon-pick-foot{margin-top:8px}#game button.weapon-pick-go,#game button.weapon-pick-back{height:40px;min-height:40px;line-height:40px}}
 @media(prefers-reduced-motion:reduce){#game button.weapon-pick-choice,#game .weapon-pick-art img,#game button.weapon-pick-go{transition:none}}
 #game .weapon-pick-timer[hidden]{display:none}
 #game button.weapon-pick-back{width:auto;min-width:110px;height:46px;min-height:46px;margin:0 auto 0 0;padding:0 22px;border:1px solid #ffffff24;border-radius:12px;background:#3a4140b3;color:#eee9df;font:900 18px/46px Arial Black,Arial,sans-serif;letter-spacing:.08em;transition:transform .14s ease,background .14s}
@@ -953,3 +973,11 @@ body[data-controls=touch].duel-on.playing #game .health-hud{top:calc(max(8px,env
 #ichor-deflect-recharge[data-state=active]{color:#fff!important}
 #ichor-deflect-recharge[data-state=cooldown]{color:#c96d7f!important}
 @media(max-width:480px){#game #weapon[data-weapon=ichor]{min-height:196px}#weapon[data-weapon=ichor] #ichor-deflect-recharge{left:0;right:auto;top:122px;width:60px;height:60px}}
+
+/* A graphics preset change (main.js changeGraphics): a small pill at the top
+   while the new shaders build; the game's last frame stays behind it. */
+#game .graphics-busy{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 14px);z-index:90;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:8px 16px;border-radius:999px;background:#1c2020e6;border:1px solid #ffffff1f;color:#eee9df;font:800 12px/1 Arial,sans-serif;letter-spacing:.14em;box-shadow:0 8px 24px #0008;pointer-events:none}
+#game .graphics-busy.hidden{display:none}
+/* (Still, not spinning: an animation keeps the compositor busy in the very
+   process that is building the shaders, which slowed it measurably.) */
+#game .graphics-busy i{width:8px;height:8px;border-radius:50%;background:var(--ui-accent)}

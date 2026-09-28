@@ -58,7 +58,11 @@ export function pistolSpread(distance,speed=0,aiming=false){return (aiming?.022:
 export function prepareSightline(sim,input){
  if(sim.weapon!=='sightline')return input;
  const s=sim.sightline,p=sim.player;
- if(input.sightlineStance&&!p.dodgeRemaining&&!s.commit){s.crouched=!s.crouched;s.setup=s.crouched?S.setupDuration:0;s.turnVelocity=0;if(!s.crouched&&!s.xLoading)s.rifleReload=0;sim.events.push({type:'sightlineStance',x:p.x,z:p.z,crouched:s.crouched});}
+ // Moving during the rifle's reload in the stance stands you up, which ends
+ // the reload (owner, v0.992a: "the sniper auto reload is cancellable by
+ // player uncrouching or moving"); a Breach load carries on standing.
+ const standUp=s.crouched&&s.rifleReload>0&&!s.xLoading&&Math.hypot(input.moveX||0,input.moveZ||0)>.45;
+ if((input.sightlineStance||standUp)&&!p.dodgeRemaining&&!s.commit){s.crouched=!s.crouched;s.setup=s.crouched?S.setupDuration:0;s.turnVelocity=0;if(!s.crouched&&!s.xLoading)s.rifleReload=0;sim.events.push({type:'sightlineStance',x:p.x,z:p.z,crouched:s.crouched});}
  s.setup=Math.max(0,(s.setup||0)-RULES.step);
  // A reload takes the aim down while it runs (the rifle's in the stance; the
  // Sidekick's, or the holstered Sidekick during a standing Breach load,
@@ -118,13 +122,15 @@ export function stepSightline(sim,input,dt,geo){
  else{
   if(s.pistolReload>0){s.pistolReload=Math.max(0,s.pistolReload-dt);if(s.pistolReload<1e-8){s.pistolReload=0;s.pistolAmmo=S.pistolMagazine;sim.events.push({type:'sightlineReloaded'});}}
   if(s.rifleReload>0){s.rifleReload=Math.max(0,s.rifleReload-dt);if(s.rifleReload<1e-8){s.rifleReload=0;s.rifleAmmo=1;s.special=s.xLoading;s.xLoading=false;sim.events.push({type:'sightlineReloaded',rifle:true,special:s.special});}}
-  if(s.commit>0){s.commit=Math.max(0,s.commit-dt);if(s.commit<1e-8&&sim.sightlinePending){launch(sim,sim.sightlinePending,geo);sim.sightlinePending=null;s.commit=0;
-   // The rifle reloads itself once its round is away (v0.992a, owner: an empty
-   // rifle showed no laser until FIRE was pressed again to reload it).
-   if(s.crouched&&s.rifleAmmo<=0&&!s.rifleReload)reload(sim,true);}}
+  if(s.commit>0){s.commit=Math.max(0,s.commit-dt);if(s.commit<1e-8&&sim.sightlinePending){launch(sim,sim.sightlinePending,geo);sim.sightlinePending=null;s.commit=0;}}
   else if(!p.dodgeRemaining){
    if(input.sightlineX&&!s.special&&!s.xLoading&&!s.pistolReload&&s.xCooldown<=1e-8)reload(sim,true,true);
    const rifle=s.crouched;
+   // In the stance an empty rifle reloads itself: once its round is away, or
+   // on crouching again with it empty (v0.992a, owner: an empty rifle showed
+   // no laser until FIRE was pressed again to reload it). Standing up or
+   // moving ends it (prepareSightline); there is no laser until it is loaded.
+   if(rifle&&s.rifleAmmo<=0&&!s.rifleReload&&!s.special&&!s.xLoading)reload(sim,true);
    const loading=!!s.rifleReload&&(rifle||s.xLoading)||!!s.pistolReload&&!rifle;
    const fire=pressed||(input.sightlineX&&s.special&&rifle);
    const ammo=rifle?s.rifleAmmo:s.pistolAmmo;

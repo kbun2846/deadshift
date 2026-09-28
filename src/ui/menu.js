@@ -111,8 +111,9 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   if(map.id===selectedMap){try{history.replaceState(null,'','?'+query);}catch{}start(weapon,selectedMap==='tutorial'?course||null:undefined);}
   else{markLaunch(query);location.href='?'+query;}
  };
- // Names and descriptions come from the item registry; only the 3D preview
- // renderers are wired up here (a new weapon adds its preview function).
+ // Names come from the item registry; only the 3D preview renderers are wired
+ // up here (a new weapon adds its preview function). No descriptions on the
+ // cards (owner, v0.995a): a picture and a name.
  const previews={static:staticPreview,rifle:riflePreview,shotgun:shotgunPreview};
  const weapons=WEAPONS.map(w=>({...w,preview:previews[w.id]}));
  for(const weapon of weapons){
@@ -121,10 +122,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   const picture=document.createElement('img');picture.alt=weapon.previewAlt;picture.className='weapon-preview';picture.dataset.weaponArt=weapon.id;
   const title=document.createElement('span');title.className='weapon-name';
   const label=document.createElement('span');label.className='button-label';label.textContent=weapon.name;title.append(label);
-  const description=document.createElement('span');description.className='weapon-description';description.textContent=weapon.description;
-  select.append(picture,title,description);select.onclick=()=>launch(weapon.id);
+  select.append(picture,title);select.onclick=()=>launch(weapon.id);
   card.append(select);$('weapon-options').append(card);
-  // A weapon without a 3D preview yet simply shows its name and description.
   // The shipped picture from the start (map-cards.js); a weapon without one
   // is rendered on first view, and one with neither shows its name.
   if(WEAPON_IMAGES[weapon.id]){picture.decoding='async';picture.src=WEAPON_IMAGES[weapon.id];}
@@ -133,7 +132,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  // Coming soon (owner): the list ends with a greyed card that cannot be picked.
  {
   const card=document.createElement('article');card.className='weapon-card weapon-soon';
-  card.innerHTML='<button class="weapon-choice" type="button" disabled aria-disabled="true"><span class="weapon-preview weapon-soon-art" aria-hidden="true"><b>+</b></span><span class="weapon-name"><span class="button-label">COMING SOON</span></span><span class="weapon-description">More weapons are on the way.</span></button>';
+  card.innerHTML='<button class="weapon-choice" type="button" disabled aria-disabled="true"><span class="weapon-preview weapon-soon-art" aria-hidden="true"><b>+</b></span><span class="weapon-name"><span class="button-label">COMING SOON</span></span></button>';
   card.loadPreview=()=>{};$('weapon-options').append(card);
  }
  const weaponList=$('weapon-options');

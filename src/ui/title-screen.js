@@ -147,7 +147,10 @@ export function installTitle({ page, shell, overlay }) {
  }
  const keyOf = geo => [geo.width, geo.height, ...geo.letters.map(l => l.x0.toFixed(0) + ',' + l.bottom.toFixed(0)), ...geo.buttons.map(b => b.pair ? { left: b.left + (b.pair.free === 1 ? 15 : 0), right: b.right - (b.pair.free === 0 ? 15 : 0), top: b.top, bottom: b.bottom } : b).map(b => [b.left, b.top, b.right, b.bottom].map(v => v.toFixed(0)).join())].join('|');
 
- const active = () => !shell.classList.contains('hidden') && !page.hidden && document.visibilityState !== 'hidden';
+ // (Not behind the loading screen either: measuring the letters and running
+ // the goo filters there only slowed the load, v0.995a. The intro plays
+ // once the menu is actually seen.)
+ const active = () => !shell.classList.contains('hidden') && !page.hidden && document.visibilityState !== 'hidden' && !document.body.classList.contains('loading');
  function tick(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   anim.step(dt);
@@ -179,6 +182,7 @@ export function installTitle({ page, shell, overlay }) {
  const later = () => { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; run(); }); };
  new MutationObserver(later).observe(shell, { attributes: true, attributeFilter: ['class'] });
  new MutationObserver(later).observe(page, { attributes: true, attributeFilter: ['hidden'], subtree: true });
+ new MutationObserver(later).observe(document.body, { attributes: true, attributeFilter: ['class'] });
  new ResizeObserver(later).observe(page);
  addEventListener('resize', later); globalThis.visualViewport?.addEventListener('resize', later); addEventListener('orientationchange', later); document.addEventListener('visibilitychange', later);
  document.fonts?.ready.then(later);

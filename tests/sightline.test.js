@@ -399,7 +399,22 @@ test('local and remote empty Sightlines hide their laser, and ammo survives play
  fx.update(sim,0);assert.ok(fx.guideLines.count>0);
  sim.sightline.rifleAmmo=0;tick(sim,{aiming:true});fx.update(sim,0);assert.equal(fx.guideLines.count,0);assert.equal(playerState('a',sim.player).sightline.rifleAmmo,0);
  view.remotePlayers=[{...sim.player,id:'other',sightline:{...sim.player.sightline}}];fx.update(sim,0);assert.equal(fx.lines.count,0);
- sim.sightline.rifleAmmo=1;tick(sim,{aiming:true});assert.equal(playerState('a',sim.player).sightline.rifleAmmo,1);fx.update(sim,0);assert.ok(fx.guideLines.count>0);
+ // (v0.992a: the empty rifle has started reloading itself: no laser through the reload either.)
+ assert.ok(sim.sightline.rifleReload>4);fx.update(sim,0);assert.equal(fx.guideLines.count,0,'no laser while it reloads');
+ sim.sightline.rifleAmmo=1;sim.sightline.rifleReload=0;tick(sim,{aiming:true});assert.equal(playerState('a',sim.player).sightline.rifleAmmo,1);fx.update(sim,0);assert.ok(fx.guideLines.count>0);
+});
+
+// v0.992a (owner: "make sure the sniper auto reload is cancellable by player
+// uncrouching or moving"): standing up or pushing to move ends it; crouching
+// again with the rifle empty starts it again.
+test('the rifle reloads itself in the stance; standing up or moving ends it',()=>{
+ const s=make();crouch(s);fire(s);tick(s,{},12);assert.ok(s.sightline.rifleReload>4,'reloading itself');
+ tick(s,{sightlineStance:true});assert.equal(s.sightline.crouched,false);assert.equal(s.sightline.rifleReload,0);assert.equal(s.sightline.rifleAmmo,0,'standing ended it');
+ crouch(s);assert.ok(s.sightline.rifleReload>0,'crouching again with it empty starts it again');
+ const x=s.player.x;tick(s,{moveX:1},2);assert.equal(s.sightline.crouched,false,'moving stands you up');assert.equal(s.sightline.rifleReload,0);assert.equal(s.sightline.rifleAmmo,0);assert.ok(s.player.x>x,'and you walk');
+ // A small push (under the threshold) does nothing; nor does moving with a round loaded.
+ crouch(s);tick(s,{moveX:.3},5);assert.equal(s.sightline.crouched,true);assert.ok(s.sightline.rifleReload>0);
+ tick(s,{},260);assert.equal(s.sightline.rifleAmmo,1);tick(s,{moveX:1},5);assert.equal(s.sightline.crouched,true,'loaded, the stance holds');
 });
 
 test('the placement guide draws past fog without depth holes and still stops at solid cover',()=>{

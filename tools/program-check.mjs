@@ -11,7 +11,7 @@ const { SPOTS } = await import('./terrain-spots.mjs');
 const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await b.newPage({ viewport: { width: 640, height: 400 } });
 const errs = []; p.on('pageerror', e => errs.push(e.message));
-await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q })), q);
+await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q, qualityAuto: false })), q);
 await p.goto(`http://127.0.0.1:${port}/?play=1&weapon=${w}&map=${map}&capture=thumbnail`);
 // (A loaded machine loads slowly: PC_TIMEOUT seconds, default 240.)
 await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: (+process.env.PC_TIMEOUT || 240) * 1000 });

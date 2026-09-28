@@ -12,7 +12,7 @@ const mapId = process.argv[2] || 'deadwater';
 const [W, H, DPR] = [460, 570, 3];
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: DPR });
-await page.addInitScript(() => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: 'extreme', fps: 1, motion: false })));
+await page.addInitScript(() => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: 'extreme', qualityAuto: false, fps: 1, motion: false })));
 await page.goto(`http://127.0.0.1:${process.env.PORT || 5173}/?play=1&map=${mapId}&weapon=rifle&capture=thumbnail`);
 await page.waitForFunction(() => window.__capture && document.body.classList.contains('playing'), null, { timeout: 60000 });
 // Extreme's passes load and the shadows settle over a few frames.

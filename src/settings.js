@@ -39,7 +39,7 @@ export const GRAPHICS = Object.freeze({
 export const DEMANDING_TIERS = Object.freeze(['quality', 'extreme']);
 export const isDemanding = name => DEMANDING_TIERS.includes(name);
 
-export const DEFAULT_SETTINGS = { quality: 'balanced', fps: 60, motion: true, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, keyLock: true, screen: 'fullscreen', vibration: true,
+export const DEFAULT_SETTINGS = { quality: 'balanced', qualityAuto: true, qualityAutoStep: 0, fps: 60, motion: true, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, keyLock: true, screen: 'fullscreen', vibration: true,
   volume: { master: .6, ambient: .8, weapons: 1, effects: 1 } };
 // Every channel is a plain 0..1 multiplier so the mixer stays predictable:
 // master scales the bus, the rest scale within it.
@@ -125,7 +125,14 @@ export class AdaptiveResolution {
 }
 export function validateSettings(value = {}, {mobile=false} = {}) {
   value ||= {};
-  return { quality: GRAPHICS[value.quality] ? value.quality : mobile ? 'performance' : DEFAULT_SETTINGS.quality,
+  const deviceDefault = mobile ? 'performance' : DEFAULT_SETTINGS.quality;
+  return { quality: GRAPHICS[value.quality] ? value.quality : deviceDefault,
+    // Settings > Graphics > AUTO (device-tier.js): the preset picked for this
+    // device at each start. Saves from before it count as automatic unless
+    // their preset was changed from the old default for the device (v0.995a).
+    qualityAuto: typeof value.qualityAuto === 'boolean' ? value.qualityAuto : !GRAPHICS[value.quality] || value.quality === deviceDefault,
+    // The learned step below the detected preset (AutoQualityWatch): 0, -1 or -2.
+    qualityAutoStep: Math.max(-2, Math.min(0, Math.round(Number(value.qualityAutoStep)) || 0)),
     fps: Number(value.fps) === 0 ? 0
       : Number.isFinite(Number(value.fps)) && Number(value.fps) >= FPS_MIN && Number(value.fps) <= FPS_MAX
         ? Math.round(Number(value.fps)) : DEFAULT_SETTINGS.fps,

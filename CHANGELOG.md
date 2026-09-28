@@ -2,6 +2,22 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.993 (2026-09-28)
+
+### Graphics
+- **Auto graphics:** Settings > Graphics has a new Auto choice, on by default. At each start it picks Performance, Balanced or Quality for the device from its graphics chip, cores and memory (phones Performance, flagship phones Balanced, gaming PCs Quality). If it runs well short of its frame target it takes the next preset down at the next start, and climbs back once things run smoothly. A preset picked by hand stays.
+- **Changing preset no longer freezes the game:** the last frame stays up with an APPLYING GRAPHICS note while the new shaders build in the background, then play carries on.
+
+### Loading
+- Faster loads: the title's blood intro waits until the menu is on screen instead of running behind the loading screen, Deadwater's Quality-only dressing is only built for Quality and Extreme, and several textures (crop beds, sand and wood grain, Hollow Wick's drag trail) are made far faster.
+
+### Menus
+- The weapon menus show each weapon's picture and name only (no descriptions) and fit a phone either way up: three across upright, one row on its side. The in-game weapon pick fits the same way.
+
+### Sightline
+- The rifle reloads itself in the stance whenever it is empty; standing up or moving cancels that reload. No laser until a round is loaded.
+- No more NO SCOPE text indoors or in crops: the scope simply doesn't come up there.
+
 ## alpha v0.992 (2026-09-28)
 
 ### Aiming on phones and keyboards

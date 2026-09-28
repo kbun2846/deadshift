@@ -22,7 +22,11 @@ export function installSettingsPanel(settings, hooks) {
   save(settings);
  }
  function applySettings() {
-  settings.quality = byId('graphics-preset').value;
+  // AUTO (device-tier.js): the preset picked for this device; any other
+  // choice is kept as chosen.
+  const preset = byId('graphics-preset').value;
+  settings.qualityAuto = preset === 'auto';
+  settings.quality = settings.qualityAuto ? (hooks.autoQuality?.() || settings.quality) : preset;
   // Weighted stops: near one of the common rates the handle is pulled onto it,
   // and outside that pull it settles wherever it was let go.
   const settled = snapFps(byId('fps-limit').value);
@@ -47,8 +51,8 @@ export function installSettingsPanel(settings, hooks) {
   document.body.style.setProperty('--mobile-opacity', settings.mobileOpacity);
   byId('weapon').classList.toggle('hide-control-hints', !settings.controlHints);
   hooks.setQuality(settings.quality); hooks.setMotion(settings.motion); hooks.setFps(settings.fps); hooks.setScreen?.(settings.screen, settings.keyLock);
-  byId('graphics-description').textContent = GRAPHICS[settings.quality].description;
-  byId('graphics-warning').classList.toggle('hidden', !isDemanding(settings.quality));
+  byId('graphics-description').textContent = (settings.qualityAuto ? `Auto: ${GRAPHICS[settings.quality].label} for this device. ` : '') + GRAPHICS[settings.quality].description;
+  byId('graphics-warning').classList.toggle('hidden', settings.qualityAuto || !isDemanding(settings.quality));
   save(settings);
   hooks.changed();
  }
@@ -59,7 +63,7 @@ export function installSettingsPanel(settings, hooks) {
   prong.title = fpsLabel(stop);
   return prong;
  }));
- byId('graphics-preset').value = settings.quality; byId('fps-limit').value = String(fpsToSlider(settings.fps));
+ byId('graphics-preset').value = settings.qualityAuto ? 'auto' : settings.quality; byId('fps-limit').value = String(fpsToSlider(settings.fps));
  byId('control-hints').checked = settings.controlHints;
  byId('aim-assist').checked = settings.aimAssist;
  byId('fullscreen-play').checked = settings.fullscreen;

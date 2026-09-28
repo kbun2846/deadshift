@@ -30,7 +30,7 @@ for(const q of (process.argv[3]||'balanced').split(',')){
   window.requestAnimationFrame=cb=>raf(t=>{window.__f++;cb(t);});
  });
  await p.goto(`http://localhost:${port}/`,{waitUntil:'networkidle'});
- await p.evaluate(q=>{try{localStorage.setItem('deadshift-settings',JSON.stringify({quality:q}))}catch{}},q);
+ await p.evaluate(q=>{try{localStorage.setItem('deadshift-settings',JSON.stringify({quality:q,qualityAuto:false}))}catch{}},q);
  await p.reload({waitUntil:'networkidle'});
  for(let i=0;i<200;i++){await p.waitForTimeout(500);if(await p.evaluate(()=>!document.getElementById('loading-screen')))break;}
  await p.click('#gamemodes');await p.waitForTimeout(150);

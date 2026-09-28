@@ -142,10 +142,13 @@ export class CropView {
       // (s2-props: a field with its own bed colour gets stubble browns.)
       const strokes = f.bed ? ['#8a7a4e', '#7a6a44', '#5e5238'] : ['#aaa36c', '#918c5d', '#6e7049'];
       // A continuous mat of fallen leaves hides exposed brown soil between stalks.
-      for(let i=0;i<4200;i++) {
-        const x=(Math.sin(i*43)*.5+.5)*size,y=(Math.sin(i*19+2)*.5+.5)*size;
-        ctx.strokeStyle=strokes[i%3];ctx.lineWidth=1.2;
-        ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+Math.sin(i*7)*5,y+Math.cos(i*11)*6);ctx.stroke();
+      // (One path per colour, not 4200 strokes: the same leaves, drawn in a
+      // fraction of the time at load, v0.995a.)
+      ctx.lineWidth=1.2;
+      for(let c=0;c<3;c++){
+        ctx.strokeStyle=strokes[c];ctx.beginPath();
+        for(let i=c;i<4200;i+=3){const x=(Math.sin(i*43)*.5+.5)*size,y=(Math.sin(i*19+2)*.5+.5)*size;ctx.moveTo(x,y);ctx.lineTo(x+Math.sin(i*7)*5,y+Math.cos(i*11)*6);}
+        ctx.stroke();
       }
       bed.base=document.createElement('canvas');bed.base.width=bed.base.height=size;
       bed.base.getContext('2d').drawImage(bed.canvas,0,0);
@@ -178,11 +181,12 @@ export class CropView {
           ctx.fillStyle=gradient;ctx.fillRect(px-r,py-r,r*2,r*2);
         }
       }
-      ctx.strokeStyle = '#b69c6b18'; ctx.lineWidth = .7;
+      ctx.strokeStyle = '#b69c6b18'; ctx.lineWidth = .7; ctx.beginPath();
       for (let i = 0; i < 330; i++) {
         const x = (Math.sin(i * 43) * .5 + .5) * size, y = (Math.sin(i * 19 + 2) * .5 + .5) * size;
-        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 1 + i % 5, y + (i % 3 - 1)); ctx.stroke();
+        ctx.moveTo(x, y); ctx.lineTo(x + 1 + i % 5, y + (i % 3 - 1));
       }
+      ctx.stroke(); // (one path: this redraws while fields burn, too)
       // Irregular feathered perimeter blends the bed into surrounding soil.
       if(!bed.edge){
         bed.edge=document.createElement('canvas');bed.edge.width=bed.edge.height=size;

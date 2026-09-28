@@ -232,7 +232,10 @@ export class WorldView {
     for (const p of mapProps(map)) this.makeProp(p);
     for (const f of map.fences) this.makeFence(f);
     this.makePlayableEdge();
-    this.cropView = new CropView(this); this.qualityDetails = makeQualityDetails(this);
+    // (Quality and Extreme's extra street dressing is only built for them: on
+    // the lighter presets it was a few hundred hidden meshes made at every load,
+    // and more shaders to warm. setQuality builds it on the first change up.)
+    this.cropView = new CropView(this); this.qualityDetails = isDemanding(qualityName) ? makeQualityDetails(this) : null;
     // Anything whose silhouette is smaller than a shadow texel from this camera
     // contributes nothing to the map but is still binned, transformed and drawn
     // every shadow update. This has to run before the merge, because castShadow
@@ -244,7 +247,7 @@ export class WorldView {
     // The scene itself never moves; left on, it recomposes every frame and
     // forces all 3600 objects under it to recompute their world matrices.
     this.scene.matrixAutoUpdate = false; this.scene.updateMatrix();
-    for (const root of [this.static,this.groundDetails,this.extraGroundDetails,this.qualityDetails,this.performanceDetails]) freezeTransforms(root);
+    for (const root of [this.static,this.groundDetails,this.extraGroundDetails,this.qualityDetails,this.performanceDetails]) if (root) freezeTransforms(root);
     // Breakable props (about 350 groups, 1600 objects) stand still too, except
     // when hit (a wobble) or restored (a grow-in). The prop loop in update()
     // calls updateMatrix() on those frames only.
@@ -544,7 +547,28 @@ export class WorldView {
     this.sun.shadow.bias = -SHADOW_FIT.bias / (box.far - box.near);
   }
 
-  setQuality(name) {
+  // A preset change while playing or in the menus (owner, v0.995a: "changing
+  // quality settings causes a brief pause/freeze"): nothing is drawn while
+  // the new preset's shaders are built, and they are built through
+  // compileAsync (KHR_parallel_shader_compile: the driver's own threads) with
+  // the page left free, instead of one long synchronous warm-up. Calls while
+  // one is under way are folded into it: the last preset asked for wins.
+  // Resolves when the new preset is ready to draw.
+  changeQuality(name) {
+    this.wantedQuality = name;
+    this.qualityBusy ||= (async () => {
+      this.holdRender = true;
+      try {
+        while (this.wantedQuality !== this.qualityName) {
+          this.setQuality(this.wantedQuality, { deferWarm: true });
+          if (this.programsWarmed) await this.warmProgramsParallel();
+        }
+      } finally { this.holdRender = false; this.qualityBusy = null; }
+    })();
+    return this.qualityBusy;
+  }
+
+  setQuality(name, { deferWarm = false } = {}) {
     this.rifleView?.setQuality(name);
     this.qualityName = name; this.quality = GRAPHICS[name] || GRAPHICS.balanced;
     this.refineTerrain?.(name); // (hills: a finer preset, a finer ground mesh)
@@ -619,7 +643,8 @@ export class WorldView {
     this.groundDetails.visible = name === 'balanced' || isDemanding(name);
     this.performanceDetails.visible = name !== 'potato';
     this.propDetails.forEach(g => { g.visible = isDemanding(name); });
-    this.extraGroundDetails.visible = isDemanding(name); this.qualityDetails.visible = isDemanding(name);
+    if (isDemanding(name) && !this.qualityDetails && this.static) { this.qualityDetails = makeQualityDetails(this); freezeTransforms(this.qualityDetails); }
+    this.extraGroundDetails.visible = isDemanding(name); if (this.qualityDetails) this.qualityDetails.visible = isDemanding(name);
     this.footMesh.material.uniforms.relief.value = q.shadows > 0 ? 1 : 0;
     this.footMesh.material.uniforms.pressed.value = name === 'extreme' ? 1 : 0;
     for (const [i, marks] of this.sandMarks.entries()) {
@@ -637,7 +662,7 @@ export class WorldView {
     this.birds?.setQuality(name);
     if (this.visionOverlay) this.visionOverlay.dataset.quality = name;
     this.resize();
-    if (this.programsWarmed) this.warmPrograms();
+    if (this.programsWarmed && !deferWarm) this.warmPrograms();
   }
 
   reliefTexture(kind) {
@@ -645,10 +670,20 @@ export class WorldView {
     const canvas=document.createElement('canvas');canvas.width=canvas.height=512;
     const ctx=canvas.getContext('2d'),random=randomGenerator(kind==='wood'?713:914);
     ctx.fillStyle='#808080';ctx.fillRect(0,0,512,512);
+    // The same grain as ever (the same random numbers in the same order), but
+    // one path per shade rather than a stroke per line: thousands of canvas
+    // strokes were a noticeable share of loading Balanced and up (v0.995a).
+    const byShade=new Map();
     for(let i=0;i<(kind==='wood'?1600:7500);i++) {
       const x=random()*512,y=random()*512,shade=90+Math.floor(random()*75);
-      ctx.strokeStyle=`rgb(${shade},${shade},${shade})`;ctx.lineWidth=kind==='wood'?.6:.8;
-      ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+(kind==='wood'?5+random()*45:1+random()*3),y+(random()-.5)*(kind==='wood'?1:3));ctx.stroke();
+      const ex=x+(kind==='wood'?5+random()*45:1+random()*3),ey=y+(random()-.5)*(kind==='wood'?1:3);
+      let list=byShade.get(shade);if(!list)byShade.set(shade,list=[]);list.push(x,y,ex,ey);
+    }
+    ctx.lineWidth=kind==='wood'?.6:.8;
+    for(const [shade,list] of byShade){
+      ctx.strokeStyle=`rgb(${shade},${shade},${shade})`;ctx.beginPath();
+      for(let j=0;j<list.length;j+=4){ctx.moveTo(list[j],list[j+1]);ctx.lineTo(list[j+2],list[j+3]);}
+      ctx.stroke();
     }
     const texture=new THREE.CanvasTexture(canvas);texture.wrapS=texture.wrapT=THREE.RepeatWrapping;
     texture.anisotropy=Math.min(8,this.renderer.capabilities.getMaxAnisotropy());this.textureCache.set(key,texture);return texture;
@@ -1947,7 +1982,8 @@ export class WorldView {
   }
 
   render() {
-    if (this.contextLost) return;
+    // (Held while a preset's shaders build: the last frame stays on screen.)
+    if (this.contextLost || this.holdRender) return;
     if (this.pendingScale !== undefined) {
       this.resolutionScale = this.pendingScale; this.pendingScale = undefined;
       // Crisp tiers step without touching any buffer; the rest resize.
