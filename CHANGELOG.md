@@ -2,6 +2,48 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.995 (2026-09-28)
+
+### Loading
+- **Never stuck loading:** on some browsers (a MacBook here) the game waited for good for the graphics card to finish preparing, so the loading screen never left and the menu under it did nothing. Every wait now has a limit; the game always opens. The stretched title word is measured and fitted on browsers that drew it too wide.
+- The loading screen shows just the word (no blood), its wheel turns red to pink and back, and it is gone the moment the game is ready (no minimum time).
+
+### Players
+- You still play the cowboy. A new rigged figure (white or light blue, in the developer menu for now) walks, runs, dashes, kneels and breathes with real limbs, holds every weapon in its hands, and bleeds and dies like the cowboy.
+- Sightline: crouch with E any time, even moving or unloaded; the rifle reloads on the move.
+
+### Modes
+- **Every mode but FFA is now played by elimination**, in SOLO (1v1, 2v2, 3v3) and multiplayer (1v1, 2v2, 2v2v2, 3v3): nobody respawns alone; when a side has nobody left standing, the other side takes the point and everyone comes back at full health at fresh spots. FFA and practice are unchanged. The match ends at the score limit or the clock.
+- **Spectating:** when you fall with teammates still up, a few seconds into the death screen the world behind it follows a teammate; switch with the arrow keys, the arrow buttons, or a click or tap. You can only watch your own side.
+- Between rounds the score comes up big in the middle, the new point rolling in, with five seconds before everyone comes back.
+- Each round starts with a "ROUND n" popup in the middle, and the round is on the scoreboard (and the VS ROBOTS score). While you are down, the game behind the death screen goes dull and grey until you are back.
+
+### Crops
+- Crops no longer hide anyone and no longer darken the screen; they still burn.
+- Swords and Ichor cut the stalks their blade actually passes through (and a little past), which fall over along the cut, instead of whole square patches.
+
+### Smoother play
+- Firing and explosions no longer stutter: bullet holes and scorch marks find their surface and are cut many times faster (a blast's marks went from about 37 ms of work to about 4), Static's orbs and beams are reused instead of rebuilt, the Hex's spin checks only nearby props, and the game makes much less garbage each step.
+- Effects send only what is drawn to the graphics card.
+- **Faster frames everywhere:** the game no longer waits for the graphics card to finish one frame before starting the next; the sand and wood grain below Extreme are painted in instead of computed every frame (same look); Quality's shadows redraw a little less often; several on-screen overlays stopped redrawing every frame; the frame limit now defaults to your screen's rate. Potato is sharper and smoother, and its ground has grain.
+- **Lighter graphics below Extreme, same look:** still things' shadows are drawn once and kept (only moving things redraw), matte surfaces use cheaper lighting that gives the same picture, Balanced and Quality draw the 3D smaller and bring it back with an FSR-style sharp upscale, fog is only drawn where there is fog, off-screen scenery is skipped in chunks, and iPhones and iPads use a cheaper anti-aliasing. Extreme is untouched.
+- No more white flashes when loading into a game or changing graphics: any loading shows the spinning wheel, centred, on the dark loading screen.
+
+### Online
+- Much less lag on weak connections (phone hotspots): inputs are about a twelfth the size, positions travel on a fast channel that never waits for a lost packet, joiners buffer by how late updates really arrive and predict briefly when one is late, and the host smooths other players' movement. Joiners need the new version (protocol 19).
+
+### Weapons
+- **Sightline's rifle** now fires past every obstacle (trees, fences, stone walls, rocks, graves, furniture) except buildings and their walls; the laser and the robots follow the same rule.
+
+### Maps
+- **Hollow Wick:** roofs no longer vanish when you stand against a wall: the edge fades softly just where it covers you, with no ceilings showing; the four interior corner clippings are fixed; the meeting road now leads to the meetinghouse's east door.
+
+### Menus and HUD
+- SOLO and lobbies: just easy, normal and hard; the choice buttons match the other buttons; map and weapon lists open over the page and scroll instead of pushing it down.
+- Full screen is now just the V key (in Controls); the screen settings are gone. Menus always show the normal mouse pointer.
+- The team score at the top matches the rest of the game's look.
+- Touching the screen switches to touch controls; switching graphics to Auto can no longer leave the game blank; the tab icon is the new one.
+
 ## alpha v0.994 (2026-09-28)
 
 ### Sheath, a new weapon

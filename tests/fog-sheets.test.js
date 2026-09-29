@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { FogSheets, FOG_CLEAR, clearingAt, lowRange, formationGround } from '../src/render/fog-sheets.js';
+import { FogSheets, FOG_CLEAR, clearingAt, lowRange, formationGround, sheetGeometry, SHEET_CELLS } from '../src/render/fog-sheets.js';
 import { setExtremeGround, groundHeights } from '../src/render/extreme-surfaces.js';
 import { mapLook, BASE_LOOK } from '../src/render/map-look.js';
 import { maps, groundFor } from '../src/maps.js';
@@ -137,4 +137,36 @@ test('the sheets\' shader: an uneven clearing everywhere, the air fade only on t
  const sheets = new FogSheets({ fog: BASE_LOOK.fog, ground: groundFor(maps.deadwater), texture: fakeTexture });
  assert.equal(new Set(sheets.meshes.map(m => m.material.customProgramCacheKey())).size, 1);
  setExtremeGround(null);
+});
+
+test('a sheet is drawn only where its picture has fog (and a square round it), on the same plane with the same UVs', () => {
+ // A 512 x 256 picture with one cloud in the middle.
+ const width = 512, height = 256, data = new Uint8ClampedArray(width * height * 4);
+ for (let y = 100; y < 150; y++) for (let x = 200; x < 300; x++) data[(y * width + x) * 4 + 3] = 40;
+ const image = { width, height, getContext: () => ({ getImageData: () => ({ width, height, data }) }) };
+ const geometry = sheetGeometry(image);
+ assert.ok(geometry.userData.coverage < .3, `drawn over ${geometry.userData.coverage}`);
+ const position = geometry.attributes.position, uv = geometry.attributes.uv;
+ // Every corner lies where the full plane would put that UV.
+ for (let i = 0; i < position.count; i++) {
+  assert.ok(Math.abs(position.getX(i) - (uv.getX(i) - .5)) < 1e-6 && Math.abs(position.getZ(i) - (.5 - uv.getY(i))) < 1e-6 && position.getY(i) === 0);
+ }
+ // Every texel with fog is inside a drawn quad, a cell's width to spare.
+ const cellU = 1 / SHEET_CELLS.x, cellV = 1 / SHEET_CELLS.y, quads = [];
+ for (let i = 0; i < geometry.index.count; i += 6) {
+  const ids = [0, 1, 2, 3, 4, 5].map(k => geometry.index.getX(i + k));
+  const us = ids.map(id => uv.getX(id)), vs = ids.map(id => uv.getY(id));
+  quads.push([Math.min(...us), Math.max(...us), Math.min(...vs), Math.max(...vs)]);
+ }
+ const inside = (u, v) => quads.some(([u0, u1, v0, v1]) => u >= u0 && u <= u1 && v >= v0 && v <= v1);
+ for (const [x, y] of [[200, 100], [299, 149], [250, 125]]) {
+  const u = (x + .5) / width, v = 1 - (y + .5) / height;
+  for (const [du, dv] of [[0, 0], [-cellU * .99, 0], [cellU * .99, 0], [0, -cellV * .99], [0, cellV * .99]]) assert.ok(inside(u + du, v + dv), `fog at ${x},${y} (+${du},${dv})`);
+ }
+ // Winding as PlaneGeometry's (seen from above).
+ const a = geometry.index.getX(0), b = geometry.index.getX(1), c = geometry.index.getX(2);
+ const ax = position.getX(b) - position.getX(a), az = position.getZ(b) - position.getZ(a), bx = position.getX(c) - position.getX(a), bz = position.getZ(c) - position.getZ(a);
+ assert.ok(az * bx - ax * bz > 0, 'front face up');
+ // A picture that cannot be read: the whole sheet.
+ assert.equal(sheetGeometry(null).attributes.position.count, 4);
 });

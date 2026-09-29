@@ -27,6 +27,11 @@ export function createInputPreference(detected,override){
    // Worth recording even under a manual override: the player may clear the
    // override later, and a device that has been touched has a touchscreen.
    if(next==='touch')touched=true;
+   // A touch on the screen always brings the touch controls (v0.999a, owner:
+   // "if player tries to use touchscreen, the game switches to mobile mode
+   // automatically"), even over a KEYBOARD picked in the menu; a key never
+   // takes them away from a MOBILE pick.
+   if(next==='touch'&&manual==='keyboard'){manual=null;mode='touch';return true;}
    if(manual||mode===next)return false;
    mode=next;return true;
   }

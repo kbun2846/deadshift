@@ -29,7 +29,7 @@ import { ROOF_PREPASS_ORDER } from '../render/renderer.js';
 import { makeDetailedInterior } from './detailed-interiors.js';
 import { COLONIAL_TYPES } from './colonial-parts.js';
 import { takeLifeParts } from './hollow-life.js'; // s5-life: loose shutters, the tavern's sign, chimney smoke
-import { fadeRoofMaterial, fadeRoofMeshes, roofOverlayMaterial, registerOverlay, registerSections, SECTION_FADE, WALL_FADE, CEILING_FADE, ceilingMaterial } from './roof-fade.js';
+import { fadeRoofMaterial, fadeRoofMeshes, roofOverlayMaterial, registerOverlay, registerSections, SECTION_FADE, WALL_FADE } from './roof-fade.js';
 import { mergeTransformed } from '../render/merge-transformed.js';
 
 export const isColonialPart = type => !!COLONIAL_TYPES[type];
@@ -197,7 +197,18 @@ export function makeColonialBuilding(view, b) {
     }
   }
   // Corner boards, and the frieze board under the eaves.
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(g, sx * b.w / 2, e / 2, sz * b.d / 2, T + .1, e, T + .1, trim);
+  // (v0.999a, owner: "4 clippings in the corners of the interiors": each was
+  // one box T + .1 square through the corner, so it stood .05 m into the room
+  // at all four corners and its top, a pale square, showed from above. Now two
+  // boards on the outside faces only, meeting at the corner.)
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+   const fx = b.w / 2 + T / 2, fz = b.d / 2 + T / 2;
+   // (The walls stop short of the corner square: it is filled flush with
+   // their faces, inside and out.)
+   box(g, sx * b.w / 2, e / 2, sz * b.d / 2, T, e, T, b.color);
+   box(g, sx * (fx + .025), e / 2, sz * (fz - .08), .05, e, .26, trim);
+   box(g, sx * (fx - .08), e / 2, sz * (fz + .025), .26, e, .05, trim);
+  }
   const eaves = b.roof?.axis === 'z' ? ['left', 'right'] : ['front', 'back'];
   if (b.roof?.kind !== 'mound') for (const side of eaves) onSide(g, side, 0, e - .12, T / 2 + .04, sideLength(b, side) + .1, .24, .08, trim);
   if (b.stone) for (const side of SIDES) onSide(g, side, 0, b.stone + .04, T / 2 + .05, sideLength(b, side) + .08, .1, .12, STONES[0]);
@@ -222,9 +233,13 @@ export function makeColonialBuilding(view, b) {
   const away = lean ? 'slope' : eaveFacing(b, 1) < eaveFacing(b, -1) ? 'slope+' : 'slope-';
   const onSlope = (across, depth) => Math.abs(across - ridgeZ) < depth / 2 ? away : slopeOf(across);
   const gableAt = (x, z) => (alongX ? x : -z) > 0 ? 'gable+' : 'gable-';
+  // (A slope's slab is the roof itself: `band` deep under its top, reaching
+  // from `thick` over the roof line to under its boards. A gable's has a floor,
+  // the eave, and is solid up to its top.)
   const plane = (section, x0, x1, za, ya, zb, yb, y0 = -Infinity) => {
     if (za > zb) [za, ya, zb, yb] = [zb, yb, za, ya];
-    planes.push({ section, slab: alongX ? { x0, x1, z0: za, z1: zb, y0, t0: ya, t1: yb, along: 2 } : { x0: za, x1: zb, z0: -x1, z1: -x0, y0, t0: ya, t1: yb, along: 1 } });
+    const band = y0 === -Infinity ? SECTION_FADE.band : 0;
+    planes.push({ section, slab: alongX ? { x0, x1, z0: za, z1: zb, y0, t0: ya, t1: yb, along: 2, band } : { x0: za, x1: zb, z0: -x1, z1: -x0, y0, t0: ya, t1: yb, along: 1, band } });
   };
   if (r.kind === 'mound') { moundRoof(b, rb, L, H, e, r, rand); tag('mound'); }
   else {
@@ -711,32 +726,9 @@ function registerRoof(view, b, roof, { planes = [], pulls = new Map() } = {}) {
   // its whole fade (the gameplay guard: shownInside).
   if (record) { record.entry = entry; record.box = reach; }
   fadeRoofMeshes(view, colour, roofOverlayMaterial(view), () => entry.opacity < .995, record ? { start: record.start, end: record.start + sections.length } : { start: 0, end: 0 });
-  if (record) entry.ceiling = ceiling(view, b, () => entry.opacity < .995, record.start, record.start + sections.length);
-}
-
-// The ceiling (owner, v0.990a: "when running against a wall in some
-// buildings, especially smaller ones, it lets me see inside"): a whole roof
-// section fading over someone outside under its eave, or behind the
-// building, showed the room under it, and on a small building one or two
-// sections are most of its roof. A boarded ceiling over the room, just under
-// the walls' tops and out to their middles (so its edges hide in them): the
-// faded section still shows whoever stands under the eave (outside the
-// walls), and the room stays hidden. Drawn only while one of its roof's
-// sections is faded (prepareFades 'sections', as the blended copies), never
-// while the roof fades whole (you inside, or in its doorway), so it costs a
-// draw only then. Someone behind the building shows through the wall's patch
-// and the small hole the ceiling opens on the line to them (CEILING_FADE).
-function ceiling(view, b, skip, start, end) {
-  const n = Math.max(1, Math.round(b.d / CEILING_FADE.board)), depth = b.d / n;
-  const board = new THREE.PlaneGeometry(b.w, depth).rotateX(-Math.PI / 2), colours = CEILING_FADE.colours.map(c => new THREE.Color(c));
-  const geometry = mergeTransformed(Array.from({ length: n }, (_, i) => ({ geometry: board, matrix: new THREE.Matrix4().makeTranslation(0, 0, -b.d / 2 + depth * (i + .5)), color: colours[i % colours.length] })));
-  board.dispose();
-  geometry.computeBoundingSphere(); geometry.computeBoundingBox();
-  const mesh = new THREE.Mesh(geometry, ceilingMaterial(view));
-  mesh.position.set(b.x, (b.baseY || 0) + b.height - CEILING_FADE.drop, b.z); mesh.rotation.y = b.angle || 0;
-  mesh.updateMatrix(); mesh.matrixAutoUpdate = false; mesh.receiveShadow = true; mesh.userData.ceiling = b.id;
-  view.scene.add(mesh); mesh.updateMatrixWorld(true);
-  return registerOverlay(view, mesh, { near: 'sections', start, end, skip, opaque: true });
+  // (No ceiling since v0.999a: a faded section opens only a soft patch at
+  // the edge of the roof over whoever it hides, so there is no room-sized
+  // hole left to close; the boarded ceiling it showed read as the roof gone.)
 }
 
 // The forge's parts (props: world/colonial-parts.js), built from y 0 on the

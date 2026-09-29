@@ -34,6 +34,8 @@ import { buildLeaves } from '../effects/leaf-fx.js'; // s3-leaves
 import { buildGroundMarks } from './ground-marks-view.js'; // s5-ground: ruts, puddles, prints, scatter, leaf drifts
 import { FogSheets } from './fog-sheets.js';
 import { groundHeights } from './extreme-surfaces.js';
+import { buildCowboy } from './player-skin.js';
+import { nearColliders } from '../world/collider-grid.js';
 
 // The drawn ground's allowed error from the height grid, per preset (m):
 // RTIN keeps it within this everywhere (terrain-mesh.js).
@@ -742,15 +744,9 @@ export const WorldBuild = {
   makePlayer() {
     const g = new THREE.Group();
     const body = new THREE.Group(); g.add(body); g.userData.body = body;
-    for (const x of [-.15, .15]) this.box(x, .14, 0, .18, .27, .27, '#394a44', body).userData.deathPart='leg';
-    this.cylinder(0, .57, 0, .29, .63, '#496e6b', body, 8, .24);
-    this.cylinder(0, .96, 0, .2, .25, '#d6b58a', body, 8).userData.deathPart='head';
-    this.cylinder(0, 1.06, 0, .39, .085, '#f0dbb2', body, 10).userData.deathPart='head';
-    this.cylinder(0, 1.19, 0, .235, .23, '#dfc494', body, 8, .19).userData.deathPart='head';
-    this.cylinder(0, 1.09, 0, .239, .075, '#6b5d48', body, 8).userData.deathPart='head';
-    this.box(0, .84, .04, .44, .1, .4, '#b85d3e', body);
-    const scarf = this.box(-.1, .7, .32, .16, .3, .06, '#b85d3e', body); scarf.rotation.x = -.3;
-    g.userData.staticArm=this.box(.27, .69, -.2, .16, .16, .38, '#49716b', body);
+    // The cowboy (player-skin.js; the developer menu can swap in the rigged
+    // plain figure, v0.999a). Its parts are merged there and tagged as skin.
+    g.userData.staticArm = buildCowboy(this, body); g.userData.skin = 'cowboy';
     const gun = new THREE.Group(); gun.position.set(.27, .74, -.46); body.add(gun); g.userData.gun = gun;
     // Static: pale-blue receiver, exposed charge rails and a yellow muzzle collar.
     this.box(0, -.08, .12, .11, .2, .14, '#354e59', gun);
@@ -784,7 +780,6 @@ export const WorldBuild = {
     // mesh (death reactions still find them by deathPart). The gun and the
     // Static arm move and hide on their own, so they sit out the body merge;
     // the gun's solid parts merge among themselves.
-    body.remove(gun, g.userData.staticArm); this.batch(body); body.add(g.userData.staticArm, gun);
     this.batch(gun);
     return g;
   },
@@ -900,13 +895,16 @@ export const WorldBuild = {
       if (this.tumbleweeds.length < cap && !this.map.terrain) {
         const width = Math.tan(this.camera.fov * Math.PI / 360) * 35 * this.camera.aspect;
         const x = this.focus.x - width - 2, z = this.focus.z + (Math.random() - .5) * 25;
-        if (!sim.colliders.some(b => inside({ x, z }, b, .6))) this.spawnTumbleweed(x, z);
+        const at = { x, z }; if (!nearColliders(sim.colliders, x - 1, z - 1, x + 1, z + 1).some(b => inside(at, b, .6))) this.spawnTumbleweed(x, z);
       }
     }
     this.tumbleweeds = this.tumbleweeds.filter(t => {
       const a = t.userData; a.age += dt;
       const x = t.position.x + dt * a.speed, z = t.position.z + dt * a.drift;
-      if (sim.colliders.some(b => inside({ x, z }, b, a.radius))) a.life = Math.min(a.life, a.age + 1);
+      // (v0.999a: the boxes near it, from the broad-phase grid, and one point,
+      // not a new point for each of the map's 800-odd boxes every frame.)
+      const at = { x, z }, r = a.radius + .01;
+      if (nearColliders(sim.colliders, x - r, z - r, x + r, z + r).some(b => inside(at, b, a.radius))) a.life = Math.min(a.life, a.age + 1);
       else { t.position.x = x; t.position.z = z; }
       t.position.y = a.radius + Math.abs(Math.sin(elapsed * 2.6 + t.position.z)) * .055;
       t.rotation.z -= dt * a.speed / a.radius; t.rotation.x += dt * a.drift;

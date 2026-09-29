@@ -12,7 +12,7 @@ export const ROBOT_ONLY = Object.freeze(['robotSkill']);
 
 export function createSettingsRows(container, { onChange } = {}) {
   container.classList.add('round-settings');
-  const choices = (key, s) => `<div class="round-setting" data-key="${key}"><span class="round-setting-label">${s.label}</span><div class="round-choices" role="group" aria-label="${s.label}">${s.values.map((value, i) => `<button type="button" class="plain-text" data-value="${i}" aria-pressed="false">${s.names[i]}</button>`).join('')}</div></div>`;
+  const choices = (key, s) => `<div class="round-setting" data-key="${key}"><span class="round-setting-label">${s.label}</span><div class="round-choices" role="group" aria-label="${s.label}">${s.values.map((value, i) => `<button type="button" class="choice-button" data-value="${i}" aria-pressed="false">${s.names[i]}</button>`).join('')}</div></div>`;
   const toggle = () => '<label class="round-setting round-toggle" data-key="robots"><span class="round-setting-label">robots</span><input type="checkbox" aria-label="Robots: fill empty seats and allow + ROBOT"></label>';
   container.innerHTML = Object.entries(SETTINGS).map(([key, s]) => (key === 'robots' ? toggle() : choices(key, s))).join('');
   let editable = true;

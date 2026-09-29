@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// Two patches to three.js's shader source, both leaving the picture as it was.
+// Three patches to three.js's shader source, all leaving the picture as it was.
 //
 // 1. Cheaper soft shadows, same picture.
 //
@@ -23,6 +23,14 @@ import * as THREE from 'three';
 // lighting is now skipped while its colour (colour x intensity) is black. The
 // test reads a uniform, so every pixel takes the same way and the branch is
 // free on a GPU.
+//
+// 3. No shadow lookup where the sun cannot reach anyway (v0.999a). A surface
+// turned away from the sun (a wall's shaded side, the underside of an eave)
+// gets no direct sunlight whatever the shadow map says: every lighting model
+// in the game takes saturate( dot( normal, sun ) ), which is 0 there, times
+// the shadow. The sun's shadow filter (up to 16 reads) is now skipped there;
+// GLSL evaluates only the chosen side of ?:, and the result is exactly zero
+// either way, so the picture is unchanged on every preset.
 //
 // Applied once, at import, before any shader is compiled. Re-check on a
 // three.js upgrade: if three's code changes, the patch throws in development
@@ -53,9 +61,11 @@ const PCF_SOFT_NEW = `float s00 = ${soft('')}, s10 = ${soft('vec2( dx, 0.0 )')},
 			) * ( 1.0 / 9.0 );`;
 
 const POINT_BLOCK = /(for \( int i = 0; i < NUM_POINT_LIGHTS; i \+\+ \) \{\s*pointLight = pointLights\[ i \];)([\s\S]*?RE_Direct\( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight \);)/;
+const SUN_SHADOW = 'directLight.color *= ( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap[ i ]';
 export function patchLightsChunk(source) {
-  if (!POINT_BLOCK.test(source)) return null;
-  return source.replace(POINT_BLOCK, (all, head, body) => `${head}\n\t\tif ( pointLight.color.r + pointLight.color.g + pointLight.color.b > 0.0 ) {${body}\n\t\t}`);
+  if (!POINT_BLOCK.test(source) || !source.includes(SUN_SHADOW)) return null;
+  return source.replace(POINT_BLOCK, (all, head, body) => `${head}\n\t\tif ( pointLight.color.r + pointLight.color.g + pointLight.color.b > 0.0 ) {${body}\n\t\t}`)
+    .replace(SUN_SHADOW, 'directLight.color *= ( directLight.visible && receiveShadow && dot( geometryNormal, directLight.direction ) > 0.0 ) ? getShadow( directionalShadowMap[ i ]');
 }
 
 export function patchShadowChunk(source) {

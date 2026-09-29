@@ -29,6 +29,8 @@ export const KEY_ACTIONS = Object.freeze([
  { id: 'aimRight', label: 'aim right', group: 'aim', key: 'ArrowRight' },
  { id: 'map', label: 'map', group: 'other', key: 'KeyM' },
  { id: 'mute', label: 'mute sound', group: 'other', key: 'KeyN' },
+ // (v0.999a, owner: "if the player presses V ... V toggles full screen on or off"; the Fullscreen / Windowed setting is gone.)
+ { id: 'fullscreen', label: 'full screen on / off', group: 'other', key: 'KeyV' },
 ]);
 export const KEY_GROUPS = Object.freeze([['move', 'moving'], ['fight', 'fighting'], ['aim', 'aiming with keys'], ['other', 'other']]);
 export const FIXED_KEYS = Object.freeze([['pause', 'Esc'], ['scoreboard (online)', 'Tab'], ['fire', 'left mouse'], ['aim in', 'right mouse']]);

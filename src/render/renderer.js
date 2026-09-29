@@ -9,6 +9,7 @@ import {ShotgunView} from '../weapons/shotgun-view.js';
 import * as THREE from 'three';
 
 import './shader-savings.js';
+import { setMatte } from './matte-lighting.js';
 
 import { RifleView } from '../weapons/rifle-view.js';
 import { RIFLE_QUALITY } from '../weapons/rifle-quality.js';
@@ -33,6 +34,8 @@ import { CropView } from '../world/crop-view.js';
 import { cropEntityVisible } from '../crops.js';
 import { InteriorVisibility } from './interior-visibility.js';
 import { lightBasis, snapShadowFocus, shadowFrame, shadowBoxOver, settleShadowBox, SHADOW_FIT } from './shadow-snap.js';
+import { ShadowCache } from './shadow-cache.js';
+import { ChunkCull } from './chunk-cull.js';
 import { castersOnlyInShadow } from './bake-colors.js';
 import { ditherFade, roofFade, prepareFades, shownInside, WALL_FADE } from '../world/roof-fade.js';
 
@@ -73,7 +76,7 @@ import { DetailFX, ELECTRIC as FX_ELECTRIC, orbBlastScale } from '../effects/eff
 import { mapLook, shadowDepth, sunLean } from './map-look.js';
 import { BloodSplatters } from '../effects/blood-splatter.js';
 import { RemoteCorpses } from '../effects/remote-corpses.js';
-import { CrispOutput, CRISP } from './crisp-output.js';
+import { CrispOutput, CRISP, crispSpec } from './crisp-output.js';
 import { makeTargetDamage, targetYaw } from '../effects/target-damage.js';
 import { BloodDrops, BLEED } from '../effects/blood-drops.js';
 import { Wading, makeBloodStains, makeGunStains } from '../effects/blood-wading.js';
@@ -95,7 +98,13 @@ export const DOOR_LIFT = Object.freeze({ out: 1.8, side: .35 });
 // painted over by it; drawn first, its depth turns them away before they are
 // shaded. The picture is the same (the depth test decides what shows).
 export const ROOF_OPAQUE_ORDER = -3;
-const FENCE_PATIENCE = 120;
+const FENCE_PATIENCE = 50;
+// The painted-in sand grain (prelitGround): the bump map's slope scale, the
+// sun's share of the light on open ground, how far a texel may go from its
+// flat shade, and the headroom kept so lit grain is not clipped at white
+// (the ground material's colour makes it back up).
+export const PRELIT = Object.freeze({ scale: .075, share: .6, min: .55, max: 1.35, headroom: 1.1 });
+export const WOOD_GRAIN = Object.freeze({ depth: .5, headroom: 1.1 });
 import { setExtremeSurfaces, tickExtremeSurfaces, setExtremeGround } from './extreme-surfaces.js';
 
 import { viewWidth, viewHeight } from '../viewport.js';
@@ -107,6 +116,8 @@ import { WarmUp } from './warm-up.js';
 import { Vision } from './vision.js';
 import { roomShowsEntity } from './vision-polygons.js';
 import { graveBreak } from '../world/graveyard.js'; // s2-graveyard
+import { installUploadUsed } from './upload-used.js';
+import { setPlayerSkin, skinOfDev } from './player-skin.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 // A flat marker lying down (layFlat): a quarter turn about x.
@@ -140,8 +151,8 @@ export class WorldView {
     this.interiorVisibility = new InteriorVisibility();this.scopeShading=new ScopeShading();
     this.groundMaterials = new Set(); this.textureCache = new Map(); this.quality = GRAPHICS[qualityName] || GRAPHICS.balanced;
     // Multisampling on the screen itself only for tiers that draw straight to
-    // it; Performance and Balanced draw off-screen (crisp-output.js), where
-    // Balanced has its own 4x multisampling.
+    // it (Extreme); Potato to Quality draw off-screen (crisp-output.js), where
+    // Balanced and Quality have their own 4x multisampling.
     this.contextAA = this.quality.antialias === true && !CRISP[qualityName];
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.contextAA, powerPreference: 'high-performance' });
     // Reading back each shader's error log on its first draw makes the driver
@@ -168,11 +179,11 @@ export class WorldView {
     // the shadow map and Extreme's buffers are made again. main.js hears about
     // it (onContextLost) and steps down from Extreme if it keeps happening.
     canvas.addEventListener('webglcontextlost', event => {
-      event.preventDefault(); this.contextLost = true; this.frameFence = null; this.onContextLost?.();
+      event.preventDefault(); this.contextLost = true; this.frameFences = []; this.onContextLost?.();
     });
     canvas.addEventListener('webglcontextrestored', () => {
       this.contextLost = false;
-      this.sun.shadow.map = null; this.sun.shadow.needsUpdate = true;
+      this.sun.shadow.map = null; this.sun.shadow.needsUpdate = true; this.shadowCache?.reset();
       if (this.post) { this.post = null; this.postLoading = null; if (this.qualityName === 'extreme') this.enableExtremePost(); }
     });
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -183,7 +194,7 @@ export class WorldView {
     this.look = mapLook(map);
     this.renderer.toneMappingExposure = this.look.exposure; // s3-look: the map's exposure (default .98)
     this.renderer.setClearColor(this.look.haze);
-    this.scene = new THREE.Scene();
+    this.scene = new THREE.Scene(); installUploadUsed(this.scene); // (v0.999a: dynamic buffers upload only what is drawn)
     this.scene.fog = new THREE.Fog(this.look.haze, this.look.fogNear, this.look.fogFar); // s3-look: the map's haze distances (default 70, 130)
     // Near plane at 2, not 0.1. The camera never comes within about seventeen
     // units of anything -- even zoomed into the smallest room, even the death
@@ -225,6 +236,8 @@ export class WorldView {
     this.sunOffset = { x: sunOffset.x, y: sunOffset.y, z: sunOffset.z };
     this.sunBasis = lightBasis({ x: -this.sunOffset.x, y: -this.sunOffset.y, z: -this.sunOffset.z });
     this.shadowBox = null; this.shadowAspect = 0;
+    // Below Extreme the still things' shadows are drawn once and kept (shadow-cache.js; setQuality turns it on).
+    this.shadowCache = new ShadowCache(this);
     this.static = new THREE.Group(); this.scene.add(this.static);
     this.propDetails = []; this.roofs = []; this.tumbleweeds = []; this.props = new Map();
     this.makeTerrain();
@@ -253,6 +266,10 @@ export class WorldView {
     // when hit (a wobble) or restored (a grow-in). The prop loop in update()
     // calls updateMatrix() on those frames only.
     for (const g of this.props.values()) freezeTransforms(g, { movable: true });
+    // The frozen roots' children in 32 m chunks, so the camera's walk skips
+    // whole chunks it cannot see (chunk-cull.js; the picture is unchanged).
+    this.chunkCull = new ChunkCull(this);
+    for (const root of [this.static,this.groundDetails,this.extraGroundDetails,this.qualityDetails,this.performanceDetails]) this.chunkCull.adopt(root);
     // ...and are drawn in batches of like parts (prop-instances.js).
     this.propInstances = new PropInstances(this.scene); this.propInstances.build(this.props);
     this.player = this.makePlayer(); this.scene.add(this.player);
@@ -578,10 +595,10 @@ export class WorldView {
     const q = this.quality;
     this.renderer.shadowMap.enabled = q.shadows > 0;
     this.fx?.setQuality(name);
-    // Performance and Balanced draw off-screen and are written to the screen
-    // by one crisp upscale pass (crisp-output.js). So does a smoothed tier
-    // (Quality) on a page that started without screen multisampling.
-    const crisp = CRISP[name] || (!this.contextAA && q.antialias && name !== 'extreme' ? { output: q.pixelRatio, maxOutput: q.maxPixels, fxaa: false, sharpen: 0, samples: 4 } : null);
+    // Potato to Quality draw off-screen and are written to the screen by the
+    // crisp upscale (crisp-output.js; on an iPhone or iPad with FXAA in place
+    // of multisampling, crispSpec).
+    const crisp = crispSpec(name) || (!this.contextAA && q.antialias && name !== 'extreme' ? { output: q.pixelRatio, maxOutput: q.maxPixels, fxaa: false, sharpen: 0, samples: 4 } : null);
     if (crisp) { this.crisp ||= new CrispOutput(this.renderer); this.crispSpec = crisp; }
     else { this.crisp?.dispose(); this.crisp = null; this.crispSpec = null; }
     // Extreme's finishing passes (ambient occlusion, bloom, grade) load on
@@ -605,6 +622,7 @@ export class WorldView {
       this.sun.shadow.map?.dispose(); this.sun.shadow.map = null;
       this.sun.shadow.mapSize.set(Math.max(1, q.shadows), Math.max(1, q.shadows));
     }
+    this.shadowCache?.setEnabled(q.shadows > 0 && name !== 'extreme');
     this.sun.shadow.needsUpdate = true;
     const texture = this.terrainTexture(q.texture);
     texture.anisotropy = Math.min(q.anisotropy ?? 2, this.renderer.capabilities.getMaxAnisotropy());
@@ -614,37 +632,62 @@ export class WorldView {
     // which would touch every building face as well as the ground.
     const groundRelief = q.relief ? this.reliefTexture('sand') : null;
     const woodRelief = q.relief === 'full' ? this.reliefTexture('wood') : null;
-    this.groundMaterials.forEach(m => { m.map = name === 'potato' ? null : texture; m.bumpMap = groundRelief; m.bumpScale = .075; m.needsUpdate = true; });
-    for (const roof of this.roofs) for (const m of roof.materials) { m.bumpMap = woodRelief; m.bumpScale = .035; m.roughness = .88; m.needsUpdate = true; }
+    // Below Extreme the sand grain is painted in, lit by the map's sun, rather
+    // than bump mapped (v0.999a, owner: "double FPS ... pretending to look
+    // good"): the sun never moves, so the grain's light and shade are the same
+    // every frame. The bump map was the costliest thing the ground did (three
+    // derivative-driven reads for every pixel of it); this is the one read the
+    // colour already made. Extreme keeps the true bump.
+    // (Potato: the grain painted in too, v0.999a, one read of a small tile, where
+    // it had flat colour.)
+    const groundMap = name === 'potato' ? this.prelitGround(256, this.terrainTexture(256)) : q.relief && name !== 'extreme' ? this.prelitGround(q.texture, texture) : texture;
+    const groundBump = name === 'extreme' ? groundRelief : null;
+    const lift = groundMap && groundMap !== texture ? PRELIT.headroom : 1;
+    this.groundMaterials.forEach(m => { m.map = groundMap; m.bumpMap = groundBump; m.bumpScale = .075; (m.userData.plainColor ||= m.color.clone()); m.color.copy(m.userData.plainColor).multiplyScalar(lift); m.needsUpdate = true; });
+    // The wood grain likewise (v0.999a): on Quality painted in as a grain map
+    // (one read) instead of bumped; Extreme keeps the bump. A material that
+    // has a colour map of its own keeps the bump.
+    const woodGrain = woodRelief && name !== 'extreme' ? this.woodGrain() : null;
+    const wood = m => {
+      const grain = woodGrain && (!m.map || m.map === m.userData.grainMap);
+      (m.userData.plainColor ||= m.color.clone()); m.color.copy(m.userData.plainColor).multiplyScalar(grain ? WOOD_GRAIN.headroom : 1);
+      if (grain) { m.map = m.userData.grainMap = woodGrain; m.bumpMap = null; }
+      else { if (m.map && m.map === m.userData.grainMap) m.map = null; m.userData.grainMap = null; m.bumpMap = woodRelief; }
+      m.bumpScale = .035; m.needsUpdate = true;
+    };
+    for (const roof of this.roofs) for (const m of roof.materials) { wood(m); m.roughness = .88; }
     const timberColors = this.timberColors();
-    for (const [color,m] of this.materials) if (timberColors.has(color) && !this.groundMaterials.has(m)) { m.bumpMap=woodRelief; m.bumpScale=.035; m.needsUpdate=true; }
+    for (const [color,m] of this.materials) if (timberColors.has(color) && !this.groundMaterials.has(m)) wood(m);
     // (The colonial shells, 'wall', are wood too: clapboard, boards and trim.)
-    for (const kind of ['timber', 'wall', 'wall-overlay']) { const baked = this.bakedMaterials?.get(kind); if (baked) { baked.bumpMap = woodRelief; baked.bumpScale = .035; baked.needsUpdate = true; } }
-    if (this.roofOverlay) { this.roofOverlay.bumpMap = woodRelief; this.roofOverlay.bumpScale = .035; this.roofOverlay.roughness = .88; this.roofOverlay.needsUpdate = true; }
+    for (const kind of ['timber', 'wall', 'wall-overlay']) { const baked = this.bakedMaterials?.get(kind); if (baked) wood(baked); }
+    if (this.roofOverlay) { wood(this.roofOverlay); this.roofOverlay.roughness = .88; }
     // Extreme: varied, pebbled ground and dust-weathered surfaces (shader only).
     const surfaces = [...(this.bakedMaterials?.values() || []), ...[...this.materials.values()].filter(m => !m.transparent && !this.groundMaterials.has(m)),
       ...this.roofs.flatMap(roof => roof.materials), ...(this.roofOverlay ? [this.roofOverlay] : [])];
     setExtremeSurfaces({ ground: this.groundMaterials, surfaces }, name === 'extreme');
     // Materials are shared across thousands of meshes; flag each one once so a
     // preset change queues one recompile per program instead of per mesh.
+    // (Below Extreme, rough non-metal surfaces take the matte lighting's
+    // closed form: matte-lighting.js. After the roofs' roughness is set above.)
     const recompiled = new Set();
     this.scene.traverse(o => {
       if (!o.isMesh || !o.material) return;
       for (const m of Array.isArray(o.material) ? o.material : [o.material])
-        if (m && !recompiled.has(m)) { recompiled.add(m); m.needsUpdate = true; }
+        if (m && !recompiled.has(m)) { recompiled.add(m); setMatte(m, name !== 'extreme'); m.needsUpdate = true; }
     });
     this.motes.geometry.setDrawRange(0, q.motes);
     this.fxLight.visible = q.light;
     if (this.groundDetailsWanted(name) && this.groundDetailsFull === false) {
       for (const root of [this.groundDetails, this.extraGroundDetails, this.performanceDetails]) {
-        root.removeFromParent(); root.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+        root.removeFromParent(); root.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); this.chunkCull?.drop(root);
       }
       this.makeGroundDetails(true);
+      for (const root of [this.groundDetails, this.extraGroundDetails, this.performanceDetails]) this.chunkCull?.adopt(root);
     }
     this.groundDetails.visible = name === 'balanced' || isDemanding(name);
     this.performanceDetails.visible = name !== 'potato';
     this.propDetails.forEach(g => { g.visible = isDemanding(name); });
-    if (isDemanding(name) && !this.qualityDetails && this.static) { this.qualityDetails = makeQualityDetails(this); freezeTransforms(this.qualityDetails); }
+    if (isDemanding(name) && !this.qualityDetails && this.static) { this.qualityDetails = makeQualityDetails(this); freezeTransforms(this.qualityDetails); this.chunkCull?.adopt(this.qualityDetails); }
     this.extraGroundDetails.visible = isDemanding(name); if (this.qualityDetails) this.qualityDetails.visible = isDemanding(name);
     this.footMesh.material.uniforms.relief.value = q.shadows > 0 ? 1 : 0;
     this.footMesh.material.uniforms.pressed.value = name === 'extreme' ? 1 : 0;
@@ -664,6 +707,60 @@ export class WorldView {
     if (this.visionOverlay) this.visionOverlay.dataset.quality = name;
     this.resize();
     if (this.programsWarmed && !deferWarm) this.warmPrograms();
+  }
+
+  // The ground's colour tile with the sand grain lit in (setQuality): the
+  // grain's heights (reliefTexture('sand'), the same tile the bump map used,
+  // at bumpScale .075) turned into slopes, and each texel darkened or lit by
+  // how its slope meets the sun (its direct share of the light; the sky's is
+  // left alone), as the bump map's lighting would. Same size and repeat as the
+  // plain tile, so it simply stands in for it.
+  prelitGround(size, plain) {
+    const S = Math.max(512, size), key = 'prelit-' + S + '-' + [this.sunOffset.x, this.sunOffset.y, this.sunOffset.z].map(v => v.toFixed(2)).join(',');
+    if (this.textureCache.has(key)) return this.textureCache.get(key);
+    const read = (img, n) => { const c = document.createElement('canvas'); c.width = c.height = n; const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, n, n); return g.getImageData(0, 0, n, n).data; };
+    const base = read(plain.image, S), relief = read(this.reliefTexture('sand').image, S);
+    // Heights, softened by one 1-2-1 pass (the bump map was read through its
+    // mipmaps, never sharper than this at the camera's distance).
+    let H = new Float32Array(S * S);
+    for (let i = 0; i < S * S; i++) H[i] = relief[i * 4] / 255;
+    const wrap = v => (v + S) % S, blur = (src, dx, dy) => { const out = new Float32Array(S * S); for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) out[y * S + x] = (src[wrap(y - dy) * S + wrap(x - dx)] + 2 * src[y * S + x] + src[wrap(y + dy) * S + wrap(x + dx)]) * .25; return out; };
+    H = blur(blur(H, 1, 0), 0, 1);
+    const L = new THREE.Vector3(this.sunOffset.x, this.sunOffset.y, this.sunOffset.z).normalize();
+    const texel = 4 / S, scale = PRELIT.scale / (2 * texel), flat = Math.max(.2, L.y);
+    const out = new Uint8ClampedArray(S * S * 4), n = new THREE.Vector3();
+    const toLinear = c => (c / 255) ** 2.2, toSRGB = c => 255 * Math.max(0, c) ** (1 / 2.2);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = y * S + x;
+      // Image rows run against v (flipY), and v is world z / 4.
+      const hx = (H[y * S + wrap(x + 1)] - H[y * S + wrap(x - 1)]) * scale, hz = -(H[wrap(y + 1) * S + x] - H[wrap(y - 1) * S + x]) * scale;
+      n.set(-hx, 1, -hz).normalize();
+      const f = Math.min(PRELIT.max, Math.max(PRELIT.min, 1 - PRELIT.share + PRELIT.share * Math.max(0, n.dot(L)) / flat));
+      for (let c = 0; c < 3; c++) out[i * 4 + c] = toSRGB(toLinear(base[i * 4 + c]) * f / PRELIT.headroom);
+      out[i * 4 + 3] = 255;
+    }
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = S;
+    canvas.getContext('2d').putImageData(new ImageData(out, S, S), 0, 0);
+    const texture = new THREE.CanvasTexture(canvas); texture.wrapS = texture.wrapT = THREE.RepeatWrapping; texture.colorSpace = THREE.SRGBColorSpace;
+    this.textureCache.set(key, texture); return texture;
+  }
+
+  // The wood grain as a colour: grooves darker, raised grain lighter, from the
+  // same heights the bump map used (reliefTexture('wood')), kept under white
+  // by WOOD_GRAIN.headroom (the materials' colour makes it back up).
+  woodGrain() {
+    if (this.textureCache.has('wood-grain')) return this.textureCache.get('wood-grain');
+    const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(this.reliefTexture('wood').image, 0, 0, S, S);
+    const img = g.getImageData(0, 0, S, S), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const f = 1 + (d[i] / 255 - .5) * WOOD_GRAIN.depth, v = 255 * (f / WOOD_GRAIN.headroom) ** (1 / 2.2);
+      d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    const texture = new THREE.CanvasTexture(c); texture.wrapS = texture.wrapT = THREE.RepeatWrapping; texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    this.textureCache.set('wood-grain', texture); return texture;
   }
 
   reliefTexture(kind) {
@@ -905,25 +1002,30 @@ export class WorldView {
   }
 
   // Frame pacing for low input lag. When the GPU falls behind, browsers queue
-  // frames, and each queued frame is input you see late (at 20 fps, two queued
-  // frames are 100 ms). A fence after each frame says when the GPU has finished
-  // it; while the previous frame is still being drawn, main.js skips drawing
-  // this one (the game keeps running and reading input), so the next frame is
-  // drawn from fresher input instead of waiting in a queue. Never waits more
-  // than FENCE_PATIENCE, and does nothing without WebGL 2 fences.
+  // frames, and each queued frame is input you see late. A fence after each
+  // frame says when the GPU has finished it. One frame may be in flight while
+  // the next is built (v0.999a, owner: "make balanced ... minimum 70 FPS"):
+  // waiting for the last frame's fence serialised the page and the GPU, since
+  // browsers only report a fence between tasks (Safari after a round trip to
+  // its GPU process), so a frame cost CPU + GPU + that latency and one a hair
+  // long skipped the next. Now only a second frame still unfinished holds the
+  // next one back (never longer than FENCE_PATIENCE); the queue stays at most
+  // one frame deep. Nothing without WebGL 2 fences.
   gpuBusy(){
-    const fence=this.frameFence;if(!fence)return false;
+    const fences=this.frameFences;if(!fences?.length)return false;
     const gl=this.renderer.getContext();
-    if(gl.isContextLost()){this.frameFence=null;return false;}
-    const status=gl.clientWaitSync(fence,0,0);
-    if(status===gl.TIMEOUT_EXPIRED&&performance.now()-this.fenceAt<FENCE_PATIENCE)return true;
-    gl.deleteSync(fence);this.frameFence=null;return false;
+    if(gl.isContextLost()){this.frameFences=[];return false;}
+    while(fences.length&&gl.clientWaitSync(fences[0].sync,0,0)!==gl.TIMEOUT_EXPIRED)gl.deleteSync(fences.shift().sync);
+    if(fences.length<2)return false;
+    if(performance.now()-fences[0].at<FENCE_PATIENCE)return true;
+    gl.deleteSync(fences.shift().sync);return false;
   }
   fenceFrame(){
     const gl=this.renderer.getContext();
     if(!this.lowLatency||typeof gl.fenceSync!=='function'||gl.isContextLost())return;
-    if(this.frameFence)gl.deleteSync(this.frameFence);
-    this.frameFence=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);this.fenceAt=performance.now();
+    const fences=this.frameFences||=[];
+    while(fences.length>=2)gl.deleteSync(fences.shift().sync);
+    fences.push({sync:gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0),at:performance.now()});
   }
 
   // Cached because aim() runs once per simulation step, and the HUD writes
@@ -1201,10 +1303,16 @@ export class WorldView {
     if(e.electric&&['hit','kill','playerHit'].includes(e.type))this.electric.aftershock(e);
     // Cut down by the katana (v0.990a): straw and chaff thrown along the cut,
     // over the tile, and a little dust at its foot.
+    // (v0.999a: along the blade's own path, crops.js; the stalks it met fall.)
     if (e.type === 'cropCut') {
+      this.cropView?.cut(e);
       const straw = this.strawTint ||= new THREE.Color('#c2a661');
-      for (let i = 0; i < 8; i++) {
-        const x = e.x + (Math.random() - .5) * e.w, z = e.z + (Math.random() - .5) * e.d;
+      const n = e.kind === 'line' ? Math.min(6, 1 + Math.round(Math.hypot(e.bx - e.ax, e.bz - e.az) * 2)) : 8;
+      for (let i = 0; i < n; i++) {
+        const t = (i + Math.random()) / n;
+        let x, z;
+        if (e.kind === 'line') { x = e.ax + (e.bx - e.ax) * t + (Math.random() - .5) * e.r; z = e.az + (e.bz - e.az) * t + (Math.random() - .5) * e.r; }
+        else { const a = Math.atan2(e.cz, e.cx) + (t - .5) * Math.min(e.arc, 6.2), r = e.reach * (.5 + Math.random() * .5); x = e.x + Math.cos(a) * r; z = e.z + Math.sin(a) * r; }
         this.burst(x + (e.dx || 0) * .3, z + (e.dz || 0) * .3, 3, 'hit', straw);
         this.burst(x, z, 2, 'dust');
       }
@@ -1374,16 +1482,31 @@ export class WorldView {
   }
 
   addBeam(path, width) {
-    const core = new THREE.Mesh(this.beamGeo, new THREE.MeshBasicMaterial({ color: '#e4fff5', transparent: true, opacity: 1, depthWrite: false }));
-    const halo = new THREE.Mesh(this.beamGeo, new THREE.MeshBasicMaterial({ color: '#8bd7ff', transparent: true, opacity: .25, depthWrite: false, blending: THREE.AdditiveBlending }));
-    halo.visible = this.quality.glow;
-    for (const m of [core, halo]) { m.position.set(path.x, .72, path.z); m.scale.set(width, .001, width); }
+    // (v0.999a: from a pool when one is free, as the orbs: a volley made three
+    // materials and a buffer per beam and threw them away 0.6 s later.)
+    const kit = this.beamPool?.pop();
+    const core = kit?.core || new THREE.Mesh(this.beamGeo, new THREE.MeshBasicMaterial({ color: '#e4fff5', transparent: true, opacity: 1, depthWrite: false }));
+    const halo = kit?.halo || new THREE.Mesh(this.beamGeo, new THREE.MeshBasicMaterial({ color: '#8bd7ff', transparent: true, opacity: .25, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.visible = this.quality.glow; core.material.opacity = 1; halo.material.opacity = .25;
+    // (A hill beam's tube is drawn in world space from its own buffer.)
+    if (!kit?.tube) for (const m of [core, halo]) { m.position.set(path.x, .72, path.z); m.scale.set(width, .001, width); }
     this.scene.add(core, halo);
-    const arcGeometry = new THREE.BufferGeometry(); arcGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(17 * 3), 3));
-    const arc = new THREE.Line(arcGeometry, new THREE.LineBasicMaterial({ color: '#d1fff6', transparent: true, opacity: .8, depthWrite: false, toneMapped: false }));
-    arc.frustumCulled = false; this.scene.add(arc);
+    let arc = kit?.arc;
+    if (!arc) {
+      const arcGeometry = new THREE.BufferGeometry(); arcGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(17 * 3), 3));
+      arc = new THREE.Line(arcGeometry, new THREE.LineBasicMaterial({ color: '#d1fff6', transparent: true, opacity: .8, depthWrite: false, toneMapped: false }));
+      arc.frustumCulled = false;
+    }
+    arc.material.opacity = .8; arc.visible = false; this.scene.add(arc);
     const under = this.shots.get(path.id)?.userData.under ?? this.underNear(path.x, path.z);
-    this.beams.set(path.id, { core, halo, arc, seed: path.id, startX: path.x, startZ: path.z, endX: path.x, endZ: path.z, width, age: 0, finished: false, under });
+    this.beams.set(path.id, { core, halo, arc, tube: kit?.tube, seed: path.id, startX: path.x, startZ: path.z, endX: path.x, endZ: path.z, width, age: 0, finished: false, under });
+  }
+  retireBeam(b) {
+    b.core.removeFromParent(); b.halo.removeFromParent(); b.arc.removeFromParent();
+    if ((this.beamPool ||= []).length < 32) { this.beamPool.push({ core: b.core, halo: b.halo, arc: b.arc, tube: b.tube }); return; }
+    b.core.material.dispose(); b.halo.material.dispose();
+    if (b.tube) { b.core.geometry.dispose(); b.halo.geometry.dispose(); }
+    b.arc.geometry.dispose(); b.arc.material.dispose();
   }
 
   breakProp(e) {
@@ -1555,9 +1678,7 @@ export class WorldView {
       if (shot && !b.finished) { b.endX = shot.x; b.endZ = shot.z; }
       if (b.finished) b.age += dt;
       if (b.age > .62) {
-        b.core.removeFromParent(); b.halo.removeFromParent(); b.core.material.dispose(); b.halo.material.dispose();
-        if (b.tube) { b.core.geometry.dispose(); b.halo.geometry.dispose(); }
-        b.arc.removeFromParent(); b.arc.geometry.dispose(); b.arc.material.dispose(); this.beams.delete(id); continue;
+        this.retireBeam(b); this.beams.delete(id); continue;
       }
       // Scratch vectors: one per beam per frame otherwise.
       // (Hills: from the ground under one end to the ground under the other.)
@@ -1653,9 +1774,14 @@ export class WorldView {
     const body = this.player.userData.body;
     const dodge = p.dodgeRemaining > 0 ? Math.sin(Math.PI * (1 - p.dodgeRemaining / RULES.dodgeDuration)) : 0;
     body.rotation.x = sim.spray.active ? -.12 : 0;
-    body.scale.set(1 + dodge * .12, 1 - dodge * .3, 1 + dodge * .12);
+    // (Dev: Player skin, player-skin.js. The rigged figure dashes with its
+    // legs, figure-rig.js, not by squashing.)
+    setPlayerSkin(this, skinOfDev(sim.dev?.playerSkin));
+    const rig = this.player.userData.rig;
+    body.scale.set(rig ? 1 : 1 + dodge * .12, rig ? 1 : 1 - dodge * .3, rig ? 1 : 1 + dodge * .12);
+    if (rig) body.rotation.z = 0;
     body.position.y = Math.sin(sim.time * 17) * .022 * speed / 7;
-    body.rotation.z = Math.sin(sim.time * 8.5) * .018 * speed / 7;
+    if (!rig) body.rotation.z = Math.sin(sim.time * 8.5) * .018 * speed / 7; else body.position.y = 0;
     this.player.userData.gun.rotation.x = lerp(this.player.userData.gun.rotation.x, sim.spray.active ? .5 : 0, 1 - Math.exp(-18 * dt));
     if(!this.rifleView)this.rifleView=new RifleView(this);
     this.rifleView.update(sim,fdt);
@@ -1663,6 +1789,8 @@ export class WorldView {
     this.shotgunView.update(sim,fdt);
     this.omenView.update(sim,fdt); this.sightlineView.update(sim,fdt);this.sidekickView.update(sim,fdt);this.ichorView.update(sim,fdt);this.sheathView.update(sim,fdt);
     this.scatterView?.update(sim,fdt);
+    // The rigged figure poses last, from what the weapon views left.
+    rig?.update(sim, fdt, this.player.rotation.y, this.player.userData.gun);
     this.orbBeams?.update(fdt);
     if(!this.grenadeView)this.grenadeView=new GrenadeView(this);
     this.grenadeView.update(sim);
@@ -1680,14 +1808,19 @@ export class WorldView {
     // only your own entry fades the roof (world/roof-fade.js).
     const scoped=scopeActive(sim),scopeAim=scopeFacing(p),scopeFrame=scoped?sightlineCamera(this.camera.aspect,scopeAim.x,scopeAim.z,sim.standY()):null;
     const cameraRoom = scoped?null:sim.interior, blend = cut ? 1 : 1 - Math.exp(-cameraRate * dt);
-    const deathCamera=this.deathView?.active?this.deathView.cameraFrame(this.camera.aspect):null;
+    // (Spectating a teammate, v0.999a: the camera follows them, not your fall.)
+    const deathCamera=this.deathView?.active&&!this.spectating?this.deathView.cameraFrame(this.camera.aspect):null;
     // Online weapon pick: straight down on the pick spot from high above
     // (setPickView), before the death or room camera.
     const pick = this.pickCamera;
     if (pick) { this.focus.x = pick.x; this.focus.z = pick.z; this.cameraHeight = pick.height; }
     else {
-    this.focus.x = deathCamera?deathCamera.x:lerp(this.focus.x, cameraRoom && !cameraRoom.followCamera ? cameraRoom.x : renderX+(scoped?scopeAim.x*scopeFrame.lead:0), blend);
-    this.focus.z = deathCamera?deathCamera.z:lerp(this.focus.z, cameraRoom && !cameraRoom.followCamera ? cameraRoom.z : renderZ+(scoped?scopeAim.z*scopeFrame.lead:0), blend);
+    // (Spectating: the teammate framed in the part of the screen the death
+    // card leaves clear, as the death camera frames your fall.)
+    const wideView = this.camera.aspect > 1 && (typeof innerWidth !== 'number' || innerWidth > 700);
+    const asideX = this.spectating && wideView ? this.cameraHeight * .3 : 0, asideZ = this.spectating && !wideView ? this.cameraHeight * .22 : 0;
+    this.focus.x = deathCamera?deathCamera.x:lerp(this.focus.x, (cameraRoom && !cameraRoom.followCamera ? cameraRoom.x : renderX+(scoped?scopeAim.x*scopeFrame.lead:0)) + asideX, blend);
+    this.focus.z = deathCamera?deathCamera.z:lerp(this.focus.z, (cameraRoom && !cameraRoom.followCamera ? cameraRoom.z : renderZ+(scoped?scopeAim.z*scopeFrame.lead:0)) + asideZ, blend);
     this.cameraHeight = deathCamera?deathCamera.height:lerp(this.cameraHeight, cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT*(scoped?scopeFrame.scale:1), cut ? 1 : 1 - Math.exp(-5.7 * dt));
     }
     // Zoom height must not count as travel through the map's ground haze.
@@ -1717,11 +1850,15 @@ export class WorldView {
       // world; otherwise every update lands edges on a slightly different grid
       // and they crawl. See shadow-snap.js.
       this.fitShadow(fx, fz);
+      // (Below Extreme the kept map's region places the sun: shadow-cache.js.)
+      if (this.shadowCache?.active) this.shadowCache.follow(fx, this.focus.y, fz);
+      else {
       const cam = this.sun.shadow.camera, size = this.sun.shadow.mapSize;
       const at = snapShadowFocus({ x: fx, y: this.focus.y, z: fz }, this.sunBasis,
         (cam.right - cam.left) / size.x, (cam.top - cam.bottom) / size.y);
       this.sun.position.set(at.x + this.sunOffset.x, at.y + this.sunOffset.y, at.z + this.sunOffset.z);
       this.sun.target.position.set(at.x, at.y, at.z);
+      }
       this.sun.shadow.needsUpdate=true;
       this.shadowClock=shadowRate?this.shadowClock%(1/shadowRate):0;
     }
@@ -1827,6 +1964,16 @@ export class WorldView {
     const present = new Set();
     for (const s of [...sim.shots, ...sim.hexOrbs]) {
       present.add(s.id); let g = this.shots.get(s.id);
+      // (v0.999a: an orb's group comes back from a pool when there is one: a
+      // volley made a dozen groups, materials and buffers on the frame it was
+      // fired and threw them away when it landed.)
+      if (!g && (g = this.shotPool?.pop())) {
+        const u = g.userData;
+        u.orb.material = s.enemy ? this.enemySeedMaterial : this.seedMaterial;
+        u.aura.material.color.set(s.enemy ? '#2f5fd0' : '#91d9ff'); u.aura.scale.setScalar(1.7);
+        u.under = this.underNear(s.x, s.z); u.electricTick = u.arcCount = undefined;
+        g.rotation.set(0, 0, 0); this.shots.set(s.id, g); this.scene.add(g);
+      }
       if (!g) {
         g = new THREE.Group();
         // An enemy's orbs are a deeper, darker blue (owner, v0.9b); yours and a teammate's as always.
@@ -1879,7 +2026,10 @@ export class WorldView {
       }
       electricity.scale.setScalar(s.launched ? 1.3 : lifeScale);
     }
-    for (const [id, g] of this.shots) if (!present.has(id)) { this.scene.remove(g); g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); this.shots.delete(id); }
+    for (const [id, g] of this.shots) if (!present.has(id)) {
+      this.scene.remove(g); this.shots.delete(id);
+      if ((this.shotPool ||= []).length < 48) this.shotPool.push(g); else { g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); }
+    }
     this.updateBeams(sim, fdt); this.fxLightLevel *= Math.exp(-12 * dt);
     const dashing = p.dodgeRemaining > 0;
     if (active && speed > 1 && !this.playerWet) {
@@ -2028,12 +2178,16 @@ export class WorldView {
       const seen = this.fxLightLevel > .01 && this.lastSim.canAimAt(this.fxLight.position.x, this.fxLight.position.z);
       this.fxLight.intensity = seen ? this.fxLightLevel : 0;
     }
-    if (this.post && this.qualityName === 'extreme') {
-      let roof = 1; for (const r of this.roofs) roof = Math.min(roof, r.opacity);
-      this.post.setIndoor(1 - roof); this.post.render();
-    }
-    else if (this.crisp) this.crisp.render(this.scene, this.camera);
-    else this.renderer.render(this.scene, this.camera);
+    // Chunks of scenery out of view are hidden for this frame's draw only.
+    this.chunkCull?.cull(this.camera);
+    try {
+      if (this.post && this.qualityName === 'extreme') {
+        let roof = 1; for (const r of this.roofs) roof = Math.min(roof, r.opacity);
+        this.post.setIndoor(1 - roof); this.post.render();
+      }
+      else if (this.crisp) this.crisp.render(this.scene, this.camera);
+      else this.renderer.render(this.scene, this.camera);
+    } finally { this.chunkCull?.restore(); }
   }
 
   enableExtremePost() {
@@ -2244,8 +2398,10 @@ export class WorldView {
     this.playerY = undefined; this.playerUnder = false; this.drips?.clear();
     this.focus.set(sim.player.x, this.gy(sim.player.x, sim.player.z), sim.player.z); this.kick.set(0, 0, 0); this.shake = 0; this.particles.length = 0;
     for (const g of this.shots.values()) { this.scene.remove(g); g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); } this.shots.clear();
+    for (const g of this.shotPool || []) { g.userData.electricity.geometry.dispose(); g.userData.aura.material.dispose(); } this.shotPool = [];
     for (const r of this.rings) { r.mesh.removeFromParent(); r.mesh.geometry.dispose(); r.mesh.material.dispose(); } this.rings.length = 0;
     for (const b of this.beams.values()) { b.core.removeFromParent(); b.halo.removeFromParent(); b.core.material.dispose(); b.halo.material.dispose(); if (b.tube) { b.core.geometry.dispose(); b.halo.geometry.dispose(); } b.arc.removeFromParent(); b.arc.geometry.dispose(); b.arc.material.dispose(); } this.beams.clear();
+    for (const b of this.beamPool || []) { b.core.material.dispose(); b.halo.material.dispose(); if (b.tube) { b.core.geometry.dispose(); b.halo.geometry.dispose(); } b.arc.geometry.dispose(); b.arc.material.dispose(); } this.beamPool = [];
     this.fxLightLevel = 0;
     for (const [id, g] of this.props) {
       if (g.userData.popIn !== undefined) { g.scale.copy(g.userData.baseScale); delete g.userData.popIn; }

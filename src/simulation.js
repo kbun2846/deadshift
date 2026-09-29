@@ -1183,12 +1183,15 @@ export class Simulation {
     if (!index || index.colliders !== this.colliders || index.length !== this.colliders.length || index.props !== this.props) {
       const byId = new Map(this.props.map(p => [p.id, p]));
       index = this.propColliderIndex = { colliders: this.colliders, length: this.colliders.length, props: this.props,
-        list: this.colliders.filter(c => c.propId !== undefined && byId.has(c.propId)).map(c => ({ c, prop: byId.get(c.propId) })) };
+        prop: new Map(this.colliders.filter(c => c.propId !== undefined && byId.has(c.propId)).map(c => [c, byId.get(c.propId)])) };
     }
-    const x0 = Math.min(ax, bx) - pad, x1 = Math.max(ax, bx) + pad, z0 = Math.min(az, bz) - pad, z1 = Math.max(az, bz) + pad, found = [];
-    for (const { c, prop } of index.list) {
-      if (prop.hp === null || !(prop.hp > 0) || found.includes(prop)) continue;
-      if (!c.angle && (c.x + c.w / 2 < x0 || c.x - c.w / 2 > x1 || c.z + c.d / 2 < z0 || c.z - c.d / 2 > z1)) continue;
+    // (v0.999a: only the colliders near the segment, from the broad-phase grid
+    // (world/collider-grid.js), in the same order as a full scan; the Hex's
+    // spin asked this every step for its six sides and flying orbs.)
+    const found = [];
+    for (const c of collidersAlong(this.colliders, ax, az, bx, bz, pad)) {
+      const prop = index.prop.get(c);
+      if (!prop || prop.hp === null || !(prop.hp > 0) || found.includes(prop)) continue;
       if (segmentBox(ax, az, bx, bz, c, pad) !== null) found.push(prop);
     }
     return found;

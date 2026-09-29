@@ -14,7 +14,8 @@ test('laser warning requires a loaded visible scoped rifle, a beam reaching the 
  const {sim,enemy}=make();assert.equal(laserThreatens(sim,enemy),true);
  for(const patch of [{rifleAmmo:0},{aiming:false},{crouched:false},{rifleReload:2},{xLoading:true},{commit:.1},{aimBlocked:true},{aimReach:7}])assert.equal(laserThreatens(sim,{...enemy,sightline:{...enemy.sightline,...patch}}),false,JSON.stringify(patch));
  assert.equal(laserThreatens(sim,{...enemy,visible:false}),false);assert.equal(laserThreatens(sim,{...enemy,aimX:0,aimZ:1}),false);
- sim.colliders=[{x:7,z:0,w:1,d:4,height:3}];assert.equal(laserThreatens(sim,enemy),false);
+ sim.colliders=[{x:7,z:0,w:1,d:4,height:3,wall:true}];assert.equal(laserThreatens(sim,enemy),false);
+ sim.colliders=[{x:7,z:0,w:1,d:4,height:3},{x:9,z:0,w:.6,d:.6,height:4,tree:true}];assert.equal(laserThreatens(sim,enemy),true,'trees, fences and walls outside buildings do not stop the rifle');
  sim.colliders=[{x:7,z:0,w:1,d:4,height:.6},{x:9,z:0,w:1,d:4,height:3,destructible:true}];assert.equal(laserThreatens(sim,enemy),true);
  sim.ground={flat:false,heightAt:()=>0,drawnHeightAt:()=>0,deckAt:()=>-1};Object.assign(sim.player,{below:true});sim.ground.drawnHeightAt=x=>x<2?-3:0;assert.equal(laserThreatens(sim,enemy),false,'an elevated beam passing over the bot is no threat');
 });
@@ -26,9 +27,10 @@ test('a normal bot takes time to notice, then sidesteps if no cover exists; it d
 });
 
 test('cautious and wounded bots choose real solid cover; low or destructible props are not sniper cover',()=>{
- const wall={x:3,z:2,w:1,d:2,height:3};
+ const wall={x:3,z:2,w:1,d:2,height:3,wall:true};
  for(const [aggr,hp] of [[.1,500],[.95,100]]){const {brain,sim,enemy}=make(aggr,[wall]);sim.player.hp=hp;const response=notice(brain);assert.equal(response.kind,'cover');assert.equal(sniperLineClear(sim,enemy,response.goal.x,response.goal.z),false);assert.ok(brain.nav.path(0,0,response.goal.x,response.goal.z));}
- const {brain}=make(.1,[{...wall,destructible:true},{x:2,z:-2,w:1,d:2,height:.5}]);assert.equal(notice(brain).kind,'evade');
+ const {brain}=make(.1,[{...wall,wall:undefined,destructible:true},{x:2,z:-2,w:1,d:2,height:.5}]);assert.equal(notice(brain).kind,'evade');
+ const fence=make(.1,[{...wall,wall:undefined}]);assert.equal(notice(fence.brain).kind,'evade','a tall non-building obstacle is no sniper cover');
 });
 
 test('healthy aggressive bots charge diagonally but respect allies and treat Breach more cautiously',()=>{

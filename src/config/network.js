@@ -35,9 +35,13 @@ export const NETWORK = Object.freeze({
  // Clients draw other players this far in the past, so there are always two
  // snapshots to glide between even when one arrives late.
  interpolationDelay: .1,
+ // A jittery link (a phone hotspot) is drawn up to this far back instead
+ // (client-session.js interpolationDelayFor), eased (v0.999a).
+ maxInterpolationDelay: .3,
  // Each input message repeats the last few inputs, so a lost packet costs
- // nothing: the next one carries it again.
- inputRedundancy: 4,
+ // nothing: the next one carries it again. (v0.999a: 10, a sixth of a second
+ // of loss or a late burst on a phone hotspot; packed they are ~30 bytes each.)
+ inputRedundancy: 10,
  // Your own player is predicted locally. When the host disagrees, small
  // differences are eased out (this share per snapshot); big ones snap.
  correctionBlend: .35,

@@ -2,7 +2,6 @@
 // field view, painted from sight polygons. Methods of WorldView
 // (renderer.js); `this` is the view.
 import { RULES } from '../simulation.js';
-import { cropImmersion } from '../crops.js';
 import { interiorPolygons, projectVisionPolygon, roomBox } from './vision-polygons.js';
 import { viewWidth, viewHeight } from '../viewport.js';
 import { VISION_REPAINT, VISION_SHROUD } from './renderer.js';
@@ -10,8 +9,9 @@ import { VISION_REPAINT, VISION_SHROUD } from './renderer.js';
 export const Vision = {
   updateVision(sim) { this.updateCropVision(sim); this.updateInteriorVision(sim); },
 
+  // (v0.999a, owner: no darkness standing in a crop; the overlay stays off.)
   updateCropVision(sim) {
-    const immersion=cropImmersion(sim.crops,sim.player,RULES.radius),crop=immersion?.crop;
+    const immersion=null,crop=null;
     const cropDisplay = crop ? 'block' : 'none';
     // Writing an unchanged display value still invalidates style on every frame.
     if (this.cropDisplay !== cropDisplay) { this.cropDisplay = cropDisplay; this.cropOverlay.style.display = cropDisplay; }

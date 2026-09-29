@@ -2,7 +2,7 @@ import { SIGHTLINE as S } from '../config/gameplay.js';
 import { setText, setAttr, setStyle } from './dom-writes.js';
 
 export function sightlineAmmoPresentation(s){
- const rifle=!!s.crouched||!!s.xLoading;
+ const rifle=!!s.crouched||s.rifleReload>0;
  return [
   {id:'sidekick',name:'sidekick',active:!rifle,capacity:S.pistolMagazine,ammo:s.pistolAmmo,reload:s.pistolReload,duration:S.pistolReload},
   {id:'rifle',name:'sightline',active:rifle,capacity:1,ammo:s.rifleAmmo,reload:s.rifleReload,duration:S.reload,armed:!!s.special}

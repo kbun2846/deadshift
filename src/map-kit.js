@@ -124,7 +124,7 @@ export function buildingWalls(b) {
       walls.push({ x: b.x + x * c + z * s, z: b.z - x * s + z * c,
         w: Math.abs(w * c) + Math.abs(d * s), d: Math.abs(w * s) + Math.abs(d * c),
         angle:b.angle||0,localW:w,localD:d,
-        height: piece.playerOnly ? .5 : b.height, playerOnly: !!piece.playerOnly, buildingId: b.id });
+        height: piece.playerOnly ? .5 : b.height, playerOnly: !!piece.playerOnly, buildingId: b.id, ...(piece.playerOnly ? {} : { wall: true }) });
     }
   }
   return walls;

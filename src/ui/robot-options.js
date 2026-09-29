@@ -29,7 +29,7 @@ export function robotOptionRows(container, keys, { soon = true } = {}) {
   const o = ROBOT_OPTIONS[key];
   const head = `<span class="round-setting-label">${esc(o.label)}${soon ? ' <span class="soon-tag">soon</span>' : ''}</span>`;
   if (o.grid === 'weapons') return `<div class="round-setting robot-option" data-robot-option="${key}">${head}${weaponGridHTML({ label: o.label, pressed: String(o.default) })}</div>`;
-  return `<div class="round-setting robot-option" data-robot-option="${key}"><span class="round-setting-label">${esc(o.label)}${soon ? ' <span class="soon-tag">soon</span>' : ''}</span><div class="round-choices" role="group" aria-label="${esc(o.label)}">${o.names.map((name, i) => `<button type="button" class="plain-text" data-choice="${i}" aria-pressed="${i === o.default}">${esc(name)}</button>`).join('')}</div></div>`;
+  return `<div class="round-setting robot-option" data-robot-option="${key}"><span class="round-setting-label">${esc(o.label)}${soon ? ' <span class="soon-tag">soon</span>' : ''}</span><div class="round-choices" role="group" aria-label="${esc(o.label)}">${o.names.map((name, i) => `<button type="button" class="choice-button" data-choice="${i}" aria-pressed="${i === o.default}">${esc(name)}</button>`).join('')}</div></div>`;
  }).join('');
  container.insertAdjacentHTML('beforeend', rows);
  // A pick lights up, and that is all.

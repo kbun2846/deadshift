@@ -3,6 +3,7 @@
 // the room badge, the lobby and the host's controls, and leaving. The networking and the
 // match rules live in net/; this file is the page glue.
 import { NETWORK } from './config/network.js';
+import { showBusy } from './ui/busy-screen.js';
 import { makeRoomCode, cleanRoomCode } from './net/transport.js';
 import { movementInput, cleanName } from './net/protocol.js';
 import { ProjectileMirror } from './net/projectiles.js';
@@ -64,13 +65,13 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   if (role === 'host' && wanted && wanted !== map.id && multiplayerMaps(wanted).some(m => m.id === wanted)) {
    saveCarry({ mode, settings, code: room || null, robots: carry?.robots || [] });
    status('Opening ' + (multiplayerMaps(wanted).find(m => m.id === wanted)?.name || 'the map') + '…');
-   location.href = '?map=' + encodeURIComponent(wanted) + '&host=1&autohost=1';
+   showBusy(); location.href = '?map=' + encodeURIComponent(wanted) + '&host=1&autohost=1';
    return;
   }
   // Multiplayer runs on a multiplayer map (maps.js). From anywhere else (the
   // tutorial, a practice-only map) reload onto one and carry on there.
   if (map.training || !supportsMode(map, 'multiplayer')) {
-   location.href = '?map=' + multiplayerMaps()[0].id + '&' + (role === 'host' ? 'host=1' : 'join=' + encodeURIComponent(typed || ''));
+   showBusy(); location.href = '?map=' + multiplayerMaps()[0].id + '&' + (role === 'host' ? 'host=1' : 'join=' + encodeURIComponent(typed || ''));
    return;
   }
   code = role === 'host' ? cleanRoomCode(room) || makeRoomCode() : cleanRoomCode(typed);
@@ -90,7 +91,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
    const deadline = performance.now() + 8000;
    while (!joined.welcomed && !joined.ended && !joined.moveTo && performance.now() < deadline) await new Promise(r => setTimeout(r, 50));
    // The room is on another of our maps (v0.990a): go there and join it again.
-   if (joined.moveTo) { const to = joined.moveTo; joined.close(); status('The room is on ' + (multiplayerMaps(to).find(m => m.id === to)?.name || 'another map') + '…'); location.href = '?map=' + encodeURIComponent(to) + '&join=' + code + '&autojoin=1'; return; }
+   if (joined.moveTo) { const to = joined.moveTo; joined.close(); status('The room is on ' + (multiplayerMaps(to).find(m => m.id === to)?.name || 'another map') + '…'); showBusy(); location.href = '?map=' + encodeURIComponent(to) + '&join=' + code + '&autojoin=1'; return; }
    if (!joined.welcomed) { joined.close(); throw new Error(joined.ended || 'The host did not let us in.'); }
   }
   session = joined; shownCount = 0; lastLife = 0;
@@ -118,7 +119,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   session.moveMap(id);
   const to = '?map=' + encodeURIComponent(id) + '&host=1&autohost=1';
   // (A moment for the message to leave before the page and its connections go.)
-  setTimeout(() => { api.close(); location.href = to; }, 350);
+  setTimeout(() => { api.close(); showBusy(); location.href = to; }, 350);
   return true;
  }
 
@@ -213,7 +214,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
    if (!session) return;
    for (const notice of session.drainNotices()) toast(notice.toUpperCase());
    // The host moved the room to another map: follow it (reload onto it and join again).
-   if (session.moveTo) { const to = '?map=' + encodeURIComponent(session.moveTo) + '&join=' + code + '&autojoin=1'; toast('MOVING TO ' + (multiplayerMaps(session.moveTo).find(m => m.id === session.moveTo)?.name || 'THE NEW MAP').toUpperCase(), 3000); api.close(); location.href = to; return; }
+   if (session.moveTo) { const to = '?map=' + encodeURIComponent(session.moveTo) + '&join=' + code + '&autojoin=1'; toast('MOVING TO ' + (multiplayerMaps(session.moveTo).find(m => m.id === session.moveTo)?.name || 'THE NEW MAP').toUpperCase(), 3000); api.close(); showBusy(); location.href = to; return; }
    if (session.ended) { const why = session.ended; api.close(); toast(why.toUpperCase()); leave(); return; }
    const me = api.me;
    if (me && me.life !== lastLife) { lastLife = me.life; if (me.present) onRespawn?.(); }

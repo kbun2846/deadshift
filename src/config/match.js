@@ -47,10 +47,12 @@ export const SETTINGS = Object.freeze({
  // everyone together any more).
  spawnMode: { label: 'spawns', values: ['random', 'team'], names: ['scattered', 'with team'], default: 'random', modes: ['2v2', '2v2v2', '3v3'] },
  roundLength: { label: 'round length', values: [300, 600, 900], names: ['5 min', '10 min', '15 min'], default: 600, modes: COUNTED },
- // Team modes: the side's kills together.
- killLimit: { label: 'kill limit', values: [0, 10, 20, 30], names: ['none', '10', '20', '30'], default: 0, modes: COUNTED },
+ // Team modes: the side's kills together. Elimination modes (every counted
+ // mode but FFA, v0.999a): points, one for each side left standing.
+ killLimit: { label: 'score limit', values: [0, 10, 20, 30], names: ['none', '10', '20', '30'], default: 0, modes: COUNTED },
  health: { label: 'health', values: [250, 500, 750], names: ['250', '500', '750'], default: 500, modes: MODES.map(m => m.id) },
- respawn: { label: 'respawn wait', values: [8, 12, 16], names: ['8 s', '12 s', '16 s'], default: 12, modes: COUNTED },
+ // (FFA only: in the other modes everyone comes back together, arena.js.)
+ respawn: { label: 'respawn wait', values: [8, 12, 16], names: ['8 s', '12 s', '16 s'], default: 12, modes: ['ffa'] },
  // Syphon: a kill gives the killer back half the health they had lost.
  syphon: { label: 'syphon', values: ['on', 'off'], names: ['on', 'off'], default: 'on', modes: COUNTED },
  // Friendly fire (owner): teammates can hurt each other, for half (arena FRIENDLY_SHARE).
@@ -59,7 +61,7 @@ export const SETTINGS = Object.freeze({
  // to four), and how well they play. + ROBOT in the lobby adds one any time.
  // Shown as one ROBOTS box (v147); unticked, no robots and no robot settings.
  robots: { label: 'robots', values: ['fill', 'off'], names: ['fill empty seats', 'none'], default: 'fill', modes: MODES.map(m => m.id) },
- robotSkill: { label: 'robot skill', values: ['rookie', 'easy', 'normal', 'hard', 'expert', 'perfect'], names: ['rookie', 'easy', 'normal', 'hard', 'expert', 'perfect'], default: 'normal', modes: MODES.map(m => m.id) },
+ robotSkill: { label: 'robot difficulty', values: ['easy', 'normal', 'hard'], names: ['easy', 'normal', 'hard'], default: 'normal', modes: MODES.map(m => m.id) },
 });
 export const defaultSettings = () => Object.fromEntries(Object.entries(SETTINGS).map(([key, s]) => [key, s.default]));
 // Untrusted input (a saved choice, a message): only listed values survive.

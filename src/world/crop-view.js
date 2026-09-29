@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { cropSegments, CROP_FIRE } from '../crops.js';
+import { cropSegments, CROP_FIRE, cropCutMeets, cropCutBox, CROP_CUT_MARGIN } from '../crops.js';
+
+const UP = new THREE.Vector3(0, 1, 0), AXIS = new THREE.Vector3(), TILT = new THREE.Quaternion(), YAW = new THREE.Quaternion();
+// A cut stalk's fall: how long it takes, and how far over it lies.
+const FALL_TIME = .42, LIE = 1.42;
 import { isDemanding } from '../settings.js';
 
 // Dense instanced stalks retain individual footprints without thousands of draw calls.
@@ -18,7 +22,7 @@ export class CropView {
       mesh.rotation.x = -Math.PI / 2; mesh.position.set(field.x, .032, field.z); mesh.receiveShadow = true; view.scene.add(mesh);
       // (s2-props) Hills: the bed is draped over the ground under it.
       if (view.ground && !view.ground.flat) drapeBed(mesh, field, view.ground);
-      this.beds.set(field.id, { field, canvas, texture, signature: null });
+      this.beds.set(field.id, { field, canvas, texture, signature: null, cuts: [] });
     }
     this.updateBeds([]);
     const pieces = [new THREE.CylinderGeometry(.018, .029, 1.45, 4).translate(0, .725, 0), new THREE.ConeGeometry(.085, .38, 4).translate(0, 1.53, 0)];
@@ -63,13 +67,67 @@ export class CropView {
   writeStalks(part) {
     const o = this.dummy;
     for (const [i, s] of part.stalks.entries()) {
-      o.position.set(s.x, s.y || 0, s.z); o.rotation.set(s.dirZ * s.bend, s.yaw, -s.dirX * s.bend); o.scale.setScalar(s.scale*s.edgeScale); o.updateMatrix(); part.mesh.setMatrixAt(i, o.matrix);
+      // Leaned over toward (dirX, dirZ) by `bend`, about the stalk's foot.
+      const l = Math.hypot(s.dirX, s.dirZ);
+      YAW.setFromAxisAngle(UP, s.yaw);
+      if (l > 1e-6 && s.bend) { TILT.setFromAxisAngle(AXIS.set(s.dirZ / l, 0, -s.dirX / l), s.bend); o.quaternion.multiplyQuaternions(TILT, YAW); } else o.quaternion.copy(YAW);
+      // A cut stalk, as it goes over, is thrown a little along the cut and
+      // shrinks to the short loose straw it leaves on the bed (from above, a
+      // whole stalk lying down covers as much as one standing).
+      const lying = s.cut ? s.fall : 0;
+      o.position.set(s.x + s.dirX * lying * .35, (s.y || 0) - lying * .03, s.z + s.dirZ * lying * .35);
+      o.scale.setScalar(s.scale * s.edgeScale * (1 - lying * .55)); o.updateMatrix(); part.mesh.setMatrixAt(i, o.matrix);
     }
     part.mesh.instanceMatrix.needsUpdate = true;
     // Bounds include leaned stalks so culling cannot remove a trampled edge.
     part.mesh.boundingSphere ||= new THREE.Sphere(new THREE.Vector3(), Math.hypot(part.shape.w, part.shape.d) / 2 + 2);
   }
+  // A blade went through (a 'cropCut' event, crops.js): the stalks inside
+  // its shape (and a little past it) fall the way it threw them, and the bed
+  // under them shows the swath. Nothing else in the field moves.
+  cut(e) {
+    const box = cropCutBox(e);
+    for (const part of this.parts.values()) {
+      const sh = part.shape;
+      if (sh.x + sh.w / 2 + 1 < box.x0 || sh.x - sh.w / 2 - 1 > box.x1 || sh.z + sh.d / 2 + 1 < box.z0 || sh.z - sh.d / 2 - 1 > box.z1) continue;
+      for (const stalk of part.stalks) {
+        if (stalk.cut) continue;
+        const x = sh.x + stalk.x, z = sh.z + stalk.z;
+        // A ragged edge: each stalk's own reach past the cut, from its seed.
+        if (!cropCutMeets(e, x, z, CROP_CUT_MARGIN * (.55 + .9 * ((stalk.yaw * 7.13 % 1 + 1) % 1)))) continue;
+        let fx = e.dx || 0, fz = e.dz || 0;
+        if (e.kind === 'arc') { const rx = x - e.x, rz = z - e.z, d = Math.hypot(rx, rz) || 1; fx = fx * .45 + rx / d * .55; fz = fz * .45 + rz / d * .55; }
+        // Not all one way: a scatter of a few tens of degrees.
+        const a = Math.atan2(fz, fx) + Math.sin(stalk.yaw * 11.7) * .45;
+        Object.assign(stalk, { cut: true, fall: 0, dirX: Math.cos(a), dirZ: Math.sin(a), delay: Math.random() * .08 });
+        this.falling = true;
+      }
+    }
+    for (const bed of this.beds.values()) {
+      const f = bed.field;
+      if (f.x + f.w / 2 < box.x0 || f.x - f.w / 2 > box.x1 || f.z + f.d / 2 < box.z0 || f.z - f.d / 2 > box.z1) continue;
+      bed.cuts.push(e); bed.signature = null; this.nextBedUpdate = undefined;
+    }
+  }
   update(sim, dt) {
+    // Cut stalks tip over and land (ease-in: slow to go, quick to hit).
+    if (this.falling && dt > 0) {
+      let any = false;
+      for (const part of this.parts.values()) {
+        let changed = false;
+        for (const stalk of part.stalks) {
+          if (!stalk.cut || stalk.fall >= 1) continue;
+          if (stalk.delay > 0) { stalk.delay -= dt; any = true; continue; }
+          stalk.fall = Math.min(1, stalk.fall + dt / FALL_TIME);
+          const t = stalk.fall, ease = t * t * (1.6 - .6 * t);
+          // A little bounce as it lands.
+          stalk.bend = LIE * ease - (t > .85 ? Math.sin((t - .85) / .15 * Math.PI) * .08 : 0);
+          changed = true; any = true;
+        }
+        if (changed) this.writeStalks(part);
+      }
+      this.falling = any;
+    }
     const topology=sim.crops.map(s=>s.state==='gone'?'0':'1').join('');
     if(topology!==this.topology){
       this.topology=topology;
@@ -100,7 +158,7 @@ export class CropView {
         let changed = false;
         for (const stalk of part.stalks) {
           const dx = s.x + stalk.x - sim.player.x, dz = s.z + stalk.z - sim.player.z;
-          if (Math.hypot(dx, dz) > .85) continue;
+          if (stalk.cut || Math.hypot(dx, dz) > .85) continue;
           const length = Math.hypot(sim.player.vx, sim.player.vz);
           if (length < .2) continue;
           stalk.bend = Math.min(.65, stalk.bend + dt * 3); stalk.dirX = sim.player.vx / length; stalk.dirZ = sim.player.vz / length; changed = true;
@@ -154,7 +212,7 @@ export class CropView {
       bed.base.getContext('2d').drawImage(bed.canvas,0,0);
       }
       ctx.drawImage(bed.base,0,0);
-      const clearedKey=sections.map(s=>s.state==='gone'?'1':'0').join('');
+      const clearedKey=sections.map(s=>s.state==='gone'?'1':'0').join('')+':'+bed.cuts.length;
       if(clearedKey!==bed.clearedKey){
         bed.clearedKey=clearedKey;
         bed.cleared ||= document.createElement('canvas');bed.cleared.width=bed.cleared.height=size;
@@ -162,6 +220,16 @@ export class CropView {
         const mask=bed.clearMask.getContext('2d');mask.fillStyle='white';
         // Union all cells before feathering, so no internal tile seams survive.
         for(const s of sections)if(s.state==='gone')mask.fillRect((s.x-s.w/2-f.x+f.w/2)/f.w*size-1,(s.z-s.d/2-f.z+f.d/2)/f.d*size-1,s.w/f.w*size+2,s.d/f.d*size+2);
+        // Each blade's swath, in the field's metres.
+        if(bed.cuts.length){
+          mask.save();mask.setTransform(size/f.w,0,0,size/f.d,(f.w/2-f.x)*size/f.w,(f.d/2-f.z)*size/f.d);mask.strokeStyle='white';mask.lineCap='round';
+          for(const c of bed.cuts){
+            mask.beginPath();
+            if(c.kind==='line'){mask.lineWidth=2*(c.r+CROP_CUT_MARGIN*.7);mask.moveTo(c.ax,c.az);mask.lineTo(c.bx+(c.ax===c.bx&&c.az===c.bz?.01:0),c.bz);mask.stroke();}
+            else{const a=Math.atan2(c.cz,c.cx),r=c.reach+CROP_CUT_MARGIN*.7;if(c.arc>=Math.PI*2-1e-6)mask.arc(c.x,c.z,r,0,Math.PI*2);else{mask.moveTo(c.x,c.z);mask.arc(c.x,c.z,r,a-c.arc/2,a+c.arc/2);mask.closePath();}mask.fill();}
+          }
+          mask.restore();
+        }
         const cleared=bed.cleared.getContext('2d');cleared.filter='blur(7px)';cleared.drawImage(bed.clearMask,0,0);cleared.filter='none';
         cleared.globalCompositeOperation='source-in';cleared.fillStyle='#68543d';cleared.fillRect(0,0,size,size);cleared.globalCompositeOperation='source-over';
       }
@@ -205,10 +273,11 @@ export class CropView {
   }
   reset() {
     this.topology=null;
-    this.nextBedUpdate=undefined;
+    this.nextBedUpdate=undefined;this.falling=false;
+    for(const bed of this.beds.values()){bed.cuts=[];bed.signature=null;}
     this.updateBeds([]);
     for (const part of this.parts.values()) {
-      for (const s of part.stalks) {s.bend = 0;s.edgeScale=1;}
+      for (const s of part.stalks) {s.bend = 0;s.edgeScale=1;s.cut=false;s.fall=0;s.dirX=s.dirZ=0;}
       part.mesh.visible = true; part.mesh.material.color.set(part.colour); this.writeStalks(part);
     }
     this.flames.count = this.smoke.count = 0;

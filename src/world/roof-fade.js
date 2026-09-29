@@ -70,11 +70,14 @@ export const CEILING_FADE = Object.freeze({ above: .9, ahead: true, inner: .4, o
 // not fade the whole roof), the waist (m over the feet: lower down the walls
 // hide a body anyway), and how far over the roof line a slope's shingles,
 // rake boards and ridge reach.
-export const SECTION_FADE = Object.freeze({ slots: 256, strength: .85, fadeIn: .16, fadeOut: .24, reach: .3, waist: .9, thick: .3 });
+// The soft patch a faded roof section opens (m: fully open within `inner` of
+// the point on the character's line, the roof whole again past `outer`).
+export const ROOF_PATCH = Object.freeze({ inner: .8, outer: 1.9, above: 0, ahead: false });
+export const SECTION_FADE = Object.freeze({ slots: 256, strength: .85, fadeIn: .16, fadeOut: .24, reach: .3, edge: .08, waist: .9, thick: .3, band: .5 });
 // Whole trees (owner, v0.985a): how see-through the leaves and the limbs go,
 // and where a limb eases back to solid (m over the ground at the trunk); the
 // crown's edge is soft over `edge` m inside it to `out` m outside it.
-export const TREE_FADE = Object.freeze({ canopy: .85, limbs: .8, from: 1.6, to: 4.2, edge: 1, out: .5 });
+export const TREE_FADE = Object.freeze({ canopy: .85, limbs: .8, from: 1.6, to: 4.2, edge: .08, out: .5 });
 
 const f = v => v.toFixed(4);
 
@@ -239,30 +242,44 @@ function slabHides(s) {
  // where the top's line bends.
  const u0 = CLIP.t0, u1 = CLIP.t1, a0 = s.along === 1 ? CLIP.ax : CLIP.az, a1 = s.along === 1 ? CLIP.bx : CLIP.bz, e0 = s.along === 1 ? s.x0 : s.z0, e1 = s.along === 1 ? s.x1 : s.z1;
  LINE.a0 = a0; LINE.a1 = a1; LINE.e0 = e0; LINE.e1 = e1; LINE.lo = lo; LINE.top = top;
- LINE.u = u0; if (slabOver(s)) return true;
- LINE.u = u1; if (slabOver(s)) return true;
+ // The gap (the slab's top less the line's height) is piecewise linear, so its
+ // least and greatest values over the part inside are at those points. The
+ // line is hidden where the gap is between 0 and the slab's `band` (a slope is
+ // the roof itself, `band` deep under its top: v0.999a, owner "the roof when
+ // going up against some buildings still disappears". It was solid all the way
+ // down, so anyone within reach of an eave, even on the camera's side of it
+ // with nothing over them on screen, faded the whole slope); a slab with no
+ // band is solid under its top (gap at least 0 anywhere is enough).
+ LINE.lo = lo; let lo2 = Infinity, hi = -Infinity, g;
+ LINE.u = u0; g = slabGap(s); if (g < lo2) lo2 = g; if (g > hi) hi = g;
+ LINE.u = u1; g = slabGap(s); if (g < lo2) lo2 = g; if (g > hi) hi = g;
  if (a1 !== a0) {
   const k0 = (e0 - a0) / (a1 - a0), k1 = (e1 - a0) / (a1 - a0);
-  if (k0 > u0 && k0 < u1) { LINE.u = k0; if (slabOver(s)) return true; }
-  if (k1 > u0 && k1 < u1) { LINE.u = k1; if (slabOver(s)) return true; }
+  if (k0 > u0 && k0 < u1) { LINE.u = k0; g = slabGap(s); if (g < lo2) lo2 = g; if (g > hi) hi = g; }
+  if (k1 > u0 && k1 < u1) { LINE.u = k1; g = slabGap(s); if (g < lo2) lo2 = g; if (g > hi) hi = g; }
  }
- return false;
+ return hi >= 0 && (!(s.band > 0) || lo2 <= s.band);
 }
-// Is the slab's top over the line at fraction LINE.u of it?
-function slabOver(s) {
+// The slab's top less the line's height at fraction LINE.u of it.
+function slabGap(s) {
  const u = LINE.u, a = LINE.a0 + (LINE.a1 - LINE.a0) * u, e0 = LINE.e0, e1 = LINE.e1, k = e1 > e0 ? Math.max(0, Math.min(1, (a - e0) / (e1 - e0))) : 0;
- return s.t0 + (s.t1 - s.t0) * k >= LINE.lo + (LINE.top - LINE.lo) * u;
+ return s.t0 + (s.t1 - s.t0) * k - (LINE.lo + (LINE.top - LINE.lo) * u);
 }
 // Does a section fade for the character LINE holds: at (px, pz), feet `feet`
 // (the building's frame), their head's and waist's lines toward the camera
 // running (hx, hz) and (wx, wz) per metre of rise? Standing under one of its
 // boxes (a hood, the portico, the mound's edge), or hidden by any of its shapes.
 function hidesLine(section) {
- const shapes = section.shapes, px = LINE.px, pz = LINE.pz, reach = LINE.reach, head = LINE.feet + ROOF_FADE.head, waist = LINE.feet + SECTION_FADE.waist;
+ const shapes = section.shapes, px = LINE.px, pz = LINE.pz, reach = SECTION_FADE.reach, head = LINE.feet + ROOF_FADE.head, waist = LINE.feet + SECTION_FADE.waist;
  for (let k = 0; k < shapes.length; k++) {
   const s = shapes[k];
   if (!s.along && s.y0 > waist && px > s.x0 - reach && px < s.x1 + reach && pz > s.z0 - reach && pz < s.z1 + reach) return true;
+  LINE.reach = reach;
   LINE.h = waist; LINE.vx = LINE.wx; LINE.vz = LINE.wz; if (slabHides(s)) return true;
+  // (The head's line against a slope or a gable end only when the roof is
+  // over its middle, not a brim's width off it: `edge`. Hugging a wall under
+  // the eave, the roof over a sliver of the hat is not worth the whole slope.)
+  LINE.reach = s.along ? SECTION_FADE.edge : reach;
   LINE.h = head; LINE.vx = LINE.hx; LINE.vz = LINE.hz; if (slabHides(s)) return true;
  }
  return false;
@@ -460,24 +477,42 @@ export function roofOverlayMaterial(view) {
  return (view.roofOverlay = material);
 }
 function sectionFade(view, material, { key, overlay = false }) {
- const { values } = roofSections(view), cut = f(ROOF_FADE.cut), gone = 'gl_Position = vec4(2.0, 2.0, 2.0, 1.0);';
+ const { values } = roofSections(view), { fade, count } = roofFade(view), cut = f(ROOF_FADE.cut);
  if (overlay) overlayMaterial(material);
  const before = material.onBeforeCompile, beforeKey = material.customProgramCacheKey?.bind(material);
  material.onBeforeCompile = (shader, renderer) => {
   before?.call(material, shader, renderer);
   shader.uniforms.roofSections = { value: values };
+  shader.uniforms.roofFade = { value: fade }; shader.uniforms.roofFadeCount = count;
+  // (v0.999a, owner: "it should have the regular roof with a seamless
+  // transition into a faded portion just for where the edge of it is". A
+  // faded section no longer goes whole: its fade is a gate on a soft patch,
+  // ROOF_PATCH, round the point of the roof on each character's line to the
+  // camera. The rest of the section stays as it is; the patch's edge is a
+  // smooth ramp drawn by the blended copy.)
   shader.vertexShader = shader.vertexShader
-   .replace('#include <common>', `#include <common>\nattribute float roofSection;\nuniform vec4 roofSections[${SECTION_FADE.slots / 4}];${overlay ? '\nvarying float vSectionFade;' : ''}`)
+   .replace('#include <common>', `#include <common>\nattribute float roofSection;\nuniform vec4 roofSections[${SECTION_FADE.slots / 4}];\nvarying float vSectionFade;\nvarying vec3 vRoofWorld;`)
+   .replace('#include <begin_vertex>', `#include <begin_vertex>
+ #ifdef USE_INSTANCING
+  vRoofWorld = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+ #else
+  vRoofWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+ #endif`)
    .replace('#include <project_vertex>', `#include <project_vertex>
  int sectionIndex = int(roofSection + 0.5), sectionRow = sectionIndex / 4, sectionColumn = sectionIndex - sectionRow * 4;
  vec4 sectionFour = roofSections[sectionRow];
- float sectionGone = sectionColumn == 0 ? sectionFour.x : sectionColumn == 1 ? sectionFour.y : sectionColumn == 2 ? sectionFour.z : sectionFour.w;
- ${overlay ? `vSectionFade = sectionGone;\n if (sectionGone <= ${cut}) ${gone}` : `if (sectionGone > ${cut}) ${gone}`}`);
-  if (overlay) shader.fragmentShader = shader.fragmentShader
-   .replace('#include <common>', '#include <common>\nvarying float vSectionFade;')
-   .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n diffuseColor.a *= 1.0 - vSectionFade * ${f(SECTION_FADE.strength)};`);
+ vSectionFade = sectionColumn == 0 ? sectionFour.x : sectionColumn == 1 ? sectionFour.y : sectionColumn == 2 ? sectionFour.z : sectionFour.w;`);
+  shader.fragmentShader = shader.fragmentShader
+   .replace('#include <common>', `#include <common>\n${HOLE_UNIFORMS(ROOF_FADE.slots)}\nvarying float vSectionFade;\nvarying vec3 vRoofWorld;`)
+   .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+ float sectionOpen = 0.0;
+ if (vSectionFade > ${cut}) {
+  ${holeLoop(ROOF_PATCH)}
+  sectionOpen = roofOpen * vSectionFade;
+ }
+ ${overlay ? `if (sectionOpen <= ${cut}) discard;\n diffuseColor.a *= 1.0 - sectionOpen * ${f(SECTION_FADE.strength)};` : `if (sectionOpen > ${cut}) discard;`}`);
  };
- material.customProgramCacheKey = () => (beforeKey ? beforeKey() + '|' : '') + key + (overlay ? '|overlay' : '');
+ material.customProgramCacheKey = () => (beforeKey ? beforeKey() + '|' : '') + key + '|patch' + (overlay ? '|overlay' : '');
 }
 
 // Each faded mesh brings the list up to date before it is drawn (once a

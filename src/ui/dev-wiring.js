@@ -7,6 +7,7 @@
 // for things made later or that change (online, settingsPanel, started,
 // paused), and callbacks to redraw.
 import { explosionFor } from '../simulation.js';
+import { showBusy } from './busy-screen.js';
 import { RULES } from '../config/gameplay.js';
 import { installDevTools } from './dev-tools.js';
 import { createDevWindow } from './dev-window.js';
@@ -52,7 +53,7 @@ export function installDevWiring(ctx) {
    // (The note says this load was asked for, so it starts the game: menu.js markLaunch.)
    const query = 'play=1&map=' + encodeURIComponent(map.id) + '&weapon=' + encodeURIComponent(sim.weapon || 'static');
    try { sessionStorage.setItem('deadshift.launch', '?' + query); } catch {}
-   location.href = '?' + query;
+   showBusy(); location.href = '?' + query;
   },
   // Robots (bots/): a solo game only. Weapon, side, skill and style as set
   // in the tools (or at random), as many as "Robots per spawn".

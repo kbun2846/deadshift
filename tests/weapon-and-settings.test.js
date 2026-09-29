@@ -109,7 +109,7 @@ test('graphics tiers change resolution, shadow work, texture detail and effect b
   assert.ok(GRAPHICS.potato.scale < GRAPHICS.performance.scale);
   assert.equal(GRAPHICS.potato.motes, 0);
   assert.ok(GRAPHICS.potato.particleCap < GRAPHICS.performance.particleCap);
-  assert.ok(GRAPHICS.performance.scale < GRAPHICS.balanced.scale);
+  assert.ok(GRAPHICS.performance.maxPixels < GRAPHICS.balanced.maxPixels);
   assert.equal(GRAPHICS.potato.shadows, 0);
   assert.ok(GRAPHICS.performance.shadows > 0 && GRAPHICS.performance.shadows < GRAPHICS.balanced.shadows);
   assert.ok(GRAPHICS.quality.shadows > GRAPHICS.balanced.shadows);
@@ -120,7 +120,7 @@ test('graphics tiers change resolution, shadow work, texture detail and effect b
   assert.ok(GRAPHICS.balanced.antialias && GRAPHICS.quality.antialias);
   assert.ok(GRAPHICS.performance.texture < GRAPHICS.balanced.texture && GRAPHICS.balanced.texture < GRAPHICS.quality.texture);
   assert.ok(GRAPHICS.performance.particleCap < GRAPHICS.quality.particleCap);
-  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', qualityAuto: true, qualityAutoStep: 0, fps: 60, motion: false, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, keyLock: true, screen: 'fullscreen', vibration: true, volume: {...DEFAULT_SETTINGS.volume} });
+  assert.deepEqual(validateSettings({ quality: 'invalid', fps: 999, motion: false }), { quality: 'balanced', qualityAuto: true, qualityAutoStep: 0, fps: 0, motion: false, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, keyLock: true, screen: 'fullscreen', vibration: true, volume: {...DEFAULT_SETTINGS.volume} });
 });
 
 test('mobile opacity accepts saved presets and rejects invalid values',()=>{

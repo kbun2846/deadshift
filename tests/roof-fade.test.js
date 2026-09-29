@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { roofFade, ditherFade, fadeRoofMeshes, fadeOverlay, prepareFades, treeFade, ROOF_FADE, TREE_FADE, WALL_FADE,
- SECTION_FADE, fadeRoofMaterial, roofOverlayMaterial, roofSections, registerSections, updateSections, shownInside } from '../src/world/roof-fade.js';
+ SECTION_FADE, ROOF_PATCH, fadeRoofMaterial, roofOverlayMaterial, roofSections, registerSections, updateSections, shownInside } from '../src/world/roof-fade.js';
 
 const body = (x, y, z, visible = true) => { const root = new THREE.Group(); root.position.set(x, y, z); root.visible = visible; new THREE.Group().add(root); return { root }; };
 
@@ -136,7 +136,7 @@ test('the colonial walls open too: from the waist up, and only on the camera\'s 
 // The sections are in the building's frame; the camera over whoever is
 // looked at, 29 m up and about 10 south, as the game's.
 function sectionView() {
- const house = { id: 'house', x: 0, z: 0, w: 8, d: 6, angle: 0, baseY: 0 }, slope = (za, ya, zb, yb) => ({ x0: -4.37, x1: 4.37, z0: za - .15, z1: zb + .15, y0: -Infinity, t0: ya + SECTION_FADE.thick, t1: yb + SECTION_FADE.thick, along: 2 });
+ const house = { id: 'house', x: 0, z: 0, w: 8, d: 6, angle: 0, baseY: 0 }, slope = (za, ya, zb, yb) => ({ x0: -4.37, x1: 4.37, z0: za - .15, z1: zb + .15, y0: -Infinity, t0: ya + SECTION_FADE.thick, t1: yb + SECTION_FADE.thick, along: 2, band: SECTION_FADE.band });
  const view = { player: new THREE.Group(), renderer: { info: { render: { frame: 1 } } }, map: { buildings: [house] }, remote: { avatars: new Map() }, camera: { position: new THREE.Vector3() } };
  const record = registerSections(view, house, [
   { shapes: [slope(0, 5.6, 3.45, 2.38)] }, // 0: the front slope
@@ -156,7 +156,7 @@ function sectionView() {
  return { view, record, stand, look };
 }
 
-test('a colonial roof fades by whole sections: one shared table, a section per vertex, dropped from the opaque draw, drawn by the blended copy', () => {
+test('a colonial roof section, faded, opens a soft patch at the point over whoever it hides (v0.999a, owner: the regular roof with a seamless transition into a faded portion)', () => {
  const view = { renderer: { info: { render: { frame: 1 } } } };
  const compile = material => { const shader = { uniforms: {}, vertexShader: '#include <common>\n#include <begin_vertex>\n#include <project_vertex>', fragmentShader: '#include <common>\nvoid main() {\n#include <clipping_planes_fragment>\n}' }; material.onBeforeCompile(shader); return shader; };
  const roof = new THREE.MeshStandardMaterial({ vertexColors: true }); fadeRoofMaterial(view, roof);
@@ -166,24 +166,26 @@ test('a colonial roof fades by whole sections: one shared table, a section per v
  assert.equal(values.length, SECTION_FADE.slots);
  for (const s of [a, c]) {
   assert.equal(s.uniforms.roofSections.value, values, 'the live table, shared');
+  assert.equal(s.uniforms.roofFadeCount, roofFade(view).count, 'and the characters\' list');
   assert.match(s.vertexShader, /attribute float roofSection;/);
   assert.match(s.vertexShader, new RegExp(`uniform vec4 roofSections\\[${SECTION_FADE.slots / 4}\\];`));
-  assert.doesNotMatch(s.fragmentShader, /roofFadeCount|discard/, 'no per-pixel loop, no discard: the old patch is the walls\' now');
+  assert.doesNotMatch(s.vertexShader, /gl_Position = vec4\(2\.0/, 'the section is no longer dropped whole');
+  assert.match(s.fragmentShader, /if \(vSectionFade > 0\.0040\)/, 'the patch only where its section is faded');
+  assert.match(s.fragmentShader, new RegExp(`smoothstep\\(${ROOF_PATCH.inner.toFixed(4)}, ${ROOF_PATCH.outer.toFixed(4)}`), 'a soft edge');
  }
- // Opaque: a faded section's vertices go outside the view (no fragments, early depth kept); the copy: only those, at 1 - fade x strength.
- assert.match(a.vertexShader, /if \(sectionGone > 0\.0040\) gl_Position = vec4\(2\.0, 2\.0, 2\.0, 1\.0\);/);
- assert.match(c.vertexShader, /if \(sectionGone <= 0\.0040\) gl_Position = vec4\(2\.0, 2\.0, 2\.0, 1\.0\);/);
- assert.match(c.fragmentShader, new RegExp(`diffuseColor\\.a \\*= 1\\.0 - vSectionFade \\* ${SECTION_FADE.strength.toFixed(4)};`));
+ assert.match(a.fragmentShader, /if \(sectionOpen > 0\.0040\) discard;/, 'opaque: the patch left out');
+ assert.match(c.fragmentShader, /if \(sectionOpen <= 0\.0040\) discard;/, 'the copy: only the patch');
+ assert.match(c.fragmentShader, new RegExp(`diffuseColor\\.a \\*= 1\\.0 - sectionOpen \\* ${SECTION_FADE.strength.toFixed(4)};`));
  assert.ok(clear.transparent && !clear.depthWrite);
  assert.notEqual(roof.customProgramCacheKey(), clear.customProgramCacheKey());
- assert.ok(SECTION_FADE.strength > .8 && SECTION_FADE.strength < .9, 'about .85');
+ assert.ok(ROOF_PATCH.outer - ROOF_PATCH.inner >= 1, 'a wide, smooth ramp');
 });
 
 test('a section fades for someone standing under it or hidden by it from the camera, not for someone beside it', () => {
  const { stand } = sectionView();
  assert.deepEqual(stand(0, 12), [0, 0, 0], 'in the street: nothing');
  assert.deepEqual(stand(0, 3.75), [1, 0, 1], 'on the front stoop: the hood, and the front slope with it');
- assert.deepEqual(stand(3, 3.75), [1, 0, 0], 'hugging the front wall, under the eave: the front slope');
+ assert.deepEqual(stand(3, 3.75), [0, 0, 0], 'hugging the front wall under the eave: the line toward the camera leaves the roof before it reaches it (v0.999a, owner: the roof disappeared going up against buildings)');
  assert.deepEqual(stand(3, 4.55), [0, 0, 0], 'a metre out in front: the camera looks from the south, nothing hides them');
  assert.deepEqual(stand(-1, -3.6), [0, 1, 0], 'against the back wall: the back slope only');
  assert.deepEqual(stand(-1, -4.3), [0, 1, 0], 'a metre behind the house: the back eave hides their middle from the camera');

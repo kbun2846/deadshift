@@ -32,12 +32,17 @@ test('prompts still follow whichever input was used last',()=>{
  assert.equal(p.surface,'touch','without disturbing the buttons on screen');
 });
 
-test('an explicit choice in the menu outranks anything detected',()=>{
+test('an explicit choice in the menu holds against keys, but a touch always brings the touch controls (v0.999a, owner)',()=>{
  const p=createInputPreference('touch','keyboard');
  assert.equal(p.surface,'keyboard');
- p.observe('touch');
- assert.equal(p.surface,'keyboard','a stray tap cannot override the player');
- assert.ok(p.touched,'though it is still remembered');
+ p.observe('keyboard');
+ assert.equal(p.surface,'keyboard');
+ assert.equal(p.observe('touch'),true);
+ assert.equal(p.surface,'touch','touching the screen switches to mobile');
+ assert.ok(p.touched);
+ const m=createInputPreference('keyboard','touch');
+ m.observe('keyboard');
+ assert.equal(m.surface,'touch','a key never takes a MOBILE pick away');
  const q=createInputPreference('keyboard',null);
  q.select('touch');
  assert.equal(q.surface,'touch');

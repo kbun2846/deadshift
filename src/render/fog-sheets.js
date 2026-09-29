@@ -137,6 +137,62 @@ export function makeFogTexture(rand, fog) {
  return texture;
 }
 
+// The sheet's shape: only the parts of the picture that have any fog in them
+// (v0.999a, owner: "double FPS"). The picture's clouds sit in its middle and
+// its corners and edges are empty, yet the whole rectangle was blended over
+// the scene, three to five times over on the upper presets. Now the picture
+// is read in SHEET_CELLS squares and only squares with fog, and the squares
+// round them (a mipmapped read reaches a little past its own texels), are
+// drawn, as rows of quads over the same plane with the same UVs: every pixel
+// drawn gets the same colour as before and the skipped ones got nothing.
+// A picture that cannot be read (the tests' stand-in) gives the full sheet.
+export const SHEET_CELLS = Object.freeze({ x: 16, y: 8 });
+export function sheetGeometry(image) {
+ const { x: nx, y: ny } = SHEET_CELLS;
+ let alpha = null;
+ try {
+  if (image && image.width && image.height) {
+   const ctx = image.getContext?.('2d', { willReadFrequently: true }) || null;
+   alpha = ctx ? ctx.getImageData(0, 0, image.width, image.height) : null;
+  }
+ } catch { alpha = null; }
+ const full = () => { const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2); return g; };
+ if (!alpha) return full();
+ const { width, height, data } = alpha, has = new Uint8Array(nx * ny);
+ for (let y = 0; y < height; y++) for (let x = 0; x < width; x++)
+  if (data[(y * width + x) * 4 + 3]) has[Math.min(ny - 1, Math.floor(y * ny / height)) * nx + Math.min(nx - 1, Math.floor(x * nx / width))] = 1;
+ const keep = new Uint8Array(nx * ny);
+ for (let cy = 0; cy < ny; cy++) for (let cx = 0; cx < nx; cx++) {
+  let near = 0;
+  for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1 && !near; dx++) {
+   const x = cx + dx, y = cy + dy;
+   if (x >= 0 && y >= 0 && x < nx && y < ny && has[y * nx + x]) near = 1;
+  }
+  keep[cy * nx + cx] = near;
+ }
+ // Canvas row y is v = 1 - y/height (flipY); the plane lies in x/z with
+ // x = u - .5 and z = .5 - v, as PlaneGeometry(1, 1) turned flat has it.
+ const positions = [], uvs = [], index = [];
+ for (let cy = 0; cy < ny; cy++) {
+  for (let cx = 0; cx < nx; cx++) {
+   if (!keep[cy * nx + cx]) continue;
+   let end = cx; while (end + 1 < nx && keep[cy * nx + end + 1]) end++;
+   const u0 = cx / nx, u1 = (end + 1) / nx, v0 = 1 - (cy + 1) / ny, v1 = 1 - cy / ny, base = positions.length / 3;
+   for (const [u, v] of [[u0, v1], [u1, v1], [u0, v0], [u1, v0]]) { positions.push(u - .5, 0, .5 - v); uvs.push(u, v); }
+   index.push(base, base + 2, base + 1, base + 2, base + 3, base + 1);
+   cx = end;
+  }
+ }
+ if (!index.length) return full();
+ const geometry = new THREE.BufferGeometry();
+ geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+ geometry.setAttribute('normal', new THREE.Float32BufferAttribute(positions.map((_, i) => i % 3 === 1 ? 1 : 0), 3));
+ geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+ geometry.setIndex(index);
+ geometry.userData.coverage = keep.reduce((a, b) => a + b, 0) / (nx * ny);
+ return geometry;
+}
+
 export class FogSheets {
  // fog: look.fog (map-look.js). ground: the map's Ground (FLAT on a flat
  // map). heights: { texture, box } uniforms of the ground's height texture
@@ -163,7 +219,7 @@ export class FogSheets {
   // pass. On a tiler every blended layer is a read-modify-write of the tile
   // with no early depth rejection, so the phone tiers get fewer of them and
   // the scene fog carries the haze instead.
-  const geometry = new THREE.PlaneGeometry(1, 1); geometry.rotateX(-Math.PI / 2);
+  const geometry = sheetGeometry(picture.image);
   const key = this.terrain ? 'dust-wisp-ground' : 'dust-wisp';
   this.meshes = Array.from({ length: 5 }, (_, i) => {
    const material = new THREE.MeshBasicMaterial({ map: picture, transparent: true, opacity: 0, depthWrite: false, depthTest: true });

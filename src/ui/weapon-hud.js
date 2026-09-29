@@ -59,7 +59,7 @@ export function createWeaponHUD(root){
    setAttr(mines,'aria-label',sk.mineCooldown>0?`both mines recharging · ${Math.ceil(sk.mineCooldown)} seconds`:`${charges} ${charges===1?'mine':'mines'} ready`);
    for(let i=0;i<mineSlots.length;i++){setAttr(mineSlots[i],'data-ready',String(i<charges));setStyle(mineSlots[i],'--mine-fill',(i<charges?100:Math.max(0,Math.min(1,refill))*100)+'%');}
   }
-  const sightline=id==='sightline',ss=sim.sightline,sniper=sightline&&(ss.crouched||ss.xLoading),sr=sightline?(sniper?ss.rifleReload:ss.pistolReload):0,sc=sniper?1:SIGHTLINE.pistolMagazine;
+  const sightline=id==='sightline',ss=sim.sightline,sniper=sightline&&(ss.crouched||ss.rifleReload>0),sr=sightline?(sniper?ss.rifleReload:ss.pistolReload):0,sc=sniper?1:SIGHTLINE.pistolMagazine;
   const omen=id==='omen',shotgun=id==='shotgun',rifle=id==='rifle',presentation=sidekick?{capacity:skCap,rounds:sk.active>0?skCap:sk.reload>0?skCap*(1-sk.reload/SIDEKICK.reload):sk.ammo}:sightline?{capacity:sc,rounds:sr>0?sc*(1-sr/(sniper?SIGHTLINE.reload:SIGHTLINE.pistolReload)):sniper?ss.rifleAmmo:ss.pistolAmmo}:omen?{rounds:sim.omen.reload>0?OMEN.magazine*(1-sim.omen.reload/OMEN.reload):sim.omen.ammo,capacity:OMEN.magazine}:shotgun?shotgunAmmoPresentation(sim.shotgun):rifle?rifleAmmoPresentation(sim.rifle):null;
   const reloading=sidekick?sk.reload>0:sightline?sr>0:omen?sim.omen.reload>0:shotgun?sim.shotgun.reload>0:rifle&&sim.rifle.reload>0;
   if(ammo.dataset.reloading!==String(reloading))ammo.dataset.reloading=String(reloading);

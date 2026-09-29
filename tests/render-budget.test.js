@@ -47,7 +47,8 @@ test('every graphics tier bounds pixel work on phones and large high-DPI monitor
    assert.ok(ratio>=previous);previous=ratio;
   }
  }
- assert.equal(renderPixelRatio(GRAPHICS.balanced,1,1280,720),1);
+ // Balanced's world is drawn at .82 of the screen and upscaled (v0.999a, crisp-output.js FSR).
+ assert.equal(renderPixelRatio(GRAPHICS.balanced,1,1280,720),.82);
 });
 
 test('recycled particle instances lose previous dust tints and idle pools skip buffer uploads',()=>{

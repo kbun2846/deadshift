@@ -1,4 +1,3 @@
-import { fullscreenSupported, isStandalone } from './mobile-browser.js';
 // Settings > Mobile: the touch layout lives here rather than on the game screen.
 // Editing needs the controls on screen: in a match it closes the menus and
 // edits over the running game; from the main menu it edits over a still frame
@@ -34,9 +33,6 @@ export function installMobileSettings({ touchLayout, closeSettings, setPaused, s
  // iPhone), the note says how: add the game to the home screen.
  byId('aim-assist').closest('label').after(byId('vibration').closest('label'));
  // Vibration on touch (haptics.js): a short buzz when hit, a double one on a kill.
- byId('vibration').closest('label').after(byId('fullscreen-play').closest('label'));
- const note = document.createElement('p'); note.className = 'settings-note'; note.id = 'fullscreen-note';
- note.textContent = fullscreenSupported() ? 'Hides the browser\'s address bar and toolbars when a game starts.' : isStandalone() ? 'Already full screen from your home screen.' : 'This browser cannot go full screen. Use Share > Add to Home Screen to play full screen.';
- byId('fullscreen-play').closest('label').after(note);
+ // (No full screen setting, v0.999a: a touch game still goes full screen where the browser can.)
  return { sync };
 }

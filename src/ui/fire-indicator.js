@@ -70,7 +70,9 @@ export function createDirectionalIndicator(parent, look, className) {
     if (level[i] > .01) any = true;
    }
    if (!any && !showing) return;
-   const ratio = Math.min(2, devicePixelRatio || 1), w = Math.round(width * ratio), h = Math.round(height * ratio);
+   // (Soft arcs: drawn at no more than 1.25x, not the screen's 2x, v0.999a: a quarter
+   // of the canvas pixels on an iPad or a retina laptop, every frame of a fight.)
+   const ratio = Math.min(1.25, devicePixelRatio || 1), w = Math.round(width * ratio), h = Math.round(height * ratio);
    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
    ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height);
    showing = any; if (!any) return;

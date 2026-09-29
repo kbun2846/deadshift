@@ -1,3 +1,4 @@
+import { showBusy } from './busy-screen.js';
 import { refreshTypography } from './button-typography.js';
 import { cardImage, CARD_IMAGES, WEAPON_IMAGES } from './map-cards.js';
 import {shotgunPreview} from '../weapons/shotgun-model.js';
@@ -31,7 +32,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const duelMenu=buildDuelMenu($('duel-options'),{maps:soloMaps(map)/* s2-spawns */,start:picks=>{
   const query=new URLSearchParams({map:picks.map||DEFAULT_MAP,weapon:picks.weapon,play:'1',mode:'duel',duel:duelParam(picks)});
   if(map.id===query.get('map')){try{history.replaceState(null,'',"?"+query);}catch{}start(picks.weapon);}
-  else{markLaunch(query);location.href='?'+query;}
+  else{markLaunch(query);showBusy();location.href='?'+query;}
  }});
  $('duel-mode').onclick=()=>show('duel');$('duel-start').onclick=()=>duelMenu.start();
  // Host setup: the mode and robots (previews) round the round settings.
@@ -75,7 +76,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const hostMapPicker=wirePicker(hostMapRow.querySelector('.picker'));
  hostMapRow.addEventListener('click',e=>{const b=e.target.closest('[data-choice]');if(!b||b.disabled)return;hostMap=b.dataset.choice;try{localStorage.setItem(MAP_KEY,hostMap);}catch{}for(const t of hostMapRow.querySelectorAll('[data-choice]'))t.setAttribute('aria-pressed',String(t.dataset.choice===hostMap));hostMapPicker.sync();});
  $('host-mode').classList.add('round-settings');
- $('host-mode').innerHTML='<div class="round-setting host-mode-row"><span class="round-setting-label">mode</span><div class="round-choices" role="group" aria-label="mode">'+MODES.map(m=>'<button type="button" class="plain-text" data-mode="'+m.id+'" aria-pressed="false">'+m.name+'</button>').join('')+'</div></div>';
+ $('host-mode').innerHTML='<div class="round-setting host-mode-row"><span class="round-setting-label">mode</span><div class="round-choices" role="group" aria-label="mode">'+MODES.map(m=>'<button type="button" class="choice-button" data-mode="'+m.id+'" aria-pressed="false">'+m.name+'</button>').join('')+'</div></div>';
  const showHostMode=()=>{for(const b of $('host-mode').querySelectorAll('[data-mode]'))b.setAttribute('aria-pressed',String(b.dataset.mode===hostMode));setupRows.render({settings:hostSettings,mode:hostMode,editable:true});};
  for(const b of $('host-mode').querySelectorAll('[data-mode]'))b.onclick=()=>{hostMode=b.dataset.mode;try{localStorage.setItem(MODE_KEY,hostMode);}catch{}showHostMode();};
  showHostMode();
@@ -109,7 +110,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   const query=new URLSearchParams({map:selectedMap,weapon,play:'1',mode:selectedMap==='tutorial'?'tutorial':'practice'});
   if(course)query.set('course',course);
   if(map.id===selectedMap){try{history.replaceState(null,'','?'+query);}catch{}start(weapon,selectedMap==='tutorial'?course||null:undefined);}
-  else{markLaunch(query);location.href='?'+query;}
+  else{markLaunch(query);showBusy();location.href='?'+query;}
  };
  // Names come from the item registry; only the 3D preview renderers are wired
  // up here (a new weapon adds its preview function). No descriptions on the
@@ -222,12 +223,9 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const list=rows=>'<table class="controls-grid"><thead><tr><th scope="col">Action</th><th scope="col">Keybind</th></tr></thead><tbody>'+rows.map(([action,binding,note])=>'<tr><th scope="row">'+action+'</th><td>'+binding+(note?'<small>'+note+'</small>':'')+'</td></tr>').join('')+'</tbody></table>';
   $('settings-controls').innerHTML='<details class="weapon-control-entry general-group"><summary>What each control does</summary>'+list(generalControls)+'</details>'+'<details class="weapon-control-entry weapons-group"><summary>Weapons</summary><div class="weapon-control-list">'+WEAPONS.map(weapon=>'<details class="weapon-control-entry"><summary>'+weapon.name+'</summary>'+list(weapon.controls||[])+'</details>').join('')+'</div></details>';
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">SHOW HUD CONTROL HINTS<input id="control-hints" type="checkbox" checked/></label>');
- // Keyboard: full screen with Ctrl+W and the other browser shortcuts held (key-lock.js).
- $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">LOCK BROWSER SHORTCUTS<input id="key-lock" type="checkbox" checked/></label><p class="settings-note" id="key-lock-note">Keyboard, in Fullscreen (Settings > Graphics > Screen): Ctrl + W and other browser shortcuts cannot close or leave the game. Hold Esc to leave full screen. Chrome and Edge.</p>');
  // Moved into Settings > Mobile by mobile-settings.js, with the opacity.
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">AIM ASSIST<input id="aim-assist" type="checkbox" checked/></label>');
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">VIBRATION<input id="vibration" type="checkbox" checked/></label>');
- $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">FULL SCREEN WHILE PLAYING<input id="fullscreen-play" type="checkbox" checked/></label>');
  $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting select-setting">MOBILE BUTTON OPACITY<select id="mobile-opacity"><option value="1">Solid · 100%</option><option value="0.7">Medium · 70%</option><option value="0.4">Faint · 40%</option></select></label>');
  // Rebindable keyboard keys (keybind-menu.js), above the reference tables.
  buildKeybindMenu($('settings-controls'),{before:$('settings-controls').querySelector('.general-group')});

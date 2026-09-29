@@ -43,6 +43,8 @@ export const SKILLS = Object.freeze({
 // The menus' order, weakest first (1V1, dev tools). Random picks only from
 // easy / normal / hard.
 export const SKILL_LEVELS = Object.freeze(['rookie', 'easy', 'normal', 'hard', 'expert', 'perfect']);
+// The difficulties the menus offer (v0.999a, owner: "remove the perfect mode and just have three modes ... easy, normal, and hard"); the others stay for the developer tools.
+export const MENU_SKILLS = Object.freeze(['easy', 'normal', 'hard']);
 
 // range: scales the weapon's range band (below 1 = closer). aggr: 0 timid to
 // 1 reckless. strafe: how wide it weaves; strafeTime: how long between side

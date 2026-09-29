@@ -39,7 +39,7 @@ export function createMultiplayerHud(root) {
  feed.id = 'kill-feed'; feed.className = 'kill-feed'; feed.setAttribute('aria-live', 'polite'); feed.hidden = true;
  const board = document.createElement('section');
  board.id = 'scoreboard'; board.className = 'scoreboard hidden'; board.setAttribute('aria-label', 'Scoreboard');
- board.innerHTML = '<div class="scoreboard-card"><h2>scoreboard</h2><table><thead><tr><th>#</th><th>player</th><th>kills</th><th>deaths</th><th>dmg dealt</th><th>dmg taken</th><th>time</th><th>weapon</th><th>ping</th></tr></thead><tbody></tbody></table><p class="scoreboard-hint">ranked by kills · most used weapon</p></div>';
+ board.innerHTML = '<div class="scoreboard-card"><h2>scoreboard <span class="board-round" hidden></span></h2><table><thead><tr><th>#</th><th>player</th><th>kills</th><th>deaths</th><th>dmg dealt</th><th>dmg taken</th><th>time</th><th>weapon</th><th>ping</th></tr></thead><tbody></tbody></table><p class="scoreboard-hint">ranked by kills · most used weapon</p></div>';
  // The match clock, top centre under the health bar, and the results card
  // shown for a few seconds when the clock runs out.
  const clock = document.createElement('div');
@@ -58,12 +58,16 @@ export function createMultiplayerHud(root) {
   // match: { phase, left, number, results } from the host.
   setMatch(match, me) {
    if (!match) return;
+   // (Elimination, v0.999a: the round being played, in the scoreboard's title.)
+   { const tag = board.querySelector('.board-round'), text = match.phase === 'playing' && match.elimination ? 'round ' + (match.round || 1) : ''; if (tag.textContent !== text) { tag.textContent = text; tag.hidden = !text; } }
    // The clock only means something in a timed round (ffa): hidden in the
    // lobby and in practice; "results" between the round and the lobby.
    const timed = match.mode !== 'practice';
    const text = match.phase === 'playing' && timed ? formatTime(Math.ceil(match.left)) : match.phase === 'results' ? 'results' : '';
    // Team modes: each side's kills beside the clock ("RED 5 · 3 BLUE").
-   const teams = match.phase === 'playing' && match.teams ? match.teams.map(t => `<span class="clock-team" style="--team:${t.colour}">${esc(t.name.toLowerCase())} <b>${t.kills}</b></span>`).join('<i>·</i>') : '';
+   // Elimination modes (v0.999a): each side's points, 1v1 each player's.
+   const teams = match.phase === 'playing' && match.elimination && match.sides ? match.sides.map(t => `<span class="clock-team" data-side="${esc(t.id)}"${t.colour ? ` style="--team:${t.colour}"` : ''}>${esc(String(t.name).toLowerCase())} <b>${t.points}</b></span>`).join('<i>·</i>')
+    : match.phase === 'playing' && match.teams ? match.teams.map(t => `<span class="clock-team" style="--team:${t.colour}">${esc(t.name.toLowerCase())} <b>${t.kills}</b></span>`).join('<i>·</i>') : '';
    const html = esc(text) + (teams ? `<span class="clock-teams">${teams}</span>` : '');
    if (html !== clockText) { clockText = html; clock.innerHTML = html; clock.classList.toggle('match-clock-low', match.phase === 'playing' && match.left <= 30); }
    clock.style.visibility = text ? '' : 'hidden';
@@ -74,9 +78,11 @@ export function createMultiplayerHud(root) {
    if (key === resultsKey) return; resultsKey = key;
    const { winner, board: rows } = match.results;
    const mine = rows.find(r => r.id === me)?.team;
+   // (Elimination: won on points, one a side left standing.)
+   const n = match.results.points ? winner?.points : winner?.kills, unit = match.results.points ? 'point' : 'kill';
    results.querySelector('.match-winner').innerHTML = winner?.team
-    ? `<span style="color:${teamById(winner.team)?.colour}">${esc(winner.name.toLowerCase())}</span> wins with ${winner.kills} kill${winner.kills === 1 ? '' : 's'}${mine ? (mine === winner.team ? ' · your side' : ' · not your side') : ''}`
-    : winner ? `${swatch(rows.find(r => r.id === winner.id)?.slot)}<span class="${winner.id === me ? 'feed-you' : 'feed-enemy'}">${esc(winner.name)}</span> wins with ${winner.kills} kill${winner.kills === 1 ? '' : 's'}` : match.results.draw ? 'a draw' : 'no kills: nobody wins';
+    ? `<span style="color:${teamById(winner.team)?.colour}">${esc(winner.name.toLowerCase())}</span> wins with ${n} ${unit}${n === 1 ? '' : 's'}${mine ? (mine === winner.team ? ' · your side' : ' · not your side') : ''}`
+    : winner ? `${swatch(rows.find(r => r.id === winner.id)?.slot)}<span class="${winner.id === me ? 'feed-you' : 'feed-enemy'}">${esc(winner.name)}</span> wins with ${n} ${unit}${n === 1 ? '' : 's'}` : match.results.draw ? 'a draw' : match.results.points ? 'no points: nobody wins' : 'no kills: nobody wins';
    results.querySelector('tbody').innerHTML = rows.map((r, i) => `<tr class="${r.id === me ? 'board-you' : ''}"><td>${i + 1}</td><th scope="row">${swatch(r.slot)}${esc(r.name)}${teamChip(r.team)}</th><td>${r.kills}</td><td>${r.deaths}</td></tr>`).join('');
    results.querySelector('.match-next').textContent = 'next match in ' + Math.max(0, Math.ceil(match.left));
   },

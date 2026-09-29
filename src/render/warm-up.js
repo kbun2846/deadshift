@@ -9,6 +9,8 @@ import { BloodDrops } from '../effects/blood-drops.js';
 import { HollowBreakFX, handlesBreak } from '../effects/breakable-effects.js';
 import { gunStandIns } from '../remote-players.js';
 import { WEAPONS } from '../items.js';
+// The longest a warm-up step waits on the driver's parallel compile (ms).
+export const WARM_WAIT = 2500;
 
 export const WarmUp = {
   // Compile every program the scene will need, including the blended variant
@@ -74,7 +76,13 @@ export const WarmUp = {
     const parallel = !!this.renderer.compileAsync && this.renderer.extensions.has('KHR_parallel_shader_compile');
     for (const step of this.warmSteps()) {
       void step;
-      if (parallel) try { await this.renderer.compileAsync(this.scene, this.camera); } catch { /* the sync compile still runs */ }
+      // (Never waited on for more than WARM_WAIT ms a step, v0.999a, owner:
+      // "after I switched to auto" the world stayed blank under APPLYING
+      // GRAPHICS for good. compileAsync polls each program's completion and
+      // resolves only when every one reports it; on some drivers one never
+      // does, so the change never finished and nothing was drawn again. Past
+      // the wait, the ordinary compile that follows finishes the job.)
+      if (parallel) try { await Promise.race([this.renderer.compileAsync(this.scene, this.camera), new Promise(done => setTimeout(done, WARM_WAIT))]); } catch { /* the sync compile still runs */ }
     }
   },
 
@@ -88,6 +96,9 @@ export const WarmUp = {
     // Blood drops are made on a first bleed; made now, so that bleed (a robot
     // or another player shooting you) builds no shader mid-fight.
     (this.drops ||= new BloodDrops(this)).ensure();
+    // The triangle grids bullet and blast marks read (effects/triangle-grid.js),
+    // made while loading rather than bit by bit in the first seconds of play.
+    this.surfaceMarks?.prepareGrids(400);
     // Everything drawFrame gives the indoor-clipped shader, given it now.
     for (const group of this.particlePool || []) this.interiorVisibility.apply(group);
     for (const object of this.electric?.arcs.objects || []) this.interiorVisibility.apply(object);

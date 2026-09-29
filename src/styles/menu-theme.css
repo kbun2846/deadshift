@@ -789,20 +789,30 @@ body:not(.playing) .fire-indicator,body.dying .fire-indicator,body:not(.playing)
 /* In a 1V1 (duel.js): the score top centre (the match clock's place), you
    blue and the robot pink as in the kill feed; the result card is the
    multiplayer results card with REMATCH and MAIN MENU. */
-/* (v0.9b, owner: bigger, the health bar centred under it.) A dark pill,
-   your side blue on the left, theirs pink on the right, big numbers. */
-#game .duel-score{position:absolute;z-index:5;top:10px;left:50%;transform:translateX(-50%);display:grid;grid-template-columns:auto auto auto;align-items:center;column-gap:14px;row-gap:3px;padding:7px 18px 6px;border-radius:12px;background:#141a18c9;border:1px solid #ffffff1f;box-shadow:0 4px 14px #0006;white-space:nowrap;color:#eee9df;pointer-events:none;font-variant-numeric:tabular-nums}
-#game .duel-score .duel-side{display:flex;align-items:center;gap:10px;font:800 13px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.14em}
+/* (v0.9b, owner: bigger, the health bar centred under it. v0.999a, owner:
+   "make it match rest of game ui, it looks too ai generated": the pill, its
+   rim and glow are gone.) Laid on the world like the health bar and the
+   weapon panel, under the same soft drop shadow: your side blue on the left,
+   theirs pink on the right, the numbers in the health number's face, a thin
+   rule between. A first-to game has a row of the health track's segments
+   under each side, filled from the middle out as rounds are won. */
+#game .duel-score{position:absolute;z-index:5;top:12px;left:50%;transform:translateX(-50%);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;column-gap:16px;row-gap:5px;color:#eee9df;pointer-events:none;white-space:nowrap;font-variant-numeric:tabular-nums;filter:drop-shadow(0 1px 2px #15201bc0)}
+#game .duel-score .duel-side{display:flex;align-items:baseline;gap:10px;font:700 12px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.16em}
 #game .duel-score .duel-side em{font-style:normal}
-#game .duel-score b{font:900 34px/1 Arial Black,Arial,sans-serif;letter-spacing:0;min-width:.8em;text-align:center}
+#game .duel-score b{font:600 32px/1 Bahnschrift,'Trebuchet MS',sans-serif;letter-spacing:.02em;min-width:.7em;text-align:center}
 #game .duel-score .duel-you{color:var(--mp-you,#8fd0ff);justify-self:end}
-#game .duel-score .duel-robot{color:var(--mp-enemy,#e8afb9)}
-#game .duel-score .duel-dash{font:900 22px/1 Arial,sans-serif;opacity:.5}
-#game .duel-score small{grid-column:1/-1;justify-self:center;font:700 10px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.18em;opacity:.7}
+#game .duel-score .duel-robot{color:var(--mp-enemy,#e8afb9);justify-self:start}
+#game .duel-score .duel-dash{width:1px;height:24px;background:#eee9df;opacity:.35;align-self:center}
+#game .duel-score .duel-track{display:flex;gap:3px}
+#game .duel-score .duel-track.duel-you{justify-self:end;flex-direction:row-reverse}
+#game .duel-score .duel-track i{width:14px;height:5px;background:#202827dc;border:1px solid #17231fcc;border-radius:1px}
+#game .duel-score .duel-track i.won{background:currentColor;border-color:currentColor}
+#game .duel-score small{grid-column:1/-1;justify-self:center;font:700 10px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.18em;color:#d5c4a3;opacity:.85}
 body:not(.playing) #game .duel-score{display:none}
-body[data-controls=touch] #game .duel-score{top:max(8px,env(safe-area-inset-top));padding:5px 14px 5px}
+body[data-controls=touch] #game .duel-score{top:max(8px,env(safe-area-inset-top));row-gap:4px}
 body[data-controls=touch] #game .duel-score b{font-size:26px}
 body[data-controls=touch] #game .duel-score .duel-side{font-size:11px}
+body[data-controls=touch] #game .duel-score .duel-track i{width:11px;height:4px}
 /* The health bar centred, under the score, whatever the layout. */
 body.duel-on.playing #game .health-hud{top:92px;left:50%;transform:translateX(-50%)}
 body[data-controls=touch].duel-on.playing #game .health-hud{top:calc(max(8px,env(safe-area-inset-top)) + 74px);left:50%;transform:translateX(-50%)}
@@ -991,13 +1001,6 @@ body[data-controls=touch].duel-on.playing #game .health-hud{top:calc(max(8px,env
 #ichor-deflect-recharge[data-state=cooldown]{color:#c96d7f!important}
 @media(max-width:480px){#game #weapon[data-weapon=ichor]{min-height:196px}#weapon[data-weapon=ichor] #ichor-deflect-recharge{left:0;right:auto;top:122px;width:60px;height:60px}}
 
-/* A graphics preset change (main.js changeGraphics): a small pill at the top
-   while the new shaders build; the game's last frame stays behind it. */
-#game .graphics-busy{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 14px);z-index:90;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:8px 16px;border-radius:999px;background:#1c2020e6;border:1px solid #ffffff1f;color:#eee9df;font:800 12px/1 Arial,sans-serif;letter-spacing:.14em;box-shadow:0 8px 24px #0008;pointer-events:none}
-#game .graphics-busy.hidden{display:none}
-/* (Still, not spinning: an animation keeps the compositor busy in the very
-   process that is building the shaders, which slowed it measurably.) */
-#game .graphics-busy i{width:8px;height:8px;border-radius:50%;background:var(--ui-accent)}
 
 /* Sheath (v0.995a): no ammo row; white and black like the sword. */
 #weapon[data-weapon="sheath"] #seed-pips,#weapon[data-weapon="sheath"] .weapon-count{display:none}
@@ -1005,3 +1008,84 @@ body[data-controls=touch].duel-on.playing #game .health-hud{top:calc(max(8px,env
 /* No ammo row: the panel keeps the others' height so its two stacked dials stay on screen. */
 #game #weapon[data-weapon="sheath"]{min-height:114px}
 #weapon[data-weapon="sheath"] .weapon-status{color:#d9d1bf}
+
+/* Choice rows (v0.999a, owner: "make those easy normal hard things fit the
+   rest of the buttons, top to bottom ... do the same for 1v1 2v2 3v3 ... and
+   the multiplayer mode"): every row of choices (SOLO, host setup, the lobby,
+   robot tuning) is its label over a full-width segmented bar of equal
+   buttons, each lettered like the menu's own buttons (button-typography.js
+   stretches the label to the button's height; one stretch per row). */
+#game .round-setting:has(>.round-choices),#game .round-setting:has(>.lobby-modes){flex-direction:column;align-items:stretch;gap:6px}
+#game .round-choices:has(>.choice-button),#game .lobby-modes:has(>.choice-button){display:flex;flex-wrap:nowrap;width:100%;min-width:0;justify-content:stretch;gap:0;border:1px solid var(--button-edge);border-radius:8px;overflow:hidden}
+#game button.choice-button{position:relative!important;flex:1 1 0!important;min-width:0!important;width:auto!important;height:40px!important;min-height:40px!important;margin:0!important;padding:0 8px!important;border:0;border-left:1px solid var(--button-edge);border-radius:0!important;overflow:hidden!important;text-align:center!important;font-size:32px!important;line-height:32px!important;text-transform:uppercase;letter-spacing:0!important}
+#game button.choice-button:first-child{border-left:0}
+#game button.choice-button[aria-pressed=true]{background:var(--ui-accent);color:#151718}
+#game .round-setting:has(>.round-choices) .duel-row-note{flex:none;flex-basis:auto;order:3;text-align:right;margin:-2px 0 0}
+@media(max-width:520px){#game button.choice-button{height:36px!important;min-height:36px!important;padding:0 4px!important}}
+
+/* Dropdown pickers open over the page (v0.999a, owner: "when these drop downs
+   are clicked ... it moves the whole page down ... it would be better if it's
+   scrollable"): the panel floats under its bar instead of pushing everything
+   below it down, and its tiles scroll inside it (touch, wheel or keys). */
+#game .picker.open{z-index:40}
+#game .picker .picker-panel{position:absolute;left:0;right:0;top:100%;z-index:40;background:#1c2120;box-shadow:0 14px 28px #000a}
+#game .picker .picker-panel .weapon-grid{max-height:min(52vh,300px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+/* A menu over the game (v0.999a): the ordinary pointer, the aim marks hidden (main.js syncGameCursor). */
+body.menu-pointer #reticle,body.menu-pointer .aim-cone,body.menu-pointer .rifle-spread,body.menu-pointer .omen-cursor-timer{visibility:hidden!important}
+
+/* Spectating (spectate.js, v0.999a): elimination modes. Behind the death
+   screen (unchanged, owner: "behind the death screen, not replace it") the
+   camera follows a teammate; this bar over it names them, the game's pink
+   arrow buttons either side. */
+#game .spectate-bar{position:absolute;left:0;right:0;margin:0 auto;width:max-content;top:calc(env(safe-area-inset-top,0px) + 96px);z-index:41;display:flex;align-items:center;gap:16px;pointer-events:auto;filter:drop-shadow(0 2px 4px #000a);animation:death-reveal .22s both}
+#game .spectate-bar.hidden{display:none}
+#game .spectate-who{display:flex;flex-direction:column;align-items:center;min-width:190px;color:#fff;text-align:center}
+#game .spectate-who small{font:900 11px/1 'Arial Black',Arial,sans-serif;letter-spacing:.24em;color:var(--ui-accent);text-transform:uppercase!important}
+#game .spectate-who strong{margin-top:5px;font:900 30px/1.05 'Arial Black',Arial,sans-serif;white-space:nowrap;text-transform:uppercase!important}
+#game .spectate-count{min-height:12px;margin-top:4px;font:700 10px/1.2 Arial,sans-serif;letter-spacing:.08em;color:#e1e6df;text-transform:uppercase!important}
+#game .spectate-bar .spectate-step{display:grid;place-items:center;width:40px;height:40px;min-height:40px;padding:8px;border:0;border-radius:5px;background:var(--ui-accent);color:#151718;box-shadow:none;text-shadow:none}
+#game .spectate-bar .spectate-step:is(:hover,:focus-visible){background:var(--ui-accent);color:#fff}
+#game .spectate-bar .spectate-step[hidden]{display:none}
+#game .spectate-step svg{display:block;width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+@media(max-width:700px),(max-aspect-ratio:1/1){#game .spectate-bar{top:calc(env(safe-area-inset-top,0px) + 110px)}#game .spectate-who strong{font-size:24px}}
+body.duel-on #game .spectate-bar{top:calc(env(safe-area-inset-top,0px) + 104px)}
+/* The score between points (score-flash.js): the top score's own markup and
+   look (the VS ROBOTS score or the match clock's sides), bigger, in the
+   middle; the number that went up rolls from the old value to the new. */
+#game .score-flash{position:absolute;z-index:42;left:50%;top:34%;pointer-events:none;transform:translate(-50%,-50%) scale(2.2);display:flex;flex-direction:column;align-items:center;gap:4px;animation:score-flash-in .35s cubic-bezier(.2,.8,.25,1.15) both;filter:drop-shadow(0 3px 8px #000b)}
+#game .score-flash.hidden{display:none}
+#game .score-flash.duel-score{display:flex;column-gap:0;row-gap:0}
+#game .score-flash .score-flash-body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;column-gap:16px;row-gap:5px;white-space:nowrap}
+#game .score-flash.match-clock .score-flash-body{display:block}
+#game .score-flash.match-clock .clock-teams{margin-left:0}
+#game .score-flash .score-flash-next{margin:6px 0 0;font:700 7px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.2em;color:#e1e6df;text-transform:uppercase!important}
+#game .score-flash .score-flash-changed{display:inline-block;animation:score-flash-pop .5s .95s cubic-bezier(.2,.8,.3,1.4) both}
+#game .score-flash .score-flash-roll{display:inline-grid;overflow:hidden;vertical-align:bottom;line-height:1.05}
+#game .score-flash .score-flash-roll i{grid-area:1/1;font-style:normal}
+#game .score-flash .score-flash-old{animation:score-flash-out .42s .55s cubic-bezier(.5,0,.8,.4) both}
+#game .score-flash .score-flash-new{animation:score-flash-up .48s .7s cubic-bezier(.2,.8,.3,1.25) both}
+@keyframes score-flash-in{from{opacity:0;transform:translate(-50%,-50%) scale(1.4)}to{opacity:1;transform:translate(-50%,-50%) scale(2.2)}}
+@keyframes score-flash-out{from{transform:translateY(0);opacity:1}to{transform:translateY(-100%);opacity:0}}
+@keyframes score-flash-up{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes score-flash-pop{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
+@media(max-width:700px),(max-aspect-ratio:1/1){#game .score-flash{top:30%;transform:translate(-50%,-50%) scale(1.7);animation-name:score-flash-in-small}@keyframes score-flash-in-small{from{opacity:0;transform:translate(-50%,-50%) scale(1.2)}to{opacity:1;transform:translate(-50%,-50%) scale(1.7)}}}
+@media(prefers-reduced-motion:reduce){#game .score-flash,#game .score-flash *{animation-duration:.01s!important;animation-delay:0s!important}}
+body #game :is(.score-flash.duel-score,.score-flash.match-clock){top:34%}
+@media(max-width:700px),(max-aspect-ratio:1/1){body #game :is(.score-flash.duel-score,.score-flash.match-clock){top:30%}}
+/* Down, on a wide screen: in the clear part beside the death card, under the spectating bar. */
+@media(min-width:701px) and (min-aspect-ratio:1/1){body.dead-menu #game :is(.score-flash.duel-score,.score-flash.match-clock){left:29%;top:32%}}
+@media(max-width:700px),(max-aspect-ratio:1/1){body.dead-menu #game :is(.score-flash.duel-score,.score-flash.match-clock){top:36%}}
+#game .scoreboard-card h2 .board-round{margin-left:12px;font:900 14px/1 'Arial Black',Arial,sans-serif;letter-spacing:.16em;color:var(--ui-accent);vertical-align:middle}
+/* Down in an elimination round (v0.999a, owner: "the gameplay after player
+   dies and is spectating is more dull, including game ui"): the world and
+   the game's own HUD dim and lose colour; the death screen, menus, the
+   spectating bar and the score flash stay as they are. Gone on respawn. */
+#game #world,#game :is(.duel-score:not(.score-flash),.match-clock:not(.score-flash),.kill-feed,.fire-indicator,.damage-indicator,.aim-cone){transition:filter .6s ease}
+body.watching #game #world{filter:saturate(.3) brightness(.62) contrast(.92)}
+body.watching #game :is(.duel-score:not(.score-flash),.match-clock:not(.score-flash),.kill-feed){filter:saturate(.25) brightness(.6)}
+/* The round, in the middle as everyone comes back (round-popup, main.js). */
+#game .round-popup{position:absolute;z-index:43;left:50%;top:38%;pointer-events:none;transform:translate(-50%,-50%);font:900 clamp(40px,7vw,86px)/1 'Arial Black',Arial,sans-serif;letter-spacing:.06em;color:#fff;white-space:nowrap;text-transform:uppercase!important;filter:drop-shadow(0 3px 8px #000c);opacity:0}
+#game .round-popup small{display:block;margin-bottom:8px;text-align:center;font:900 13px/1 'Arial Black',Arial,sans-serif;letter-spacing:.3em;color:var(--ui-accent)}
+#game .round-popup.show{animation:round-popup 2.4s cubic-bezier(.2,.7,.2,1) both}
+@keyframes round-popup{0%{opacity:0;transform:translate(-50%,-50%) scale(1.35)}12%{opacity:1;transform:translate(-50%,-50%) scale(1)}80%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(.96)}}
+@media(prefers-reduced-motion:reduce){#game .round-popup.show{animation-name:round-popup-plain}@keyframes round-popup-plain{0%,100%{opacity:0}10%,85%{opacity:1}}}

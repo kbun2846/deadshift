@@ -1,14 +1,14 @@
 // The SOLO page (Gamemodes > SOLO, was VS ROBOTS; 1V1 in v132, 2V2 and 3V3 in
 // v0.9b): the mode, the map, your weapon (or random); then ENEMY ROBOTS and
-// YOUR ROBOTS (team modes only), each with weapon (or random), skill, aim and
-// temper; then MATCH: first to, and friendly fire in the team modes. Picture
+// YOUR ROBOTS (team modes only), each with weapon (or random) and difficulty
+// (the skill level); then MATCH: first to, and friendly fire in the team modes. Picture
 // grids (weapon-grid.js) for maps and weapons, each ending in a coming-soon
 // tile; the other choices are the lobby's round-settings rows (label, then
 // pink-when-picked choices) with a one-line note under the pick. The last
 // picks are remembered on this device. START hands them to `start` (menu.js
 // launches the game; duel.js runs it).
 import { WEAPONS, DEFAULT_WEAPON } from '../items.js';
-import { SKILL_LEVELS } from '../bots/robot-profile.js';
+import { MENU_SKILLS } from '../bots/robot-profile.js';
 import { DUEL_DEFAULTS, DUEL_FIRST_TO, DUEL_MODES } from '../duel.js';
 import { weaponGridHTML, mapGridHTML, weaponFromChoice, pickerHTML, wirePicker } from './weapon-grid.js';
 
@@ -16,14 +16,13 @@ const KEY = 'deadshift.duel';
 const esc = text => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Short notes (owner, v0.9b: two words a skill, temper shorter).
-const SKILL_NOTES = { rookie: 'slow, wild', easy: 'often misses', normal: 'fair fighter', hard: 'sharp, tricky', expert: 'rarely misses', perfect: 'nearly unbeatable' };
-const AIM_NOTES = { sloppier: 'shakier hand', even: 'its own aim', sharper: 'steadier hand' };
-const TEMPER_NOTES = { calm: 'keeps its distance', shifting: 'calm, then pushy', aggressive: 'always pushing' };
+const SKILL_NOTES = { easy: 'often misses', normal: 'fair fighter', hard: 'sharp, tricky' };
 const robotRows = (prefix, who) => [
- { key: prefix ? prefix + 'Skill' : 'skill', label: who + ' skill', choices: SKILL_LEVELS.map(id => [id, id]), notes: SKILL_NOTES },
- { key: prefix ? prefix + 'Aim' : 'aim', label: who + ' aim', choices: [['sloppier', 'sloppier'], ['even', 'as its skill'], ['sharper', 'sharper']], notes: AIM_NOTES },
- { key: prefix ? prefix + 'Temper' : 'temper', label: who + ' temper', choices: [['calm', 'calm'], ['shifting', 'shifting'], ['aggressive', 'aggressive']], notes: TEMPER_NOTES },
+ { key: prefix ? prefix + 'Skill' : 'skill', label: who + ' difficulty', choices: MENU_SKILLS.map(id => [id, id]), notes: SKILL_NOTES },
 ];
+// (v0.999a, owner: "Remove the enemy aim and enemy aggression parts from solo
+// menu ... just do difficulty". Aim and temper stay at their defaults, even and
+// shifting (DUEL_DEFAULTS); the lobby's round settings still offer them.)
 // Rows: key, label, [value, text] choices, and a note for the picked choice.
 export const DUEL_ROWS = Object.freeze([
  { key: 'mode', label: 'mode', choices: Object.entries(DUEL_MODES).map(([id, m]) => [id, m.name]),
@@ -66,7 +65,7 @@ export function buildDuelMenu(container, { maps, start, storage = globalThis.loc
  const weaponValue = id => (id ? String(WEAPONS.findIndex(w => w.id === id) + 1) : '0');
  // Maps and weapons: a dropdown picker each (the list scrolls inside it).
  const pictures = (key, label, body) => `<div class="round-setting duel-setting duel-pictures" data-duel="${key}"><span class="round-setting-label">${esc(label)}</span>${pickerHTML(label, body)}</div>`;
- const rowHTML = key => { const r = row(key); return `<div class="round-setting duel-setting" data-duel="${r.key}"><span class="round-setting-label">${esc(r.label)}</span><div class="round-choices" role="group" aria-label="${esc(r.label)}">${r.choices.map(([v, t]) => `<button type="button" class="plain-text" data-choice="${esc(v)}" aria-pressed="false">${esc(t)}</button>`).join('')}</div><p class="duel-row-note"></p></div>`; };
+ const rowHTML = key => { const r = row(key); return `<div class="round-setting duel-setting" data-duel="${r.key}"><span class="round-setting-label">${esc(r.label)}</span><div class="round-choices" role="group" aria-label="${esc(r.label)}">${r.choices.map(([v, t]) => `<button type="button" class="choice-button" data-choice="${esc(v)}" aria-pressed="false">${esc(t)}</button>`).join('')}</div><p class="duel-row-note"></p></div>`; };
  const heading = (text, cls = '') => `<div class="duel-heading ${cls}">${esc(text)}</div>`;
  container.classList.add('round-settings', 'duel-options');
  container.innerHTML = rowHTML('mode')
@@ -74,10 +73,10 @@ export function buildDuelMenu(container, { maps, start, storage = globalThis.loc
   + pictures('weapon', 'your weapon', weaponGridHTML({ label: 'your weapon', pressed: weaponValue(picks.weapon), soon: true }))
   + heading('enemy robots')
   + pictures('botWeapon', 'enemy weapon', weaponGridHTML({ label: 'enemy weapon', pressed: weaponValue(picks.botWeapon), soon: true }))
-  + rowHTML('skill') + rowHTML('aim') + rowHTML('temper')
+  + rowHTML('skill')
   + `<div class="duel-allies">${heading('your robots')}`
   + pictures('allyWeapon', 'their weapon', weaponGridHTML({ label: 'your robots\' weapon', pressed: weaponValue(picks.allyWeapon), soon: true }))
-  + rowHTML('allySkill') + rowHTML('allyAim') + rowHTML('allyTemper') + '</div>'
+  + rowHTML('allySkill') + '</div>'
   + heading('match') + rowHTML('firstTo') + `<div class="duel-allies">${rowHTML('spawn')}${rowHTML('friendlyFire')}</div>`;
  const pickers = [...container.querySelectorAll('.picker')].map(wirePicker);
 

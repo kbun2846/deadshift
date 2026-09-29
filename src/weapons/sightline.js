@@ -58,18 +58,20 @@ export function pistolSpread(distance,speed=0,aiming=false){return (aiming?.022:
 export function prepareSightline(sim,input){
  if(sim.weapon!=='sightline')return input;
  const s=sim.sightline,p=sim.player;
- // Moving during the rifle's reload in the stance stands you up, which ends
- // the reload (owner, v0.992a: "the sniper auto reload is cancellable by
- // player uncrouching or moving"); a Breach load carries on standing.
- const standUp=s.crouched&&s.rifleReload>0&&!s.xLoading&&Math.hypot(input.moveX||0,input.moveZ||0)>.45;
- if((input.sightlineStance||standUp)&&!p.dodgeRemaining&&!s.commit){s.crouched=!s.crouched;s.setup=s.crouched?S.setupDuration:0;s.turnVelocity=0;if(!s.crouched&&!s.xLoading)s.rifleReload=0;sim.events.push({type:'sightlineStance',x:p.x,z:p.z,crouched:s.crouched});}
+ // E crouches or stands at any time, moving or not, loaded or not (v0.999a,
+ // owner: "player should be able to crouch with E whenever, even when moving
+ // ... even when gun is unreloaded"). The rifle's reload no longer ends on
+ // standing or moving: it carries on standing, in the hands, as a Breach load
+ // does (owner: "reload sniper while moving same way as when x ability
+ // reloads (no gold effects)"). (It was: moving stood you up and ended it, v0.992a.)
+ if(input.sightlineStance&&!p.dodgeRemaining&&!s.commit){s.crouched=!s.crouched;s.setup=s.crouched?S.setupDuration:0;s.turnVelocity=0;sim.events.push({type:'sightlineStance',x:p.x,z:p.z,crouched:s.crouched});}
  s.setup=Math.max(0,(s.setup||0)-RULES.step);
  // A reload takes the aim down while it runs (the rifle's in the stance; the
  // Sidekick's, or the holstered Sidekick during a standing Breach load,
  // standing) and gives it back by itself when it is done (v0.992a, owner:
  // the laser was sometimes missing; a held aim had to be let go and pressed
  // again after every reload, and the Sidekick's reload blocked the rifle's scope).
- s.aimBlocked=s.crouched?s.rifleReload>0:(s.pistolReload>0||!!s.xLoading);
+ s.aimBlocked=s.crouched?s.rifleReload>0:(s.pistolReload>0||s.rifleReload>0);
  s.aiming=!!input.aiming&&!s.aimBlocked&&(!s.crouched||sightlineCanScope(sim));
  p.sightline={rifleAmmo:s.rifleAmmo,crouched:s.crouched,aiming:s.aiming,special:s.special,xLoading:s.xLoading,rifleReload:s.rifleReload,pistolReload:s.pistolReload,aimBlocked:s.aimBlocked,commit:s.commit,setup:s.setup};
  if(s.crouched){p.vx=p.vz=0;p.dodgeQueued=0;return {...input,moveX:0,moveZ:0,dodge:false};}
@@ -131,10 +133,13 @@ export function stepSightline(sim,input,dt,geo){
    // no laser until FIRE was pressed again to reload it). Standing up or
    // moving ends it (prepareSightline); there is no laser until it is loaded.
    if(rifle&&s.rifleAmmo<=0&&!s.rifleReload&&!s.special&&!s.xLoading)reload(sim,true);
-   const loading=!!s.rifleReload&&(rifle||s.xLoading)||!!s.pistolReload&&!rifle;
+   // (Standing, a rifle reload holds the hands as a Breach load does: no Sidekick shots meanwhile.)
+   const loading=!!s.rifleReload||!!s.pistolReload&&!rifle;
    const fire=pressed||(input.sightlineX&&s.special&&rifle);
    const ammo=rifle?s.rifleAmmo:s.pistolAmmo;
-   if(!loading&&(input.reload||fire&&!ammo)&&(!rifle||!s.special)&&ammo<(rifle?1:S.pistolMagazine))reload(sim,rifle);
+   // Standing, R loads an empty rifle first (then the Sidekick), on the move.
+   if(!loading&&input.reload&&!rifle&&s.rifleAmmo<=0&&!s.special)reload(sim,true);
+   else if(!loading&&(input.reload||fire&&!ammo)&&(!rifle||!s.special)&&ammo<(rifle?1:S.pistolMagazine))reload(sim,rifle);
    else if(fire&&!loading&&ammo>0&&(!rifle||s.setup<=1e-8)&&s.cooldown<=1e-8){
     const reach=Math.hypot(p.aimPointX-p.x,p.aimPointZ-p.z)||10;
     const spread=sim.dev.noSpread?0:rifle?(s.aiming?0:S.hipSpread):pistolSpread(reach,Math.hypot(p.vx,p.vz),s.aiming);

@@ -16,7 +16,7 @@
 // two snapshots either side of that moment, so their movement stays smooth
 // even though snapshots arrive only 20 times a second and not evenly.
 import { NETWORK } from '../config/network.js';
-import { PROTOCOL_VERSION, movementInput, playerInput, applyPlayerState, applyLoadout, readMessage, unpackEvent } from './protocol.js';
+import { PROTOCOL_VERSION, movementInput, playerInput, applyPlayerState, applyLoadout, readMessage, unpackEvent, packInput } from './protocol.js';
 import { blend } from './host-session.js';
 import { ProjectileMirror } from './projectiles.js';
 import { mapColliders, mapHash, maps, supportsMode } from '../maps.js';
@@ -25,6 +25,17 @@ const roomMap = id => typeof id === 'string' && Object.hasOwn(maps, id) && suppo
 
 // Seconds between our own ticks that count as us being frozen, not them.
 const STALL = 1;
+
+// How long past the newest snapshot another player keeps moving (s).
+const EXTRAPOLATE = .12;
+// The interpolation delay for a link: the 90th percentile of how late the
+// recent snapshots came, plus one snapshot interval and a little, held
+// between interpolationDelay and maxInterpolationDelay.
+export function interpolationDelayFor(lateness, config = NETWORK) {
+ if (!lateness?.length) return config.interpolationDelay;
+ const sorted = [...lateness].sort((a, b) => a - b), p90 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * .9))];
+ return Math.max(config.interpolationDelay, Math.min(config.maxInterpolationDelay ?? .3, p90 + config.snapshotEvery / 60 + .02));
+}
 
 export class ClientSession {
  constructor({ transport, map, local, createSim, config = NETWORK, now = () => performance.now() / 1000, name = 'Player' }) {
@@ -84,6 +95,9 @@ export class ClientSession {
   // guess (least delayed packet); it relaxes slowly in case the link improves.
   const offset = this.now() - snapshot.tick / 60;
   this.clockOffset = this.clockOffset === null || offset < this.clockOffset ? offset : this.clockOffset + (offset - this.clockOffset) * .02;
+  // How late this one came against the best seen (the link's jitter): the
+  // last 40 kept, for the interpolation delay (others()).
+  (this.lateness ||= []).push(offset - this.clockOffset); if (this.lateness.length > 40) this.lateness.shift();
   this.snapshots.push(snapshot);
   while (this.snapshots.length > 30) this.snapshots.shift();
   for (const p of snapshot.players) if (p.name) this.names.set(p.id, String(p.name).slice(0, 16));
@@ -193,7 +207,7 @@ export class ClientSession {
   this.pending.push(input);
   if (this.pending.length > 120) this.pending.shift();
   // (With the shape of this screen, so the host's robots never fire from off it.)
-  this.transport.send('host', { t: 'input', inputs: this.pending.slice(-this.config.inputRedundancy), ack: this.ack, ...(this.aspect ? { aspect: this.aspect } : {}) });
+  this.transport.send('host', { t: 'input', inputs: this.pending.slice(-this.config.inputRedundancy).map(packInput), ack: this.ack, ...(this.aspect ? { aspect: this.aspect } : {}) });
   return alive ? movementInput(input,this.local.weapon) : movementInput({});
  }
 
@@ -223,7 +237,14 @@ export class ClientSession {
  // Other players, placed where they were `interpolationDelay` seconds ago.
  others() {
   if (!this.snapshots.length || this.clockOffset === null) return [];
-  const tick = (this.now() - this.clockOffset - this.config.interpolationDelay) * 60;
+  // (v0.999a, hotspot lag.) The delay follows the link: a steady one keeps
+  // interpolationDelay, a jittery one (a phone hotspot: snapshots arriving in
+  // clumps) is drawn further back, up to maxInterpolationDelay, so there is
+  // nearly always a next snapshot to glide to instead of stopping and jumping.
+  // It eases, so the others never skip when it moves.
+  const want = interpolationDelayFor(this.lateness, this.config);
+  this.delayNow = this.delayNow === undefined ? want : this.delayNow + (want - this.delayNow) * .03;
+  const tick = (this.now() - this.clockOffset - this.delayNow) * 60;
   let before = this.snapshots[0], after = null;
   for (const s of this.snapshots) { if (s.tick <= tick) before = s; else { after = s; break; } }
   const list = [];
@@ -231,7 +252,11 @@ export class ClientSession {
    if (a.id === this.id || !a.present || a.dead) continue;
    const b = after?.players.find(p => p.id === a.id);
    const alpha = b ? Math.min(1, Math.max(0, (tick - before.tick) / (after.tick - before.tick))) : 1;
-   list.push({ ...blend(a.id, this.names.get(a.id) || a.name || '', a, b || a, alpha), weapon: a.weapon, slot: a.slot, team: a.team, robot: !!a.robot, hp: a.hp, maxHp: a.maxHp });
+   const drawn = { ...blend(a.id, this.names.get(a.id) || a.name || '', a, b || a, alpha), weapon: a.weapon, slot: a.slot, team: a.team, robot: !!a.robot, hp: a.hp, maxHp: a.maxHp };
+   // Past the newest snapshot: carried on along its velocity a little (at
+   // most EXTRAPOLATE s) rather than stopped dead until the next one lands.
+   if (!after && tick > before.tick) { const t = Math.min(tick - before.tick, EXTRAPOLATE * 60) / 60; drawn.x += (a.vx || 0) * t; drawn.z += (a.vz || 0) * t; }
+   list.push(drawn);
   }
   return list;
  }

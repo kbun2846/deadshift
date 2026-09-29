@@ -6,22 +6,27 @@ import assert from 'node:assert/strict';
 import { Simulation } from '../src/simulation.js';
 import { tryIchorDeflect, ichorGuardFor, meetsGuardBlade, ICHOR_GUARD_BLADE } from '../src/weapons/ichor-deflect.js';
 import { ichorSweepMeets } from '../src/weapons/ichor-cut.js';
+import { cropCutMeets } from '../src/crops.js';
 
 const field = { id: 'ichor-field-test', width: 60, depth: 60, spawn: { x: 0, z: 0 }, buildings: [], fences: [], props: [], targets: [], crops: [{ id: 'f', x: 0, z: 0, w: 21, d: 20, visibility: 5 }] };
 const make = map => { const s = new Simulation(map); s.weapon = 'ichor'; s.player.id = 'cutter'; return s; };
 const run = (s, n = 1, input = {}) => { for (let i = 0; i < n; i++) s.step({ aimX: 1, aimZ: 0, ...input }); };
 const tileAt = (s, x, z) => s.crops.find(c => Math.abs(x - c.x) <= c.w / 2 && Math.abs(z - c.z) <= c.d / 2);
 
-test('a slash cuts the standing crops its sweep reaches, and nothing behind it', () => {
+// (v0.999a) A cut is the blade's shape, not whole tiles: the stalks inside it
+// (and a little past it) fall; the tiles stay standing.
+const cutsOf = s => (s.drainEvents?.() || s.events).filter(e => e.type === 'cropCut');
+const cutAt = (cuts, x, z) => cuts.some(c => cropCutMeets(c, x, z));
+test('a slash cuts the stalks its sweep reaches, and nothing behind or beyond it', () => {
   const s = make(field);
   s.drainEvents?.();
   run(s, 12, { fire: true, tapFire: true });
-  assert.equal(tileAt(s, 0, 0).state, 'gone', 'the tile you stand in');
-  assert.equal(tileAt(s, 1.8, 0).state, 'gone', 'in front, within reach');
-  assert.equal(tileAt(s, -6, 0).state, 'standing', 'behind you');
-  assert.equal(tileAt(s, 8, 0).state, 'standing', 'beyond the blade');
-  const cuts = (s.drainEvents?.() || s.events).filter(e => e.type === 'cropCut');
-  assert.ok(cuts.length >= 1 && cuts.every(e => e.dx > .9), 'cropCut events, thrown along the cut');
+  const cuts = cutsOf(s);
+  assert.ok(cuts.length >= 1 && cuts.every(e => e.dx > .9 && e.kind === 'arc'), 'cropCut events, the sweep thrown along the cut');
+  assert.ok(cutAt(cuts, .3, 0) && cutAt(cuts, 1.8, 0) && cutAt(cuts, 1.2, .8), 'at your feet and in front, within reach');
+  assert.ok(!cutAt(cuts, -3, 0), 'behind you');
+  assert.ok(!cutAt(cuts, 8, 0) && !cutAt(cuts, 3.6, 0), 'beyond the blade');
+  assert.ok(s.crops.every(c => c.state === 'standing'), 'no tile is taken away');
 });
 
 test('a burning tile burns on; the sweep test covers a tile anywhere in the arc', () => {
@@ -37,10 +42,12 @@ test('a burning tile burns on; the sweep test covers a tile anywhere in the arc'
 
 test('the blood wave mows a path through the field', () => {
   const s = make(field);
-  s.ichor.blood = 100;
+  s.ichor.blood = 100; s.drainEvents?.(); s.events.length = 0;
   run(s, 60, { ichorE: true });
-  assert.equal(tileAt(s, 7, 0).state, 'gone', 'down its path');
-  assert.equal(tileAt(s, 7, 8).state, 'standing', 'beside it');
+  const cuts = cutsOf(s);
+  assert.ok(cuts.length && cuts.every(e => e.kind === 'line'));
+  assert.ok(cutAt(cuts, 7, 0), 'down its path');
+  assert.ok(!cutAt(cuts, 7, 8), 'not beside it');
 });
 
 const plain = { id: 'ichor-side-test', width: 40, depth: 40, spawn: { x: 0, z: 0 }, buildings: [], fences: [], props: [], targets: [] };

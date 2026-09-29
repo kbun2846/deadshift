@@ -62,6 +62,9 @@ export const DEV_OPTIONS = Object.freeze([
 
   { section: 'player', kind: 'toggle', key: 'invulnerable', label: 'Invulnerable' },
   { section: 'player', kind: 'toggle', key: 'ghost', label: 'Remove my player' },
+  // (v0.999a, owner: you start as the cowboy; the rigged plain figure, white or
+  // a slight blue, is picked here: render/player-skin.js.)
+  { section: 'player', kind: 'select', key: 'playerSkin', label: 'Player skin', options: [['0', 'Cowboy'], ['1', 'White figure'], ['2', 'Blue figure']], fallback: 0 },
   { section: 'player', kind: 'select', key: 'damageIn', label: 'Damage taken', options: takenScales, fallback: 1 },
   { section: 'player', kind: 'select', key: 'maxHealth', label: 'Max health', options: healths, fallback: 500 },
   { section: 'player', kind: 'action', key: 'randomSpot', label: 'Move to a random spot', button: 'Move' },

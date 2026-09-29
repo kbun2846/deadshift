@@ -294,7 +294,8 @@ export class BotMatch {
     bot.alive = false; bot.respawnIn = ROBOT_RESPAWN; continue;
    }
    if (!bot.alive) {
-    if (dev.robotStayDead) continue;
+    // (SOLO 1V1/2V2/3V3, v0.999a: nobody comes back until a side is out, duel.js.)
+    if (dev.robotStayDead || this.holdRespawns) continue;
     bot.respawnIn -= dt;
     if (bot.respawnIn <= 0) this.respawnAt(bot, main);
     continue;

@@ -11,7 +11,7 @@
 // uses, Escape included (Esc still pauses; holding Esc leaves full screen,
 // and the browser says so). Other browsers keep the prompt. Setting:
 // Settings > Controls > LOCK BROWSER SHORTCUTS (settings.keyLock).
-export const LOCKED_KEYS = Object.freeze(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyT', 'KeyN', 'KeyC', 'KeyX', 'KeyF', 'KeyM', 'KeyP', 'KeyO', 'KeyL', 'KeyH', 'KeyJ', 'KeyK', 'Tab', 'Escape', 'Space']);
+export const LOCKED_KEYS = Object.freeze(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyT', 'KeyN', 'KeyC', 'KeyX', 'KeyF', 'KeyM', 'KeyP', 'KeyO', 'KeyL', 'KeyH', 'KeyJ', 'KeyK', 'KeyV', 'Tab', 'Escape', 'Space']);
 
 export const keyLockSupported = () => typeof navigator !== 'undefined' && typeof navigator.keyboard?.lock === 'function' && typeof document !== 'undefined' && typeof document.documentElement.requestFullscreen === 'function';
 

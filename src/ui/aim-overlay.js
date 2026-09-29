@@ -11,6 +11,9 @@ import { viewWidth, viewHeight } from '../viewport.js';
 import { setStyle, setAttr, setText } from './dom-writes.js';
 import { displayKeys } from '../config/keybinds.js';
 import { omenReadouts } from './omen-state.js';
+// Cone paths at a tenth of a pixel (v0.999a): an unchanged path is not
+// written again (dom-writes), so a still aim does not repaint the overlay.
+const r1=v=>Math.round(v*10)/10, roundPath=d=>d.replace(/-?\d+\.\d{2,}/g,m=>String(r1(+m)));
 
 // Static's expanding hex fills a ring round the aim dot
 // that starts pink and runs to red. For the hex, red means the boundary is
@@ -103,17 +106,17 @@ export function createAimOverlay(game){
    // Solid edges to the end of the red; faint ones on through the fade.
    const redLeft=view.screenPoint(muzzleX+Math.cos(angle-spread)*red,muzzleZ+Math.sin(angle-spread)*red,.77);
    const redRight=view.screenPoint(muzzleX+Math.cos(angle+spread)*red,muzzleZ+Math.sin(angle+spread)*red,.77);
-   setAttr(coneEdges,'d',`M${origin.x},${origin.y} L${redLeft.x},${redLeft.y} M${nearEnd.x},${nearEnd.y} L${redRight.x},${redRight.y} ${splitArc}`);
+   setAttr(coneEdges,'d',roundPath(`M${origin.x},${origin.y} L${redLeft.x},${redLeft.y} M${nearEnd.x},${nearEnd.y} L${redRight.x},${redRight.y} ${splitArc}`));
    if(!scatter){
     const a=view.screenPoint(muzzleX+Math.cos(angle)*guideStart,muzzleZ+Math.sin(angle)*guideStart,.77),b=view.screenPoint(muzzleX+Math.cos(angle)*range,muzzleZ+Math.sin(angle)*range,.77);
     const r=view.screenPoint(muzzleX+Math.cos(angle)*red,muzzleZ+Math.sin(angle)*red,.77);
     for(const g of [fadeGrad]){setAttr(g,'x1',a.x.toFixed(1));setAttr(g,'y1',a.y.toFixed(1));setAttr(g,'x2',b.x.toFixed(1));setAttr(g,'y2',b.y.toFixed(1));}
     setAttr(edgeGrad,'x1',r.x.toFixed(1));setAttr(edgeGrad,'y1',r.y.toFixed(1));setAttr(edgeGrad,'x2',b.x.toFixed(1));setAttr(edgeGrad,'y2',b.y.toFixed(1));
     setAttr(fadeAt,'offset',((red-guideStart)/(range-guideStart)).toFixed(3));
-    setAttr(fadeEdges,'d',`M${redLeft.x},${redLeft.y} L${farLeft.x},${farLeft.y} M${redRight.x},${redRight.y} L${farRight.x},${farRight.y}`);
+    setAttr(fadeEdges,'d',roundPath(`M${redLeft.x},${redLeft.y} L${farLeft.x},${farLeft.y} M${redRight.x},${redRight.y} L${farRight.x},${farRight.y}`));
    }else setAttr(fadeEdges,'d','');
    // The same quad the edges bound, closed so it can carry a fill.
-   setAttr(coneZone,'d',`M${origin.x},${origin.y} L${farLeft.x},${farLeft.y} L${farRight.x},${farRight.y} L${nearEnd.x},${nearEnd.y} Z`);
+   setAttr(coneZone,'d',`M${r1(origin.x)},${r1(origin.y)} L${r1(farLeft.x)},${r1(farLeft.y)} L${r1(farRight.x)},${r1(farRight.y)} L${r1(nearEnd.x)},${r1(nearEnd.y)} Z`);
   }
 
   updateChargeRing(sim,running);
@@ -121,7 +124,7 @@ export function createAimOverlay(game){
   let timerSlot=0;
   for(let i=0;i<2;i++){
    const ui=omenTimers[i],state=omen&&(i===0?omen.primary:omen.secondary),show=!!state?.live;
-   ui.root.hidden=!show;setAttr(ui.root,'data-omen-optimal',String(!!state?.optimal));if(!show)continue;
+   if(ui.root.hidden!==!show)ui.root.hidden=!show;setAttr(ui.root,'data-omen-optimal',String(!!state?.optimal));if(!show)continue;
    const side=point.x>viewWidth()-110?-1:1;
    setStyle(ui.root,'left',(side===1?26+timerSlot*42:-64-timerSlot*42)+'px');timerSlot++;
    setStyle(ui.root,'top',(point.y<24?12:-20)+'px');
@@ -199,7 +202,7 @@ export function createAimOverlay(game){
    const [fl,fr]=flank(Math.max(distance,otherDistance));
    sizeCone();
    setAttr(coneZone,'d',
-    `M${nl.x},${nl.y} L${fl.x},${fl.y} L${fr.x},${fr.y} L${nr.x},${nr.y} Z`);
+    `M${r1(nl.x)},${r1(nl.y)} L${r1(fl.x)},${r1(fl.y)} L${r1(fr.x)},${r1(fr.y)} L${r1(nr.x)},${r1(nr.y)} Z`);
    // The brackets are the rifle's guide; it needs no drawn cone edges.
    setAttr(coneEdges,'d','');setAttr(fadeEdges,'d','');cone.classList.remove('fading');
   }

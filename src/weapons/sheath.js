@@ -24,7 +24,7 @@
 import { SHEATH as S, RULES } from '../config/gameplay.js';
 import { targetRadius } from '../target-radius.js';
 import { ichorCoverMeets, ichorSweepMeets } from './ichor-cut.js';
-import { cutCrop } from '../crops.js';
+import { cutCrops } from '../crops.js';
 import { collidersAlong } from '../world/collider-grid.js';
 export { S as SHEATH };
 
@@ -189,7 +189,7 @@ function drawCutSweep(sim, cut, geo, a, b) {
   const meets = c ? geo.segmentBox(ax, az, bx, bz, c, S.xWidth * .6) !== null : geo.segmentCircle(ax, az, bx, bz, prop.x, prop.z, S.xWidth) !== null;
   if (meets) sim.hitProp(prop, { owner: p.id, damage: prop.hp, damageType: 'bladeDraw', x: prop.x, z: prop.z, vx: cut.dx, vz: cut.dz });
  }
- if (sim.crops?.length && !p.below) for (const crop of sim.crops) if (crop.state === 'standing' && geo.segmentBox(ax, az, bx, bz, crop, S.xWidth) !== null) cutCrop(sim, crop, cut.dx, cut.dz);
+ if (sim.crops?.length && !p.below) cutCrops(sim, { kind: 'line', ax, az, bx, bz, r: S.xWidth }, sim.crops.filter(crop => crop.state !== 'gone' && geo.segmentBox(ax, az, bx, bz, crop, S.xWidth) !== null), cut.dx, cut.dz);
 }
 
 // Blood on the blade: people only, never robots or practice dummies.
@@ -258,7 +258,7 @@ function slashContact(sim, geo, progress = 1) {
   sim.hitProp(prop, { owner: p.id, damage: sheathDamage(), damageType: 'blade', x: prop.x, z: prop.z, vx: f.x, vz: f.z });
   sim.events.push({ type: 'sheathClang', id: p.id, x: prop.x, z: prop.z, dx: f.x, dz: f.z, below: !!p.below });
  }
- if (progress >= 1 - 1e-9 && sim.crops?.length && !p.below) for (const crop of sim.crops) if (crop.state === 'standing' && Math.abs(sim.ground.heightAt(crop.x, crop.z) - y) < 1.2 && ichorSweepMeets(p.x, p.z, s.cutX, s.cutZ, reach, arc, crop)) cutCrop(sim, crop, s.cutX, s.cutZ);
+ if (progress >= 1 - 1e-9 && sim.crops?.length && !p.below) cutCrops(sim, { kind: 'arc', x: p.x, z: p.z, cx: s.cutX, cz: s.cutZ, reach, arc }, sim.crops.filter(crop => crop.state !== 'gone' && Math.abs(sim.ground.heightAt(crop.x, crop.z) - y) < 1.2 && ichorSweepMeets(p.x, p.z, s.cutX, s.cutZ, reach, arc, crop)), s.cutX, s.cutZ);
 }
 
 export function stepSheath(sim, input, dt, geo) {

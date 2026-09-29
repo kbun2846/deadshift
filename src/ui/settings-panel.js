@@ -38,19 +38,12 @@ export function installSettingsPanel(settings, hooks) {
   byId('fps-limit').style.setProperty('--fill', sliderFraction(settled) * 100 + '%');
   settings.controlHints = byId('control-hints').checked;
   settings.aimAssist = byId('aim-assist').checked;
-  settings.fullscreen = byId('fullscreen-play').checked;
-  settings.keyLock = byId('key-lock').checked;
-  // PC: Fullscreen or Windowed. The shortcut lock needs full screen.
-  settings.screen = byId('screen-mode').value === 'windowed' ? 'windowed' : 'fullscreen';
-  byId('key-lock').disabled = settings.screen === 'windowed';
-  byId('screen-note').textContent = settings.screen === 'windowed'
-   ? 'The game stays in the browser window. Browser shortcuts such as Ctrl + W still work, so the game asks before it closes.'
-   : 'The game fills the screen. Hold Esc (or press it, in browsers that cannot hold keys) to leave full screen; the next game goes back in.';
+  // (Full screen is the V key now, v0.999a: no setting.)
   settings.vibration = byId('vibration').checked;
   settings.mobileOpacity = Number(byId('mobile-opacity').value);
   document.body.style.setProperty('--mobile-opacity', settings.mobileOpacity);
   byId('weapon').classList.toggle('hide-control-hints', !settings.controlHints);
-  hooks.setQuality(settings.quality); hooks.setMotion(settings.motion); hooks.setFps(settings.fps); hooks.setScreen?.(settings.screen, settings.keyLock);
+  hooks.setQuality(settings.quality); hooks.setMotion(settings.motion); hooks.setFps(settings.fps);
   byId('graphics-description').textContent = (settings.qualityAuto ? `Auto: ${GRAPHICS[settings.quality].label} for this device. ` : '') + GRAPHICS[settings.quality].description;
   byId('graphics-warning').classList.toggle('hidden', settings.qualityAuto || !isDemanding(settings.quality));
   save(settings);
@@ -66,16 +59,13 @@ export function installSettingsPanel(settings, hooks) {
  byId('graphics-preset').value = settings.qualityAuto ? 'auto' : settings.quality; byId('fps-limit').value = String(fpsToSlider(settings.fps));
  byId('control-hints').checked = settings.controlHints;
  byId('aim-assist').checked = settings.aimAssist;
- byId('fullscreen-play').checked = settings.fullscreen;
- byId('key-lock').checked = settings.keyLock;
- byId('screen-mode').value = settings.screen;
  // Fullscreen or Windowed is for PC players: hidden on a phone or tablet
  // (they have Settings > Mobile > FULL SCREEN WHILE PLAYING).
  const touchOnly = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
  for (const el of document.querySelectorAll('#settings-panel .pc-only')) el.hidden = touchOnly;
  byId('vibration').checked = settings.vibration;
  byId('mobile-opacity').value = String(settings.mobileOpacity);
- for (const id of ['graphics-preset', 'fps-limit', 'control-hints', 'mobile-opacity', 'aim-assist', 'fullscreen-play', 'key-lock', 'screen-mode', 'vibration']) byId(id).addEventListener('change', applySettings);
+ for (const id of ['graphics-preset', 'fps-limit', 'control-hints', 'mobile-opacity', 'aim-assist', 'vibration']) byId(id).addEventListener('change', applySettings);
  // The slider needs to read live while dragged, not only on release.
  byId('fps-limit').addEventListener('input', applySettings);
  for (const channel of VOLUME_CHANNELS) {

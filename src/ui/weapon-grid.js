@@ -64,10 +64,20 @@ export function syncPicker(picker) {
  if (thumb.dataset.for !== on.dataset.choice) { thumb.dataset.for = on.dataset.choice; thumb.innerHTML = on.querySelector('.weapon-tile-picture')?.innerHTML || ''; thumb.classList.toggle('picker-thumb-random', on.classList.contains('weapon-tile-random')); }
  picker.querySelector('.picker-name').textContent = name;
 }
+const OPEN = new Set();
 export function wirePicker(picker) {
  const toggle = picker.querySelector('.picker-toggle'), panel = picker.querySelector('.picker-panel');
- const open = on => { panel.hidden = !on; toggle.setAttribute('aria-expanded', String(on)); picker.classList.toggle('open', on); if (on) panel.querySelector('.weapon-tile[aria-pressed="true"]')?.scrollIntoView?.({ block: 'nearest' }); };
+ const open = on => {
+  panel.hidden = !on; toggle.setAttribute('aria-expanded', String(on)); picker.classList.toggle('open', on);
+  if (on) { for (const other of OPEN) if (other !== close) other(); OPEN.add(close); panel.querySelector('.weapon-tile[aria-pressed="true"]')?.scrollIntoView?.({ block: 'nearest' }); }
+  else OPEN.delete(close);
+ };
+ const close = () => open(false);
  toggle.onclick = () => open(panel.hidden);
+ // (The panel floats over the page, v0.999a: a tap or click outside it, or
+ // Escape, closes it; opening one closes any other.)
+ picker.ownerDocument?.addEventListener?.('pointerdown', e => { if (!panel.hidden && !picker.contains(e.target)) close(); }, true);
+ picker.addEventListener?.('keydown', e => { if (e.key === 'Escape' && !panel.hidden) { e.stopPropagation(); e.preventDefault(); close(); toggle.focus(); } });
  panel.addEventListener('click', e => { if (e.target.closest('.weapon-tile:not(:disabled)')) setTimeout(() => { open(false); toggle.focus(); }); });
  watchWeaponGrid(panel.querySelector('.weapon-grid-frame'));
  syncPicker(picker);

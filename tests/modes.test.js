@@ -9,6 +9,7 @@ import { HostSession } from '../src/net/host-session.js';
 import { ClientSession } from '../src/net/client-session.js';
 import { MODES, TEAMS } from '../src/config/match.js';
 import { isRobotSlot } from '../src/bots/robot-model.js';
+import { ROUND_BREAK } from '../src/net/arena.js';
 
 const map = maps.deadwater, createSim = m => new Simulation(m);
 const seeded = seed => { let s = seed; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; };
@@ -120,10 +121,10 @@ test('results name the winning side', () => {
  const r = room({ settings: { killLimit: 10 } });
  assert.ok(r.host.startRound('2v2'));
  const arena = r.host.arena, red = [...arena.seats.values()].find(s => s.team === 'red');
- red.stats.kills = 10; arena.teamKills.set('red', 10);
+ red.stats.kills = 10; arena.teamKills.set('red', 10); arena.points.set('red', 10);
  arena.endTick();
  assert.equal(arena.phase, 'results');
- assert.equal(arena.results.winner.team, 'red');
+ assert.equal(arena.results.winner.team, 'red'); assert.equal(arena.results.winner.points, 10);
  assert.match(arena.results.winner.name, /AMBER/);
 });
 
@@ -208,4 +209,58 @@ test('unticking ROBOTS in the lobby takes the added robots out', () => {
  assert.ok(r.host.setSetting('robots', 'off'));
  assert.equal(r.host.robotSeats().length, 0);
  assert.equal(r.host.lobby().settings.robots, 'off');
+});
+
+// v0.999a (owner): every mode but FFA is played by elimination: nobody comes
+// back on their own; the side left standing takes the point and everyone
+// comes back together at full health.
+test('elimination (2v2): the side left standing takes the point, then everyone comes back at full health', () => {
+ const r = room({ settings: { robots: 'off' } });
+ r.host.addRobot(); r.host.addRobot(); r.host.addRobot();
+ assert.ok(r.host.startRound('2v2'));
+ r.host.choose('rifle'); for (let i = 0; i < 4; i++) r.tick();
+ const arena = r.host.arena, seats = [...arena.seats.values()], me = r.host.hostSeat;
+ assert.ok(seats.every(s => s.present && !s.dead), 'everyone in');
+ const foes = seats.filter(s => s.team !== me.team);
+ foes[0].sim.player.hp = 0; arena.died(foes[0], me);
+ for (let i = 0; i < 900; i++) arena.endTick();
+ assert.ok(foes[0].dead, 'the first to fall stays down (no respawn wait)');
+ assert.equal(arena.roundBreak, 0); assert.equal(arena.points.size, 0); assert.equal(arena.matchState().round, 1);
+ foes[1].sim.player.hp = 0; arena.died(foes[1], me);
+ arena.endTick();
+ assert.equal(arena.points.get(me.team), 1); assert.ok(arena.roundBreak > 0);
+ assert.equal(arena.matchState().sides[0].id, me.team); assert.equal(arena.matchState().roundWinner, me.team);
+ me.sim.player.hp = 10;
+ const lives = seats.map(s => s.life);
+ for (let i = 0; i < Math.ceil(ROUND_BREAK * 60) + 2; i++) arena.endTick();
+ assert.ok(seats.every((s, i) => s.present && !s.dead && s.life === lives[i] + 1), 'everyone back, survivors too');
+ assert.ok(seats.every(s => s.sim.player.hp === s.sim.player.maxHp), 'at full health');
+ assert.equal(arena.roundBreak, 0);
+ assert.equal(arena.matchState().round, 2, 'the next round');
+});
+
+test('elimination (1v1): whoever falls, the other takes the point and both come back', () => {
+ const r = room({ settings: { robots: 'off' } });
+ r.host.addRobot();
+ assert.ok(r.host.startRound('1v1'));
+ r.host.choose('rifle'); for (let i = 0; i < 4; i++) r.tick();
+ const arena = r.host.arena, me = r.host.hostSeat, bot = [...arena.seats.values()].find(s => s !== me);
+ me.sim.player.hp = 0; arena.died(me, bot);
+ arena.endTick();
+ assert.equal(arena.points.get(bot.id), 1);
+ for (let i = 0; i < Math.ceil(ROUND_BREAK * 60) + 2; i++) arena.endTick();
+ assert.ok(me.present && !me.dead && bot.present && !bot.dead);
+ assert.equal(arena.matchState().sides.find(s => s.id === bot.id).points, 1);
+});
+
+test('FFA keeps its own respawns', () => {
+ const r = room({ settings: { robots: 'off', respawn: 8 } });
+ r.host.addRobot(); r.host.addRobot();
+ assert.ok(r.host.startRound('ffa'));
+ r.host.choose('rifle'); for (let i = 0; i < 4; i++) r.tick();
+ const arena = r.host.arena, me = r.host.hostSeat, bot = [...arena.seats.values()].find(s => s !== me);
+ bot.sim.player.hp = 0; arena.died(bot, me);
+ assert.equal(bot.respawnIn, 8); assert.equal(arena.matchState().elimination, undefined);
+ for (let i = 0; i < 8 * 60 + 90; i++) arena.endTick();
+ assert.ok(bot.present && !bot.dead, 'back after the wait');
 });

@@ -2,7 +2,7 @@ import { ICHOR as I, TERRAIN } from '../config/gameplay.js';
 import {endIchorGuard} from './ichor-deflect.js';
 import { targetRadius } from '../target-radius.js';
 import { ichorCutForce,ichorCutArc,ichorSpin,ichorCoverMeets,ichorSweepMeets } from './ichor-cut.js';
-import { cutCrop } from '../crops.js';
+import { cutCrops } from '../crops.js';
 export { I as ICHOR };
 // Varied, authored sequences: diagonal cuts, reverse sweeps and whole-body spins.
 export const ICHOR_NORMAL=[0,7,1,8,3,2,9,4,1,0,8,5];
@@ -42,7 +42,7 @@ function contact(sim,geo){const s=sim.ichor,p=sim.player,spin=ichorSpin(s.varian
  for(const prop of props){const f=force(prop);sim.hitProp(prop,{damage,damageType:'ichorSlash',x:prop.x,z:prop.z,vx:f.x,vz:f.z});}sim.volleyKills.delete(s.volley);
  // The field's stalks fall to the blade (owner, v0.990a): every standing
  // tile the sweep reaches, from the ground (not from under a deck).
- if(sim.crops?.length&&!p.below)for(const crop of sim.crops)if(crop.state==='standing'&&Math.abs(sim.ground.heightAt(crop.x,crop.z)-sim.standY())<1.2&&ichorSweepMeets(p.x,p.z,s.cutX,s.cutZ,reach,spin?Math.PI*2:arc,crop))cutCrop(sim,crop,s.cutX,s.cutZ);
+ if(sim.crops?.length&&!p.below){const sweep=spin?Math.PI*2:arc;cutCrops(sim,{kind:'arc',x:p.x,z:p.z,cx:s.cutX,cz:s.cutZ,reach,arc:sweep},sim.crops.filter(crop=>crop.state!=='gone'&&Math.abs(sim.ground.heightAt(crop.x,crop.z)-sim.standY())<1.2&&ichorSweepMeets(p.x,p.z,s.cutX,s.cutZ,reach,sweep,crop)),s.cutX,s.cutZ);}
 }
 export function stepIchor(sim,input,dt,geo){if(sim.predictOnly)return;const s=sim.ichor,p=sim.player;
  for(const t of sim.ichorTrails)t.life-=dt;sim.ichorTrails=sim.ichorTrails.filter(t=>t.life>0);
@@ -85,7 +85,7 @@ export function stepIchor(sim,input,dt,geo){if(sim.predictOnly)return;const s=si
   {const wall=sim.shieldStop(w.x,w.z,ex,ez);if(wall!==null&&wall<at){at=wall;blocker=null;sim.events.push({type:'hexBlock',x:w.x+w.dx*length*wall,z:w.z+w.dz*length*wall,wall:true});}} // (v0.990a: a hex's wall stops the wave)
   for(const t of sim.targets){if(t.hp<=0||t.friendly||w.hit.includes(t.id)||Math.abs(sim.standY(t)+.72-w.y)>1.3)continue;const k=geo.segmentCircle(w.x,w.z,ex,ez,t.x,t.z,r+targetRadius(t));if(k!==null&&k<=at&&!sim.colliders.some(c=>{if(c.playerOnly)return false;const k=geo.segmentBox(w.x,w.z,t.x,t.z,c);return k!==null&&ichorCoverMeets(sim,c,w.x+(t.x-w.x)*k,w.z+(t.z-w.z)*k,w.y);})){w.hit.push(t.id);hit(sim,t,w.damage,w.dx,w.dz,'ichorWave',w.power,w.volley);}}
   // (The blood wave mows a path through a field as it goes.)
-  if(sim.crops?.length&&!w.below)for(const crop of sim.crops)if(crop.state==='standing'&&geo.segmentBox(w.x,w.z,w.x+w.dx*length*at,w.z+w.dz*length*at,crop,r*.5)!==null)cutCrop(sim,crop,w.dx,w.dz);
+  if(sim.crops?.length&&!w.below){const bx=w.x+w.dx*length*at,bz=w.z+w.dz*length*at;cutCrops(sim,{kind:'line',ax:w.x,az:w.z,bx,bz,r:r*.5},sim.crops.filter(crop=>crop.state!=='gone'&&geo.segmentBox(w.x,w.z,bx,bz,crop,r*.5)!==null),w.dx,w.dz);}
   if(blocker?.propId){const prop=sim.props.find(p=>p.id===blocker.propId);if(prop)sim.hitProp(prop,{damage:w.damage,damageType:'ichorWave',x:w.x+w.dx*length*at,z:w.z+w.dz*length*at,vx:w.dx,vz:w.dz});}
   w.x+=w.dx*length*at;w.z+=w.dz*length*at;w.travel+=length*at;
   if(w.travel-(w.trailAt||0)>=.55){w.trailAt=w.travel;sim.ichorTrails.push({x:w.x,z:w.z,y:sim.standY(w),r:.65,life:I.trailLife});if(sim.ichorTrails.length>I.trailCap)sim.ichorTrails.shift();}

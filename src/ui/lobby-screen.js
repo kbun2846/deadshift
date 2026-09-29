@@ -13,20 +13,19 @@ import { pingText, swatch } from './multiplayer-hud.js';
 import { emptySlotRows } from './robot-options.js';
 import { pickerHTML, mapGridHTML, wirePicker, weaponGridHTML, weaponFromChoice } from './weapon-grid.js';
 import { WEAPONS } from '../items.js';
-import { SKILL_LEVELS } from '../bots/robot-profile.js';
+import { MENU_SKILLS } from '../bots/robot-profile.js';
 
 // TUNE on a robot's row (host, owner v138): its weapon (or random), skill,
 // aim and temper, applied at once; APPLY TO ALL gives every robot (and the
 // ones added after, + ROBOT and fill) the same.
 export const TUNE_ROWS = Object.freeze([
- { key: 'skill', label: 'skill', choices: SKILL_LEVELS.map(id => [id, id]) },
- { key: 'aim', label: 'aim', choices: [['sloppier', 'sloppier'], ['even', 'as its skill'], ['sharper', 'sharper']] },
- { key: 'temper', label: 'temper', choices: [['calm', 'calm'], ['shifting', 'shifting'], ['aggressive', 'aggressive']] },
+ // (v0.999a, owner: as SOLO, just a difficulty of three; aim and temper stay at their defaults.)
+ { key: 'skill', label: 'difficulty', choices: MENU_SKILLS.map(id => [id, id]) },
 ]);
 const weaponValue = id => (id ? String(WEAPONS.findIndex(w => w.id === id) + 1) : '0');
 function tunePanelHTML(p) {
  const setup = p.setup || {};
- const rows = TUNE_ROWS.map(r => `<div class="round-setting lobby-tune-row" data-tune="${r.key}"><span class="round-setting-label">${r.label}</span><div class="round-choices" role="group" aria-label="${r.label}">${r.choices.map(([v, t]) => `<button type="button" class="plain-text" data-choice="${v}" aria-pressed="${setup[r.key] === v}">${t}</button>`).join('')}</div></div>`).join('');
+ const rows = TUNE_ROWS.map(r => `<div class="round-setting lobby-tune-row" data-tune="${r.key}"><span class="round-setting-label">${r.label}</span><div class="round-choices" role="group" aria-label="${r.label}">${r.choices.map(([v, t]) => `<button type="button" class="choice-button" data-choice="${v}" aria-pressed="${setup[r.key] === v}">${t}</button>`).join('')}</div></div>`).join('');
  return `<li class="lobby-tune-panel" data-for="${esc(p.id)}"><div class="round-setting lobby-tune-row" data-tune="weapon"><span class="round-setting-label">weapon</span>${pickerHTML('robot weapon', weaponGridHTML({ label: 'robot weapon', pressed: weaponValue(setup.weapon) }))}</div>${rows}<div class="lobby-tune-foot"><button type="button" class="secondary plain-text lobby-tune-all" title="Give every robot these settings">APPLY TO ALL</button><button type="button" class="secondary plain-text lobby-tune-done">DONE</button></div></li>`;
 }
 
@@ -51,7 +50,7 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
     <div class="lobby-columns">
       <div class="lobby-column"><div class="lobby-heading">players <span class="lobby-count"></span></div><ul class="lobby-players"></ul></div>
       <div class="lobby-column">
-        <div class="lobby-heading">mode</div><div class="lobby-modes" role="group" aria-label="Mode">${MODES.map(m => `<button type="button" class="plain-text" data-mode="${m.id}" aria-pressed="false"${m.ready ? '' : ' data-later="1"'}>${m.name}</button>`).join('')}</div><p class="lobby-mode-note"></p>
+        <div class="lobby-heading">mode</div><div class="lobby-modes" role="group" aria-label="Mode">${MODES.map(m => `<button type="button" class="choice-button" data-mode="${m.id}" aria-pressed="false"${m.ready ? '' : ' data-later="1"'}>${m.name}</button>`).join('')}</div><p class="lobby-mode-note"></p>
         <div class="lobby-sides" hidden><div class="lobby-heading">your side</div><div class="lobby-side-choices" role="group" aria-label="Your side"></div></div>
         <div class="lobby-heading">map</div><div class="lobby-maps">${pickerHTML('map', mapGridHTML({ label: 'map', maps, pressed: maps[0]?.id }))}</div>
         <div class="lobby-heading lobby-settings-heading">settings</div><div class="lobby-settings"></div>

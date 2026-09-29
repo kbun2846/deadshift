@@ -25,13 +25,16 @@ export function createDeathScreen(parent,{restart,menu,respawn,changeWeapon,lobb
  let mode='practice';
  const api={root,
   get open(){return !root.classList.contains('hidden');},
-  show(next='practice'){
-   mode=next;root.dataset.mode=mode;
-   for(const button of root.querySelectorAll('[data-modes]'))button.hidden=!button.dataset.modes.split(' ').includes(mode);
+  // `elimination` (v0.999a: SOLO 1V1/2V2/3V3, multiplayer but FFA): nobody
+  // respawns alone, so no countdown and no RESPAWN; everyone comes back when
+  // a side is out (the screen turns into spectating meanwhile: spectate.js).
+  show(next='practice',{elimination=false}={}){
+   mode=next;root.dataset.mode=mode;root.classList.toggle('elimination',elimination);
+   for(const button of root.querySelectorAll('[data-modes]'))button.hidden=!button.dataset.modes.split(' ').includes(mode)||(elimination&&button.id==='death-respawn-now');
    $('#death-respawn-now').textContent=mode==='practice'?'RESPAWN NOW':'RESPAWN';
    $('#death-menu').textContent=mode==='practice'?'MAIN MENU':'LEAVE MULTIPLAYER';
    // Online practice has no wait: no countdown.
-   $('.death-respawn').hidden=mode==='online-practice';
+   $('.death-respawn').hidden=mode==='online-practice'||elimination;
    root.classList.remove('hidden');root.querySelector('.death-actions button:not([hidden])')?.focus();
   },
   hide(){root.classList.add('hidden');api.setKiller(undefined);},

@@ -209,7 +209,10 @@ export const hollowWick = {
    { id: 'lip-ramp', points: [[-.5, 6.2, 3.0], [.4, 10.3, 2.0], [-.3, 14.6, .85]], width: 3, shoulder: 2.5, colourMix: 0 },
    { id: 'bridge-south', points: [[-14, 26.2, 1.25], [-14, 28.4, 1.35], [-8.8, 30.5, 1.55], [-8.5, 34, 1.6]], width: 3, shoulder: 1.5 },
    { id: 'terrace-ramp', points: [[-14, 28.2, 1.35], [-18, 29.6, 2.0], [-23, 31.4, 3.0], [-26.5, 32.4, 3.5]], width: 3, shoulder: 1.5, colourMix: 0 },
-   { id: 'nw-branch', points: [[-10, -2, 3.0], [-15, -6, 3.4], [...at(26.5, -24), 4.15], [...at(8.5, -24), 7.0]], width: 2.4, shoulder: .8 },
+   { id: 'nw-branch', points: [[-10, -2, 3.0], [-15, -6, 3.4], [...at(26.5, -24), 4.15],
+    // (v0.999a, owner: "the path doesn't meet the doorway": it ran into the
+    // south-east corner; it now bends north along the east wall into the east door.)
+    [-34.6, -18.6, 6.8], [-35.5, -21.2, 7.0], [-37.3, -22.5, 7.0]], width: 2.4, shoulder: .8 },
    { id: 'aisle-40', points: [[...at(26.5, 40), 4.15], [...at(8.5, 40), 7.0]], width: 2, shoulder: .6, colourMix: 0 },
    { id: 'aisle-22', points: [[...at(26.5, 22), 4.15], [...at(8.5, 22), 7.0]], width: 2, shoulder: .6, colourMix: 0 },
    { id: 'aisle-2', points: [[...at(26.5, -2), 4.15], [...at(8.5, -2), 7.0]], width: 2, shoulder: .6, colourMix: 0 },

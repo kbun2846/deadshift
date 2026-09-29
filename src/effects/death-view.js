@@ -72,7 +72,9 @@ export class DeathView{
     angle:Math.random()*Math.PI*2,spin:(Math.random()-.5)*14,floor:(organ?(i===8?.1:.055):kind===5?.13:.055)*scale,flatAngle:organ?0:-Math.PI/2});
   }
   // Severed limbs, a piece of the torso and flesh, thrown with the bones.
-  this.gore=new GoreBurst(view,event,{coat:'#496e6b',arm:'#49716b',legs:'#394a44'},GORE_DETAIL[view.qualityName]??2);
+  // (The rigged figure's skin, player-skin.js: its own colour; else the cowboy's.)
+  const skin=view.player.userData.rig?'#'+view.figureMaterial.color.getHexString():null;
+  this.gore=new GoreBurst(view,event,skin?{coat:skin,arm:skin,legs:skin,skin}:{coat:'#496e6b',arm:'#49716b',legs:'#394a44'},GORE_DETAIL[view.qualityName]??2);
   this.update(0);
  }
  // Zooms onto the body over DEATH_ZOOM seconds and then holds still. As the

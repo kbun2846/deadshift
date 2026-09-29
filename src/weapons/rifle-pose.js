@@ -6,7 +6,7 @@ const UP=new THREE.Vector3(0,1,0);
 const ease=t=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
 export class RiflePose{
  constructor(player,{sleeveColor='#49716b',skinColor='#d6b58a'}={}){
-  this.body=player.userData.body;this.gun=player.userData.gun;this.staticArm=player.userData.staticArm;
+  this.player=player;this.body=player.userData.body;this.gun=player.userData.gun;
   this.root=new THREE.Group();this.body.add(this.root);
   const sleeve=new THREE.MeshLambertMaterial({color:sleeveColor}),skin=new THREE.MeshLambertMaterial({color:skinColor});
   const bone=new THREE.BoxGeometry(1,1,1),palm=new THREE.BoxGeometry(.115,.10,.14);
@@ -18,7 +18,7 @@ export class RiflePose{
    return {side,upper,lower,hand,shoulder:new THREE.Vector3(),elbow:new THREE.Vector3(),target:new THREE.Vector3()};
   });
   this.offHand=this.arms[1].hand;this.delta=new THREE.Vector3();this.grip=new THREE.Vector3();this.sidekickGrip=new THREE.Vector3();this.armAxis=new THREE.Vector3();this.armBend=new THREE.Vector3();
-  this.throwBack=new THREE.Vector3(-.37,1.02,.12);this.throwRelease=new THREE.Vector3(-.28,1.04,-.53);this.throwFollow=new THREE.Vector3(-.28,.60,-.62);
+  this.throwBack=new THREE.Vector3(-.37,1.02,.12);this.throwRelease=new THREE.Vector3(-.28,1.04,-.53);this.throwReleaseRig=new THREE.Vector3(-.22,.96,-.38);this.throwFollow=new THREE.Vector3(-.28,.60,-.62);
  }
  segment(mesh,a,b,width){
   this.delta.subVectors(b,a);mesh.position.copy(a).add(b).multiplyScalar(.5);
@@ -35,7 +35,11 @@ export class RiflePose{
  }
  update(sim,focus,settle,recoil){
   const sightline=sim.weapon==='sightline',sidekick=sim.weapon==='sidekick';
-  const active=sim.weapon==='sheath'||sim.weapon==='ichor'||sim.weapon==='rifle'||sim.weapon==='shotgun'||sightline||sidekick;this.root.visible=active;if(this.staticArm)this.staticArm.visible=!active;
+  // (v0.999a: the skin can change in play, player-skin.js, so its Static arm
+  // is looked up each time; a rigged figure, figure-rig.js, draws its own
+  // arms from the hand goals worked out here.)
+  const rig=this.player.userData.rig,staticArm=this.player.userData.staticArm;
+  const active=sim.weapon==='sheath'||sim.weapon==='ichor'||sim.weapon==='rifle'||sim.weapon==='shotgun'||sightline||sidekick;this.root.visible=active&&!rig;if(staticArm)staticArm.visible=!active;
   if(!active)return;
   // Plant the torso, dip the head toward the sights, and damp the running sway.
   this.body.position.y-=focus*.035+settle*.012;
@@ -94,19 +98,31 @@ export class RiflePose{
    if(off&&sim.weapon==='shotgun'&&sim.shotgun.reload>0){const phase=1-sim.shotgun.reload/SHOTGUN.reload;arm.target.set(-.1,.52+Math.sin(phase*Math.PI*4)*.07,-.10);}
    if(off&&sim.weapon==='rifle'&&age>=0&&age<.64){
     // Wind back, extend through release, follow through, then re-grip the fore-end.
-    const back=this.throwBack,release=this.throwRelease,follow=this.throwFollow;
+    const back=this.throwBack,release=rig?this.throwReleaseRig:this.throwRelease,follow=this.throwFollow;
     if(age<.10)arm.target.lerp(back,ease(age/.10));
     else if(age<GRENADE.windup)arm.target.copy(back).lerp(release,ease((age-.10)/(GRENADE.windup-.10)));
     else if(age<.34)arm.target.copy(release).lerp(follow,ease((age-GRENADE.windup)/(.34-GRENADE.windup)));
     else arm.target.copy(follow).lerp(this.grip,ease((age-.34)/.30));
     arm.elbow.set(-.43,.65+Math.max(0,arm.target.y-.65)*.65,arm.target.z*.35);
    }
+   if(rig)continue;
    this.segment(arm.upper,arm.shoulder,arm.elbow,.15);
    this.segment(arm.lower,arm.elbow,arm.target,.13);
    arm.hand.position.copy(arm.target);arm.hand.quaternion.copy(this.gun.quaternion);
    arm.hand.rotation.z=off?-.3-focus*.12:.12;
    if(sim.weapon==='sheath'){const pack=this.gun.getObjectByName('sheath-loadout'),hands=pack?.userData.sheathPose?.hands,blade=pack?.getObjectByName('sheath-blade');if(blade&&(off?hands?.leftGrip:hands?.rightGrip)){arm.hand.quaternion.copy(this.gun.quaternion).multiply(blade.quaternion);arm.hand.rotateZ(off?-.35:.35);}}
    if(sim.weapon==='ichor'){const blade=this.gun.getObjectByName('ichor-blade');if(blade){arm.hand.quaternion.copy(this.gun.quaternion).multiply(blade.quaternion);arm.hand.rotateZ(off?-.35:.35);}}
+  }
+  if(rig){
+   // (The sheathed Sheath's right hand only hangs: the figure swings it. The
+   // blades keep their elbow hints, which trace the swings.)
+   // A Sightline or Sidekick off hand resting (no draw, no pistol reload)
+   // holds nothing: free too. A throw turns the body into it.
+   const hands=sim.weapon==='sheath'?this.gun.getObjectByName('sheath-loadout')?.userData.sheathPose?.hands:null;
+   const sl=sightline?this.gun.getObjectByName('sightline-loadout')?.userData.sightlinePose:null,sk=sidekick?this.gun.getObjectByName('sidekick-loadout')?.userData.sidekickPose:null;
+   const offFree=sightline?!sim.sightline.pistolReload&&(sl?.drawBlend||0)<.8:sidekick?!sim.sidekick.reload&&(sk?.reach||0)<.05:false;
+   const blade=sim.weapon==='ichor'||sim.weapon==='sheath',age=sim.time-sim.grenadeThrowTime,throwing=sim.weapon==='rifle'&&age>=0&&age<.64?Math.sin(Math.PI*Math.min(1,age/.5)):0;
+   rig.setGoals(this.arms[0].target,this.arms[0].elbow,this.arms[1].target,this.arms[1].elbow,[!!hands&&!hands.rightGrip,offFree],[blade&&!(hands&&!hands.rightGrip),blade&&!(hands&&!hands.leftGrip)],throwing);
   }
  }
 }

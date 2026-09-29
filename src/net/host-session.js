@@ -34,6 +34,9 @@ const EVENT_KEEP = 180;
 // over that it is refused and lost). Events that do not fit wait for the
 // next snapshot.
 export const WIRE_BUDGET = 15000;
+// A joiner's drawn body on the host eases to where it is over this long (s),
+// and jumps straight there past this far (m): smoothed().
+const SMOOTH = .045, SMOOTH_SNAP = 2;
 // Events that come every tick while something keeps going (a Static
 // stream's damage, its arcs): one per snapshot is plenty, so repeats before
 // a snapshot goes out are folded into the waiting one. Before, a stream
@@ -221,7 +224,10 @@ export class HostSession {
    remote.previous = { ...remote.sim.player };
    // Normally one input per tick. A backlog (a burst after a network hiccup)
    // is worked off a few at a time rather than all at once.
-   const runs = remote.queue.length > 6 ? Math.min(this.config.maxCatchUp, remote.queue.length - 3) : 1;
+   // (v0.999a, hotspot: a clump of late inputs was run up to four a tick,
+   // their body darting across the host's screen and everyone else's. Now two
+   // a tick past a small backlog, four only when far behind.)
+   const runs = remote.queue.length > 12 ? Math.min(this.config.maxCatchUp, remote.queue.length - 6) : remote.queue.length > 4 ? 2 : 1;
    for (let i = 0; i < runs; i++) {
     const input = remote.queue.shift();
     if (input) { remote.last = input; remote.lastSeq = input.seq; }
@@ -291,8 +297,8 @@ export class HostSession {
  drainRemoteEvents() { return this.localEvents.splice(0); }
 
  sendSnapshots() {
-  const players = this.states(), proj = this.projectiles();
   const slow = this.tick % (this.config.snapshotEvery * 10) === 0;
+  const players = this.states(slow), proj = this.projectiles();
   const feed = this.arena.feed.slice(-8), board = slow ? this.scoreboard() : null, world = slow ? this.worldState() : undefined;
   const match = this.match(), lobby = slow ? this.lobby() : undefined;
   // Practice targets move and break: every snapshot, compact.
@@ -336,20 +342,33 @@ export class HostSession {
   return out;
  }
 
- seatState(seat, lastSeq = 0) {
-  return { ...playerState(seat.id, seat.sim.player, lastSeq), name: seat.name, slot: seat.slot, weapon: seat.weapon, present: seat.present, dead: seat.dead, life: seat.life, team: seat.team, robot: seat.robot ? 1 : 0 };
+ // (`named`: the name too. The welcome and every tenth snapshot carry it;
+ // a joiner keeps it, v0.999a.)
+ seatState(seat, lastSeq = 0, named = true) {
+  return { ...playerState(seat.id, seat.sim.player, lastSeq), ...(named ? { name: seat.name } : {}), slot: seat.slot, weapon: seat.weapon, present: seat.present, dead: seat.dead, life: seat.life, team: seat.team, robot: seat.robot ? 1 : 0 };
  }
 
- states() {
-  return [this.seatState(this.hostSeat), ...[...this.remotes.values()].map(r => this.seatState(r.seat, r.lastSeq)), ...this.robotSeats().map(s => this.seatState(s))];
+ states(named = true) {
+  return [this.seatState(this.hostSeat, 0, named), ...[...this.remotes.values()].map(r => this.seatState(r.seat, r.lastSeq, named)), ...this.robotSeats().map(s => this.seatState(s, 0, named))];
+ }
+
+ // A joiner as drawn on the host (v0.999a, hotspot): their inputs arrive in
+ // clumps on a poor link, so their body steps unevenly; drawn, it follows
+ // where it is over SMOOTH s instead of jumping with each step. A real
+ // teleport (a respawn, a Draw-cut: over SMOOTH_SNAP m) is taken at once.
+ smoothed(remote, b) {
+  const t = this.now(), shown = remote.shown, dt = shown ? Math.max(0, Math.min(.1, t - shown.t)) : 0;
+  if (!shown || Math.hypot(b.x - shown.x, b.z - shown.z) > SMOOTH_SNAP || shown.life !== remote.seat.life) remote.shown = { x: b.x, z: b.z, t, life: remote.seat.life };
+  else { const k = 1 - Math.exp(-dt / SMOOTH); shown.x += (b.x - shown.x) * k; shown.z += (b.z - shown.z) * k; shown.t = t; }
+  return { ...b, x: remote.shown.x, z: remote.shown.z };
  }
 
  // What the renderer draws for everyone but the host: the host steps these
  // sims on the same clock as its own, so they blend with the same alpha.
  others(alpha = 1) {
   const list = [...this.remotes.values()].filter(r => r.seat.present && !r.seat.dead)
-   .map(r => ({ ...blend(r.id, r.name, r.previous, r.sim.player, alpha), weapon: r.seat.weapon, ...(r.sim.player.ichor?{ichor:{...r.sim.player.ichor}}:{}),...(r.sim.player.sidekick?{sidekick:{...r.sim.player.sidekick}}:{}), ...(r.sim.player.sightline?{sightline:{...r.sim.player.sightline}}:{}), slot: r.slot, team: r.seat.team, hp: r.sim.player.hp, maxHp: r.sim.player.maxHp }));
-  for (const s of this.robotSeats()) if (s.present && !s.dead) list.push({ ...blend(s.id, s.name, s.previous || s.sim.player, s.sim.player, alpha), weapon: s.weapon, ...(s.sim.player.ichor?{ichor:{...s.sim.player.ichor}}:{}),...(s.sim.player.sidekick?{sidekick:{...s.sim.player.sidekick}}:{}), ...(s.sim.player.sightline?{sightline:{...s.sim.player.sightline}}:{}), slot: s.slot, team: s.team, robot: true, hp: s.sim.player.hp, maxHp: s.sim.player.maxHp });
+   .map(r => ({ ...this.smoothed(r, blend(r.id, r.name, r.previous, r.sim.player, alpha)), weapon: r.seat.weapon, ...(r.sim.player.ichor?{ichor:{...r.sim.player.ichor}}:{}),...(r.sim.player.sidekick?{sidekick:{...r.sim.player.sidekick}}:{}), ...(r.sim.player.sightline?{sightline:{...r.sim.player.sightline}}:{}),...(r.sim.player.sheath?{sheath:{...r.sim.player.sheath}}:{}), slot: r.slot, team: r.seat.team, hp: r.sim.player.hp, maxHp: r.sim.player.maxHp }));
+  for (const s of this.robotSeats()) if (s.present && !s.dead) list.push({ ...blend(s.id, s.name, s.previous || s.sim.player, s.sim.player, alpha), weapon: s.weapon, ...(s.sim.player.ichor?{ichor:{...s.sim.player.ichor}}:{}),...(s.sim.player.sidekick?{sidekick:{...s.sim.player.sidekick}}:{}), ...(s.sim.player.sightline?{sightline:{...s.sim.player.sightline}}:{}),...(s.sim.player.sheath?{sheath:{...s.sim.player.sheath}}:{}), slot: s.slot, team: s.team, robot: true, hp: s.sim.player.hp, maxHp: s.sim.player.maxHp });
   return list;
  }
 
@@ -376,8 +395,8 @@ export function blend(id, name, a, b, alpha) {
  return {
   id, name,
   x: a.x + (b.x - a.x) * alpha, z: a.z + (b.z - a.z) * alpha,
-  vx: b.vx, vz: b.vz, aimX: Math.cos(angle), aimZ: Math.sin(angle), dodgeRemaining: b.dodgeRemaining || 0,
-  ...(b.ichor?{ichor:{...b.ichor}}:{}),...(b.sidekick?{sidekick:{...b.sidekick}}:{}), ...(b.sightline?{sightline:{...b.sightline}}:{}),
+  vx: b.vx || 0, vz: b.vz || 0, aimX: Math.cos(angle), aimZ: Math.sin(angle), dodgeRemaining: b.dodgeRemaining || 0,
+  ...(b.ichor?{ichor:{...b.ichor}}:{}),...(b.sidekick?{sidekick:{...b.sidekick}}:{}), ...(b.sightline?{sightline:{...b.sightline}}:{}),...(b.sheath?{sheath:{...b.sheath}}:{}),
   // (Hills: wading under a deck.)
   ...(b.below ? { below: true } : {}),
  };

@@ -4,7 +4,7 @@ import { Simulation } from '../src/simulation.js';
 import { maps } from '../src/maps.js';
 import { BotMatch } from '../src/bots/bot-match.js';
 import { makeProfile, stepMood, applyMood, SKILLS, SKILL_LEVELS, TEMPERS, moodName } from '../src/bots/robot-profile.js';
-import { duelParam, readDuel, DuelScore, DUEL_DEFAULTS, createDuel, DUEL_ENEMY_RANGE } from '../src/duel.js';
+import { duelParam, readDuel, DuelScore, DUEL_DEFAULTS, createDuel, DUEL_ENEMY_RANGE, DUEL_ROUND_BREAK } from '../src/duel.js';
 import { readDuelChoices, DUEL_ROWS } from '../src/ui/duel-menu.js';
 
 const seeded = (seed = 7) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
@@ -69,10 +69,16 @@ test('a 1V1 has one robot as asked, no targets, and scores both ways', () => {
   assert.equal(bot.aim, .7); assert.deepEqual(bots.enemyRange, [...DUEL_ENEMY_RANGE]);
   assert.equal(sim.targets.length, 0); sim.reset(); assert.equal(sim.targets.length, 0, 'targets stay away on restart');
   const d = Math.hypot(bot.sim.player.x - sim.player.x, bot.sim.player.z - sim.player.z); assert.ok(d >= DUEL_ENEMY_RANGE[0] - 1, 'comes in away from you');
-  bot.alive = false; duel.frame(.016); assert.equal(duel.score.you, 1);
+  // (v0.999a) Elimination: whoever falls, the other takes the point, and
+  // after the break both come back together (hooks.newRound).
+  bot.alive = false; duel.frame(.016); assert.equal(duel.score.you, 1); assert.equal(duel.pointBreak.side, 'you');
+  assert.equal(bots.holdRespawns, true, 'the robot waits for the round');
+  duel.frame(.016); assert.equal(duel.score.you, 1, 'one point a round');
+  duel.frame(DUEL_ROUND_BREAK); assert.equal(duel.pointBreak, null);
   bot.alive = true; duel.frame(.016);
-  assert.equal(duel.playerDied(), false); assert.equal(duel.score.robot, 1);
-  bot.alive = false; duel.frame(.016); assert.equal(duel.over, true); assert.equal(duel.score.winner, 'you');
+  duel.frame(.016, false); assert.equal(duel.score.robot, 1, 'you down: their point');
+  duel.frame(DUEL_ROUND_BREAK); bot.alive = false; duel.frame(.016);
+  duel.frame(2); assert.equal(duel.over, true); assert.equal(duel.score.winner, 'you');
   duel.reset(); assert.equal(duel.score.you, 0); assert.equal(duel.over, false);
   duel.stop(); sim.reset(); assert.ok(sim.targets.length > 0, 'targets back after leaving'); assert.deepEqual(bots.enemyRange, [22, 60]);
  } finally { globalThis.document = previous; }
@@ -104,8 +110,11 @@ test('VS ROBOTS 2V2 / 3V3: your robots and theirs as asked, friendly fire at hal
    assert.ok(blue.every(b => b.sim.weapon === 'rifle' && b.profile.skill === 'rookie' && b.profile.temper === 'calm'));
    assert.ok(red.every(b => b.sim.weapon === 'shotgun' && b.profile.skill === 'hard'));
    assert.equal(bots.friendlyFire, .5);
-   blue[0].alive = false; duel.frame(.016); assert.equal(duel.score.robot, 1, 'your robot down: their point');
-   red[0].alive = false; duel.frame(.016); assert.equal(duel.score.you, 1, 'an enemy down: yours');
+   // (v0.999a) Elimination: a fall alone scores nothing; a side with nobody up does.
+   blue[0].alive = false; duel.frame(.016); assert.equal(duel.score.robot, 0, 'your robot down, you still up: nothing yet');
+   for (const b of red) b.alive = false; duel.frame(.016); assert.equal(duel.score.you, 1, 'their side out: your point');
+   duel.frame(DUEL_ROUND_BREAK); for (const b of bots.bots) b.alive = true; duel.frame(.016);
+   for (const b of blue) b.alive = false; duel.frame(.016, false); assert.equal(duel.score.robot, 1, 'your side out (you too): theirs');
    duel.stop(); assert.equal(bots.friendlyFire, 0);
   }
  } finally { globalThis.document = previous; }

@@ -36,7 +36,12 @@ import { weaponOrDefault } from '../items.js';
 // takes the room to another map; the welcome's `map` moves a joiner there).
 // 17: Sheath: its inputs (`sheathE` Gold Rush, `sheathX` Draw-cut, both
 // predicted by the joiner: they move the body), its player state and loadout.
-export const PROTOCOL_VERSION = 17;
+// 18 (v0.999a, hotspot lag): inputs packed as arrays (packInput), ten to a
+// message; snapshots and inputs on their own unreliable channel, dropped
+// rather than queued when the link backs up; the loadout only the weapon in
+// hand's blocks; names in player states only now and then.
+// 19 (v0.999a): a 'cropCut' is the blade's shape (crops.js); cut tiles stay.
+export const PROTOCOL_VERSION = 19;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);
@@ -63,6 +68,39 @@ export function playerInput(input = {}) {
  return clean;
 }
 
+// Inputs on the wire (v0.999a, owner: joiners on a phone hotspot lagged and
+// rubber-banded). An input was a JSON object of ~35 named fields, ~560 bytes
+// four to a message, 60 messages a second: ~65 KB/s up from every joiner,
+// enough to choke a hotspot's radio. Packed it is a short array:
+//   [seq, moveX, moveZ, aimX, aimZ, flags, aimPointX, aimPointZ,
+//    launchPointX, launchPointZ, autoRange]
+// moves to 1/1000, aims to 1/10000, points to centimetres, every yes/no one
+// bit of `flags` (INPUT_FLAGS order), autoRange 0 / 1 touch / 2 keyboard;
+// trailing empty entries dropped. About 30 bytes. playerInput cleans it on
+// the host as it cleaned the object.
+export const INPUT_FLAGS = Object.freeze(['smoothAim', 'dodge', 'aiming', ...PRESSES]);
+const q = (v, k) => Math.round((Number.isFinite(v) ? v : 0) * k) / k;
+export function packInput(input) {
+ let flags = 0;
+ for (let i = 0; i < INPUT_FLAGS.length; i++) if (input[INPUT_FLAGS[i]]) flags += 2 ** i;
+ const pt = v => (Number.isFinite(v) ? Math.round(v * 100) / 100 : null);
+ const out = [input.seq, q(input.moveX, 1000), q(input.moveZ, 1000), q(input.aimX, 10000), q(input.aimZ, 10000), flags,
+  pt(input.aimPointX), pt(input.aimPointZ), pt(input.launchPointX), pt(input.launchPointZ), input.autoRange === 'touch' ? 1 : input.autoRange === 'keyboard' ? 2 : 0];
+ while (out.length > 6 && (out[out.length - 1] === null || out[out.length - 1] === 0)) out.pop();
+ return out;
+}
+export function unpackInput(a) {
+ if (!Array.isArray(a)) return a;
+ const flags = Number.isFinite(a[5]) ? a[5] : 0, input = { seq: a[0], moveX: a[1], moveZ: a[2], aimX: a[3], aimZ: a[4] };
+ for (let i = 0; i < INPUT_FLAGS.length; i++) if (Math.floor(flags / 2 ** i) % 2) input[INPUT_FLAGS[i]] = true;
+ if (a[6] != null) input.aimPointX = a[6];
+ if (a[7] != null) input.aimPointZ = a[7];
+ if (a[8] != null) input.launchPointX = a[8];
+ if (a[9] != null) input.launchPointZ = a[9];
+ if (a[10] === 1) input.autoRange = 'touch'; else if (a[10] === 2) input.autoRange = 'keyboard';
+ return input;
+}
+
 // Usernames: short, printable, trimmed.
 export function cleanName(text) {
  const name = String(text ?? '').replace(/[^\p{L}\p{N} _.\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 16);
@@ -72,35 +110,45 @@ export function cleanName(text) {
 // Everything the others need to draw a player, and everything the owning
 // client needs to re-run its own prediction from the host's answer.
 const round = (v, places = 3) => Math.round(v * 10 ** places) / 10 ** places;
+// Motion fields left out of a player state while zero (most of the time:
+// standing, not dashing, not blown back), v0.999a.
+const ZERO_OMITTED = ['vx', 'vz', 'aimSpin', 'dodgeRemaining', 'dodgeX', 'dodgeZ', 'staminaWait', 'blastVX', 'blastVZ'];
+const nonZero = (key, v) => (v ? { [key]: v } : {});
+// A weapon's state for the wire: its numbers to 1/1000 (v0.999a: a swing
+// timer went as 0.06000000000000011).
+const rounded = o => { const out = {}; for (const k in o) { const v = o[k]; out[k] = typeof v === 'number' ? round(v) : v; } return out; };
 export function playerState(id, p, lastSeq = 0) {
  return {
   id, lastSeq,
-  ...(p.ichor?{ichor:{...p.ichor}}:{}),...(p.sidekick?{sidekick:{...p.sidekick}}:{}),
-  ...(p.sightline?{sightline:{...p.sightline}}:{}),...(p.sheath?{sheath:{...p.sheath}}:{}),
-  x: round(p.x), z: round(p.z), vx: round(p.vx), vz: round(p.vz),
-  aimX: round(p.aimX, 4), aimZ: round(p.aimZ, 4), aimSpin: round(p.aimSpin || 0, 4),
-  dodgeRemaining: round(p.dodgeRemaining, 4), dodgeX: round(p.dodgeX, 4), dodgeZ: round(p.dodgeZ, 4),
-  stamina: round(p.stamina, 4), staminaWait: round(p.staminaWait, 4),
-  blastVX: round(p.blastVX), blastVZ: round(p.blastVZ),
+  ...(p.ichor?{ichor:rounded(p.ichor)}:{}),...(p.sidekick?{sidekick:rounded(p.sidekick)}:{}),
+  ...(p.sightline?{sightline:rounded(p.sightline)}:{}),...(p.sheath?{sheath:rounded(p.sheath)}:{}),
+  x: round(p.x), z: round(p.z), ...nonZero('vx', round(p.vx)), ...nonZero('vz', round(p.vz)),
+  aimX: round(p.aimX, 4), aimZ: round(p.aimZ, 4), ...nonZero('aimSpin', round(p.aimSpin || 0, 4)),
+  ...nonZero('dodgeRemaining', round(p.dodgeRemaining, 4)), ...nonZero('dodgeX', round(p.dodgeX, 4)), ...nonZero('dodgeZ', round(p.dodgeZ, 4)),
+  stamina: round(p.stamina, 4), ...nonZero('staminaWait', round(p.staminaWait, 4)),
+  ...nonZero('blastVX', round(p.blastVX)), ...nonZero('blastVZ', round(p.blastVZ)),
   hp: round(p.hp, 1), maxHp: p.maxHp,
   // (Hills: wading under a deck. Only sent when so.)
   ...(p.below ? { below: 1 } : {}),
  };
 }
 
-// Copies a snapshot entry back onto a simulation's player.
+// Copies a snapshot entry back onto a simulation's player. (The fields
+// playerState leaves out at zero read as zero.)
 export function applyPlayerState(p, s) {
- for (const key of ['x', 'z', 'vx', 'vz', 'aimX', 'aimZ', 'aimSpin', 'dodgeRemaining', 'dodgeX', 'dodgeZ', 'stamina', 'staminaWait', 'blastVX', 'blastVZ'])
-  if (Number.isFinite(s[key])) p[key] = s[key];
+ for (const key of ['x', 'z', 'aimX', 'aimZ', 'stamina']) if (Number.isFinite(s[key])) p[key] = s[key];
+ for (const key of ZERO_OMITTED) p[key] = Number.isFinite(s[key]) ? s[key] : 0;
  if (s.below) p.below = true; else if (p.below) p.below = false;
 }
 
 // Your own weapon state, from the host: what the HUD shows (ammo, reloads,
 // charges, cooldowns). A joiner's sim never fires, so it learns these here.
+// (v0.999a: only the weapon in hand's blocks; the others were ~500 bytes of
+// every snapshot.)
 export function loadout(sim) {
  const flat = o => Object.fromEntries(Object.entries(o).filter(([, v]) => typeof v !== 'object'));
- return { ...(sim.weapon==='sheath'&&sim.sheath?{sheath:flat(sim.sheath)}:{}),...(sim.weapon==='ichor'?{ichor:flat(sim.ichor),ichorTrails:sim.ichorTrails.map(t=>({...t}))}:{}),...(sim.weapon==='sidekick'?{sidekick:{...flat(sim.sidekick)}}:{}), ...(sim.weapon==='sightline'?{sightline:{...flat(sim.sightline)}}:{}), omen:sim.omen?{...flat(sim.omen),marks:sim.omen.marks.map(m=>({...m}))}:undefined, ammo: sim.ammo, rechargeProgress: round(sim.rechargeProgress, 3), rechargeWait: round(sim.rechargeWait, 3), hexCooldown: round(sim.hexCooldown, 2),
-  grenadeCooldown: round(sim.grenadeCooldown, 2), rifle: flat(sim.rifle), shotgun: flat(sim.shotgun), spraying: !!sim.spray.active,
+ return { ...(sim.weapon==='sheath'&&sim.sheath?{sheath:flat(sim.sheath)}:{}),...(sim.weapon==='ichor'?{ichor:flat(sim.ichor),ichorTrails:sim.ichorTrails.map(t=>({...t}))}:{}),...(sim.weapon==='sidekick'?{sidekick:{...flat(sim.sidekick)}}:{}), ...(sim.weapon==='sightline'?{sightline:{...flat(sim.sightline)}}:{}), omen:sim.omen&&sim.weapon==='omen'?{...flat(sim.omen),marks:sim.omen.marks.map(m=>({...m}))}:undefined, ammo: sim.ammo, rechargeProgress: round(sim.rechargeProgress, 3), rechargeWait: round(sim.rechargeWait, 3), hexCooldown: round(sim.hexCooldown, 2),
+  grenadeCooldown: round(sim.grenadeCooldown, 2), rifle: sim.weapon==='rifle'?flat(sim.rifle):undefined, shotgun: sim.weapon==='shotgun'?flat(sim.shotgun):undefined, spraying: !!sim.spray.active,
   surge: sim.surge ? { phase: sim.surge.phase, t: round(sim.surge.t, 3), cooldown: round(sim.surge.cooldown, 2), active: !!sim.surge.active } : undefined,
   scatter: sim.scatter ? { armed: !!sim.scatter.armed, armedFor: round(sim.scatter.armedFor || 0, 2), cooldown: round(sim.scatter.cooldown, 2) } : undefined };
 }
@@ -124,7 +172,7 @@ export function readMessage(data) {
  if (!data || typeof data !== 'object' || typeof data.t !== 'string') return null;
  if (data.t === 'input') {
   if (!Array.isArray(data.inputs)) return null;
-  const inputs = data.inputs.slice(0, 16).filter(i => i && Number.isInteger(i.seq) && i.seq > 0)
+  const inputs = data.inputs.slice(0, 16).map(unpackInput).filter(i => i && Number.isInteger(i.seq) && i.seq > 0)
    .map(i => ({ seq: i.seq, ...playerInput(i) }));
   // (Real screens only, 9:21 upright to 32:9: a claimed shape cannot push the robots' fire in closer than that.)
   const aspect = Number.isFinite(data.aspect) && data.aspect > 0 ? Math.min(3.6, Math.max(.42, data.aspect)) : 0;

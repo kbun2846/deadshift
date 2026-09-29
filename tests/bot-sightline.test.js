@@ -42,7 +42,8 @@ test('a lost sniper target triggers only a remembered lane scan, and close press
 
 test('snipers use passable low and breakable cover correctly but never shoot through a solid wall',()=>{
  const {sim,brain}=make();sim.colliders=[{x:6,z:0,w:1,d:2,height:.8},{x:9,z:0,w:1,d:2,height:2,destructible:true}];assert.equal(sniperClear(brain,15,0),true);
- sim.colliders=[...sim.colliders,{x:11,z:0,w:1,d:2,height:3}];assert.equal(sniperClear(brain,15,0),false);
+ sim.colliders=[...sim.colliders,{x:11,z:0,w:1,d:2,height:3}];assert.equal(sniperClear(brain,15,0),true,'a tall wall outside a building is passed');
+ sim.colliders=[...sim.colliders,{x:12,z:0,w:1,d:2,height:3,wall:true}];assert.equal(sniperClear(brain,15,0),false);
 });
 
 test('interiors and crops prevent sniper scans, and an empty rifle is reloaded using normal stance inputs',()=>{

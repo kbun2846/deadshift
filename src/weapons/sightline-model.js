@@ -91,7 +91,7 @@ const ease=t=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
 const move=(a,b,step)=>a+Math.max(-step,Math.min(step,b-a));
 export function poseSightline(pack,s,time,dt=Infinity){
  const rifle=pack.getObjectByName('sightline-rifle'),pistol=pack.getObjectByName('sightline-pistol');if(!rifle||!pistol)return;
- const held=!!s.crouched||!!s.xLoading,loading=s.rifleReload>0&&held,progress=loading?1-s.rifleReload/SIGHTLINE.reload:0;
+ const held=!!s.crouched||s.rifleReload>0,loading=s.rifleReload>0&&held,progress=loading?1-s.rifleReload/SIGHTLINE.reload:0;
  let pose=pack.userData.sightlinePose;if(!pose?.slung?.isQuaternion)pose=pack.userData.sightlinePose={held:0,crouch:0,slung:new THREE.Quaternion(),ready:new THREE.Quaternion(),euler:new THREE.Euler(),spark:new THREE.Object3D()};
  pose.held=move(pose.held,Number(held),dt/(held?SIGHTLINE.drawDuration:SIGHTLINE.standDuration));
  pose.crouch=move(pose.crouch,Number(!!s.crouched),dt/(s.crouched?SIGHTLINE.setupDuration:SIGHTLINE.standDuration));

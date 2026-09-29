@@ -23,8 +23,14 @@ export function sightlineAimPlane(sim,p,sniper){
  return {x,z,forward,angle:Math.atan2(p.aimZ,p.aimX),height:(px,pz)=>baseY+(sniper?S.roundHeight:TERRAIN.roundHeight)+slope*((px-x)*p.aimX+(pz-z)*p.aimZ)};
 }
 
+// (v0.999a, owner: "make sniper fire through ... all obstacles in game ...
+// trees and walls and fences but ... not buildings and building walls".) The
+// rifle's round, its laser and the robots' reading of it meet only a
+// building's walls (`wall`, map-kit.js buildingWalls) and breakables (which it
+// cuts through, damaging them, as before); trees, fences, fieldstone walls,
+// rocks, graves, carts, furniture: passed. The ground and a hex still stop it.
 export function sightlineMeets(sim,round,box,x,z,distance){
- if(box.playerOnly)return false;
+ if(box.playerOnly||!(box.wall||box.destructible||box.propId&&sim.props?.some(p=>p.id===box.propId&&p.hp!=null)))return false;
  const height=box.height??2;
  if(height>1.5)return true;
  const base=sim.ground.heightAt(x,z),y=sightlineY(sim,round,distance);
@@ -65,7 +71,7 @@ export function sightlineGuideEnd(sim,round,segmentBox){
  let distance=Math.min(round.range,round.stop??Infinity);
  const ex=round.x+round.dx*distance,ez=round.z+round.dz*distance;
  for(const box of collidersAlong(sim.colliders,round.x,round.z,ex,ez)){
-  if(box.playerOnly||box.destructible||box.propId&&sim.props.some(p=>p.id===box.propId&&p.hp!==null))continue;
+  if(box.playerOnly||!box.wall)continue;
   const at=segmentBox(round.x,round.z,ex,ez,box,.035);
   if(at===null)continue;
   const d=at*Math.min(round.range,round.stop??Infinity);

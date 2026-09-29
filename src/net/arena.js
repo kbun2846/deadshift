@@ -30,6 +30,14 @@ import { clearOmen } from '../weapons/omen.js';
 //    dying (CHANGE WEAPON on the death screen).
 //      ffa:      kills count; the round ends when the clock runs out or someone
 //                reaches the kill limit. Respawn after the respawn setting.
+//      1v1, 2v2, 2v2v2, 3v3 (v0.999a, owner: "after two players on a team
+//                die, everyone respawns ... until last team or last man
+//                standing, and whoever the last man's team is gets the
+//                point"): elimination. Nobody comes back on their own; when
+//                one side (1v1: one player) is left standing it scores a
+//                point, and after ROUND_BREAK everyone comes back at full
+//                health at fresh spawns. The match ends at the clock or the
+//                score limit (in points).
 //      practice: the map's targets are out; players can still hit each other
 //                but nothing is counted; no respawn wait (RESPAWN on the
 //                death screen), no clock; the weapon can be changed any time
@@ -56,6 +64,11 @@ export const SPAWN_MODES = SETTINGS.spawnMode.values;
 export const SYPHON_SHARE = .5;
 // Friendly fire (owner, v0.9b): a teammate's shot does half.
 export const FRIENDLY_SHARE = .5;
+// Elimination modes: seconds between the last kill of a point and everyone
+// coming back (the fall is seen, and the dead see who won it).
+export const ROUND_BREAK = 5; // (owner: "a short bit more time in between respawns")
+// Every counted mode but FFA is played by elimination.
+export const eliminationMode = mode => mode !== 'ffa' && mode !== 'practice' && !!modeById(mode);
 const IDLE = Object.freeze({ moveX: 0, moveZ: 0, aimX: 0, aimZ: 0 });
 const newStats = () => ({ kills: 0, deaths: 0, dealt: 0, taken: 0, time: 0, weaponTime: {} });
 
@@ -79,6 +92,7 @@ export class Arena {
   // the last START was refused (for the host's screen).
   this.robotSetup = { ...ROBOT_SETUP, skill: this.settings.robotSkill || ROBOT_SETUP.skill };
   this.robots = new ArenaRobots(this); this.teamRooms = new Map(); this.startError = null; this.teamKills = new Map(); this.leaves = [];
+  this.points = new Map(); this.roundBreak = 0; this.roundWinner = null;
  }
 
  // A player joins. `sim` is the host's own (main.js) sim for the host seat.
@@ -126,6 +140,7 @@ export class Arena {
 
  // Every mode but practice keeps score.
  get counting() { return this.mode !== 'practice'; }
+ get elimination() { return eliminationMode(this.mode); }
  get teamMode() { return !!modeById(this.mode)?.teams; }
  // Whether a can hurt b: not themselves, and not a teammate.
  hostile(a, b) { return a !== b && (!a.team || a.team !== b.team); }
@@ -197,7 +212,7 @@ export class Arena {
    for (const seat of people) if (sides.includes(seat.wantTeam) && count(seat.wantTeam) < entry.per) seat.team = seat.wantTeam;
    for (const seat of [...people, ...bots]) if (!seat.team) seat.team = [...sides].sort((a, b) => count(a) - count(b))[0];
   }
-  this.teamRooms.clear(); this.teamKills = new Map();
+  this.teamRooms.clear(); this.teamKills = new Map(); this.points = new Map(); this.roundBreak = 0; this.roundWinner = null; this.round = 1;
   this.mode = mode;
   this.resetWorld();
   this.feed = []; this.pendingKills.clear(); this.togetherRoom = null;
@@ -281,7 +296,10 @@ export class Arena {
  tryEnter(seat) {
   const pick = seat.picking; if (!pick) return;
   const done = pick.go || pick.left <= 0;
-  if (!done || (seat.dead && seat.respawnIn > 0)) return;
+  // (Elimination: a pick made while down is kept for when everyone comes
+  // back; its time running out closes it like GO, back to spectating.)
+  if (done && seat.dead && seat.respawnIn > 0) { if (this.elimination) pick.go = true; return; }
+  if (!done) return;
   seat.weapon = pick.weapon || WEAPONS[Math.floor(this.random() * WEAPONS.length)].id;
   seat.picking = null;
   this.spawn(seat);
@@ -467,7 +485,8 @@ export class Arena {
   if (victim.dead) return;
   victim.dead = true;
   // Practice: no wait, nothing counted; RESPAWN on the death screen.
-  victim.respawnIn = this.counting ? this.settings.respawn : 0;
+  // (Elimination: never on their own; everyone comes back together, newPoint.)
+  victim.respawnIn = this.elimination ? Infinity : this.counting ? this.settings.respawn : 0;
   if (!this.counting) return;
   victim.stats.deaths++;
   if (killer && killer !== victim) {
@@ -508,7 +527,8 @@ export class Arena {
  matchState() {
   const left = this.phase === 'playing' ? (this.counting ? this.clock : 0) : this.phase === 'results' ? this.resultsLeft : 0;
   return { phase: this.phase, mode: this.mode, map: this.mapId, left: Math.max(0, Math.round(left * 10) / 10), number: this.matchNumber,
-   killLimit: this.counting ? this.settings.killLimit : 0, results: this.results, teams: this.phase === 'playing' ? this.teamScores() : null };
+   killLimit: this.counting ? this.settings.killLimit : 0, results: this.results, teams: this.phase === 'playing' ? this.teamScores() : null,
+   ...(this.elimination ? { elimination: true, sides: this.phase === 'playing' ? this.sideScores() : null, roundBreak: Math.round(this.roundBreak * 10) / 10, roundWinner: this.roundWinner, round: this.round || 1 } : {}) };
  }
 
  // Once per tick, after every seat has stepped: the world, targets, respawns,
@@ -550,6 +570,7 @@ export class Arena {
    // FFA: back in after the wait with the same weapon (unless picking again).
    else if (seat.dead && this.counting && seat.respawnIn <= 0) this.spawn(seat);
   }
+  if (this.phase === 'playing' && this.elimination) this.stepElimination(dt);
   const lines = [];
   for (const [key, victims] of this.pendingKills) { const [killer, one] = key.split('|'); lines.push(this.pushFeed({ killer, victims, oneShot: one === 'one', weapon: this.seats.get(killer)?.weapon })); }
   this.pendingKills.clear();
@@ -559,12 +580,16 @@ export class Arena {
    this.clock -= dt;
    // Team modes: a side's kills together.
    const teams = this.teamScores();
-   const leader = teams ? Math.max(0, ...teams.map(t => t.kills)) : Math.max(0, ...[...this.seats.values()].map(s => s.stats.kills));
+   const sides = this.elimination ? this.sideScores() : null;
+   const leader = sides ? Math.max(0, ...sides.map(t => t.points)) : teams ? Math.max(0, ...teams.map(t => t.kills)) : Math.max(0, ...[...this.seats.values()].map(s => s.stats.kills));
    if (this.clock <= 0 || (this.settings.killLimit && leader >= this.settings.killLimit)) {
     const board = this.scoreboard();
     this.phase = 'results'; this.resultsLeft = RESULTS;
     const topTeam = teams && teams[0].kills > 0 && (teams.length < 2 || teams[0].kills > teams[1].kills) ? teams[0] : null;
-    this.results = teams
+    const topSide = sides && sides[0].points > 0 && (sides.length < 2 || sides[0].points > sides[1].points) ? sides[0] : null;
+    this.results = sides
+     ? { winner: topSide ? (topSide.team ? { team: topSide.id, name: topSide.name + ' TEAM', points: topSide.points } : { id: topSide.id, name: topSide.name, points: topSide.points }) : null, board, teams, sides, points: true, draw: !!sides[0]?.points && !topSide }
+     : teams
      ? { winner: topTeam ? { team: topTeam.id, name: topTeam.name + ' TEAM', kills: topTeam.kills } : null, board, teams, draw: !!teams[0]?.kills && !topTeam }
      : { winner: board[0] && board[0].kills > 0 ? { id: board[0].id, name: board[0].name, kills: board[0].kills } : null, board };
     this.worldEvents.push({ type: 'matchEnd', number: this.matchNumber });
@@ -574,6 +599,45 @@ export class Arena {
    if (this.resultsLeft <= 0) { this.endRound(); this.worldEvents.push(...this.pendingEvents.splice(0)); }
   }
   return lines;
+ }
+
+ // Elimination: the sides still in it (1v1: each player a side). Seats on
+ // the bench are out of it; a seat picking its first weapon of the match (not
+ // dead) counts as standing, so nothing is decided during the opening pick.
+ sideOf(seat) { return seat.team || seat.id; }
+ stepElimination(dt) {
+  if (this.roundBreak > 0) {
+   this.roundBreak -= dt;
+   if (this.roundBreak <= 0) this.newPoint();
+   return;
+  }
+  const seats = [...this.seats.values()].filter(s => !s.bench), all = new Set(seats.map(s => this.sideOf(s)));
+  if (all.size < 2) return;
+  const standing = new Set(seats.filter(s => !s.dead && (s.picking || (s.present && s.sim.player.hp > 0))).map(s => this.sideOf(s)));
+  if (standing.size > 1) return;
+  // One side left (or, both falling in the same tick, none): its point.
+  const winner = standing.size ? [...standing][0] : null;
+  if (winner) this.points.set(winner, (this.points.get(winner) || 0) + 1);
+  this.roundWinner = winner; this.roundBreak = ROUND_BREAK;
+  this.pendingEvents.push({ type: 'pointWon', side: winner, number: this.matchNumber });
+ }
+ // Everyone back at full health at fresh spawns, the survivors too (a pick
+ // still open is taken as it stands, or the last weapon).
+ newPoint() {
+  this.roundBreak = 0; this.roundWinner = null; this.teamRooms.clear(); this.round = (this.round || 1) + 1;
+  const seats = [...this.seats.values()].filter(s => !s.bench);
+  for (const seat of seats) { seat.present = false; seat.dead = false; seat.respawnIn = 0; }
+  for (const seat of seats) {
+   if (seat.picking) { seat.weapon = seat.picking.weapon || seat.weapon || WEAPONS[Math.floor(this.random() * WEAPONS.length)].id; seat.picking = null; }
+   this.spawn(seat);
+  }
+  this.pendingEvents.push({ type: 'pointStart', number: this.matchNumber });
+ }
+ // Elimination: each side's points, best first (1v1: each player's).
+ sideScores() {
+  const entry = modeById(this.mode);
+  if (entry?.teams) return TEAMS.slice(0, entry.teams).map(t => ({ id: t.id, team: true, name: t.name, colour: t.colour, points: this.points.get(t.id) || 0 })).sort((a, b) => b.points - a.points);
+  return [...this.seats.values()].filter(s => !s.bench).map(s => ({ id: s.id, team: false, name: s.name, points: this.points.get(s.id) || 0 })).sort((a, b) => b.points - a.points);
  }
 
  // Team modes: each side's kills, best first (null otherwise).

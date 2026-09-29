@@ -10,19 +10,23 @@
 // map (1024 -> 1280, 2048 -> 2560) so shadows there stay as sharp as before;
 // Performance (phones) keeps 768.
 //
-// Performance and Balanced draw the world off-screen at the sizes below and
-// are written to the screen by one crisp upscale pass (crisp-output.js):
-// FXAA-lite on Performance, 4x multisampling on Balanced, contrast-limited
-// sharpening on both. Screen multisampling is a context-creation flag, chosen
-// once from the saved tier (and not needed by those two).
+// Potato to Quality draw the world off-screen at the sizes below and are
+// written to the screen by crisp-output.js at a higher output size (CRISP).
+// Balanced and Quality (v0.999a, owner: "double FPS ... looks mostly similar
+// when I load in"): their world is drawn at about 0.82 and 0.77 of its old
+// width and height (`scale`, and `maxPixels` by the square), some 30-40%
+// fewer pixels, and an FSR 1-style upscale and sharpen brings it back to the
+// screen size the tier had. Screen multisampling is a context-creation flag,
+// chosen once from the saved tier (only Extreme, which draws straight to the
+// screen, still wants it).
 export const GRAPHICS = Object.freeze({
   potato: { label: 'Potato', pixelRatio: 1, scale: .55, maxPixels: 750000, shadows: 0, texture: 32, effects: .1, particleCap: 48, motes: 0, glow: false, light: false, antialias: false, anisotropy: 1, relief: null,
     description: 'Barebones · half resolution · flat terrain · no decorative foliage, shadows or ambient dust' },
   performance: { label: 'Performance', pixelRatio: 1.15, scale: .82, maxPixels: 1150000, shadows: 768, shadowFPS: 24, texture: 256, effects: .3, particleCap: 140, motes: 20, glow: false, light: true, antialias: false, anisotropy: 2, relief: null,
     description: 'Smoothed, sharpened upscale · adaptive resolution · simplified foliage · contact shadows on landmarks · lit effects' },
-  balanced: { label: 'Balanced', pixelRatio: 1.3, scale: 1, maxPixels: 1800000, shadows: 1280, shadowFPS: 30, texture: 512, effects: .75, particleCap: 400, motes: 72, glow: true, light: true, antialias: true, anisotropy: 4, relief: 'ground',
+  balanced: { label: 'Balanced', pixelRatio: 1.3, scale: .82, maxPixels: 1210000, shadows: 1280, shadowFPS: 30, texture: 512, effects: .75, particleCap: 400, motes: 72, glow: true, light: true, antialias: true, anisotropy: 4, relief: 'ground',
     description: 'Antialiased, sharpened upscale · adaptive resolution · soft shadows on buildings, props & entities · raised sand grain · detailed foliage & effects' },
-  quality: { label: 'Quality', pixelRatio: 2, scale: 1, maxPixels: 3700000, shadows: 2560, shadowFPS: 45, texture: 1024, effects: 2, particleCap: 1300, motes: 190, glow: true, light: true, antialias: true, anisotropy: 8, relief: 'full',
+  quality: { label: 'Quality', pixelRatio: 2, scale: .77, maxPixels: 2200000, shadows: 2560, shadowFPS: 30, texture: 1024, effects: 2, particleCap: 1300, motes: 190, glow: true, light: true, antialias: true, anisotropy: 8, relief: 'full',
     description: 'Raised sand & wood grain · dense vegetation · richer landmark detail & effects' },
   // Everything Quality has, and on top: ambient occlusion, bloom and a colour
   // grade (extreme-post.js), a 4096 shadow map redrawn every frame, varied and
@@ -39,7 +43,7 @@ export const GRAPHICS = Object.freeze({
 export const DEMANDING_TIERS = Object.freeze(['quality', 'extreme']);
 export const isDemanding = name => DEMANDING_TIERS.includes(name);
 
-export const DEFAULT_SETTINGS = { quality: 'balanced', qualityAuto: true, qualityAutoStep: 0, fps: 60, motion: true, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, keyLock: true, screen: 'fullscreen', vibration: true,
+export const DEFAULT_SETTINGS = { quality: 'balanced', qualityAuto: true, qualityAutoStep: 0, fps: 0, motion: true, controlHints: true, mobileOpacity: .4, aimAssist: true, fullscreen: true, keyLock: true, screen: 'fullscreen', vibration: true,
   volume: { master: .6, ambient: .8, weapons: 1, effects: 1 } };
 // Every channel is a plain 0..1 multiplier so the mixer stays predictable:
 // master scales the bus, the rest scale within it.
@@ -155,14 +159,19 @@ export function validateSettings(value = {}, {mobile=false} = {}) {
 }
 
 // Rendering is capped independently from the fixed-rate gameplay simulation.
+export const BUDGET_SLACK = .0015;
 export class RenderBudget {
   constructor(fps = 60) { this.fps = fps; this.elapsed = 0; this.sinceRender = 0; }
   tick(dt) {
     this.elapsed += dt; this.sinceRender += dt;
     const interval = this.fps ? 1 / this.fps : 0;
-    if (interval && this.elapsed + 1e-7 < interval) return 0;
+    // A frame due within BUDGET_SLACK is drawn now (v0.999a): the display's
+    // own frames jitter by a millisecond or so, and waiting for the exact
+    // interval dropped one frame in several at a cap equal to the refresh.
+    if (interval && this.elapsed + BUDGET_SLACK < interval) return 0;
     const delta = this.sinceRender;
-    this.elapsed = interval ? Math.max(0, this.elapsed - interval * Math.floor((this.elapsed + 1e-7) / interval)) : 0;
+    // (An early frame is owed back by the next, so the average rate stays the cap.)
+    this.elapsed = interval ? Math.max(-BUDGET_SLACK, this.elapsed - interval * Math.max(1, Math.floor((this.elapsed + BUDGET_SLACK) / interval))) : 0;
     this.sinceRender = 0; return delta;
   }
   // A frame not drawn on purpose (the GPU is still busy, see gpuBusy): time

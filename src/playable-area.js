@@ -24,7 +24,9 @@ export function isPlayable(map,x,z,radius=0){
  if(!map.playableArea)return Math.abs(x)<=map.width/2-radius&&Math.abs(z)<=map.depth/2-radius;
  const points=map.playableArea;let inside=false;
  for(let i=0,j=points.length-1;i<points.length;j=i++){
-  const [ax,az]=points[j],[bx,bz]=points[i],dx=bx-ax,dz=bz-az;
+  // (Read by index, not destructured: this runs for every body every step, and
+  // array destructuring made an iterator each time, v0.999a.)
+  const pj=points[j],pi=points[i],ax=pj[0],az=pj[1],bx=pi[0],bz=pi[1],dx=bx-ax,dz=bz-az;
   if((az>z)!==(bz>z)&&x<(bx-ax)*(z-az)/(bz-az)+ax)inside=!inside;
   if(radius>0){const t=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/(dx*dx+dz*dz)));
    if((x-ax-dx*t)**2+(z-az-dz*t)**2<(radius-1e-8)**2)return false;}

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { groundY, hilly } from '../render/ground-lift.js';
 import { TerrainMarks } from './terrain-marks.js';
+import { intersectFast, nearTriangles, prepare, gridEligible, objectIndex } from './triangle-grid.js';
 
 // Surface-clipped soot, capped per surface. Every mark is a blended,
 // ground-coplanar draw with depthWrite off, and in a top-down camera the
@@ -13,6 +13,24 @@ import { TerrainMarks } from './terrain-marks.js';
 // window rather than a permanent record.
 export const MARK_BATCHES = Object.freeze({ potato: 1, performance: 1, balanced: 2, quality: 4, extreme: 4 });
 const DOWN = new THREE.Vector3(0, -1, 0);
+// A batch's room: the old merge started a new batch once one passed 12000.
+export const MARK_VERTS = 13000;
+function markBuffer() {
+  const g = new THREE.BufferGeometry();
+  for (const [name, size] of [['position', 3], ['normal', 3], ['uv', 2]]) g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(MARK_VERTS * size), size).setUsage(THREE.DynamicDrawUsage));
+  g.setDrawRange(0, 0);
+  return g;
+}
+function appendMark(batch, decal) {
+  const g = batch.geometry, at = batch.userData.used, n = decal.attributes.position.count;
+  for (const [name, size] of [['position', 3], ['normal', 3], ['uv', 2]]) {
+    const into = g.attributes[name], from = decal.attributes[name];
+    if (from) into.array.set(from.array.subarray(0, n * size), at * size);
+    else if (name === 'normal') for (let i = 0; i < n; i++) into.array.set([0, 1, 0], (at + i) * 3);
+    into.addUpdateRange(at * size, n * size); into.needsUpdate = true;
+  }
+  batch.userData.used = at + n; g.setDrawRange(0, at + n);
+}
 export class SurfaceMarks {
   constructor(view) {
     this.jobs=[]; this.currentJob=null; this.receiverCache=null;
@@ -44,9 +62,14 @@ export class SurfaceMarks {
     if(this.jobs.length<192)this.jobs.push({kind,event:{...e}});
   }
   flush(budgetMs=2) {
-    if(!this.currentJob&&!this.jobs.length)return;
+    if(!this.currentJob&&!this.jobs.length){this.prepareGrids(budgetMs*.5);return;}
     const end=performance.now()+budgetMs;
-    this.view.scene.updateMatrixWorld();this.receiverCache=null;
+    // (v0.999a: only what moves is brought up to date: the targets and the
+    // props. The whole scene's matrices were walked here every frame a mark
+    // was pending, thousands of objects, while firing.)
+    this.receiverCache=null;
+    for (const g of this.view.targets?.values() ?? []) g.updateMatrixWorld();
+    for (const g of this.view.props?.values() ?? []) g.updateMatrixWorld();
     let steps=0;
     do {
       if(!this.currentJob){const job=this.jobs.shift();if(!job)break;this.currentJob=job.kind==='explosion'?this.explosion(job.event):this.bulletJob(job.event);}
@@ -55,6 +78,28 @@ export class SurfaceMarks {
     this.receiverCache=null;
   }
   *bulletJob(e){this.bullet(e);yield;}
+  // What `this.ray` meets, nearest first (as intersectObjects(surfaces())):
+  // the world, props and roofs through a spatial index of their meshes
+  // (triangle-grid.js objectIndex: made while loading, again when the props
+  // are rebuilt or the map is cleared; a broken prop is hidden, which the
+  // hit's own visibility check skips), the targets (they move) directly.
+  cast() {
+    const v = this.view;
+    if (!this.fixedIndex || this.fixedIndex.props !== v.props.size) this.fixedIndex = this.indexFixed();
+    const out = this.fixedIndex.intersect(this.ray);
+    const targets = [...v.targets.entries()].filter(([id]) => !v.lastSim || v.lastSim.targets.find(t => t.id === id)?.hp > 0).map(([, g]) => g);
+    if (targets.length) out.push(...intersectFast(this.ray, targets));
+    return out.sort((a, b) => a.distance - b.distance);
+  }
+  indexFixed() { const v = this.view; return Object.assign(objectIndex([v.static, ...v.props.values(), ...v.roofs.map(r => r.group), ...(v.terrainMesh && !this.terrain ? [v.terrainMesh] : [])].filter(Boolean)), { props: v.props.size }); }
+  // Idle frames: make the triangle grids (triangle-grid.js) of what marks
+  // land on ahead of the first shot, a little each frame.
+  prepareGrids(budget) {
+    if (!this.view.static) return;
+    if (this.gridQueue === undefined) { this.gridQueue = []; for (const root of this.surfaces()) root.traverse(o => { if (gridEligible(o)) this.gridQueue.push(o); }); this.receiverCache = null; }
+    if (this.gridQueue.length) prepare(this.gridQueue, budget);
+    if (!this.gridQueue.length && !this.fixedIndex) this.fixedIndex = this.indexFixed();
+  }
   surfaces() {
     if(this.receiverCache)return this.receiverCache;
     const v = this.view;
@@ -69,7 +114,7 @@ export class SurfaceMarks {
     // Raycasting the RTIN tiles walked every triangle of each one hit.
     const ground = this.terrain ? this.groundAlong(origin, direction, distance) : null;
     this.ray.set(origin, direction); this.ray.far = ground ? ground.distance : distance;
-    return this.ray.intersectObjects(this.surfaces(), true).find(h => {
+    return this.cast().find(h => {
       if (h.object.userData.surfaceMark || h.object.userData.maskedGround || !h.face) return false;
       for (let p = h.object; p; p = p.parent) if (!p.visible) return false;
       return true;
@@ -109,17 +154,27 @@ export class SurfaceMarks {
       if (!parent.userData.marks) { parent.userData.marks = new THREE.Group(); parent.add(parent.userData.marks); parent.updateMatrixWorld(true); }
       parent = parent.userData.marks;
     }
-    let geometry = new DecalGeometry(hit.object, projectionPoint, rotation, new THREE.Vector3(size, size, Math.max(.12, size * .18)));
+    const box = new THREE.Vector3(size, size, Math.max(.12, size * .18));
+    // (v0.999a: cut from the triangles near the mark only, not the whole
+    // merged mesh it hit: triangle-grid.js.)
+    const near = nearTriangles(hit.object, projectionPoint, box.length() / 2);
+    let geometry = new DecalGeometry(near || hit.object, projectionPoint, rotation, box);
+    near?.geometry.dispose();
     if (!geometry.attributes.position.count) { geometry.dispose(); return; }
     geometry.applyMatrix4(parent.matrixWorld.clone().invert());
     let batches = this.batches.get(parent);
     if (!batches) { batches = []; this.batches.set(parent, batches); }
     let batch = batches.at(-1);
-    if (batch && batch.geometry.attributes.position.count < 12000) {
-      const merged = mergeGeometries([batch.geometry, geometry]);
-      batch.geometry.dispose(); geometry.dispose(); batch.geometry = merged;
+    // (v0.999a: a batch is one buffer of room for MARK_VERTS vertices that
+    // each mark is written onto the end of, sending only the new part to the
+    // GPU; it was merged into a new copy of the whole batch for every mark.)
+    const added = geometry.attributes.position.count;
+    if (batch && batch.userData.used + added <= MARK_VERTS) {
+      appendMark(batch, geometry); geometry.dispose();
     } else {
-      batch = new THREE.Mesh(geometry, this.material); batch.userData.surfaceMark = true;
+      if (added > MARK_VERTS) { batch = new THREE.Mesh(geometry, this.material); batch.userData.used = MARK_VERTS; }
+      else { batch = new THREE.Mesh(markBuffer(), this.material); batch.userData.used = 0; batch.frustumCulled = false; appendMark(batch, geometry); geometry.dispose(); }
+      batch.userData.surfaceMark = true;
       // Decals sit above opaque terrain but below transparent lightning and particles.
       batch.renderOrder = -1; parent.add(batch); batches.push(batch);
       // Retire the oldest so a long session cannot keep stacking blended
@@ -152,7 +207,7 @@ export class SurfaceMarks {
     } else {
     // The ground/floor gets a broad burn; surrounding surfaces get radial soot.
     this.ray.set(center, new THREE.Vector3(0, -1, 0)); this.ray.far = 1;
-    const floors = this.ray.intersectObjects(this.surfaces(), true).filter(h => !h.object.userData.surfaceMark && !h.object.userData.maskedGround && h.face && h.face.normal.clone().transformDirection(h.object.matrixWorld).y > .7);
+    const floors = this.cast().filter(h => !h.object.userData.surfaceMark && !h.object.userData.maskedGround && h.face && h.face.normal.clone().transformDirection(h.object.matrixWorld).y > .7);
     if(floors.length && floors[0].point.y<.05) {
       const ground=this.ray.intersectObject(this.groundReceiver)[0];
       this.stamp(ground,e.radius*2);
@@ -179,7 +234,7 @@ export class SurfaceMarks {
   }
 
   clear() {
-    this.jobs.length=0;this.currentJob=null;this.receiverCache=null;
+    this.jobs.length=0;this.currentJob=null;this.receiverCache=null;this.gridQueue=undefined;this.fixedIndex=null;
     for (const batches of this.batches.values()) for (const mesh of batches) { mesh.removeFromParent(); mesh.geometry.dispose(); }
     this.batches.clear(); this.count = 0;
     this.terrain?.clear();
