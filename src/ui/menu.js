@@ -1,4 +1,5 @@
 import { showBusy } from './busy-screen.js';
+import { setLaunch, launchTo } from '../launch.js';
 import { refreshTypography } from './button-typography.js';
 import { cardImage, CARD_IMAGES, WEAPON_IMAGES } from './map-cards.js';
 import {shotgunPreview} from '../weapons/shotgun-model.js';
@@ -15,7 +16,6 @@ import { buildDuelMenu } from './duel-menu.js';
 import { duelParam } from '../duel.js';
 import { buildKeybindMenu } from './keybind-menu.js';
 
-const markLaunch=query=>{try{sessionStorage.setItem('deadshift.launch','?'+query);}catch{}};
 export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete, online }) {
  let page=document.querySelector('[data-page]:not([hidden])')?.dataset.page||'home';
  let selectedMap=DEFAULT_MAP;
@@ -31,8 +31,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  // choices ride in the URL; a map already loaded starts at once.
  const duelMenu=buildDuelMenu($('duel-options'),{maps:soloMaps(map)/* s2-spawns */,start:picks=>{
   const query=new URLSearchParams({map:picks.map||DEFAULT_MAP,weapon:picks.weapon,play:'1',mode:'duel',duel:duelParam(picks)});
-  if(map.id===query.get('map')){try{history.replaceState(null,'',"?"+query);}catch{}start(picks.weapon);}
-  else{markLaunch(query);showBusy();location.href='?'+query;}
+  if(map.id===query.get('map')){setLaunch(query);start(picks.weapon);}
+  else{showBusy();launchTo(query);}
  }});
  $('duel-mode').onclick=()=>show('duel');$('duel-start').onclick=()=>duelMenu.start();
  // Host setup: the mode and robots (previews) round the round settings.
@@ -109,8 +109,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   if(onlinePick){const pick=onlinePick;onlinePick=onlineBack=null;$('intro').classList.add('hidden');document.querySelector('[data-page="weapons"] h2').textContent='weapons';pick(weapon);return;}
   const query=new URLSearchParams({map:selectedMap,weapon,play:'1',mode:selectedMap==='tutorial'?'tutorial':'practice'});
   if(course)query.set('course',course);
-  if(map.id===selectedMap){try{history.replaceState(null,'','?'+query);}catch{}start(weapon,selectedMap==='tutorial'?course||null:undefined);}
-  else{markLaunch(query);showBusy();location.href='?'+query;}
+  if(map.id===selectedMap){setLaunch(query);start(weapon,selectedMap==='tutorial'?course||null:undefined);}
+  else{showBusy();launchTo(query);}
  };
  // Names come from the item registry; only the 3D preview renderers are wired
  // up here (a new weapon adds its preview function). No descriptions on the

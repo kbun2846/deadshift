@@ -8,6 +8,7 @@
 // paused), and callbacks to redraw.
 import { explosionFor } from '../simulation.js';
 import { showBusy } from './busy-screen.js';
+import { launchTo } from '../launch.js';
 import { RULES } from '../config/gameplay.js';
 import { installDevTools } from './dev-tools.js';
 import { createDevWindow } from './dev-window.js';
@@ -52,8 +53,7 @@ export function installDevWiring(ctx) {
    if (ctx.online().active) { toast('MAPS ARE SOLO ONLY'); return; }
    // (The note says this load was asked for, so it starts the game: menu.js markLaunch.)
    const query = 'play=1&map=' + encodeURIComponent(map.id) + '&weapon=' + encodeURIComponent(sim.weapon || 'static');
-   try { sessionStorage.setItem('deadshift.launch', '?' + query); } catch {}
-   showBusy(); location.href = '?' + query;
+   showBusy(); launchTo(query);
   },
   // Robots (bots/): a solo game only. Weapon, side, skill and style as set
   // in the tools (or at random), as many as "Robots per spawn".

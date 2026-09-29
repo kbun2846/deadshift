@@ -8,7 +8,8 @@ const paint=()=>new Promise(resolve=>requestAnimationFrame(resolve));
 // (No minimum time on the loading screen, v0.999a, owner: gone as soon as the game is ready.)
 const minimumSplash=Promise.resolve();
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const READY_WAIT=20000,FONT_WAIT=3000;
+// (The warm-up waits as long as shaders keep compiling, warm-up.js programsSettled; this is the last guard.)
+const READY_WAIT=65000,FONT_WAIT=3000;
 
 rememberWheel(loading);
 // The game is live under the loading screen first (it can take focus and

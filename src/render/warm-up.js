@@ -10,7 +10,29 @@ import { HollowBreakFX, handlesBreak } from '../effects/breakable-effects.js';
 import { gunStandIns } from '../remote-players.js';
 import { WEAPONS } from '../items.js';
 // The longest a warm-up step waits on the driver's parallel compile (ms).
-export const WARM_WAIT = 2500;
+// (v0.996a, owner: "my pc with the high specs used to get 240fps all times on
+// extreme ... now on a new map load it starts at 20fps and after 20ish secs
+// it gets up to 240".) Giving up on the driver's parallel compiles after
+// 2.5 s a step let the game start while hundreds of Extreme programs were still
+// compiling in the background, and the first frames waited on them. Now the
+// warm-up waits for every program the renderer has as long as they keep
+// finishing, and gives up only when none has finished for WARM_STALL (the
+// driver that never reports: the MacBook case the 2.5 s was for), or after
+// WARM_MAX in all.
+export const WARM_STALL = 4000, WARM_MAX = 60000;
+export function programsSettled(renderer, { stall = WARM_STALL, max = WARM_MAX, now = () => performance.now(), wait = ms => new Promise(done => setTimeout(done, ms)) } = {}) {
+  return (async () => {
+    const start = now(); let last = Infinity, since = start;
+    for (;;) {
+      const pending = (renderer.info?.programs || []).filter(p => typeof p.isReady === 'function' && !p.isReady()).length;
+      if (!pending) return true;
+      const t = now();
+      if (pending < last) { last = pending; since = t; }
+      if (t - since >= stall || t - start >= max) return false;
+      await wait(30);
+    }
+  })();
+}
 
 export const WarmUp = {
   // Compile every program the scene will need, including the blended variant
@@ -76,13 +98,11 @@ export const WarmUp = {
     const parallel = !!this.renderer.compileAsync && this.renderer.extensions.has('KHR_parallel_shader_compile');
     for (const step of this.warmSteps()) {
       void step;
-      // (Never waited on for more than WARM_WAIT ms a step, v0.999a, owner:
-      // "after I switched to auto" the world stayed blank under APPLYING
-      // GRAPHICS for good. compileAsync polls each program's completion and
-      // resolves only when every one reports it; on some drivers one never
-      // does, so the change never finished and nothing was drawn again. Past
-      // the wait, the ordinary compile that follows finishes the job.)
-      if (parallel) try { await Promise.race([this.renderer.compileAsync(this.scene, this.camera), new Promise(done => setTimeout(done, WARM_WAIT))]); } catch { /* the sync compile still runs */ }
+      // The driver compiles in parallel; wait while programs keep finishing
+      // (shadow and AO variants too), never for good (some drivers never
+      // report one done: "the world stayed blank under APPLYING GRAPHICS").
+      // Whatever is left, the ordinary compile that follows finishes.
+      if (parallel) try { this.renderer.compile(this.scene, this.camera); await programsSettled(this.renderer); } catch { /* the sync compile still runs */ }
     }
   },
 

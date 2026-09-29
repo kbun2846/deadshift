@@ -1,3 +1,4 @@
+import { readLaunch, launchParams } from './launch.js';
 import './styles/omen.css';
 import './styles/sightline.css';
 // deadshift, by killerbunny2846.
@@ -87,7 +88,8 @@ try{migrateGameStorage(localStorage);}catch{}
 const toast = createToast(document.getElementById('game'));
 const robotMinds = createRobotMinds(document.getElementById('game'));
 try{migrateGameStorage(sessionStorage);}catch{}
-const params = new URLSearchParams(location.search);
+// (v0.996a: the launch's settings ride sessionStorage, not the address bar: launch.js.)
+const boot = readLaunch(), params = boot.params;
 const selectedMap = params.get('map')==='tutorial' ? tutorialMapFor(params.get('weapon')) : mapById(params.get('map'));
 const landmarkStart = import.meta.env.DEV && selectedMap.props.find(p => p.type === params.get('start'));
 const roomStart = import.meta.env.DEV && selectedMap.buildings.find(b => b.id === params.get('start'));
@@ -368,7 +370,7 @@ async function start(weapon=sim.weapon,course) {
   $('intro').classList.add('hidden'); ['weapon', 'reticle'].forEach(id => $(id).classList.remove('hidden'));
   $('world').focus();
   // 1V1: the URL carries the choices (menu.js); one robot, no targets.
-  {const q=new URLSearchParams(location.search);if(!map.training&&q.get('mode')==='duel'){duel.begin(readDuel(q.get('duel'))||{});if(hasAuthoredSpawns(map)&&randomPracticeSpawn())view.cutCamera?.();/* s2-spawns: you to your base / an FFA point */modeLabel.textContent=(DUEL_MODES[duel.config?.mode]?.name||'1V1');}}
+  {const q=launchParams();if(!map.training&&q.get('mode')==='duel'){duel.begin(readDuel(q.get('duel'))||{});if(hasAuthoredSpawns(map)&&randomPracticeSpawn())view.cutCamera?.();/* s2-spawns: you to your base / an FFA point */modeLabel.textContent=(DUEL_MODES[duel.config?.mode]?.name||'1V1');}}
   if(tutorial){$('tutorial-guide').classList.remove('hidden');updateTutorial();}
   try { await sound.start(); if (paused) sound.suspend(true); }
   catch (error) { console.warn('Audio unavailable:', error); }
@@ -1361,6 +1363,7 @@ function frame(time) {
   } else if(started) {
     // While the GPU is still drawing the last frame, skip this one rather than
     // queue it (queued frames are input lag; see WorldView.gpuBusy).
+    if(dt>0)view.frameInterval=(view.frameInterval||dt*1000)*.9+Math.min(100,dt*1000)*.1; // (the display's frame time, for gpuBusy)
     const renderDelta = view.gpuBusy() ? budget.hold(dt) : budget.tick(dt);
     if (renderDelta > 0) {
       view.tutorialGuide=tutorial&&!tutorial.complete?{zone:tutorial.zone,target:tutorial.pointer(sim)}:null;
@@ -1542,15 +1545,14 @@ updateHUD(); requestAnimationFrame(frame);
 // A page load goes to the title (owner, v147: on phones a reload, e.g. the
 // browser bringing the tab back after full screen, dropped you straight into
 // the last game). Only a load the menu asked for (it leaves a one-time note
-// before switching map, menu.js markLaunch) starts the game; so does a dev
+// before switching map, launch.js launchTo) starts the game; so does a dev
 // capture link (tools).
 export function finishLoading(){
- let launch=null;try{launch=sessionStorage.getItem('deadshift.launch');sessionStorage.removeItem('deadshift.launch');}catch{}
- const asked=params.get('play')==='1'&&(launch===location.search||params.has('capture')||params.has('autostart'));
+ const asked=params.get('play')==='1'&&(boot.launched||params.has('capture')||params.has('autostart'));
  if(asked)void start();
  else if(params.get('autojoin')==='1'||params.get('autohost')==='1')menuFlow.autoRoom();/* (v0.990a: a room moved to this map, or opened on it from the host setup) */
  else{
-  if(params.get('play')==='1'){const q=new URLSearchParams(location.search);for(const k of ['play','mode','duel','course','weapon'])q.delete(k);try{history.replaceState(null,'',location.pathname+(q.size?'?'+q:''));}catch{}}
+  if(params.get('play')==='1')for(const k of ['play','mode','duel','course','weapon'])params.delete(k);
   $('gamemodes').focus();
  }
 }

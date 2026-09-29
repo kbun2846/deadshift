@@ -2,6 +2,11 @@
 
 Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## alpha v0.996 (2026-09-29)
+
+- **Shorter address:** starting a game from the menus no longer fills the address bar with the map, weapon and robot settings; the page stays at its plain address (a reload opens the menu on the same map).
+- **Extreme from the first second:** the loading screen now waits until the graphics card has finished preparing every shader, instead of opening the game while it was still working (which ran at about 20 fps for the first 20 seconds on a fast PC). The frame pacing can no longer hold a fast screen back either.
+
 ## alpha v0.995 (2026-09-28)
 
 ### Loading

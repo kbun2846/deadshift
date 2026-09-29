@@ -1017,7 +1017,10 @@ export class WorldView {
     if(gl.isContextLost()){this.frameFences=[];return false;}
     while(fences.length&&gl.clientWaitSync(fences[0].sync,0,0)!==gl.TIMEOUT_EXPIRED)gl.deleteSync(fences.shift().sync);
     if(fences.length<2)return false;
-    if(performance.now()-fences[0].at<FENCE_PATIENCE)return true;
+    // (Never more than two display frames, v0.996a: a fence reported late while
+    // the driver is busy elsewhere must not cap a fast screen at 1/patience.)
+    const patience=Math.min(FENCE_PATIENCE,Math.max(6,2*(this.frameInterval||16.7)));
+    if(performance.now()-fences[0].at<patience)return true;
     gl.deleteSync(fences.shift().sync);return false;
   }
   fenceFrame(){
