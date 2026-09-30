@@ -5,6 +5,7 @@
 // fit. RANDOM, when offered, is a tile of all of them fanned behind a "?".
 // The tiles come from the item registry, so a new weapon joins every grid.
 import { WEAPONS } from '../items.js';
+import { MAINTENANCE, stickerHTML } from '../weapon-maintenance.js';
 
 // The pictures are handed in by map-cards.js (which holds the inlined
 // images) as it loads, so this file stays importable without them (tests).
@@ -41,8 +42,11 @@ const frame = (label, tiles, kind = 'weapon') => `<div class="weapon-grid-frame"
 
 // `attrs(value)`: extra attributes for each tile (the caller's own hooks).
 // `soon`: end with the coming-soon tile.
+// A weapon under maintenance keeps its tile, with the sticker over its picture
+// (weapon-maintenance.js; main.js refuses the click while it is on).
 export function weaponGridHTML({ label, pressed = '0', random = true, soon = false, attrs = () => '' }) {
- const tiles = weaponChoices({ random }).map(([value, name, id]) => tile({ value, name, picture: picture(id), pressed, extra: id ? '' : ' weapon-tile-random', attrs: attrs(value) })).join('');
+ const fixing = id => id && MAINTENANCE.includes(id);
+ const tiles = weaponChoices({ random }).map(([value, name, id]) => tile({ value, name, picture: picture(id) + (fixing(id) ? stickerHTML() : ''), pressed, extra: (id ? '' : ' weapon-tile-random') + (fixing(id) ? ' maintenance-tile' : ''), attrs: attrs(value) + (fixing(id) ? ` data-maintenance="${esc(id)}"` : '') })).join('');
  return frame(label, tiles + (soon ? soonTileHTML('weapon') : ''));
 }
 // Maps the same way: `maps` [{ id, name }], the shipped top-down picture
@@ -61,15 +65,51 @@ export const pickerHTML = (label, grid) => `<div class="picker"><button type="bu
 export function syncPicker(picker) {
  const on = picker.querySelector('.weapon-tile[aria-pressed="true"]'); if (!on) return;
  const thumb = picker.querySelector('.picker-thumb'), name = on.querySelector('.weapon-tile-name')?.textContent || '';
- if (thumb.dataset.for !== on.dataset.choice) { thumb.dataset.for = on.dataset.choice; thumb.innerHTML = on.querySelector('.weapon-tile-picture')?.innerHTML || ''; thumb.classList.toggle('picker-thumb-random', on.classList.contains('weapon-tile-random')); }
+ if (thumb.dataset.for !== on.dataset.choice) { thumb.dataset.for = on.dataset.choice; thumb.innerHTML = on.querySelector('.weapon-tile-picture')?.innerHTML || ''; thumb.classList.toggle('picker-thumb-random', on.classList.contains('weapon-tile-random')); thumb.classList.toggle('picker-thumb-map', on.classList.contains('map-tile')); }
  picker.querySelector('.picker-name').textContent = name;
 }
 const OPEN = new Set();
+// How tall an open panel's grid may be, in the page's own px (`scale`: the
+// page's fit, menu-fit.js), with `below` / `above` px of screen either side of
+// the bar and `chrome` px of the panel that is not the grid (padding, edges):
+// under the bar when the grid fits there or there is more room there than
+// above, else over it (`up`). `max` null: the stylesheet's own cap stands.
+export function panelPlacement({ natural, below, above, chrome = 0, scale = 1, least = 120 }) {
+ const room = px => Math.floor(px / (scale || 1) - chrome);
+ const down = room(below), over = room(above);
+ if (natural <= down) return { up: false, max: null };
+ if (down >= Math.min(natural, least) || down >= over) return { up: false, max: Math.max(60, down) };
+ return { up: true, max: natural <= over ? null : Math.max(60, over) };
+}
+// Menus never scroll now (menu-fit.js), so an open panel must fit on the
+// screen: its grid is capped to the room under the bar, or it opens upward
+// when there is more room above. (Measured on screen, then turned back into
+// the page's own px when the page is scaled to fit.)
+function placePanel(picker) {
+ const panel = picker.querySelector('.picker-panel'), grid = panel?.querySelector('.weapon-grid');
+ if (!grid || panel.hidden || typeof getComputedStyle !== 'function') return;
+ grid.style.maxHeight = ''; picker.classList.remove('picker-up');
+ const toggle = picker.querySelector('.picker-toggle'), bar = toggle.getBoundingClientRect();
+ const box = picker.closest('.lobby-columns,.lobby-players,.menu-shell,.lobby-screen,.modal')?.getBoundingClientRect();
+ const top = Math.max(0, box?.top ?? 0) + 6, bottom = Math.min(innerHeight, box?.bottom ?? innerHeight) - 6;
+ const scale = toggle.offsetHeight ? bar.height / toggle.offsetHeight : 1;
+ const { up, max } = panelPlacement({ natural: grid.offsetHeight, below: bottom - bar.bottom, above: bar.top - top, chrome: panel.offsetHeight - grid.offsetHeight, scale });
+ picker.classList.toggle('picker-up', up);
+ if (max != null) grid.style.maxHeight = `${max}px`;
+}
+// Scrolls only the grid to show the picked tile (scrollIntoView could also
+// move a page that is meant to stay in place).
+function revealTile(grid, tile) {
+ if (!grid || !tile) return;
+ const g = grid.getBoundingClientRect(), t = tile.getBoundingClientRect(), k = grid.offsetHeight ? g.height / grid.offsetHeight : 1;
+ if (t.top < g.top) grid.scrollTop -= (g.top - t.top) / k + 4;
+ else if (t.bottom > g.bottom) grid.scrollTop += (t.bottom - g.bottom) / k + 4;
+}
 export function wirePicker(picker) {
  const toggle = picker.querySelector('.picker-toggle'), panel = picker.querySelector('.picker-panel');
  const open = on => {
   panel.hidden = !on; toggle.setAttribute('aria-expanded', String(on)); picker.classList.toggle('open', on);
-  if (on) { for (const other of OPEN) if (other !== close) other(); OPEN.add(close); panel.querySelector('.weapon-tile[aria-pressed="true"]')?.scrollIntoView?.({ block: 'nearest' }); }
+  if (on) { for (const other of OPEN) if (other !== close) other(); OPEN.add(close); placePanel(picker); revealTile(panel.querySelector('.weapon-grid'), panel.querySelector('.weapon-tile[aria-pressed="true"]')); }
   else OPEN.delete(close);
  };
  const close = () => open(false);
@@ -80,6 +120,7 @@ export function wirePicker(picker) {
  picker.addEventListener?.('keydown', e => { if (e.key === 'Escape' && !panel.hidden) { e.stopPropagation(); e.preventDefault(); close(); toggle.focus(); } });
  panel.addEventListener('click', e => { if (e.target.closest('.weapon-tile:not(:disabled)')) setTimeout(() => { open(false); toggle.focus(); }); });
  watchWeaponGrid(panel.querySelector('.weapon-grid-frame'));
+ picker.ownerDocument?.defaultView?.addEventListener?.('resize', () => { if (!panel.hidden) placePanel(picker); });
  syncPicker(picker);
  return { open, sync: () => syncPicker(picker) };
 }

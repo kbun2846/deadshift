@@ -1,3 +1,4 @@
+import { confineToCircle } from './duel-circle.js';
 import {tryIchorDeflect,ichorGuardFor,endIchorGuard} from './weapons/ichor-deflect.js';
 import {recordBallastDamage} from './weapons/ballast-damage.js';
 import {isPlayable,confinePlayableMovement} from './playable-area.js';
@@ -16,7 +17,8 @@ import { assistAim, clearAssist } from './aim-assist.js';
 import { AIM_ASSIST } from './config/gameplay.js';
 const AIM_ASSIST_RANGE = Math.max(...Object.values(AIM_ASSIST).map(l => l.maxRange));
 // Tunable numbers live in config/gameplay.js; re-exported so existing imports keep working.
-import { ORB_LAUNCH, RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, VOLLEY_BOOST, MOUSE_VOLLEY_ASSIST, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_ZAP_BONUS, HEX_DAMAGE_MULTIPLIER, boostedHexDamage, TERRAIN, WADE } from './config/gameplay.js';
+import { STORM, inStorm } from './storm.js';
+import { hpRound, HP_STEP, ORB_LAUNCH, RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH, VOLLEY_BOOST, MOUSE_VOLLEY_ASSIST, HEX_BASE_PULSE, HEX_BASE_ZAP, HEX_ZAP_BONUS, HEX_DAMAGE_MULTIPLIER, boostedHexDamage, TERRAIN, WADE } from './config/gameplay.js';
 import { usesTrigger } from './items.js';
 
 // Each trigger weapon's own tick (fire, reload, its extras). Static's orbs,
@@ -34,7 +36,7 @@ export { RULES, ORB_DAMAGE_MULTIPLIER, ORB_VOLLEY_TOTALS, SPLASH };
 export const damagePerOrb = count => {
  const n=Math.max(1,Math.min(12,count));
  // Above three orbs, budget direct impact + the central blast together.
- return n<=3?Math.round(8+16*((n-1)/11)**1.5)*ORB_DAMAGE_MULTIPLIER:(ORB_VOLLEY_TOTALS[n]-explosionFor(n).damage)/n;
+ return n<=3?hpRound(1.6+3.2*((n-1)/11)**1.5)*ORB_DAMAGE_MULTIPLIER:(ORB_VOLLEY_TOTALS[n]-explosionFor(n).damage)/n;
 };
 export const launchDistance = time => ORB_LAUNCH.top*time-(ORB_LAUNCH.top-ORB_LAUNCH.start)*ORB_LAUNCH.ramp*(1-Math.exp(-time/ORB_LAUNCH.ramp));
 export function launchDuration(distance) {
@@ -42,20 +44,20 @@ export function launchDuration(distance) {
   for(let i=0;i<28;i++){const mid=(low+high)/2;if(launchDistance(mid)<distance)low=mid;else high=mid;}
   return Math.max(.08,high);
 }
-// Preserve the original range rounding, then apply the volley buff exactly.
-export const rangedOrbDamage = (base,distance,multiplier=ORB_DAMAGE_MULTIPLIER) => multiplier===0?base:Math.round(base/multiplier*(1+.2*Math.max(0,Math.min(1,(distance-6)/18))))*multiplier;
+// Preserve the original range rounding (to a fifth of a point: gameplay.js hpRound), then apply the volley buff exactly.
+export const rangedOrbDamage = (base,distance,multiplier=ORB_DAMAGE_MULTIPLIER) => multiplier===0?base:hpRound(base/multiplier*(1+.2*Math.max(0,Math.min(1,(distance-6)/18))))*multiplier;
 export function hexPower(distance) {
   const maturity = Math.max(0, Math.min(1, distance / 6));
   return { radius: .28 + (RULES.hexPulseRadius - .28) * maturity,
-    damage: boostedHexDamage(Math.round(10 + (HEX_BASE_PULSE - 10) * maturity * maturity)),
+    damage: boostedHexDamage(hpRound(2 + (HEX_BASE_PULSE - 2) * maturity * maturity)),
     reach: .55 + (RULES.hexReach - .55) * maturity,
-    zapDamage: boostedHexDamage(Math.round(6 + (HEX_BASE_ZAP - 6) * maturity)) + HEX_ZAP_BONUS };
+    zapDamage: boostedHexDamage(hpRound(1.2 + (HEX_BASE_ZAP - 1.2) * maturity)) + HEX_ZAP_BONUS };
 }
 export function hexPulseDamageAt(power, distance) {
   if (distance > power.radius + 1e-8) return 0;
   const accuracy = Math.max(0, 1 - Math.max(0, distance) / power.radius);
-  const baseDamage=Math.round(power.damage / HEX_DAMAGE_MULTIPLIER);
-  return boostedHexDamage(Math.round(baseDamage * (.25 + .75 * accuracy * accuracy)));
+  const baseDamage=hpRound(power.damage / HEX_DAMAGE_MULTIPLIER);
+  return boostedHexDamage(hpRound(baseDamage * (.25 + .75 * accuracy * accuracy)));
 }
 export function splashFalloff(distance, radius, count = 0) {
   if (!(radius > 0) || distance > radius) return 0;
@@ -68,7 +70,7 @@ export function explosionFor(count) {
   const power = (Math.min(12, count) - 2) / 10;
   const n=Math.min(12,count);
   const extraScale=Math.sqrt(Math.max(1,count/12));
-  return { radius: (.55 + power * 2.15) * (count >= 12 ? 1.12 : 1)*extraScale, damage: (n<=3?(6+power*54)*1.15:30+170*((n-4)/8)**1.15)*(145/200)*extraScale*VOLLEY_BOOST };
+  return { radius: (.55 + power * 2.15) * (count >= 12 ? 1.12 : 1)*extraScale, damage: (n<=3?(1.2+power*10.8)*1.15:6+34*((n-4)/8)**1.15)*(145/200)*extraScale*VOLLEY_BOOST };
 }
 
 export function inside(point, box, padding = 0) {
@@ -220,6 +222,8 @@ export class Simulation {
     this.ammo = RULES.maxSeeds; this.rechargeProgress = 0; this.rechargeWait = 0; this.firstRefill = false;
     this.spray = { active: false, warmup: 0, credit: 0, exhausted: false, effectClock: 0, volley: 0 };
     this.crops = cropSegments(this.map);
+    // (The world's animals come back too: critters.js.)
+    if (this.worldAuthority) this.critters?.reset();
   }
 
   // A new player body at full health. Stamina is filled after the player
@@ -351,7 +355,7 @@ export class Simulation {
   // player can see (the cheap range check first; sight rays are the cost).
   assistTargets() {
     const p = this.player, reach = AIM_ASSIST_RANGE;
-    return this.targets.filter(t => !t.friendly && !(t.hp !== undefined && t.hp <= 0) && Math.hypot(t.x - p.x, t.z - p.z) <= reach && this.canSeeTarget(t.x, t.z));
+    return this.targets.filter(t => !t.friendly && !t.critter && !(t.hp !== undefined && t.hp <= 0) && Math.hypot(t.x - p.x, t.z - p.z) <= reach && this.canSeeTarget(t.x, t.z));
   }
 
   // Can the player actually see something standing at (x, z)? Not if it is
@@ -401,7 +405,31 @@ export class Simulation {
     return false;
   }
 
+  // One tick. The world's animals (critters.js: Hollow Wick's goat), when
+  // this sim shares them, are targets for the length of it: every weapon
+  // that hurts a target hurts them (never locked on, never a counted kill:
+  // `critter`). Whoever holds the world steps their minds (SOLO this sim;
+  // online the host's arena).
   step(input, dt = RULES.step) {
+    const critters = this.critters && !this.predictOnly ? this.critters : null;
+    if (!critters) return this.stepSelf(input, dt);
+    if (this.worldAuthority && !this.dev.freeze) critters.tick(dt, this.critterBodies());
+    const extra = critters.targets();
+    if (!extra) return this.stepSelf(input, dt);
+    this.targets = this.targets.concat(extra);
+    try { return this.stepSelf(input, dt); }
+    finally { this.targets = this.targets.filter(t => !t.critter); critters.after(); }
+  }
+  // Everyone a critter can see: you (standing) and the other bodies about.
+  critterBodies() {
+    const out = [], p = this.player;
+    if (!p.dead && p.hp > 0) out.push(p);
+    for (const t of this.targets) if ((t.kind === 'robot' || t.kind === 'player') && t.hp > 0) out.push(t);
+    for (const o of this.otherPlayers || []) if (!(o.hp <= 0)) out.push(o);
+    return out;
+  }
+
+  stepSelf(input, dt = RULES.step) {
     if(this.player.hp<=0)this.killPlayer();
     // Dev "freeze game": the world stops (shots, orbs, grenades, pellets and
     // shells hang in the air, timers and targets hold, crops stop burning)
@@ -417,10 +445,10 @@ export class Simulation {
     if(this.player.dead){const idle={aimX:this.player.aimX,aimZ:this.player.aimZ};if(!this.dev.freeze){stepScatter(this,idle,dt,{segmentBox,segmentCircle});stepGrenades(this,idle,dt,segmentBox);if(this.weapon!=='static')WEAPON_STEPS[this.weapon]?.(this,idle,dt,{segmentBox,segmentCircle});}return;}
     if(this.dev.ammo||this.dev.orbs)this.ammo=RULES.maxSeeds; if(this.dev.cooldowns)this.hexCooldown=0; if(this.dev.stamina)this.player.stamina=this.maxStamina;
     // Dev max health: the bar keeps its share when the maximum changes.
-    { const want=this.dev.maxHealth||RULES.playerHealth,p=this.player; if(this.dev.maxHealth!=null&&p.maxHp!==want&&p.hp>0){p.hp=Math.max(1,Math.round(p.hp/p.maxHp*want));p.maxHp=want;} }
+    { const want=this.dev.maxHealth||RULES.playerHealth,p=this.player; if(this.dev.maxHealth!=null&&p.maxHp!==want&&p.hp>0){p.hp=Math.max(HP_STEP,hpRound(p.hp/p.maxHp*want));p.maxHp=want;} }
     // Dev regenerate: back to full over a couple of seconds.
     if(this.dev.regen&&this.player.hp>0)this.player.hp=Math.min(this.player.maxHp,this.player.hp+this.player.maxHp*.5*dt);
-    if(!frozen){this.time += dt; this.hexCooldown = Math.max(0, this.hexCooldown - dt);}
+    if(!frozen){this.time += dt; this.hexCooldown = Math.max(0, this.hexCooldown - dt); this.stepStorm(dt);}
     if (this.hexCooldown < 1e-8) this.hexCooldown = 0;
     const p = this.player;
     if (!input.spray || input.dodge || p.hp <= 0 || p.dodgeRemaining > 0) {
@@ -707,6 +735,8 @@ export class Simulation {
       const previousX = p.x, previousZ = p.z;
       p.x += dx / steps; p.z += dz / steps;
       confinePlayableMovement(this.map,p,previousX,previousZ,r);
+      // (1V1's duel circle, duel-circle.js: nobody walks out of it.)
+      if(this.boundary)confineToCircle(p,this.boundary,r);
       this.confineToHex(previousX, previousZ);
       // Resolved before the collision passes: a dodge takes the scenery with
       // it instead of stopping on it, so the roll keeps the line the player
@@ -995,7 +1025,7 @@ export class Simulation {
       s.launched = true; s.age = 0; s.volley = volley;
       s.launchX=s.x;s.launchZ=s.z;
       // A stray is worth one orb, whatever the volley behind it was worth.
-      s.strayDamage = isQuickShot ? 6 * VOLLEY_BOOST : damagePerOrb(1);
+      s.strayDamage = isQuickShot ? 1.2 * VOLLEY_BOOST : damagePerOrb(1);
       s.damage = s.strayDamage; s.quickShot = isQuickShot;
       // Spent on breakable scenery, never on the target it was aimed at
       // (what it breaks is as before the volley boost).
@@ -1012,7 +1042,7 @@ export class Simulation {
     this.events.push({ type: 'launch', x: p.x, z: p.z, count: seeds.length, aimX: p.aimX, aimZ: p.aimZ,
       duration, focusX: x, focusZ: z, travelX, travelZ, paths: seeds.map(s => ({ id: s.id, x: s.x, z: s.z })),
       // Best case for this volley: what it is worth if every orb lands.
-      damage: (isQuickShot ? 6 : damagePerOrb(seeds.length)) * seeds.length });
+      damage: (isQuickShot ? 1.2 : damagePerOrb(seeds.length)) * seeds.length });
   }
 
   // A volley is worth what lands, not what was fired. The count is taken once,
@@ -1021,10 +1051,10 @@ export class Simulation {
   orbVolleyDamage(shot) {
     const volley = this.volleys.get(shot.volley);
     if (!volley) return shot.strayDamage;
-    if (shot.quickShot) return 6;
+    if (shot.quickShot) return 1.2;
     if (volley.landed === undefined) {
       volley.landed = Math.max(1, volley.remaining);
-      volley.roll = volley.landed === 12 ? (Math.random() * 20 - 10) / 12 : 0;
+      volley.roll = volley.landed === 12 ? (Math.random() * 4 - 2) / 12 : 0;
     }
     const base = damagePerOrb(volley.landed) + volley.roll;
     const scale = volley.landed <= 3 ? ORB_DAMAGE_MULTIPLIER : 0;
@@ -1330,7 +1360,8 @@ export class Simulation {
     if(!shot.environmental)this.events.push({type:'outgoingDamage',damage:dealt,hp:target.hp,maxHp:target.maxHp,x:target.x,z:target.z,id:target.id,volley:shot.volley});
     if (!shot.environmental) { target.flash = .16; this.stats.hits++; }
     const killed = target.hp <= 0;
-    if (killed) {
+    // (An animal: no kill counted, nothing to respawn: critters.js.)
+    if (killed && !target.critter) {
       target.respawn = RULES.targetRespawn; this.stats.kills++;
       if (!shot.environmental) {
         const kills = (this.volleyKills.get(shot.volley) || 0) + 1;
@@ -1352,10 +1383,10 @@ export class Simulation {
     if (this.surge?.active) damage *= SURGE.taken;
     // Dev damage taken (a multiplier; 0 is off).
     if (this.dev.damageIn != null && this.dev.damageIn !== 1) { damage *= this.dev.damageIn; if (damage <= 0) return 0; }
-    const dealt = Math.min(this.player.hp, !environmental && this.player.dodgeRemaining > 0 ? Math.max(1, Math.round(damage * RULES.dodgeDamageMultiplier)) : damage);
+    const dealt = Math.min(this.player.hp, !environmental && this.player.dodgeRemaining > 0 ? Math.max(HP_STEP, hpRound(damage * RULES.dodgeDamageMultiplier)) : damage);
     if(damageType==='ballast'){recordBallastDamage(this.player,dealt,this.time,owner);if(dealt>=this.player.hp)damageType='ballastFatal';}
-    this.player.hp -= dealt;
-    const event = {type:'playerDamage',damage:dealt};
+    this.player.hp -= dealt; this.lastDamageType = damageType;
+    const event = {type:'playerDamage',damage:dealt,...(damageType==='storm'?{storm:true}:null)};
     // Force points away from the hit's origin. Curses/streams without force
     // use the caster's position; keep this UI bearing separate from death force.
     let dx = -(impact?.x || 0), dz = -(impact?.z || 0);
@@ -1367,6 +1398,19 @@ export class Simulation {
     this.events.push(event);
     if(this.player.hp<=0)this.killPlayer(impact,damageType);
     return dealt;
+  }
+
+  // The storm (storm.js; `this.storm` the safe circle, handed in each tick by
+  // the arena / duel.js): outside it, STORM.damage a second in quick bites
+  // (STORM.tick), so the health bar runs down. Nobody's kill.
+  stepStorm(dt) {
+    const c = this.storm, p = this.player;
+    if (!c || p.dead || !(p.hp > 0)) { this.stormTick = 0; return; }
+    this.stormTick = (this.stormTick || 0) + dt;
+    while (this.stormTick >= STORM.tick - 1e-9) {
+      this.stormTick -= STORM.tick;
+      if (!p.dead && inStorm(c, p.x, p.z)) this.damagePlayer(STORM.damage * STORM.tick, 'storm', true, false, null, 'storm');
+    }
   }
 
   killPlayer(impact=null,damageType='impact'){
@@ -1445,6 +1489,7 @@ export class Simulation {
     this.colliders = mapColliders(this.map);
     this.crops = cropSegments(this.map);
     this.targets = this.practiceTargets();
+    if (this.worldAuthority) this.critters?.reset();
     this.events.push({ type: 'mapReset' });
   }
 
@@ -1481,7 +1526,7 @@ export class Simulation {
         const ux = flatCentre > 1e-6 ? (victim.x - x) / flatCentre : 1, uz = flatCentre > 1e-6 ? (victim.z - z) / flatCentre : 0, side = reach * .8;
         if (!side || (shut(victim.x - uz * side, victim.z + ux * side) && shut(victim.x + uz * side, victim.z - ux * side))) return 0;
       }
-      return Math.max(1, Math.round(blast.damage * splashFalloff(distance, blast.radius, volley.arrived)));
+      return Math.max(HP_STEP, hpRound(blast.damage * splashFalloff(distance, blast.radius, volley.arrived)));
     };
     const selfDamage=damageAt(this.player,null,RULES.radius);
     if(selfDamage){

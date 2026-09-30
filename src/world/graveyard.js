@@ -32,7 +32,7 @@ export const WALL_LENGTHS = [2, 3, 4, 5, 6];
 const NONE = [];
 export const GRAVE_TYPES = {
   // Breakable: the stone above its stump. Thin east-west, broad north-south.
-  headstone: { w: .2, d: .72, health: 5, coverHeight: .9 },
+  headstone: { w: .2, d: .72, health: 1, coverHeight: .9 },
   // What a broken headstone leaves: solid, knee-high, narrower than the stone.
   headstoneStump: { w: .16, d: .46, health: null, coverHeight: .35, lowTop: true },
   // Solid cover.

@@ -11,7 +11,10 @@ export function createMenuNavigation(){
   // A range slider steps natively on horizontal arrows. Vertical arrows must
   // still move between rows or the slider would trap keyboard focus.
   if(active?.matches('input[type=range]')&&['ArrowLeft','ArrowRight'].includes(key))return false;
-  if(active?.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea')&&key!=='Escape')return false;
+  // A text box keeps its letters and left/right; up and down leave it (the
+  // username at the top of host a game, the room code), Escape goes back.
+  if(active?.matches('textarea')&&key!=='Escape')return false;
+  if(active?.matches('input:not([type=checkbox]):not([type=radio]):not([type=range])')&&!['Escape','ArrowUp','ArrowDown'].includes(key))return false;
   if(!['KeyE','Enter','KeyQ','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(key))return false;
   event.preventDefault();
   if(event.repeat&&!key.startsWith('Arrow'))return true;

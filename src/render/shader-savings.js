@@ -75,7 +75,7 @@ export function patchShadowChunk(source) {
 
 // Three's own versions, kept for comparison tests. Idempotent: a second copy of
 // this module (a dev server reload) finds the chunks already patched.
-const kept = globalThis.__deadshiftShaderChunks ||= { original: {}, patched: {} };
+const kept = globalThis.__deadstabShaderChunks ||= { original: {}, patched: {} };
 export const ORIGINAL_CHUNKS = kept.original, PATCHED_CHUNKS = kept.patched;
 for (const [chunk, patch] of [['shadowmap_pars_fragment', patchShadowChunk], ['lights_fragment_begin', patchLightsChunk]]) {
   if (kept.patched[chunk] && THREE.ShaderChunk[chunk] === kept.patched[chunk]) continue;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Simulation,RULES,damagePerOrb,explosionFor,splashFalloff} from '../src/simulation.js';
-import { VOLLEY_BOOST } from '../src/config/gameplay.js';
+import { VOLLEY_BOOST, hpRound } from '../src/config/gameplay.js';
 
 const empty=extra=>({width:80,depth:80,spawn:{x:0,z:0},buildings:[],props:[],fences:[],targets:[],...extra});
 const run=(sim,frames=150)=>{for(let i=0;i<frames;i++)sim.step({});return sim;};
@@ -35,17 +35,17 @@ test('the overshoot never carries an orb into solid cover behind the target',()=
 });
 
 test('a launched orb breaks scenery and carries on through it',()=>{
- const sim=new Simulation(empty({targets:[{id:'a',x:12,z:0,maxHp:500}],props:[{type:'barrel',x:6,z:0}]}));
+ const sim=new Simulation(empty({targets:[{id:'a',x:12,z:0,maxHp:100}],props:[{type:'barrel',x:6,z:0}]}));
  sim.seed();sim.launch(12,0);run(sim);
  assert.equal(sim.props[0].hp,0,'the barrel should be cleared');
- assert.ok(sim.targets[0].hp<500,'and the orb should still reach the target');
+ assert.ok(sim.targets[0].hp<100,'and the orb should still reach the target');
  assert.ok(sim.events.some(e=>e.type==='propBreak'));
 });
 
 test('every breakable type falls to a single orb',()=>{
  for(const type of ['barrel','crate','cactus','sign','deadwood','hay']){
   const sim=new Simulation(empty({props:[{type,x:6,z:0}]}));
-  assert.equal(sim.props[0].health,5,`${type} health`);
+  assert.equal(sim.props[0].health,1,`${type} health`);
   sim.seed();sim.launch(12,0);run(sim);
   assert.equal(sim.props[0].hp,0,`${type} should break to one orb`);
  }
@@ -62,8 +62,8 @@ test('a stray orb is worth one orb, whatever the volley behind it was',()=>{
   // Aimed squarely at one target, with a second standing off the line that a
   // few orbs clip on their way in. The clipped one is never the intended one.
   const sim=new Simulation(empty({targets:[
-   {id:'aimed',x:14,z:0,maxHp:5000},
-   {id:'bystander',x:7,z:1.25,maxHp:5000},
+   {id:'aimed',x:14,z:0,maxHp:1000},
+   {id:'bystander',x:7,z:1.25,maxHp:1000},
   ]}));
   spread(sim,count,.9);
   sim.launch(14,0);run(sim);
@@ -77,7 +77,7 @@ test('a stray orb is worth one orb, whatever the volley behind it was',()=>{
 });
 
 test('a volley thrown just past a target converges on it instead of clipping it',()=>{
- const sim=new Simulation(empty({targets:[{id:'blocking',x:6,z:0,maxHp:5000}]}));
+ const sim=new Simulation(empty({targets:[{id:'blocking',x:6,z:0,maxHp:1000}]}));
  spread(sim,8,.5);
  // Aimed just beyond the target (within RULES.interceptReach), at open ground.
  sim.launch(7,0);
@@ -96,8 +96,8 @@ test('a volley thrown just past a target converges on it instead of clipping it'
 
 test('the nearest crossing wins when two targets lie along the path',()=>{
  const sim=new Simulation(empty({targets:[
-  {id:'far',x:12,z:0,maxHp:5000},
-  {id:'near',x:5,z:0,maxHp:5000},
+  {id:'far',x:12,z:0,maxHp:1000},
+  {id:'near',x:5,z:0,maxHp:1000},
  ]}));
  spread(sim,6,.4);
  sim.launch(6,0);
@@ -105,7 +105,7 @@ test('the nearest crossing wins when two targets lie along the path',()=>{
 });
 
 test('a target behind solid cover is never intercepted onto',()=>{
- const sim=new Simulation(empty({targets:[{id:'hidden',x:9,z:0,maxHp:5000}],props:[{type:'boulder',x:5,z:0}]}));
+ const sim=new Simulation(empty({targets:[{id:'hidden',x:9,z:0,maxHp:1000}],props:[{type:'boulder',x:5,z:0}]}));
  spread(sim,6,.4);
  sim.launch(26,0);
  assert.ok(Math.abs(sim.shots[0].focusX-9)>1e-6,'cover must not be shot through by re-focusing');
@@ -113,8 +113,8 @@ test('a target behind solid cover is never intercepted onto',()=>{
 
 test('a volley aimed directly at a target is left alone',()=>{
  const sim=new Simulation(empty({targets:[
-  {id:'aimed',x:12,z:0,maxHp:5000},
-  {id:'nearer',x:5,z:0,maxHp:5000},
+  {id:'aimed',x:12,z:0,maxHp:1000},
+  {id:'nearer',x:5,z:0,maxHp:1000},
  ]}));
  spread(sim,6,.4);
  sim.launch(12,0);
@@ -122,7 +122,7 @@ test('a volley aimed directly at a target is left alone',()=>{
 });
 
 test('the volley is worth what lands, not what was fired',()=>{
- const sim=new Simulation(empty({targets:[{id:'a',x:12,z:0,maxHp:5000}],props:[{type:'well',x:7,z:0}]}));
+ const sim=new Simulation(empty({targets:[{id:'a',x:12,z:0,maxHp:1000}],props:[{type:'well',x:7,z:0}]}));
  spread(sim,12);
  sim.launch(12,0);run(sim);
  const hits=orbHits(sim);
@@ -131,48 +131,48 @@ test('the volley is worth what lands, not what was fired',()=>{
  for(const hit of hits.slice(0,landed))assert.ok(Math.abs(hit.damage-damagePerOrb(landed))<1e-6,
   `orb dealt ${hit.damage}, expected the ${landed}-orb value ${damagePerOrb(landed)}`);
  // The blast is sized off the same figure, so a half-blocked volley is halved end to end.
- assert.ok(Math.abs(blast.damage-explosionFor(landed).damage)<1,
+ assert.ok(Math.abs(blast.damage-explosionFor(landed).damage)<.2,
   `blast was ${blast.damage}, expected about ${explosionFor(landed).damage}`);
  assert.ok(damagePerOrb(landed)<damagePerOrb(12),'a blocked volley must be worth less per orb');
 });
 
 test('an unobstructed volley is still worth its full launched value',()=>{
- const sim=new Simulation(empty({targets:[{id:'a',x:12,z:0,maxHp:5000}]}));
+ const sim=new Simulation(empty({targets:[{id:'a',x:12,z:0,maxHp:1000}]}));
  spread(sim,12);
  sim.launch(12,0);run(sim);
  const hits=orbHits(sim);
  assert.equal(hits.length,13,'twelve orbs and one blast');
  // A full twelve carries its one shared roll, so allow exactly that band.
- const roll=10/12+1e-6;
+ const roll=2/12+1e-6;
  for(const hit of hits.slice(0,12))assert.ok(Math.abs(hit.damage-damagePerOrb(12))<=roll,
   `orb dealt ${hit.damage}, outside the roll around ${damagePerOrb(12)}`);
  const shared=hits[0].damage;
  for(const hit of hits.slice(0,12))assert.equal(hit.damage,shared,'one roll is shared by the whole volley');
  const total=hits.reduce((sum,hit)=>sum+hit.damage,0);
  const blast=explosionFor(12);
- const bump=Math.round(blast.damage*splashFalloff(0,blast.radius,12))-blast.damage;
- assert.ok(total>=335*VOLLEY_BOOST+bump-2&&total<=355*VOLLEY_BOOST+bump+2,`full volley totalled ${total}`);
+ const bump=hpRound(blast.damage*splashFalloff(0,blast.radius,12))-blast.damage;
+ assert.ok(total>=67*VOLLEY_BOOST+bump-.4&&total<=71*VOLLEY_BOOST+bump+.4,`full volley totalled ${total}`);
 });
 
 test('a single orb never produces a blast',()=>{
- const sim=new Simulation(empty({targets:[{id:'a',x:8,z:0,maxHp:500}]}));
+ const sim=new Simulation(empty({targets:[{id:'a',x:8,z:0,maxHp:100}]}));
  sim.seed();sim.launch(8,0);run(sim);
  assert.equal(sim.events.filter(e=>e.type==='explosion').length,0);
  assert.equal(orbHits(sim).length,1);
 });
 
 test('an orb pays for what it breaks and carries on lighter',()=>{
- const sim=new Simulation(empty({props:[{type:'crate',x:4,z:0}],targets:[{id:'t',x:14,z:0,maxHp:500}]}));
+ const sim=new Simulation(empty({props:[{type:'crate',x:4,z:0}],targets:[{id:'t',x:14,z:0,maxHp:100}]}));
  sim.seed();sim.launch(14,0);
  const budget=sim.shots[0].pierceBudget;
  assert.equal(budget,damagePerOrb(1)/VOLLEY_BOOST,'the budget starts at one orb (as it was before the volley boost)');
  run(sim);
  assert.equal(sim.props[0].hp,0,'a crate it can afford is cleared');
- assert.ok(sim.targets[0].hp<500,'and the orb keeps going');
+ assert.ok(sim.targets[0].hp<100,'and the orb keeps going');
 });
 
 test('a breakable it cannot pay for in full takes the remainder and stops it',()=>{
- const sim=new Simulation(empty({props:[{type:'crate',x:4,z:0},{type:'crate',x:8,z:0}],targets:[{id:'t',x:14,z:0,maxHp:500}]}));
+ const sim=new Simulation(empty({props:[{type:'crate',x:4,z:0},{type:'crate',x:8,z:0}],targets:[{id:'t',x:14,z:0,maxHp:100}]}));
  sim.seed();sim.launch(14,0);run(sim);
  const [first,second]=sim.props;
  const left=damagePerOrb(1)/VOLLEY_BOOST-first.health;
@@ -180,7 +180,7 @@ test('a breakable it cannot pay for in full takes the remainder and stops it',()
  assert.ok(Math.abs(second.hp-(second.health-left))<1e-6,
   `the second should be left on ${second.health-left}, was ${second.hp}`);
  assert.ok(second.hp>0,'and must survive, having cost more than was left');
- assert.equal(sim.targets[0].hp,500,'the orb is stopped and never reaches the target');
+ assert.equal(sim.targets[0].hp,100,'the orb is stopped and never reaches the target');
 });
 
 test('the budget is spent nearest first, in the order the orb meets them',()=>{
@@ -194,9 +194,9 @@ test('the budget is spent nearest first, in the order the orb meets them',()=>{
 });
 
 test('the budget does not come out of what the target receives',()=>{
- const clear=new Simulation(empty({targets:[{id:'t',x:14,z:0,maxHp:500}]}));
+ const clear=new Simulation(empty({targets:[{id:'t',x:14,z:0,maxHp:100}]}));
  clear.seed();clear.launch(14,0);run(clear);
- const through=new Simulation(empty({props:[{type:'crate',x:4,z:0}],targets:[{id:'t',x:14,z:0,maxHp:500}]}));
+ const through=new Simulation(empty({props:[{type:'crate',x:4,z:0}],targets:[{id:'t',x:14,z:0,maxHp:100}]}));
  through.seed();through.launch(14,0);run(through);
  assert.equal(clear.targets[0].hp,through.targets[0].hp,
   'clearing scenery on the way must not reduce the damage delivered');
@@ -213,7 +213,7 @@ test('orbs parked around a target do not drag the volley onto it',()=>{
  // Place a ring of orbs about a target, walk away, then fire somewhere else
  // entirely. Every one of those orbs crosses the target on its way out, which
  // must not be mistaken for having aimed through it.
- const sim=new Simulation(empty({targets:[{id:'bystander',x:6,z:0,maxHp:500}]}));
+ const sim=new Simulation(empty({targets:[{id:'bystander',x:6,z:0,maxHp:100}]}));
  for(let i=0;i<8;i++){
   sim.seed();
   const orb=sim.shots.at(-1),angle=i/8*Math.PI*2;
@@ -226,7 +226,7 @@ test('orbs parked around a target do not drag the volley onto it',()=>{
  run(sim);
  // An orb leaving the ring may still physically clip it, which is a stray and
  // worth one orb. What must not happen is the whole volley landing on it.
- const taken=500-sim.targets[0].hp;
+ const taken=100-sim.targets[0].hp;
  assert.ok(taken<=damagePerOrb(1)*3+1e-6,`the bystander took ${taken.toFixed(1)}, which is volley damage`);
  const blast=sim.events.find(e=>e.type==='explosion');
  assert.ok(blast,'the volley should still detonate where it was sent');
@@ -235,7 +235,7 @@ test('orbs parked around a target do not drag the volley onto it',()=>{
 });
 
 test('a target off the line of fire is never intercepted onto',()=>{
- const sim=new Simulation(empty({targets:[{id:'aside',x:8,z:6,maxHp:500}]}));
+ const sim=new Simulation(empty({targets:[{id:'aside',x:8,z:6,maxHp:100}]}));
  spread(sim,6,.4);
  // Aimed straight down the x axis; the target sits well to one side of it.
  sim.launch(20,0);
@@ -243,7 +243,7 @@ test('a target off the line of fire is never intercepted onto',()=>{
 });
 
 test('a target behind the aim point is not intercepted onto either',()=>{
- const sim=new Simulation(empty({targets:[{id:'beyond',x:20,z:0,maxHp:500}]}));
+ const sim=new Simulation(empty({targets:[{id:'beyond',x:20,z:0,maxHp:100}]}));
  spread(sim,6,.4);
  // Deliberately short of it: the blast belongs where it was aimed.
  sim.launch(9,0);
@@ -251,14 +251,14 @@ test('a target behind the aim point is not intercepted onto either',()=>{
 });
 
 test('aimed well past a target, the volley goes where the cursor is (owner, v0.9b)',()=>{
- const sim=new Simulation(empty({targets:[{id:'blocking',x:6,z:0,maxHp:5000}]}));
+ const sim=new Simulation(empty({targets:[{id:'blocking',x:6,z:0,maxHp:1000}]}));
  spread(sim,8,.5);
  sim.launch(26,0);
  assert.ok(sim.shots.every(s=>Math.abs(s.focusX-26)<1e-6),'no refocus onto a target far short of the cursor');
 });
 
 test('a target standing in the way is still intercepted onto',()=>{
- const sim=new Simulation(empty({targets:[{id:'blocking',x:7,z:.4,maxHp:5000}]}));
+ const sim=new Simulation(empty({targets:[{id:'blocking',x:7,z:.4,maxHp:1000}]}));
  spread(sim,8,.5);
  sim.launch(8,0);
  assert.ok(Math.abs(sim.shots[0].focusX-7)<1e-6,'the on-axis case must keep working');

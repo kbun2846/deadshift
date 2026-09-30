@@ -206,3 +206,58 @@ export function settleShadowBox(current, needed, fit = SHADOW_FIT, slack = 0) {
   if (keepDepth) { next.near = current.near; next.far = current.far; } else { next.near = roomy.near; next.far = roomy.far; }
   return next;
 }
+
+// ---- One box size per map (terrain maps) ----
+//
+// Owner, 2026-09-29: "in the maps, especially in hollow wick i keep getting
+// these shadow flickerings across places" (while walking; every preset,
+// Extreme included). On hills the box above changed size now and then as you
+// walked (about every 10 m on Hollow Wick: the view's heights change with
+// every step) and each change moved every texel by a fraction of one, so
+// every shadow edge on screen jumped at once; below Extreme it also made the
+// kept map (shadow-cache.js) redraw at the new texel size.
+//
+// Now a terrain map's outdoor view gets one size, worked out once: the
+// widest and tallest box the view needs anywhere on the map's playable
+// ground (`points`), plus `slack` for the camera's height lagging the ground,
+// and one depth that holds every one of them. Across the map the texel is
+// then the same everywhere on the map, and the box only ever moves in whole
+// texels (placeShadowBox), so the grid stays fixed to the world and no edge
+// jumps. It costs a little sharpness against the box a level stretch would
+// have (Hollow Wick 16:9: texels about 11% bigger than the median box's).
+//
+// Texels are whole 4096ths of a metre, so every edge and every texel step is
+// exact in floating point: the box's width over the map's size is the same
+// number every time (the kept map compares it exactly).
+const TEXEL_GRAIN = 4096;
+// The most the view needs over `points` (the widest, the tallest, the
+// deepest), measured once per screen shape.
+export function shadowReach(view, sunOffset, basis, ground, points, fit = SHADOW_FIT) {
+  let width = 0, height = 0, near = Infinity, far = -Infinity;
+  for (const p of points) {
+    const b = shadowBoxOver(view, sunOffset, basis, ground, p.x, ground.heightAt(p.x, p.z), p.z, fit);
+    width = Math.max(width, b.right - b.left); height = Math.max(height, b.top - b.bottom);
+    near = Math.min(near, b.near); far = Math.max(far, b.far);
+  }
+  return Number.isFinite(near) ? { width, height, near, far } : null;
+}
+// That reach as a box size on a map `texels` across: whole grains a texel.
+export function shadowSpan(reach, texels, fit = SHADOW_FIT, slack = fit.slack) {
+  if (!reach || !texels) return null;
+  const grain = n => Math.ceil(n * TEXEL_GRAIN) / TEXEL_GRAIN, deep = fit.depthStep;
+  // (Slack all round covers placing the box on whole texels too.)
+  const tx = grain(Math.min(fit.maxSide, reach.width + 2 * slack) / texels), ty = grain(Math.min(fit.maxSide, reach.height + 2 * slack) / texels);
+  return { texels, tx, ty, near: Math.floor((reach.near - slack) / deep) * deep, far: Math.ceil((reach.far + slack) / deep) * deep };
+}
+
+// The box for `needed` at the span's size: its left and bottom edges on
+// whole texels, its depth the span's. Null when the view needs more than the
+// span holds (a spot the span never saw, a higher camera): then the settled
+// box (settleShadowBox) it is.
+export function placeShadowBox(needed, span) {
+  if (!span) return null;
+  const { tx, ty, texels } = span, w = tx * texels, h = ty * texels;
+  if (needed.right - needed.left > w - tx || needed.top - needed.bottom > h - ty || needed.near < span.near || needed.far > span.far) return null;
+  const left = Math.floor(needed.left / tx) * tx, bottom = Math.floor(needed.bottom / ty) * ty;
+  return { left, right: left + w, bottom, top: bottom + h, near: span.near, far: span.far };
+}

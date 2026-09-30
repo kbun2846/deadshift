@@ -28,17 +28,30 @@
 // xRate (v146): how often it uses its X ability, against the old rate.
 // miss: the chance, about every half-second of shooting, that the hand pulls
 // wide for a moment (a shot or two that miss). Nobody is a dead shot.
+// rest: an easier robot stops firing about this long (s) after every second
+// and a half or so of it, re-aiming and hesitating as a person does.
+// feel: how much a hard-to-aim weapon (robot-brain.js WEAPON_AIM) throws its
+// hand off: fully for easy and normal, less for hard, little for expert.
+// whiff: melee (Ichor, Sheath): the chance a swing is misjudged, started out
+// of reach or cut off line (robot-brain.js meleeSwing), as a person does.
+// (Owner, 2026-09-29: "robots aim is too good, especially in normal it should
+// be more balanced. dont make it easy but make it miss a bit more, especially
+// with melee and ranged weapons ... make easy extra easy and make hard
+// actually hard, make normal balanced and fun": easy's hands much looser,
+// normal looser than v146 and whiffing a third of its melee swings, hard a
+// little sharper and quicker than before. The hard-to-aim weapons miss more
+// on top, robot-brain.js WEAPON_AIM.)
 export const SKILLS = Object.freeze({
- rookie: { label: 'rookie', reaction: [.55, .8],  aim: 3.2,  settle: 1.05, turn: 5,  lead: .4,  dodge: .04, trigger: 3.1, burst: 2.2, shake: 1.9,  miss: .44, tech: .05, bold: -.3,  patience: .9, xRate: .3 },
- easy:   { label: 'easy',   reaction: [.42, .62], aim: 2.5,  settle: .8,   turn: 6.5, lead: .55, dodge: .1, trigger: 2.4, burst: 1.8, shake: 1.4,  miss: .34, tech: .15, bold: -.22, patience: .8, xRate: .35 },
+ rookie: { label: 'rookie', reaction: [.65, .9],  aim: 5.4,  settle: 1.3,  turn: 5,  lead: .4,  dodge: .03, trigger: 3.3, burst: 2.3, shake: 3.1,  miss: .7,  whiff: .62, rest: .8,  feel: 1.2, tech: .05, bold: -.3,  patience: .9, xRate: .3 },
+ easy:   { label: 'easy',   reaction: [.55, .8],  aim: 4.6,  settle: 1.15, turn: 5.5, lead: .45, dodge: .05, trigger: 2.4, burst: 1.8, shake: 2.7,  miss: .62, whiff: .6,  rest: .6,  feel: 1.15, tech: .1, bold: -.28, patience: .85, xRate: .3 },
  // Normal (owner, v146: it was too hard): slower to react, looser aim, a
  // shakier hand and less game sense than before.
- normal: { label: 'normal', reaction: [.27, .42], aim: 1.45, settle: .5,   turn: 9.5, lead: .8,  dodge: .3, trigger: 1.15, burst: 1.1, shake: .72, miss: .2, tech: .5, bold: -.14, patience: .6, xRate: .45 },
- hard:   { label: 'hard',   reaction: [.12, .2],  aim: .6,   settle: .26,  turn: 15, lead: .97, dodge: .7,  trigger: .8,  burst: .75, shake: .17, miss: .05, tech: .95, bold: 0,   patience: 0, xRate: .6 },
- expert: { label: 'expert', reaction: [.1, .15],  aim: .45,  settle: .2,   turn: 18, lead: 1,   dodge: .85, trigger: .7,  burst: .65, shake: .1,  miss: .03, tech: 1, bold: .05,   patience: 0, xRate: .65 },
+ normal: { label: 'normal', reaction: [.3, .46],  aim: 2.3,  settle: .62,  turn: 9,   lead: .72, dodge: .28, trigger: 1.15, burst: 1.1, shake: 1.15, miss: .36, whiff: .45, rest: .2,  feel: 1, tech: .5, bold: -.14, patience: .6, xRate: .45 },
+ hard:   { label: 'hard',   reaction: [.1, .17],  aim: .5,   settle: .22,  turn: 17, lead: .99, dodge: .8,  trigger: .8,  burst: .75, shake: .14, miss: .04, whiff: .05, feel: .45, tech: 1, bold: .02,  patience: 0, xRate: .65 },
+ expert: { label: 'expert', reaction: [.09, .14], aim: .4,   settle: .18,  turn: 19, lead: 1,   dodge: .85, trigger: .7,  burst: .65, shake: .1,  miss: .03, whiff: .04, feel: .35, tech: 1, bold: .05,   patience: 0, xRate: .65 },
  // Perfect (owner, v0.9b): the hands maxed, nearly unbeatable. Same guns,
  // same health: only reaction, aim, tracking, dodging and knowing the game.
- perfect: { label: 'perfect', reaction: [.05, .07], aim: .1,   settle: .08, turn: 34, lead: 1,   dodge: 1,   trigger: .45, burst: .5,  shake: .02, miss: 0,   tech: 1, bold: .08,  patience: 0, xRate: .7 },
+ perfect: { label: 'perfect', reaction: [.05, .07], aim: .1,   settle: .08, turn: 34, lead: 1,   dodge: 1,   trigger: .45, burst: .5,  shake: .02, miss: 0,   whiff: 0,   feel: 0,   tech: 1, bold: .08,  patience: 0, xRate: .7 },
 });
 // The menus' order, weakest first (1V1, dev tools). Random picks only from
 // easy / normal / hard.
@@ -105,7 +118,7 @@ export function makeProfile({ skill = null, style = null, temper = null, random 
   reaction: [own(k.reaction[0], .12), own(k.reaction[1], .12)], aim: own(k.aim, .15), settle: own(k.settle, .12),
   turn: own(k.turn, .1), lead: Math.min(1, own(k.lead, .06)), dodge: clamp01(own(k.dodge, .15)),
   trigger: own(k.trigger, .1), burst: own(k.burst, .1), shake: own(k.shake, .15), miss: own(k.miss, .15), tech: Math.max(0, Math.min(1, own(k.tech, .1))),
-  patience: k.patience || 0, xRate: k.xRate ?? 1,
+  patience: k.patience || 0, xRate: k.xRate ?? 1, rest: k.rest || 0, feel: k.feel ?? 1,
   // head
   range: own(s.range, .08), aggr, strafe: own(s.strafe, .1), strafeTime: own(s.strafeTime, .15),
   flank: clamp01(own(s.flank, .15) + (s.flank ? 0 : .05)), steady: clamp01(own(s.steady, .1)), grenade: own(s.grenade, .15),
@@ -123,6 +136,8 @@ export function makeProfile({ skill = null, style = null, temper = null, random 
   pf.moodGoal = pf.mood; pf.moodClock = 4 + random() * 8;
   applyMood(pf);
  }
+ // (Drawn last, so every other number is what the same seed gave before.)
+ pf.whiff = Math.min(.9, own(k.whiff ?? .2, .15));
  return pf;
 }
 

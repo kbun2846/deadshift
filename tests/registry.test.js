@@ -29,7 +29,7 @@ test('unknown weapons fall back to the default everywhere', () => {
  assert.ok(isWeapon('rifle') && !isWeapon(undefined));
  assert.ok(usesTrigger('rifle') && usesTrigger('shotgun') && !usesTrigger('static'));
  assert.equal(readMessage({ t: 'choose', weapon: 'laser' }).weapon, DEFAULT_WEAPON);
- assert.equal(tutorialMapFor('shotgun').targets[0].maxHp, 400, 'per-weapon tutorial tweaks come from items.js');
+ assert.equal(tutorialMapFor('shotgun').targets[0].maxHp, 80, 'per-weapon tutorial tweaks come from items.js');
 });
 
 test('every map says where it can be played, and the menus read that', () => {

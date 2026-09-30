@@ -21,7 +21,7 @@
 // stepSheathMobility runs in every sim, the joiner's predicting one too
 // (it moves the body); stepSheath (the damage) only where the rules are
 // decided.
-import { SHEATH as S, RULES } from '../config/gameplay.js';
+import { SHEATH as S, RULES, hpRoll } from '../config/gameplay.js';
 import { targetRadius } from '../target-radius.js';
 import { ichorCoverMeets, ichorSweepMeets } from './ichor-cut.js';
 import { cutCrops } from '../crops.js';
@@ -64,8 +64,9 @@ export function nextSheathSwing(s, random = Math.random) {
  if (pool.length > 1) { const fresh = pool.filter(v => v !== before); if (fresh.length) pool = fresh; }
  return pool[Math.floor(random() * pool.length) % pool.length];
 }
-export const sheathDamage = (random = Math.random) => S.damage - S.damageRoll + Math.floor(random() * (S.damageRoll * 2 + 1));
-export const sheathDrawCutDamage = (random = Math.random) => S.xDamage - S.xRoll + Math.floor(random() * (S.xRoll * 2 + 1));
+// ± the roll in fifths of a point (gameplay.js hpRoll; whole points at 500 health).
+export const sheathDamage = (random = Math.random) => hpRoll(S.damage, S.damageRoll, random);
+export const sheathDrawCutDamage = (random = Math.random) => hpRoll(S.xDamage, S.xRoll, random);
 export const sheathArc = variant => S.arcs[variant] ?? S.arcs[0];
 export const sheathReach = (variant, rush = false) => (S.range + (S.reaches[variant] || 0)) * (rush ? S.rushReach : 1);
 

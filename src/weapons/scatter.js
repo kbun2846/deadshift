@@ -20,7 +20,7 @@
 // Plain state on the sim: `sim.scatter` { armed, armedFor, cooldown } and the flying
 // shells in `sim.scatterShells`. Events for the screen and sound:
 // scatterArm, scatterPrimed, scatterFire, scatterSplit, scatterHit, scatterBurst.
-import { SCATTER } from '../config/gameplay.js';
+import { SCATTER, HP_STEP, hpRound } from '../config/gameplay.js';
 import { collidersAlong } from '../world/collider-grid.js';
 import { targetRadius } from '../target-radius.js';
 import { cropCircle } from '../crops.js';
@@ -113,12 +113,12 @@ function burst(sim, volley, x, z, segmentBox) {
   if (t.hp <= 0 || t.id === sim.player.id) continue;
   const reach = targetRadius(t), centre = blastReach(sim, x, z, t, Math.hypot(t.x - x, t.z - z), reach, r), d = Math.max(0, centre - reach);
   if (d > r || (centre > .3 && shut(t.x, t.z))) continue;
-  deal(sim, t, volley, Math.max(1, Math.round(power(d))), { blast: true, vx: t.x - x, vz: t.z - z });
+  deal(sim, t, volley, Math.max(HP_STEP, hpRound(power(d))), { blast: true, vx: t.x - x, vz: t.z - z });
  }
  for (const prop of sim.props) {
   if (prop.hp === null || !(prop.hp > 0)) continue;
   const half = Math.min(prop.w || 0, prop.d || 0) / 2, d = Math.max(0, blastReach(sim, x, z, prop, Math.hypot(prop.x - x, prop.z - z), half, r) - half);
-  if (d <= r) sim.hitProp(prop, { damage: Math.round(power(d)), x: prop.x, z: prop.z, vx: prop.x - x, vz: prop.z - z });
+  if (d <= r) sim.hitProp(prop, { damage: hpRound(power(d)), x: prop.x, z: prop.z, vx: prop.x - x, vz: prop.z - z });
  }
  // Crops in reach catch fire (owner, v144), behind no wall, like a grenade's.
  cropCircle(sim, { x, z }, r, false, (a, b) => !shut(b.x, b.z));

@@ -8,7 +8,7 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 test('the title is the main menu home page, with the blood installed on it', () => {
  const html = read('../index.html'), main = read('../src/main.js');
  assert.match(html, /data-page="home" class="title-home"><p class="title-version game-version">/, 'version above the word');
- assert.match(html, /<svg class="title-word"[^>]*><text[^>]*>deadshift<\/text>/);
+ assert.match(html, /<svg class="title-word"[^>]*><text[^>]*>deadstab<\/text>/);
  for (const id of ['gamemodes', 'tutorial-entry', 'input-preference', 'menu-settings', 'title-dev']) assert.ok(html.includes(`id="${id}"`), id);
  assert.match(main, /installTitle\(\{page:/);
  assert.match(html, /<button id="title-dev"[^>]*>dev tools<\/button><\/div><svg class="title-blood"[^>]*><\/svg><\/div>/, 'the blood svg lives inside the home page, attached to it');

@@ -47,10 +47,10 @@ test('dodge shrinks the attack hitbox and reduces damage, without granting invul
   const sim = make(); sim.step({ moveX: 1, dodge: true });
   assert.equal(sim.playerHitRadius, RULES.dodgeHitRadius);
   const p = sim.player;
-  assert.equal(sim.hitPlayerProjectile(p.x - 2, p.z + .28, p.x + 2, p.z + .28, { damage: 100, owner: 'enemy' }), 0);
-  assert.equal(sim.hitPlayerProjectile(p.x - 2, p.z, p.x + 2, p.z, { damage: 100, owner: 'enemy' }), 50);
-  assert.equal(sim.damagePlayer(100, 'local'), 0);
-  finish(sim); assert.equal(sim.playerHitRadius, RULES.radius); assert.equal(sim.damagePlayer(100, 'enemy'), 100);
+  assert.equal(sim.hitPlayerProjectile(p.x - 2, p.z + .28, p.x + 2, p.z + .28, { damage: 20, owner: 'enemy' }), 0);
+  assert.equal(sim.hitPlayerProjectile(p.x - 2, p.z, p.x + 2, p.z, { damage: 20, owner: 'enemy' }), 10);
+  assert.equal(sim.damagePlayer(20, 'local'), 0);
+  finish(sim); assert.equal(sim.playerHitRadius, RULES.radius); assert.equal(sim.damagePlayer(20, 'enemy'), 20);
 });
 
 test('Nominal refills dodges faster while standing still',()=>{

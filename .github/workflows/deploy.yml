@@ -1,4 +1,4 @@
-name: Deploy Deadshift
+name: Deploy Deadstab
 
 on:
   push:

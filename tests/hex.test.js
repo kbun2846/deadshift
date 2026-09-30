@@ -5,18 +5,20 @@ import { RULES as FULL_RULES } from '../src/config/gameplay.js';
 const FULL = FULL_RULES.targetHealth; // a practice target's full health
 const make = (targets = [], buildings = []) => new Simulation({ width: 80, depth: 80, spawn: { x: 0, z: 0 }, buildings, targets, props: [], fences: [] });
 const tick = sim => sim.step({});
+const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≉ ${b}`);
 
 test('hex pulse stages, falloff and zaps receive another 40 percent damage',()=>{
  for(const distance of [0,.2,1,3,6,12]){
   const maturity=Math.min(1,distance/6),power=hexPower(distance),oldDamage=Math.round(10+140*maturity*maturity);
-  assert.equal(power.damage,Math.round(oldDamage*159.6)/100);
-  assert.equal(power.zapDamage,Math.round(Math.round(6+14*maturity)*159.6)/100+15);
+  // Exactly one fifth of the old 500-health values (which rounded to a hundredth).
+  near(power.damage,Math.round(oldDamage*159.6)/500);
+  near(power.zapDamage,Math.round(Math.round(6+14*maturity)*159.6)/500+3);
   for(const depth of [0,.25,.5,1]){
    const oldHit=Math.round(oldDamage*(.25+.75*(1-depth)**2));
-   assert.equal(hexPulseDamageAt(power,power.radius*depth),Math.round(oldHit*159.6)/100);
+   near(hexPulseDamageAt(power,power.radius*depth),Math.round(oldHit*159.6)/500);
   }
  }
- assert.equal(RULES.hexPulseDamage,239.4);assert.equal(RULES.hexEdgeDamage,46.92);
+ near(RULES.hexPulseDamage,47.88);near(RULES.hexEdgeDamage,9.384);
 });
 
 test('second X is ignored during formation and requires a fresh press after the delay',()=>{
@@ -88,7 +90,7 @@ test('short zaps reach beyond pulse splash from vertices and edge midpoints, but
 });
 
 test('hex edge connections and nearby zaps pass through scenery walls', () => {
-  const sim = make([{ id: 'behind', x: 8, z: 0, maxHp: 100 }]); sim.hex(); // light, so the zaps finish it
+  const sim = make([{ id: 'behind', x: 8, z: 0, maxHp: 20 }]); sim.hex(); // light, so the zaps finish it
   for (const orb of sim.hexOrbs) { orb.age = RULES.hexFormationTime; orb.x = Math.cos(orb.index * Math.PI / 3) * 6; orb.z = Math.sin(orb.index * Math.PI / 3) * 6; }
   sim.colliders.push({ x: 7, z: 0, w: .2, d: 5 }); sim.hex(); for (let i = 0; i < 60; i++) tick(sim);
   assert.equal(sim.targets[0].hp, 0);
@@ -129,7 +131,7 @@ test('pulse radius, damage and zap reach grow to a bounded ranged maximum', () =
     const sim = make([{ id: 'victim', x: distance + .15, z: 0 }]); sim.hex();
     for (const orb of sim.hexOrbs) { orb.age = RULES.hexFormationTime; orb.x = Math.cos(orb.index * Math.PI / 3) * distance; orb.z = Math.sin(orb.index * Math.PI / 3) * distance; }
     sim.hex(); const damage = FULL - sim.targets[0].hp;
-    assert.ok(distance < 1 ? damage <= 19 : damage >= 64);
+    assert.ok(distance < 1 ? damage <= 3.8 : damage >= 12.8);
     assert.equal(sim.events.find(e => e.type === 'hexPulse').nodes[0].power.radius, hexPower(distance).radius);
   }
 });
@@ -144,34 +146,34 @@ test('ten-ammo cast can coexist with two regular orbs without exceeding capacity
 });
 
 test('six overlapping pulses apply once; normal orbs and per-side zaps remain independent', () => {
-  const sim = make([{ id: 'victim', x: 0, z: 0 }]); sim.targets[0].hp = 500;
+  const sim = make([{ id: 'victim', x: 0, z: 0 }]); sim.targets[0].hp = 100;
   sim.hex(); sim.hexOrbs.forEach(o=>o.age=RULES.hexFormationTime); sim.hex();
   const power = hexPower(0);
-  assert.equal(sim.targets[0].hp, 500 - power.damage);
+  assert.equal(sim.targets[0].hp, 100 - power.damage);
   assert.equal(sim.events.find(e => e.type === 'hexPulse').strands.length, 0);
   assert.equal(sim.events.filter(e => e.type === 'hit').length, 1);
   sim.seed(); sim.launch(0, 0);
   for (let i = 0; i < 20; i++) tick(sim);
-  assert.ok(Math.abs(sim.targets[0].hp-(500 - power.damage - 6 * RULES.hexEdgeDamage - damagePerOrb(1)))<1e-8);
+  assert.ok(Math.abs(sim.targets[0].hp-(100 - power.damage - 6 * RULES.hexEdgeDamage - damagePerOrb(1)))<1e-8);
 });
 
 test('accurate mature hex pulses deal hefty damage with steep falloff before the rotating zaps', () => {
   const power = hexPower(6);
-  assert.equal(hexPulseDamageAt(power, 0), 239.4);
-  assert.equal(hexPulseDamageAt(power, power.radius / 2), 105.34);
-  assert.equal(hexPulseDamageAt(power, power.radius), 60.65);
+  assert.equal(hexPulseDamageAt(power, 0), 47.88);
+  assert.equal(hexPulseDamageAt(power, power.radius / 2), 21.068);
+  assert.equal(hexPulseDamageAt(power, power.radius), 12.13);
   assert.equal(hexPulseDamageAt(power, power.radius + .01), 0);
   for (const distance of [0, power.radius / 2, power.radius]) {
     const sim = make([{ id: 'victim', x: 6 + distance, z: 0 }]);
-    sim.targets[0].hp = sim.targets[0].maxHp = 500;
+    sim.targets[0].hp = sim.targets[0].maxHp = 100;
     sim.hex();
     for (const orb of sim.hexOrbs) { orb.age = RULES.hexFormationTime; orb.x = Math.cos(orb.index * Math.PI / 3) * 6; orb.z = Math.sin(orb.index * Math.PI / 3) * 6; }
     sim.hex();
-    assert.equal(sim.targets[0].hp, 500 - hexPulseDamageAt(power, distance));
+    assert.equal(sim.targets[0].hp, 100 - hexPulseDamageAt(power, distance));
     assert.equal(sim.events.filter(e => e.type === 'hit').length, 1);
   }
-  assert.equal(hexPower(0).damage, 15.96);
-  assert.ok(hexPower(1).damage < 23.94, 'early detonation remains weak');
+  assert.equal(hexPower(0).damage, 3.192);
+  assert.ok(hexPower(1).damage < 4.788, 'early detonation remains weak');
 });
 
 test('hex rotates clockwise once around its frozen center and ends after one second', () => {
@@ -187,13 +189,13 @@ test('hex rotates clockwise once around its frozen center and ends after one sec
   assert.ok(Math.abs(spin.edges[0].a.z - start.z) < 1e-6);
 });
 
-test('each rotating side deals exactly one 31.92-damage zap to each nearby victim', () => {
+test('each rotating side deals exactly one 9.384-damage zap to each nearby victim', () => {
   const sim = make([{ id: 'near', x: 8, z: 0 }, { id: 'far', x: 10, z: 0 }]);
-  sim.targets.forEach(t => { t.hp = t.maxHp = 500; }); sim.hex();
+  sim.targets.forEach(t => { t.hp = t.maxHp = 100; }); sim.hex();
   for (const orb of sim.hexOrbs) { orb.age = RULES.hexFormationTime; orb.x = Math.cos(orb.index * Math.PI / 3) * 6; orb.z = Math.sin(orb.index * Math.PI / 3) * 6; }
-  sim.hex(); assert.equal(sim.targets[0].hp, 500);
+  sim.hex(); assert.equal(sim.targets[0].hp, 100);
   for (let i = 0; i < 180; i++) tick(sim);
-  assert.ok(Math.abs(sim.targets[0].hp-(500-6*RULES.hexEdgeDamage))<1e-8); assert.equal(sim.targets[1].hp, 500);
+  assert.ok(Math.abs(sim.targets[0].hp-(100-6*RULES.hexEdgeDamage))<1e-8); assert.equal(sim.targets[1].hp, 100);
   const zaps = sim.events.filter(e => e.type === 'hexZap');
   assert.equal(zaps.length, 6); assert.equal(new Set(zaps.map(e => e.side)).size, 6);
 });

@@ -7,8 +7,8 @@ import { createLoopback, makeRoomCode, cleanRoomCode } from '../src/net/transpor
 import { HostSession } from '../src/net/host-session.js';
 import { ClientSession } from '../src/net/client-session.js';
 import { movementInput, playerInput, readMessage, cleanName, PROTOCOL_VERSION } from '../src/net/protocol.js';
-import { MATCH } from '../src/net/arena.js';
-import { SPAWN_APART } from '../src/config/match.js';
+import { MATCH, READY_WAIT } from '../src/net/arena.js';
+import { SPAWN_APART, SYPHON, syphonAmount } from '../src/config/match.js';
 import { interiorSpawns } from '../src/net/spawn-points.js';
 import { mapColliders } from '../src/maps.js';
 
@@ -66,11 +66,11 @@ test('a joiner primes, marks and ruptures with Omen through host authority',t=>{
  r.tick([{omenPrime:true,fire:true,aimX:0,aimZ:1}]);
  for(let i=0;i<30;i++)r.tick([{aimX:0,aimZ:1}]);
  const caster=[...r.host.remotes.values()][0].sim;
- assert.equal(caster.omen.marks.length,1);assert.ok(r.hostSim.player.hp<=450.5);
+ assert.equal(caster.omen.marks.length,1);assert.ok(r.hostSim.player.hp<=90.1+1e-9);
  assert.equal(r.joined[0].sim.omen.marks.length,1,'own timer arrives in host snapshots');
  const before=r.hostSim.player.hp;r.tick([{omenPrime:true}]);
  for(let i=0;i<8;i++)r.tick();
- assert.ok(r.hostSim.player.hp<=before-121.5);assert.equal(caster.omen.marks.length,0);
+ assert.ok(r.hostSim.player.hp<=before-24.3+1e-9);assert.equal(caster.omen.marks.length,0);
  assert.equal(r.joined[0].sim.omen.marks.length,0);assert.ok(r.joined[0].sim.omen.primeCooldown>0);
 });
 
@@ -81,8 +81,8 @@ test('a joiner receives the hit and curse bearings from the host for its damage 
  r.tick({host:{omenPrime:true,fire:true,aimX:0,aimZ:1}});
  for(let i=0;i<70;i++)r.tick();
  const hits=client.drainEvents().filter(({by,e})=>by===client.id&&e.type==='playerDamage').map(({e})=>e);
- assert.ok(hits.some(e=>e.damage>40),'projectile hit delivered');
- assert.ok(hits.some(e=>e.damage>=9&&e.damage<=12.6),'force-free curse tick delivered');
+ assert.ok(hits.some(e=>e.damage>8),'projectile hit delivered');
+ assert.ok(hits.some(e=>e.damage>=1.8-1e-9&&e.damage<=2.52+1e-9),'force-free curse tick delivered');
  assert.ok(hits.every(e=>Math.abs(e.sourceDX)<.001&&e.sourceDZ<-.99),'both point back toward the caster');
 });
 
@@ -95,11 +95,11 @@ test('room codes are short, readable and forgiving to type', () => {
  assert.equal(cleanRoomCode('ABCD0'), null);
 });
 
-test('multiplayer is switched on and called Multiplayer in the game modes', async () => {
+test('multiplayer is switched on: JOIN and HOST in the game modes', async () => {
  assert.equal(NETWORK.enabled, true);
  const { readFileSync } = await import('node:fs');
  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
- assert.match(html, /id="online-mode"[^>]*>MULTIPLAYER</);
+ assert.match(html, /id="join-mode"[^>]*>JOIN</); assert.match(html, /id="online-host"[^>]*>HOST</);
  assert.match(html, /id="online-name"/); assert.doesNotMatch(html, /password/i);
 });
 
@@ -127,7 +127,7 @@ test('nobody is in the world until they pick a weapon, and then they appear insi
  assert.equal([...r.host.remotes.values()][0].sim.weapon, 'shotgun');
  for (const p of [r.hostSim.player, c.sim.player]) assert.ok(map.buildings.some(b => buildingContains(b, p)), 'spawned indoors');
  assert.equal(r.hostSim.player.hp, MATCH.health);
- assert.equal(MATCH.health, 500);
+ assert.equal(MATCH.health, 100);
 });
 
 test('every spawn point is inside a real room and clear of furniture', () => {
@@ -178,21 +178,21 @@ test('the host shoots a joiner dead: damage, a kill-feed line, the scoreboard, a
   }
  }
  assert.ok(seenDeath, 'the joiner is told they died');
- assert.ok(ownDamage >= 499, 'and felt every hit');
+ assert.ok(ownDamage >= 99.8, 'and felt every hit');
  const line = c.session.drainFeed().find(l => l.killer === 'host');
  assert.ok(line, 'kill feed names the killer');
  assert.deepEqual(line.victimNames, ['P0']);
  const board = r.host.scoreboard();
  assert.equal(board[0].name, 'Hosty'); assert.equal(board[0].kills, 1);
  const victim = board.find(b => b.name === 'P0');
- assert.equal(victim.deaths, 1); assert.ok(victim.taken >= 499); assert.ok(board[0].dealt >= 499);
+ assert.equal(victim.deaths, 1); assert.ok(victim.taken >= 99.8); assert.ok(board[0].dealt >= 99.8);
  assert.equal(board[0].weapon, 'rifle');
  // Respawn: out for the wait (MATCH.respawn), then back in a building at full health.
  for (let i = 0; i < 60 * (MATCH.respawn - 1); i++) r.tick();
  assert.ok(c.session.mine.dead, 'still down before the wait is up');
  for (let i = 0; i < 60 * 1.5; i++) r.tick();
  assert.ok(!c.session.mine.dead && c.session.mine.present, 'back after the wait');
- assert.equal(c.sim.player.hp, 500);
+ assert.equal(c.sim.player.hp, 100);
  assert.ok(!c.sim.player.dead);
  assert.ok(map.buildings.some(b => buildingContains(b, c.sim.player)));
 });
@@ -200,7 +200,7 @@ test('the host shoots a joiner dead: damage, a kill-feed line, the scoreboard, a
 test('one blast that kills two players is one kill-feed line naming both', () => {
  const r = room({ clients: 2, weapons: ['static', 'static', 'static'] });
  const seats = [...r.host.remotes.values()].map(x => x.seat);
- for (const s of seats) s.sim.player.hp = 20;
+ for (const s of seats) s.sim.player.hp = 4;
  // Two victims side by side; the host's volley bursts between them.
  place(r, 'host', street.x - 5, street.z); place(r, 0, street.x + 3, street.z - .45); place(r, 1, street.x + 3, street.z + .45);
  for (let i = 0; i < 3; i++) r.tick();
@@ -214,7 +214,7 @@ test('one blast that kills two players is one kill-feed line naming both', () =>
 test('your own blast can kill you, and it counts as a death, not a kill', () => {
  const r = room({ clients: 1, weapons: ['static', null] });
  place(r, 'host', street.x, street.z);
- r.hostSim.player.hp = 5;
+ r.hostSim.player.hp = 1;
  for (let i = 0; i < 30; i++) r.tick({ host: { seed: true, aimX: 1, aimZ: 0 } });
  r.tick({ host: { launch: true, aimX: 1, aimZ: 0, launchPointX: street.x + .3, launchPointZ: street.z } });
  for (let i = 0; i < 60; i++) r.tick();
@@ -404,7 +404,7 @@ test('the host resets the map: every prop stands again, crops regrow, and every 
 test('an ffa round lasts ten minutes, then the results, then everyone back in the lobby; the next round starts fresh', () => {
  const r = room();
  const arena = r.host.arena;
- assert.equal(MATCH.length, 600); assert.equal(MATCH.respawn, 12);
+ assert.equal(MATCH.length, 600); assert.equal(MATCH.respawn, 6, 'FFA respawns as quickly as a 1V1 turns over');
  assert.equal(r.host.match().phase, 'playing');
  arena.seats.get('host').stats.kills = 3;
  arena.clock = 1 / 60;
@@ -419,7 +419,8 @@ test('an ffa round lasts ten minutes, then the results, then everyone back in th
  assert.equal(r.hostSim.player.x, before.x);
  for (let i = 0; i < 20; i++) r.tick();
  assert.equal(r.joined[0].session.match().phase, 'results', 'joiners see the results');
- for (let i = 0; i < MATCH.results * 60; i++) r.tick();
+ // (The card waits for everyone to be READY, or READY_WAIT: then the lobby. tests/forfeit-ready.test.js.)
+ for (let i = 0; i < READY_WAIT * 60 + 30; i++) r.tick();
  assert.equal(r.host.match().phase, 'lobby');
  assert.ok([...arena.seats.values()].every(s => !s.present), 'everyone out of the world');
  assert.ok(r.host.startRound('ffa'));
@@ -440,11 +441,11 @@ test('a room opens in the lobby: nobody in the world, the host picks the mode an
  assert.equal(r.host.setMode('2v2'), true, 'every mode is ready (v0.9b)');
  assert.equal(r.host.setMode('nope'), false);
  assert.equal(r.host.setMode('practice'), true);
- assert.equal(r.host.setSetting('health', 750), true);
+ assert.equal(r.host.setSetting('health', 150), true);
  assert.equal(r.host.setSetting('health', 1), false);
  for (let i = 0; i < 40; i++) r.tick();
  const seen = r.joined[0].session.lobby();
- assert.equal(seen.mode, 'practice'); assert.equal(seen.settings.health, 750);
+ assert.equal(seen.mode, 'practice'); assert.equal(seen.settings.health, 150);
  assert.ok(r.host.startRound('practice'));
  assert.equal(r.host.setMode('ffa'), false, 'the mode is fixed once the round is on');
 });
@@ -501,9 +502,9 @@ test('practice: the map targets are out and shared; players can hit each other b
  // A hit on a target's stand-in lands on the real target.
  const target = arena.targets[0], hp = target.hp;
  arena.before(r.host.hostSeat);
- r.hostSim.targets.find(t => t.id === target.id).hp -= 30;
+ r.hostSim.targets.find(t => t.id === target.id).hp -= 6;
  arena.after(r.host.hostSeat);
- assert.equal(target.hp, hp - 30);
+ assert.equal(target.hp, hp - 6);
  // Killing a player counts for nobody and has no wait.
  const host = arena.seats.get('host');
  seat.sim.damagePlayer(9999, 'host', false, false, null, 'gunshot'); arena.died(seat, host);
@@ -518,11 +519,11 @@ test('practice: the map targets are out and shared; players can hit each other b
 
 test('the kill limit ends an ffa round; the health setting is what everyone spawns with', () => {
  const r = room({ mode: null });
- r.host.setSetting('killLimit', 10); r.host.setSetting('health', 250);
+ r.host.setSetting('killLimit', 10); r.host.setSetting('health', 50);
  r.host.startRound('ffa'); r.host.choose('rifle'); r.net.flush();
  r.joined[0].session.choose('rifle'); r.net.flush();
  for (let i = 0; i < 6; i++) r.tick();
- assert.equal(r.hostSim.player.hp, 250); assert.equal(r.hostSim.player.maxHp, 250);
+ assert.equal(r.hostSim.player.hp, 50); assert.equal(r.hostSim.player.maxHp, 50);
  r.host.arena.seats.get('host').stats.kills = 10;
  r.tick();
  assert.equal(r.host.match().phase, 'results');
@@ -546,7 +547,7 @@ test('nobody spawns inside the ground the weapon-pick camera shows; a mid-round 
 
 test('from full health to dead in one hit reads "one shot" in the kill feed and on the death screen', async () => {
  const { feedLine } = await import('../src/ui/multiplayer-hud.js');
- for (const [first, expected] of [[0, true], [100, false]]) {
+ for (const [first, expected] of [[0, true], [20, false]]) {
   const r = room(), arena = r.host.arena, seat = [...r.host.remotes.values()][0].seat, host = r.host.hostSeat;
   for (let i = 0; i < 3; i++) r.tick();
   const hitProxy = amount => { arena.before(host); const proxy = r.hostSim.targets.find(t => t.id === seat.id); proxy.hp -= amount; r.hostSim.events.push({ type: amount >= proxy.hp + amount ? 'kill' : 'hit', id: seat.id, damageType: 'gunshot' }); arena.after(host); };
@@ -578,14 +579,19 @@ test('a Static stream on a slow link never outgrows one message, and the joiner 
  assert.ok(got.some(e => e.type === 'playerDamage'), 'and its damage');
 });
 
-test('syphon (FFA, on by default): a kill gives the killer back half the health they had lost', () => {
+test('syphon (on by default): a kill gives the killer 50 health in FFA, 25 in the other modes, up to full', () => {
  const r = room();
  const arena = r.host.arena, host = arena.seats.get('host'), other = [...r.host.remotes.values()][0].seat;
- assert.equal(arena.settings.syphon, 'on');
- host.sim.player.hp = 200;
+ assert.equal(arena.settings.syphon, 'on'); assert.equal(arena.mode, 'ffa');
+ host.sim.player.hp = 30;
  arena.died(other, host);
- assert.equal(host.sim.player.hp, 200 + Math.floor((host.sim.player.maxHp - 200) * .5));
- assert.ok(host.sim.events.some(e => e.type === 'syphon'));
- arena.setSetting('syphon', 'off'); other.dead = false; host.sim.player.hp = 200;
- arena.died(other, host); assert.equal(host.sim.player.hp, 200);
+ assert.ok(Math.abs(host.sim.player.hp - 80) < 1e-9, String(host.sim.player.hp));
+ assert.ok(host.sim.events.some(e => e.type === 'syphon' && Math.abs(e.amount - 50) < 1e-9));
+ // Never past full health.
+ other.dead = false; host.sim.player.hp = 88.4; arena.died(other, host); assert.ok(Math.abs(host.sim.player.hp - host.sim.player.maxHp) < 1e-9);
+ assert.equal(syphonAmount('2v2', 30, 100), 25); assert.equal(syphonAmount('ffa', 30, 100), 50); assert.equal(syphonAmount('3v3', 90, 100), 10);
+ assert.equal(SYPHON.ffa, 50); assert.equal(SYPHON.other, 25);
+ other.dead = false; host.sim.player.hp = 40;
+ arena.setSetting('syphon', 'off'); other.dead = false; host.sim.player.hp = 40;
+ arena.died(other, host); assert.equal(host.sim.player.hp, 40);
 });

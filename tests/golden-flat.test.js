@@ -36,6 +36,26 @@
 //     fix ("do as much as u can to fix this"): packed inputs, the host's input
 //     catch-up and remote smoothing, trimmed/rounded snapshots. Only the wire
 //     and the joiner's replay moved; the four solo replays are unchanged.)
+// (2026-09-29: all five re-recorded for the owner's "reduce nominals ammo in a
+//     clip down to 20": every sim carries Nominal's magazine in its state.
+//     Checked: with the magazine back at 28 all five old hashes still match.)
+// (2026-09-29: all five re-recorded for the owner's "scale all damage taken and
+//     given down to 100 health per player ... proportionally so it's just the
+//     numbers that change": every health and damage number is a fifth of what
+//     it was (config/gameplay.js HP_STEP, hpRound, hpRoll). Checked with a
+//     replay harness on the old and new code (all eight weapons solo, three
+//     robot battles, a hosted match): every position, tick and death matches
+//     and every health/damage figure is the old one / 5 within 1e-6.)
+// (2026-09-29: robots and hosted re-recorded again, 41a50a4a -> 8a9fa015 and
+//     7bf3d4e9 -> 1587197d, for the owner's robot aim rebalance ("make it miss a
+//     bit more ... make easy extra easy and make hard actually hard"): new skill
+//     numbers, per-weapon aim (WEAPON_AIM), melee misjudgement, trigger rests,
+//     Ichor's guard and Static's quick shot in robot-brain.js. The three solo
+//     replays are unchanged.)
+// (2026-09-29: hosted re-recorded, 1587197d -> 603debcc, for the owner's
+//     syphon ("50 siphon off each kill" in FFA, 25 in the other modes, instead
+//     of half the lost health; config/match.js syphonAmount). Checked: with the
+//     old syphon formula put back the hosted replay gives 1587197d again.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation } from '../src/simulation.js';
@@ -47,7 +67,7 @@ import { ClientSession } from '../src/net/client-session.js';
 
 // Recorded with Node 22.22 (V8 12.4.254). Math is deterministic within one engine build;
 // a different Node major may need a re-record on untouched code, never on new code.
-export const GOLDEN = { static: '8500a3fd', rifle: '5c57348a', shotgun: 'dc6257e4', robots: '299bae72', hosted: 'c4a91f57' };
+export const GOLDEN = { static: '17d0bb9e', rifle: 'c2ba93c4', shotgun: 'b1676071', robots: '8a9fa015', hosted: '603debcc' };
 
 const map = maps.deadwater;
 function seeded(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -110,7 +130,7 @@ function runHosted() {
   return withRandom(4321, () => {
     const net = createLoopback(), createSim = m => new Simulation(m), hostSim = createSim(map);
     let time = 0; const now = () => time;
-    const host = new HostSession({ transport: net.host('ABCDE'), map, local: hostSim, createSim, now, name: 'Hosty', random: seeded(3), settings: { robots: 'off' } });
+    const host = new HostSession({ transport: net.host('ABCDE'), map, local: hostSim, createSim, now, name: 'Hosty', random: seeded(3), settings: { robots: 'off', storm: 'off' } }); // (the storm off: this replay is the flat rules; tests/storm.test.js has the storm)
     const joinSim = createSim(map), join = new ClientSession({ transport: net.join('ABCDE'), map, local: joinSim, createSim, now, name: 'P0' });
     net.flush();
     host.startRound('ffa'); host.addRobot(); host.choose('rifle'); net.flush(); if (join.welcomed) join.choose('shotgun'); net.flush();

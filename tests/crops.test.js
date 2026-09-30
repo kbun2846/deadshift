@@ -73,18 +73,18 @@ test('remote farm has only one nearby house and sparse solid cover across the ex
 });
 
 
-test('fire deals exactly 25 health per second to the player and targets, including self-lit fire and dodging', () => {
+test('fire deals exactly 5 health per second to the player and targets, including self-lit fire and dodging', () => {
   const sim = new Simulation(map), s = sim.crops[0];
   sim.player.x = s.x; sim.player.z = s.z; sim.player.dodgeRemaining = 1;
-  sim.targets = [{ id: 'fire-target', x: s.x, z: s.z, hp: 100, maxHp: 100, flash: 0 }];
+  sim.targets = [{ id: 'fire-target', x: s.x, z: s.z, hp: 20, maxHp: 20, flash: 0 }];
   affectCrop(sim, s);
   for (let i = 0; i < 60; i++) stepCrops(sim, 1 / 60, () => false);
-  assert.ok(Math.abs(sim.player.hp - 475) < 1e-8);
-  assert.ok(Math.abs(sim.targets[0].hp - 75) < 1e-8);
+  assert.ok(Math.abs(sim.player.hp - 95) < 1e-8);
+  assert.ok(Math.abs(sim.targets[0].hp - 15) < 1e-8);
   sim.player.x = -30; sim.targets[0].z = 30;
   stepCrops(sim, 1, () => false);
-  assert.ok(Math.abs(sim.player.hp - 475) < 1e-8);
-  assert.ok(Math.abs(sim.targets[0].hp - 75) < 1e-8);
+  assert.ok(Math.abs(sim.player.hp - 95) < 1e-8);
+  assert.ok(Math.abs(sim.targets[0].hp - 15) < 1e-8);
 });
 
 test('burning boundaries do not stack damage and only remaining fire time causes damage', () => {
@@ -92,16 +92,16 @@ test('burning boundaries do not stack damage and only remaining fire time causes
   sim.player.x = a.x + a.w / 2; sim.player.z = a.z;
   affectCrop(sim, a); affectCrop(sim, b);
   stepCrops(sim, .25, () => false);
-  assert.equal(sim.player.hp, 493.75);
+  assert.equal(sim.player.hp, 98.75);
   a.burnAge = b.burnAge = 7.9;
   stepCrops(sim, .5, () => false);
-  assert.ok(Math.abs(sim.player.hp - 491.25) < 1e-8);
+  assert.ok(Math.abs(sim.player.hp - 98.25) < 1e-8);
   const hp = sim.player.hp; stepCrops(sim, 1, () => false); assert.equal(sim.player.hp, hp);
 });
 
 test('fire kills fragile dummies once, scorch grows gradually, and electricity preserves existing scorch', () => {
   const sim = new Simulation(map), s = sim.crops[0];
-  const dummy = { id: 'dummy', kind: 'dummy', x: s.x, z: s.z, hp: 5, maxHp: 75, flash: 0 };
+  const dummy = { id: 'dummy', kind: 'dummy', x: s.x, z: s.z, hp: 1, maxHp: 15, flash: 0 };
   sim.targets = [dummy]; affectCrop(sim, s);
   stepCrops(sim, .5, () => false); assert.equal(dummy.hp, 0); assert.ok(dummy.respawn > 0);
   assert.equal(sim.events.filter(e => e.type === 'kill').length, 1);

@@ -1,6 +1,7 @@
 // What a multiplayer game adds to the screen: the kill feed, the scoreboard
-// (hold Tab, or the SCORES button on touch, with everyone's ping), the match
-// clock and the results between matches. Dying uses the same death screen as
+// (hold Tab, or the SCORES button on touch, with everyone's ping; the stats
+// panel, stats-panel.js), the match
+// clock (the end-of-match card is ui/match-end.js). Dying uses the same death screen as
 // practice (death-screen.js). Styled like the rest of the menus
 // (menu-theme.css): dark panels, the pink accent. Names are pink for everyone
 // else and blue for you, in the feed and on the board, next to the player's
@@ -8,6 +9,7 @@
 import { weapon as weaponById } from '../items.js';
 import { teamById } from '../config/match.js';
 import { playerColour } from '../remote-players.js';
+import { createStatsPanel } from './stats-panel.js';
 
 const FEED_LIFE = 6;       // seconds a kill-feed line stays up
 const FEED_MAX = 5;
@@ -21,7 +23,7 @@ const weaponName = id => weaponById(id)?.name || '—';
 export function feedLine(line, myId) {
  const who = (id, name) => `<span class="${id === myId ? 'feed-you' : 'feed-enemy'}">${esc(name)}</span>`;
  const victims = line.victims.map((id, i) => who(id, line.victimNames[i])).join(', ');
- if (!line.killer) return `${victims} <span class="feed-verb">died</span>`;
+ if (!line.killer) return `${victims} <span class="feed-verb">${line.storm ? 'fell to the storm' : 'died'}</span>`;
  return `${who(line.killer, line.killerName)} <span class="feed-verb${line.oneShot ? ' feed-oneshot' : ''}">${line.oneShot ? 'one shot' : 'killed'}</span> ${victims}`;
 }
 
@@ -37,29 +39,37 @@ export function scoreboardRows(rows, myId) {
 export function createMultiplayerHud(root) {
  const feed = document.createElement('div');
  feed.id = 'kill-feed'; feed.className = 'kill-feed'; feed.setAttribute('aria-live', 'polite'); feed.hidden = true;
- const board = document.createElement('section');
- board.id = 'scoreboard'; board.className = 'scoreboard hidden'; board.setAttribute('aria-label', 'Scoreboard');
- board.innerHTML = '<div class="scoreboard-card"><h2>scoreboard <span class="board-round" hidden></span></h2><table><thead><tr><th>#</th><th>player</th><th>kills</th><th>deaths</th><th>dmg dealt</th><th>dmg taken</th><th>time</th><th>weapon</th><th>ping</th></tr></thead><tbody></tbody></table><p class="scoreboard-hint">ranked by kills · most used weapon</p></div>';
- // The match clock, top centre under the health bar, and the results card
- // shown for a few seconds when the clock runs out.
+ // Tab's scoreboard: the stats panel, given the last match's mode, round and sides.
+ const panel = createStatsPanel(root);
+ panel.root.id = 'scoreboard';
+ // The match clock, top centre under the health bar.
  const clock = document.createElement('div');
  clock.id = 'match-clock'; clock.className = 'match-clock'; clock.hidden = true; clock.setAttribute('aria-label', 'Time left in the match');
- const results = document.createElement('section');
- results.id = 'match-results'; results.className = 'match-results hidden'; results.setAttribute('role', 'dialog'); results.setAttribute('aria-label', 'Match results');
- results.innerHTML = '<div class="modal-card"><h2>match over</h2><p class="match-winner"></p><table><thead><tr><th>#</th><th>player</th><th>kills</th><th>deaths</th></tr></thead><tbody></tbody></table><p class="match-next"></p></div>';
  const scores = document.createElement('button');
  scores.type = 'button'; scores.id = 'scores-toggle'; scores.className = 'icon-button plain-text'; scores.textContent = 'SCORES'; scores.hidden = true;
- root.append(feed, board, clock, results);
+ root.append(feed, clock);
  document.querySelector('.top-actions')?.prepend(scores);
- let lines = [], boardOpen = false, rows = [], myId = null, clockText = '', resultsKey = '';
+ let lines = [], boardOpen = false, rows = [], myId = null, clockText = '';
+ // What the panel shows besides the rows: from the last setMatch (elimination: the sides' points).
+ let boardMode = null, boardRound = 0, boardSides = null, boardFinal = false, boardFlip = null;
+ const boardOpts = () => ({ rows, myId, mode: boardMode, sides: boardSides, round: boardRound, final: boardFinal, flip: boardFlip });
+ const paint = () => { if (!boardOpen) return; panel.update(boardOpts()); };
 
  const api = {
-  set active(on) { feed.hidden = !on; scores.hidden = !on; clock.hidden = !on; if (!on) { api.hideBoard(); results.classList.add('hidden'); resultsKey = ''; lines = []; feed.replaceChildren(); } },
+  set active(on) { feed.hidden = !on; scores.hidden = !on; clock.hidden = !on; if (!on) { api.hideBoard(); lines = []; feed.replaceChildren(); } },
   // match: { phase, left, number, results } from the host.
   setMatch(match, me) {
    if (!match) return;
    // (Elimination, v0.999a: the round being played, in the scoreboard's title.)
-   { const tag = board.querySelector('.board-round'), text = match.phase === 'playing' && match.elimination ? 'round ' + (match.round || 1) : ''; if (tag.textContent !== text) { tag.textContent = text; tag.hidden = !text; } }
+   {
+    const sides = match.elimination && match.sides ? match.sides.map(t => ({ id: t.id, name: t.name, colour: t.colour, points: t.points })) : null;
+    // A side that scored while the board is up rolls its number.
+    boardFlip = null;
+    if (boardOpen && sides && boardSides) for (const t of sides) { const old = boardSides.find(o => o.id === t.id); if (old && t.points > old.points) boardFlip = { side: t.id, from: old.points, to: t.points }; }
+    boardMode = match.mode; boardSides = sides; boardFinal = match.phase === 'results';
+    boardRound = match.phase === 'playing' && match.elimination ? match.round || 1 : 0;
+    paint();
+   }
    // The clock only means something in a timed round (ffa): hidden in the
    // lobby and in practice; "results" between the round and the lobby.
    const timed = match.mode !== 'practice';
@@ -71,20 +81,7 @@ export function createMultiplayerHud(root) {
    const html = esc(text) + (teams ? `<span class="clock-teams">${teams}</span>` : '');
    if (html !== clockText) { clockText = html; clock.innerHTML = html; clock.classList.toggle('match-clock-low', match.phase === 'playing' && match.left <= 30); }
    clock.style.visibility = text ? '' : 'hidden';
-   const showing = match.phase === 'results' && match.results;
-   results.classList.toggle('hidden', !showing);
-   if (!showing) { resultsKey = ''; return; }
-   const key = match.number + ':' + Math.ceil(match.left);
-   if (key === resultsKey) return; resultsKey = key;
-   const { winner, board: rows } = match.results;
-   const mine = rows.find(r => r.id === me)?.team;
-   // (Elimination: won on points, one a side left standing.)
-   const n = match.results.points ? winner?.points : winner?.kills, unit = match.results.points ? 'point' : 'kill';
-   results.querySelector('.match-winner').innerHTML = winner?.team
-    ? `<span style="color:${teamById(winner.team)?.colour}">${esc(winner.name.toLowerCase())}</span> wins with ${n} ${unit}${n === 1 ? '' : 's'}${mine ? (mine === winner.team ? ' · your side' : ' · not your side') : ''}`
-    : winner ? `${swatch(rows.find(r => r.id === winner.id)?.slot)}<span class="${winner.id === me ? 'feed-you' : 'feed-enemy'}">${esc(winner.name)}</span> wins with ${n} ${unit}${n === 1 ? '' : 's'}` : match.results.draw ? 'a draw' : match.results.points ? 'no points: nobody wins' : 'no kills: nobody wins';
-   results.querySelector('tbody').innerHTML = rows.map((r, i) => `<tr class="${r.id === me ? 'board-you' : ''}"><td>${i + 1}</td><th scope="row">${swatch(r.slot)}${esc(r.name)}${teamChip(r.team)}</th><td>${r.kills}</td><td>${r.deaths}</td></tr>`).join('');
-   results.querySelector('.match-next').textContent = 'next match in ' + Math.max(0, Math.ceil(match.left));
+   // (The end-of-match card is ui/match-end.js since 2026-09-29.)
   },
   addFeed(entries, me, now) {
    myId = me;
@@ -97,9 +94,9 @@ export function createMultiplayerHud(root) {
    if (!force && before === lines.length) return;
    feed.innerHTML = lines.map(l => `<div class="kill-feed-line">${l.html}</div>`).join('');
   },
-  setBoard(list, me) { rows = list || []; myId = me; if (boardOpen) board.querySelector('tbody').innerHTML = scoreboardRows(rows, myId); },
-  showBoard() { boardOpen = true; board.classList.remove('hidden'); board.querySelector('tbody').innerHTML = scoreboardRows(rows, myId); },
-  hideBoard() { boardOpen = false; board.classList.add('hidden'); },
+  setBoard(list, me) { rows = list || []; myId = me; paint(); },
+  showBoard() { boardOpen = true; boardFlip = null; panel.show(boardOpts()); },
+  hideBoard() { boardOpen = false; boardFlip = null; panel.hide(); },
   get boardOpen() { return boardOpen; },
  };
  scores.onclick = () => (boardOpen ? api.hideBoard() : api.showBoard());

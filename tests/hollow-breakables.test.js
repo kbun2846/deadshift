@@ -20,7 +20,7 @@ test('ten new breakable types are registered with health and sensible sizes', ()
   for (const type of TYPES) {
     const t = PROP_TYPES[type];
     assert.ok(t, `${type} is not in PROP_TYPES`);
-    assert.ok(Number.isFinite(t.health) && t.health >= 3 && t.health <= 12, `${type} health ${t.health}`);
+    assert.ok(Number.isFinite(t.health) && t.health >= .6 && t.health <= 2.4, `${type} health ${t.health}`);
     assert.ok(t.w >= .4 && t.w <= 2 && t.d >= .4 && t.d <= 1.2, `${type} footprint ${t.w} x ${t.d}`);
     // None is ankle-high, so none is walked over.
     assert.ok(!t.walkOver, `${type} is walk-over`);
@@ -28,9 +28,9 @@ test('ten new breakable types are registered with health and sensible sizes', ()
     assert.ok(hasBreakSound(type), `${type} has no break sound`);
   }
   // Most break like a barrel; the big wooden ones are sturdier.
-  assert.equal(TYPES.filter(type => HOLLOW_BREAKABLES[type].health === 5).length >= 6, true);
+  assert.equal(TYPES.filter(type => HOLLOW_BREAKABLES[type].health === 1).length >= 6, true);
   // Deadwater's breakables are exactly as they were.
-  assert.deepEqual([PROP_TYPES.barrel.health, PROP_TYPES.crate.health, PROP_TYPES.hay.health, PROP_TYPES.pot.health], [5, 5, 5, 5]);
+  assert.deepEqual([PROP_TYPES.barrel.health, PROP_TYPES.crate.health, PROP_TYPES.hay.health, PROP_TYPES.pot.health], [1, 1, 1, 1]);
   assert.ok(!maps.deadwater.props.some(p => HOLLOW_BREAKABLES[p.type]), 'a Hollow Wick breakable on Deadwater');
 });
 
@@ -57,7 +57,7 @@ test('each type breaks in the simulation: hit, then broken, its collider gone an
     assert.ok(prop && prop.hp === HOLLOW_BREAKABLES[type].health, `${type} not standing`);
     assert.ok(sim.colliders.some(c => c.propId === prop.id && c.destructible), `${type} has no collider`);
     sim.events.length = 0;
-    sim.hitProp(prop, { damage: 2, x: prop.x, z: prop.z, vx: 1, vz: 0 });
+    sim.hitProp(prop, { damage: .4, x: prop.x, z: prop.z, vx: 1, vz: 0 });
     assert.equal(sim.events.at(-1).type, 'propHit');
     sim.hitProp(prop, { damage: prop.hp, x: prop.x, z: prop.z, vx: 1, vz: 0 });
     const e = sim.events.at(-1);
@@ -67,7 +67,7 @@ test('each type breaks in the simulation: hit, then broken, its collider gone an
   }
   // The sturdier ones take more than one barrel's worth.
   const pile = sim.props.find(p => p.type === 'cordwood');
-  sim.hitProp(pile, { damage: 5, x: pile.x, z: pile.z }); assert.ok(pile.hp > 0);
+  sim.hitProp(pile, { damage: 1, x: pile.x, z: pile.z }); assert.ok(pile.hp > 0);
 });
 
 // A stand-in view: the particle list, a preset, the ground and a clatter log.

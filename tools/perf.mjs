@@ -7,7 +7,8 @@
 //   node tools/perf.mjs [quality=extreme] [weapon=static] [map=deadwater] [x z]
 //   node tools/perf.mjs --map hill-test --spot plateau --preset all
 // --preset takes one preset, a comma list or "all"; --spot a named spot
-// (tools/terrain-spots.mjs) or "x,z"; --port the dev server (5173); --weapon.
+// (tools/terrain-spots.mjs) or "x,z"; --port the dev server (5173); --weapon;
+// --extra more of the query string (a SOLO match: '&mode=duel&duel=4v4~3~...').
 // With a spot the run starts there (a map's widest or densest view: on a map
 // with hills, a summit looking into the hollow). The idle phase is spent
 // standing on the spot, so its draw calls and triangles are the spot's.
@@ -15,7 +16,7 @@ import { chromium } from 'playwright';
 import { parseArgs, resolveSpot, PRESETS } from './terrain-spots.mjs';
 const { flags, rest } = parseArgs(process.argv.slice(2));
 const [pq = 'extreme', pw = 'static', pmap = 'deadwater', sx, sz] = rest;
-const mapId = flags.map || pmap, w = flags.weapon || pw, port = flags.port || process.env.PORT || 5173;
+const extra = flags.extra || '', mapId = flags.map || pmap, w = flags.weapon || pw, port = flags.port || process.env.PORT || 5173;
 const qs = flags.preset === 'all' ? PRESETS : String(flags.preset || pq).split(',');
 const spot = resolveSpot(mapId, flags.spot ?? (sx !== undefined ? `${sx},${sz}` : null));
 const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -23,8 +24,8 @@ const summary = [];
 for (const q of qs) {
 const p = await b.newPage({ viewport: { width: +(process.env.W || 400), height: +(process.env.H || 250) } });
 const errs = []; p.on('pageerror', e => errs.push(e.message));
-await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q, qualityAuto: false })), q);
-await p.goto(`http://127.0.0.1:${port}/?play=1&weapon=${w}&map=${mapId}&capture=thumbnail`);
+await p.addInitScript(q => localStorage.setItem('deadstab-settings', JSON.stringify({ quality: q, qualityAuto: false })), q);
+await p.goto(`http://127.0.0.1:${port}/?play=1&weapon=${w}&map=${mapId}&capture=thumbnail${extra}`);
 await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: 90000 });
 // Teleport: the dev-only window.__capture handle (sim + view), then a camera cut.
 if (spot) await p.evaluate(s => {

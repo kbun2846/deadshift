@@ -66,7 +66,7 @@ test('sight: a crest hides you from target lock, aim assist and robots', () => {
  assert.equal(shotClear(s.colliders, -4, -10, 32, -10, .04, s.ground), true);
  assert.equal(shotClear(s.colliders, -8, -17, -16, -17, .04, s.ground), false);
  assert.equal(shotClear(s.colliders, -8, -17, -16, -17, .04), true, 'without the ground: walls only');
- s.targets = [{ id: 'far', x: 32, z: -10, hp: 100, maxHp: 100 }, { id: 'near', x: 4, z: -2, hp: 100, maxHp: 100 }];
+ s.targets = [{ id: 'far', x: 32, z: -10, hp: 20, maxHp: 20 }, { id: 'near', x: 4, z: -2, hp: 20, maxHp: 20 }];
  assert.deepEqual(s.assistTargets().map(t => t.id), ['near']);
 });
 
@@ -74,12 +74,12 @@ test('sight: a crest hides you from target lock, aim assist and robots', () => {
 function rifleHits(a, b) {
  const s = sim('rifle', a); Object.assign(s.dev, { noSpread: true, noRecoil: true });
  s.step({ aimX: 1, aimZ: 0 }); // settle against any wall first, then aim from there
- const target = { id: 'b', kind: 'player', x: b[0], z: b[1], hp: 5000, maxHp: 5000 };
+ const target = { id: 'b', kind: 'player', x: b[0], z: b[1], hp: 1000, maxHp: 1000 };
  s.targets = [target];
  const dx = b[0] - s.player.x, dz = b[1] - s.player.z, d = Math.hypot(dx, dz);
  s.step({ aimX: dx / d, aimZ: dz / d, aimPointX: b[0], aimPointZ: b[1], fire: true });
  for (let i = 0; i < 60 && s.rifleBullets.length; i++) s.step({ aimX: dx / d, aimZ: dz / d, aimPointX: b[0], aimPointZ: b[1] });
- return target.hp < 5000;
+ return target.hp < 1000;
 }
 
 test('rounds fly over the ground: over a crest they hit, into a retaining wall they do not, off a ledge they come down', () => {
@@ -132,7 +132,7 @@ test('a round fired into a retaining wall ends in it; over a hill it flies on', 
 
 test('blasts are measured in 3D and stop at a crest', () => {
  const s = sim('static', [0, 26]);
- const low = { id: 'low', x: 4, z: 20, hp: 1000, maxHp: 1000 }, high = { id: 'high', x: 4, z: 13.5, hp: 1000, maxHp: 1000 };
+ const low = { id: 'low', x: 4, z: 20, hp: 200, maxHp: 200 }, high = { id: 'high', x: 4, z: 13.5, hp: 200, maxHp: 200 };
  // 3D distance: the same flat distance with a height between is further.
  const blast = { x: 4, z: 16.75 };
  const flatD = Math.hypot(low.x - blast.x, low.z - blast.z);
@@ -151,12 +151,12 @@ test('blasts are measured in 3D and stop at a crest', () => {
  // A full orb blast (3 m) on the plateau near its east wall: a body under the
  // wall (in reach on the flat; further in 3D, and behind the lip) takes
  // nothing; one on the plateau at the same flat distance does.
- const under = { id: 'under', x: -11.2, z: -13, hp: 1000, maxHp: 1000 }, beside = { id: 'beside', x: -14.5, z: -16.3, hp: 1000, maxHp: 1000 };
+ const under = { id: 'under', x: -11.2, z: -13, hp: 200, maxHp: 200 }, beside = { id: 'beside', x: -14.5, z: -16.3, hp: 200, maxHp: 200 };
  assert.equal(ground.sightClear(-14.5, -13, under.x, under.z), false);
  s.targets = [under, beside];
  s.explode({ x: -14.5, z: -13, arrived: 12 }, 1);
- assert.equal(under.hp, 1000);
- assert.ok(beside.hp < 1000);
+ assert.equal(under.hp, 200);
+ assert.ok(beside.hp < 200);
  // Height counts: two bodies the same flat distance from a blast, one up the
  // hollow's bank, one down in it; the one further off in 3D takes less.
  const g2 = sim('static', [0, 26]); g2.targets = [low, high];
@@ -167,11 +167,11 @@ test('blasts are measured in 3D and stop at a crest', () => {
  assert.ok(dLow !== dHigh && (dLow > dHigh ? low.hp > high.hp : high.hp > low.hp), `low ${low.hp} (${dLow.toFixed(2)} m) high ${high.hp} (${dHigh.toFixed(2)} m)`);
  // The same with a grenade landing there (4 m reach, to the body's middle).
  const gr = sim('rifle', [-18, -13]);
- const hid = { id: 'hid', x: -11.2, z: -13, hp: 1000, maxHp: 1000 }, open = { id: 'open', x: -14.5, z: -16.3, hp: 1000, maxHp: 1000 }; gr.targets = [hid, open];
+ const hid = { id: 'hid', x: -11.2, z: -13, hp: 200, maxHp: 200 }, open = { id: 'open', x: -14.5, z: -16.3, hp: 200, maxHp: 200 }; gr.targets = [hid, open];
  gr.step({ aimX: 1, aimZ: 0, aimPointX: -14.5, aimPointZ: -13, grenade: true });
  for (let i = 0; i < 200 && gr.grenades.length; i++) gr.step({ aimX: 1, aimZ: 0 });
- assert.equal(hid.hp, 1000);
- assert.ok(open.hp < 1000);
+ assert.equal(hid.hp, 200);
+ assert.ok(open.hp < 200);
 });
 
 test('Scatter: its shells fly over the ground as rounds do: off the plateau onto bodies below, not onto one right under its wall', () => {
@@ -180,7 +180,7 @@ test('Scatter: its shells fly over the ground as rounds do: off the plateau onto
   try {
    const s = sim('shotgun', a); Object.assign(s.dev, { cooldowns: true, noKnockback: true });
    s.step({ aimX: 0, aimZ: 1 });
-   const t = { id: 'b', kind: 'player', x: b[0], z: b[1], hp: 5000, maxHp: 5000 }; s.targets = [t];
+   const t = { id: 'b', kind: 'player', x: b[0], z: b[1], hp: 1000, maxHp: 1000 }; s.targets = [t];
    const shells = []; const hit = s.hit.bind(s); s.hit = (target, o) => { if (!o.blast) shells.push(o.damage); return hit(target, o); };
    const aim = { aimX: 0, aimZ: 1 };
    s.step({ ...aim, scatter: true });
@@ -205,10 +205,10 @@ test('an orb volley does not turn onto a body hidden over a crest', () => {
   try {
    const s = sim('static', [2, -10]);
    for (let i = 0; i < 40; i++) s.step({ aimX: 1, aimZ: 0, seed: true });
-   const t = { id: 'b', kind: 'player', x: target[0], z: target[1], hp: 5000, maxHp: 5000 }; s.targets = [t];
+   const t = { id: 'b', kind: 'player', x: target[0], z: target[1], hp: 1000, maxHp: 1000 }; s.targets = [t];
    s.step({ aimX: 1, aimZ: 0, launch: true, launchPointX: cursor[0], launchPointZ: cursor[1] });
    for (let i = 0; i < 150; i++) s.step({ aimX: 1, aimZ: 0 });
-   return 5000 - t.hp;
+   return 1000 - t.hp;
   } finally { Math.random = keep; }
  };
  assert.equal(ground.sightClear(2, -10, 24, -10), false);
@@ -216,14 +216,14 @@ test('an orb volley does not turn onto a body hidden over a crest', () => {
  // whole volley (tested on flat ground elsewhere); this one only takes the
  // blasts that land at the cursor, as if it were not there.
  const near = run([24, -10], [25.2, -10]), off = run([24, -10.1], [25.2, -10]);
- assert.ok(near < 120, `hidden body took ${near}`);
- assert.ok(Math.abs(near - off) < 60, `${near} vs ${off}`);
+ assert.ok(near < 24, `hidden body took ${near}`);
+ assert.ok(Math.abs(near - off) < 12, `${near} vs ${off}`);
 });
 
 test('grenades: lobbed off the plateau at someone below, or up onto it, they get there', () => {
  const throwAt = (from, to) => {
   const s = sim('rifle', from); s.step({ aimX: 1, aimZ: 0 });
-  const t = { id: 't', kind: 'player', x: to[0], z: to[1], hp: 5000, maxHp: 5000 }; s.targets = [t];
+  const t = { id: 't', kind: 'player', x: to[0], z: to[1], hp: 1000, maxHp: 1000 }; s.targets = [t];
   const dx = to[0] - s.player.x, dz = to[1] - s.player.z, d = Math.hypot(dx, dz), aim = { aimX: dx / d, aimZ: dz / d, aimPointX: to[0], aimPointZ: to[1] };
   s.step({ ...aim, grenade: true });
   let rest = null;
@@ -231,14 +231,14 @@ test('grenades: lobbed off the plateau at someone below, or up onto it, they get
    s.step(aim); const g = s.grenades[0];
    if (g) { assert.ok(g.y >= ground.heightAt(g.x, g.z) + .11, 'above the ground'); rest = [g.x, g.z]; }
   }
-  return { damage: 5000 - t.hp, short: Math.hypot(rest[0] - to[0], rest[1] - to[1]) };
+  return { damage: 1000 - t.hp, short: Math.hypot(rest[0] - to[0], rest[1] - to[1]) };
  };
  const down = throwAt([-17, -14], [-11.1, -14]);
- assert.ok(down.short < .6 && down.damage > 250, `down: ${JSON.stringify(down)}`);
+ assert.ok(down.short < .6 && down.damage > 50, `down: ${JSON.stringify(down)}`);
  const south = throwAt([-15, -15], [-15, -8.6]);
- assert.ok(south.short < .6 && south.damage > 250, `over the south wall: ${JSON.stringify(south)}`);
+ assert.ok(south.short < .6 && south.damage > 50, `over the south wall: ${JSON.stringify(south)}`);
  const up = throwAt([-9, -16], [-14.5, -16]);
- assert.ok(up.short < .6 && up.damage > 250, `up: ${JSON.stringify(up)}`);
+ assert.ok(up.short < .6 && up.damage > 50, `up: ${JSON.stringify(up)}`);
 });
 
 test('blood thrown at a retaining wall stains it from below and flies over it from above', () => {

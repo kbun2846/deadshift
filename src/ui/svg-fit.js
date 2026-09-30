@@ -1,4 +1,4 @@
-// Stretched SVG words (the loading screen's and the title's "deadshift", the
+// Stretched SVG words (the loading screen's and the title's "deadstab", the
 // menu's stretched labels, DEAD) rely on textLength + lengthAdjust. Some
 // WebKit browsers on a Mac drew the word at its natural width instead: far too
 // wide, cut off at "deads" (v0.999a, owner, on a MacBook). Where the drawn

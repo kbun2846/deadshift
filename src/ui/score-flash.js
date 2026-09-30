@@ -36,3 +36,9 @@ export function createScoreFlash(parent) {
   };
   return api;
 }
+
+// A number turning over from `from` to `to` (competitive overhaul, 2026-09-29):
+// the top score in 1V1 as both come back (owner: the one who died sees the
+// point "after" the death card; duel.js, main.js for the match clock). Its
+// look: `.score-roll` in menu-theme.css (Task B's block).
+export const rollHTML = (from, to) => `<span class="score-roll"><i class="score-roll-old">${from}</i><i class="score-roll-new">${to}</i></span>`;

@@ -65,9 +65,11 @@ export function createLobbyPanel(parent, { back, kick, setSetting, resetMap, end
         const cell = root.querySelector(`.lobby-player[data-id="${CSS.escape(p.id)}"] .lobby-ping`);
         if (cell) cell.textContent = p.host ? '—' : pingText(p.ping);
       }
-      settings.render({ settings: lobby.settings || {}, mode: match?.mode || lobby.mode, editable: isHost });
+      // Only the mode's plain rows (rounds or match length); the developer
+      // rows only while the tools are unlocked (lobby-settings.js).
+      const plain = settings.render({ settings: lobby.settings || {}, mode: match?.mode || lobby.mode, editable: isHost });
       $('.lobby-host').hidden = !isHost;
-      $('.lobby-settings').hidden = $('.lobby-settings-heading').hidden = !isHost;
+      $('.lobby-settings').hidden = !isHost; $('.lobby-settings-heading').hidden = !isHost || !plain;
     },
   };
   return api;

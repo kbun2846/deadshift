@@ -12,11 +12,11 @@ import { DEFAULT_WEAPON } from './items.js';
 import { pickState } from './net/host-session.js';
 import { SIDE_COLOURS } from './config/match.js';
 
-const NAME_KEY = 'deadshift-username';
+const NAME_KEY = 'deadstab-username';
 // What a room carries across a move to another map (v0.990a): the mode, the
 // settings, the robots the host added, and its code. The page reloads onto
 // the new map; this is read back once when the room opens again.
-const CARRY_KEY = 'deadshift-room-carry';
+const CARRY_KEY = 'deadstab-room-carry';
 export const saveCarry = carry => { try { sessionStorage.setItem(CARRY_KEY, JSON.stringify({ ...carry, at: Date.now() })); } catch {} };
 export const takeCarry = () => { try { const raw = sessionStorage.getItem(CARRY_KEY); sessionStorage.removeItem(CARRY_KEY); const c = raw && JSON.parse(raw); return c && Date.now() - c.at < 120000 ? c : null; } catch { return null; } };
 // A room reopened on the same code: the old one may hold it a few seconds
@@ -26,6 +26,8 @@ export const savedName = () => { try { return localStorage.getItem(NAME_KEY) || 
 const saveName = name => { try { localStorage.setItem(NAME_KEY, name); } catch {} };
 
 export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, server, pickWeapon }) {
+ // (This page's own animals, critters.js: back when the room closes.)
+ const ownCritters = sim.critters || null;
  let teamCache = { tick: null, map: new Map() };
  let session = null, code = null, lastLife = 0;
  const mirror = new ProjectileMirror();
@@ -98,6 +100,8 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   // A moved room's robots come back (the ones the host added; fill seats refill themselves).
   if (role === 'host') for (const setup of carry?.robots || []) { const seat = joined.addRobot?.(); if (seat?.id && setup) joined.tuneRobot?.(seat.id, setup); }
   sim.dev = { speed: 1 }; sim.targets = [];
+  // (The world's animals: the host's arena holds them; a joiner only draws them.)
+  if (role !== 'host') sim.critters = null;
   status('');
   try { history.replaceState(null, '', '?map=' + map.id + '&online=' + (role === 'host' ? 'host' : 'join')); } catch {}
   await start(DEFAULT_WEAPON);
@@ -148,6 +152,9 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   choose(weapon, go = true) { session?.choose(weapon, go); },
   pickAgain() { session?.pickAgain(); },
   respawnNow() { session?.respawnNow(); },
+  // FORFEIT (round modes; a team vote) and READY on the end-of-match card.
+  forfeit(on = true) { session?.forfeit(on); },
+  setReady(on = true) { session?.setReady(on); },
   // Everyone else to draw; in a team round each wears their side's ring.
   // Team games: a teammate is a friend (green hat and ring), the rest foes (red).
   others(alpha) { const mine = api.myTeam; return session ? session.others(alpha).map(o => { if (!mine || !o.team) return o; const side = SIDE_COLOURS[o.team] ? o.team : null; return side ? { ...o, side, ring: SIDE_COLOURS[side].ring } : o; }) : null; },
@@ -188,6 +195,10 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   // match clock, for everyone; the controls below work on the host only.
   lobby() { return session ? session.lobby() : { players: [], spawnMode: 'random' }; },
   match() { return session ? session.match() : null; },
+  // The storm now ({ plan, t }; storm.js), or null.
+  stormNow() { return session?.stormNow?.() || null; },
+  // The world's animals as the host has them (critters.js state), or null.
+  critterState() { return session?.critterState?.() || null; },
   kick(id) { return session?.role === 'host' ? session.kick(id) : false; },
   setSpawnMode(mode) { return session?.role === 'host' ? session.setSpawnMode(mode) : false; },
   resetMap() { if (session?.role === 'host') session.resetMap(); },
@@ -223,7 +234,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   close() {
    if (!session) return;
    try { session.close(); } catch {}
-   session = null; code = null; badge.hidden = true; sim.otherPlayers = []; sim.worldAuthority = true;
+   session = null; code = null; badge.hidden = true; sim.otherPlayers = []; sim.worldAuthority = true; sim.critters = ownCritters;
    document.querySelector('.mode').textContent = 'PRACTICE';
   },
  };

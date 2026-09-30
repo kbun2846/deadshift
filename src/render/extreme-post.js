@@ -48,7 +48,7 @@ export const EXTREME_POST = Object.freeze({
 });
 
 const GradeShader = {
- name: 'DeadshiftGradeOutput',
+ name: 'DeadstabGradeOutput',
  uniforms: { tDiffuse: { value: null }, warmth: { value: 0 }, shade: { value: 0 }, contrast: { value: 0 }, saturation: { value: 1 } },
  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
  fragmentShader: `

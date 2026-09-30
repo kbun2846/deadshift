@@ -35,17 +35,17 @@ test('hits in a row add up into one number that pops back in with a new tilt',()
  state.update(0);assert.equal(state.items.length,0);
 });
 test('damage text scales to each individual hit and has a restrained entry slam',()=>{
- assert.ok(damageFeedbackSize(200)>damageFeedbackSize(100));
- assert.ok(damageFeedbackSize(200)-damageFeedbackSize(100)<3);
- assert.equal(damageFeedbackSize(5000),30);
+ assert.ok(damageFeedbackSize(40)>damageFeedbackSize(20));
+ assert.ok(damageFeedbackSize(40)-damageFeedbackSize(20)<3);
+ assert.equal(damageFeedbackSize(1000),30);
  assert.equal(damageFeedbackSize(0),21);
  assert.equal(damageFeedbackScale(0),1.26);assert.ok(damageFeedbackScale(.1)<1);assert.ok(Math.abs(damageFeedbackScale(.6)-1)<.001);
 });
 test('player damage feedback reports actual lost HP and ignores invulnerability',()=>{
  const sim=new Simulation({width:30,depth:30,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});
- sim.player.hp=35;sim.damagePlayer(240,sim.player.id,false,true);
- assert.deepEqual(sim.events.filter(e=>e.type==='playerDamage'),[{type:'playerDamage',damage:35}]);
- sim.reset();sim.dev.invulnerable=true;sim.damagePlayer(240,sim.player.id,false,true);
+ sim.player.hp=7;sim.damagePlayer(48,sim.player.id,false,true);
+ assert.deepEqual(sim.events.filter(e=>e.type==='playerDamage'),[{type:'playerDamage',damage:7}]);
+ sim.reset();sim.dev.invulnerable=true;sim.damagePlayer(48,sim.player.id,false,true);
  assert.equal(sim.events.filter(e=>e.type==='playerDamage').length,0);
 });
 
@@ -139,7 +139,7 @@ test('a new life starts with no damage or kill pops from the last one',async()=>
  try{
   const {createOutgoingFeedback}=await import('../src/ui/outgoing-feedback.js');
   const parent=element(),mine=createDamageFeedback(parent),theirs=createOutgoingFeedback(parent);
-  mine.add(80,1);theirs.kill({x:0,z:0,oneShot:false},1);theirs.add({id:'bot',damage:40,x:0,z:0,hp:60,maxHp:100},1);
+  mine.add(16,1);theirs.kill({x:0,z:0,oneShot:false},1);theirs.add({id:'bot',damage:8,x:0,z:0,hp:12,maxHp:20},1);
   mine.clear();theirs.clear();
   const s=new Simulation({width:40,depth:40,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});s.time=1.2;
   const view={player:{position:{x:0,z:0}},screenPoint:()=>({x:400,y:300})};

@@ -18,6 +18,17 @@ export function bloodPoolPattern(index){
  return {width,depth,lobes};
 }
 
+// The killer's view of a 1V1 kill (competitive overhaul, owner 2026-09-29:
+// "after any kill in 1v1, it should show the aftermath for a solid 3 seconds"):
+// from where the camera was (`from*`, set by the renderer the first frame) it
+// eases onto the body at `x`, `z` and zooms in the way your own death does
+// (cameraFrame, never slid aside). Written into `out`: nothing allocated.
+export function killCamFrame(a,age,out){
+ const t=Math.min(1,Math.max(0,age)/DEATH_ZOOM),blend=t*t*(3-2*t);
+ out.x=a.fromX+(a.x-a.fromX)*blend;out.z=a.fromZ+(a.z-a.fromZ)*blend;out.height=a.fromHeight*(1-.44*blend);
+ return out;
+}
+
 export class DeathView{
  constructor(view){this.view=view;this.active=false;}
  start(event){

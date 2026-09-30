@@ -81,7 +81,7 @@ test('colliders carry their heights; dressing has none', () => {
  for (const t of ['fieldWall2', 'fieldWall3', 'fieldWall4', 'fieldWall5', 'fieldWall6']) if (props.some(p => p.type === t)) assert.deepEqual(heightOf(t), [1]);
  for (const t of ['grave', 'fallenStone', 'freshMound', 'openGrave', 'graveSkeleton']) assert.deepEqual(heightOf(t), [], t);
  // Breakable headstones; everything else solid.
- assert.equal(GRAVE_TYPES.headstone.health, 5);
+ assert.equal(GRAVE_TYPES.headstone.health, 1);
  for (const [t, spec] of Object.entries(GRAVE_TYPES)) if (t !== 'headstone') assert.equal(spec.health, null, t);
 });
 
@@ -90,9 +90,9 @@ test('a headstone breaks like a crate and leaves its stump as low cover', () => 
  const stone = sim.props.find(p => p.type === 'headstone');
  const stump = sim.props.find(p => p.type === 'headstoneStump' && p.x === stone.x && p.z === stone.z);
  assert.ok(stump);
- sim.hitProp(stone, { damage: 3, x: stone.x, z: stone.z });
+ sim.hitProp(stone, { damage: .6, x: stone.x, z: stone.z });
  assert.ok(sim.colliders.some(c => c.propId === stone.id), 'still standing');
- sim.hitProp(stone, { damage: 3, x: stone.x, z: stone.z });
+ sim.hitProp(stone, { damage: .6, x: stone.x, z: stone.z });
  assert.ok(!sim.colliders.some(c => c.propId === stone.id), 'broken');
  assert.ok(sim.colliders.some(c => c.propId === stump.id && !c.destructible && c.height === .35), 'its stump stays');
  assert.ok(sim.drainEvents().some(e => e.type === 'propBreak' && e.propType === 'headstone'));

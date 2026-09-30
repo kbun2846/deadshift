@@ -11,7 +11,7 @@ test('both dev surfaces offer solo target health with per-target defaults, outsi
  for(const where of ['window','settings']){
   const option=optionsFor(where).find(o=>o.key==='targetHealth');
   assert.equal(option.section,'world');assert.equal(option.kind,'select');assert.equal(option.fallback,0);
-  assert.deepEqual(option.options.map(([value])=>Number(value)),[0,100,250,500,1000]);
+  assert.deepEqual(option.options.map(([value])=>Number(value)),[0,20,50,100,200]);
  }
  assert.ok(!BULK_KEYS.includes('targetHealth'));
 });
@@ -40,16 +40,16 @@ test('corrupt or missing storage never breaks the window',()=>{
  assert.equal(readWindowPosition({getItem:()=>'{"x":"left"}'}),null);
  assert.equal(readWindowPosition({getItem:()=>{throw new Error('blocked');}}),null);
  assert.deepEqual(readWindowPosition({getItem:()=>'{"x":12,"y":34}'}),{x:12,y:34});
- assert.equal(DEV_WINDOW_KEY.startsWith('deadshift-'),true,'stored under the game namespace');
+ assert.equal(DEV_WINDOW_KEY.startsWith('deadstab-'),true,'stored under the game namespace');
 });
 
 test('every toggle names a real override the simulation reads',()=>{
- const SOURCE=['simulation.js','weapons/rifle.js','weapons/shotgun.js','weapons/omen.js','weapons/grenade.js','weapons/surge.js','weapons/scatter.js','bots/bot-match.js','main.js','render/renderer.js'].map(f=>readFileSync(new URL('../src/'+f,import.meta.url),'utf8')).join('\n');
+ const SOURCE=['simulation.js','weapons/rifle.js','weapons/shotgun.js','weapons/omen.js','weapons/grenade.js','weapons/surge.js','weapons/scatter.js','bots/bot-match.js','main.js','render/renderer.js','ui/dev-wiring.js','duel.js'].map(f=>readFileSync(new URL('../src/'+f,import.meta.url),'utf8')).join('\n');
  const known=new Set(['ammo','orbs','cooldowns','stamina','invulnerable','teleport','speed',
   'rifleInstantReload','shotgunInstantReload','omenInstantReload','omenCooldowns','grenadeCooldown',
   'oneHit','ghost','freezeTargets','hideHud','noRecoil','endlessSurge',
   'robotPassive','robotHoldFire','robotFreeze','robotStayDead','robotSeeAll',
-  'freeze','noKnockback','regen','fastSeeds','instantHex','rapidFire','noSpread','shotgunRapid','robotMinds']);
+  'freeze','noKnockback','maintenanceOff','noStorm','regen','fastSeeds','instantHex','rapidFire','noSpread','shotgunRapid','robotMinds','fps']);
  for(const [key,label] of DEV_TOGGLES){
   assert.ok(known.has(key),`${key} is not an override the game honours`);
   assert.ok(label&&label===label.trim()&&label.length<32,`${key} needs a short plain label`);
@@ -60,7 +60,7 @@ test('every toggle names a real override the simulation reads',()=>{
 
 test('restore fills health, ammo and every cooldown',()=>{
  const sim=new Simulation(maps.deadwater);
- sim.player.hp=12;sim.player.stamina=0;sim.ammo=0;
+ sim.player.hp=2.4;sim.player.stamina=0;sim.ammo=0;
  sim.hexCooldown=30;sim.grenadeCooldown=25;sim.surge.cooldown=50;
  sim.rifle.ammo=0;sim.shotgun.ammo=0;
  refill(sim);

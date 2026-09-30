@@ -6,6 +6,7 @@ import { sightlineAimPlane } from '../weapons/sightline-flight.js';
 import { RULES } from '../config/gameplay.js';
 import { SHOTGUN, shotgunSpread, shotgunReach } from '../weapons/shotgun.js';
 import { SCATTER } from '../config/gameplay.js';
+import { scatterPrimeLeft } from '../weapons/scatter.js';
 import { rifleSpread, rifleAim, RIFLE_MUZZLE } from '../weapons/rifle.js';
 import { viewWidth, viewHeight } from '../viewport.js';
 import { setStyle, setAttr, setText } from './dom-writes.js';
@@ -35,7 +36,8 @@ export function createAimOverlay(game){
  const spreadMarker=document.createElement('div');spreadMarker.id='rifle-spread';spreadMarker.className='rifle-spread';spreadMarker.innerHTML='<i></i><i></i>';game.append(spreadMarker);
  const secondarySpread=spreadMarker.cloneNode(true);secondarySpread.id='rifle-spread-secondary';secondarySpread.classList.add('secondary-spread');secondarySpread.hidden=true;game.append(secondarySpread);
  const reticleEl=game.querySelector('#reticle'),chargeRing=game.querySelector('#charge-ring'),chargeFill=chargeRing.querySelector('.charge-ring-fill');
- const omenTimers=Array.from({length:2},()=>{
+ // (Three: Omen's two, and Ballast's Scatter charging after its first X.)
+ const omenTimers=Array.from({length:3},()=>{
   const root=document.createElement('div');root.className='omen-cursor-timer';root.hidden=true;
   root.innerHTML='<svg class="charge-ring" viewBox="0 0 48 48" aria-hidden="true"><circle class="charge-ring-track" cx="24" cy="24" r="18" pathLength="100"/><circle class="charge-ring-fill" cx="24" cy="24" r="18" pathLength="100"/></svg><b></b><kbd></kbd>';
   reticleEl.append(root);return {root,fill:root.querySelector('.charge-ring-fill'),text:root.querySelector('b'),key:root.querySelector('kbd')};
@@ -122,8 +124,14 @@ export function createAimOverlay(game){
   updateChargeRing(sim,running);
   const omen=sim.weapon==='omen'&&running&&!sim.player.dead?omenReadouts(sim.omen):null;
   let timerSlot=0;
-  for(let i=0;i<2;i++){
-   const ui=omenTimers[i],state=omen&&(i===0?omen.primary:omen.secondary),show=!!state?.live;
+  // Ballast's Scatter (owner, 2026-09-29: "for the ballast's X ability charge
+  // thing, add the time indicator to the cursor too like how other weapons
+  // have it ... the 3 secs to load after initial x press"): from the first X
+  // until it is primed, the same ring and seconds as Omen's timers.
+  const priming=sim.weapon==='shotgun'&&running&&!sim.player.dead&&sim.scatter?.armed?scatterPrimeLeft(sim):0;
+  const ballast=priming>1e-6?{remaining:priming,duration:SCATTER.prime,binding:'X',state:'charging',label:'Scatter charging: press X again once it is ready',live:true}:null;
+  for(let i=0;i<3;i++){
+   const ui=omenTimers[i],state=i===2?ballast:omen&&(i===0?omen.primary:omen.secondary),show=!!state?.live;
    if(ui.root.hidden!==!show)ui.root.hidden=!show;setAttr(ui.root,'data-omen-optimal',String(!!state?.optimal));if(!show)continue;
    const side=point.x>viewWidth()-110?-1:1;
    setStyle(ui.root,'left',(side===1?26+timerSlot*42:-64-timerSlot*42)+'px');timerSlot++;

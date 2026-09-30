@@ -9,7 +9,7 @@ import { HostSession } from '../src/net/host-session.js';
 import { ClientSession } from '../src/net/client-session.js';
 import { MODES, TEAMS } from '../src/config/match.js';
 import { isRobotSlot } from '../src/bots/robot-model.js';
-import { ROUND_BREAK } from '../src/net/arena.js';
+import { ROUND_BREAK, DUEL_BREAK } from '../src/net/arena.js';
 
 const map = maps.deadwater, createSim = m => new Simulation(m);
 const seeded = seed => { let s = seed; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; };
@@ -93,7 +93,7 @@ test('robots fight: in a 3V3 of robots and a host, damage is dealt and kills cou
  r.host.choose('rifle');
  for (let i = 0; i < 60 * 45; i++) r.tick();
  const board = r.host.arena.scoreboard(), dealt = board.reduce((n, row) => n + row.dealt, 0);
- assert.ok(dealt > 500, 'robots hurt each other (' + dealt + ')');
+ assert.ok(dealt > 100, 'robots hurt each other (' + dealt + ')');
  const teams = r.host.arena.teamScores();
  assert.equal(teams.length, 2);
  assert.equal(teams.reduce((n, t) => n + t.kills, 0), board.reduce((n, row) => n + row.kills, 0));
@@ -118,17 +118,23 @@ test('a player joining a full team round takes a robot\'s seat and side', () => 
 });
 
 test('results name the winning side', () => {
- const r = room({ settings: { killLimit: 10 } });
+ // (Rounds, 2026-09-29: a kill limit no longer ends a team match; the most round wins does, 2-0 of 3.)
+ const r = room({ settings: { rounds: 3 } });
  assert.ok(r.host.startRound('2v2'));
  const arena = r.host.arena, red = [...arena.seats.values()].find(s => s.team === 'red');
- red.stats.kills = 10; arena.teamKills.set('red', 10); arena.points.set('red', 10);
- arena.endTick();
+ const foes = [...arena.seats.values()].filter(s => s.team !== 'red');
+ for (let round = 0; round < 2; round++) {
+  for (const foe of foes) { foe.sim.player.hp = 0; arena.died(foe, red); }
+  arena.endTick();
+  assert.equal(arena.phase, 'playing', 'the card waits for the break');
+  for (let i = 0; i < Math.ceil(ROUND_BREAK * 60) + 2; i++) arena.endTick();
+ }
  assert.equal(arena.phase, 'results');
- assert.equal(arena.results.winner.team, 'red'); assert.equal(arena.results.winner.points, 10);
+ assert.equal(arena.results.winner.team, 'red'); assert.equal(arena.results.winner.points, 2);
  assert.match(arena.results.winner.name, /AMBER/);
 });
 
-test('friendly fire (on by default): a teammate stands in your targets and takes half; off: not at all', () => {
+test('no friendly fire (owner, 2026-09-29): a teammate is never in your targets, whatever a saved setting says', () => {
  for (const ff of ['on', 'off']) {
   const r = room({ settings: { robots: 'off', friendlyFire: ff } });
   r.host.addRobot(); r.host.addRobot(); r.host.addRobot();
@@ -137,12 +143,8 @@ test('friendly fire (on by default): a teammate stands in your targets and takes
   const arena = r.host.arena, me = r.host.hostSeat, mate = [...arena.seats.values()].find(s => s !== me && s.team === me.team);
   arena.before(me);
   const entry = me.proxies.get(mate.id);
-  if (ff === 'off') { assert.equal(entry, undefined); me.sim.targets = []; continue; }
-  assert.ok(entry && entry.proxy.friendly, 'teammate is a friendly target');
-  const before = mate.sim.player.hp; me.sim.hit(entry.proxy, { damage: 100, owner: me.id });
-  arena.after(me);
-  assert.ok(Math.abs(before - mate.sim.player.hp - 50) < 1e-6, 'half the damage');
-  assert.equal(me.stats.dealt, 0, 'no credit for hurting a teammate');
+  assert.equal(entry, undefined); me.sim.targets = [];
+  assert.equal(arena.settings.friendlyFire, undefined, 'no such setting');
  }
 });
 
@@ -230,7 +232,7 @@ test('elimination (2v2): the side left standing takes the point, then everyone c
  arena.endTick();
  assert.equal(arena.points.get(me.team), 1); assert.ok(arena.roundBreak > 0);
  assert.equal(arena.matchState().sides[0].id, me.team); assert.equal(arena.matchState().roundWinner, me.team);
- me.sim.player.hp = 10;
+ me.sim.player.hp = 2;
  const lives = seats.map(s => s.life);
  for (let i = 0; i < Math.ceil(ROUND_BREAK * 60) + 2; i++) arena.endTick();
  assert.ok(seats.every((s, i) => s.present && !s.dead && s.life === lives[i] + 1), 'everyone back, survivors too');
@@ -248,7 +250,7 @@ test('elimination (1v1): whoever falls, the other takes the point and both come 
  me.sim.player.hp = 0; arena.died(me, bot);
  arena.endTick();
  assert.equal(arena.points.get(bot.id), 1);
- for (let i = 0; i < Math.ceil(ROUND_BREAK * 60) + 2; i++) arena.endTick();
+ for (let i = 0; i < Math.ceil(DUEL_BREAK * 60) + 2; i++) arena.endTick();
  assert.ok(me.present && !me.dead && bot.present && !bot.dead);
  assert.equal(arena.matchState().sides.find(s => s.id === bot.id).points, 1);
 });

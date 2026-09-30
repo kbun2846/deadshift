@@ -6,7 +6,7 @@ import {NavGrid} from '../src/bots/nav-grid.js';
 import {makeProfile} from '../src/bots/robot-profile.js';
 import {laserThreatens,respondToLaser,sniperLineClear} from '../src/bots/laser-response.js';
 const map={id:'laser-test',width:60,depth:60,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]};
-const source=()=>({id:'sniper',x:14,z:.4,aimX:-1,aimZ:0,vx:0,vz:0,hp:500,maxHp:500,weapon:'sightline',visible:true,seen:0,sightline:{crouched:true,aiming:true,rifleAmmo:1,aimReach:20}});
+const source=()=>({id:'sniper',x:14,z:.4,aimX:-1,aimZ:0,vx:0,vz:0,hp:100,maxHp:100,weapon:'sightline',visible:true,seen:0,sightline:{crouched:true,aiming:true,rifleAmmo:1,aimReach:20}});
 function make(aggr=.1,colliders=[]){const sim=new Simulation(map);sim.weapon='rifle';sim.colliders=colliders;Object.assign(sim.player,{aimX:1,aimZ:0});const brain=new RobotBrain({sim,nav:new NavGrid(map,colliders),random:()=>.1,profile:makeProfile({skill:'normal',style:'balanced',random:()=>.5})});brain.pf.aggr=aggr;const enemy=source();brain.memory.set(enemy.id,enemy);return {sim,brain,enemy};}
 function notice(brain){assert.equal(respondToLaser(brain),null);brain.time=brain.laserResponse.readyAt+.01;return respondToLaser(brain);}
 
@@ -28,7 +28,7 @@ test('a normal bot takes time to notice, then sidesteps if no cover exists; it d
 
 test('cautious and wounded bots choose real solid cover; low or destructible props are not sniper cover',()=>{
  const wall={x:3,z:2,w:1,d:2,height:3,wall:true};
- for(const [aggr,hp] of [[.1,500],[.95,100]]){const {brain,sim,enemy}=make(aggr,[wall]);sim.player.hp=hp;const response=notice(brain);assert.equal(response.kind,'cover');assert.equal(sniperLineClear(sim,enemy,response.goal.x,response.goal.z),false);assert.ok(brain.nav.path(0,0,response.goal.x,response.goal.z));}
+ for(const [aggr,hp] of [[.1,100],[.95,20]]){const {brain,sim,enemy}=make(aggr,[wall]);sim.player.hp=hp;const response=notice(brain);assert.equal(response.kind,'cover');assert.equal(sniperLineClear(sim,enemy,response.goal.x,response.goal.z),false);assert.ok(brain.nav.path(0,0,response.goal.x,response.goal.z));}
  const {brain}=make(.1,[{...wall,wall:undefined,destructible:true},{x:2,z:-2,w:1,d:2,height:.5}]);assert.equal(notice(brain).kind,'evade');
  const fence=make(.1,[{...wall,wall:undefined}]);assert.equal(notice(fence.brain).kind,'evade','a tall non-building obstacle is no sniper cover');
 });

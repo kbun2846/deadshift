@@ -5,7 +5,7 @@
 // sliders it builds).
 import { GRAPHICS, isDemanding, fpsToSlider, fpsFromSlider, fpsLabel, snapFps, FPS_STOPS, FPS_MIN, FPS_UNCAPPED_SLIDER, VOLUME_CHANNELS } from '../settings.js';
 const byId = id => document.getElementById(id);
-const save = settings => { try { localStorage.setItem('deadshift-settings', JSON.stringify(settings)); } catch { /* Incognito still plays normally. */ } };
+const save = settings => { try { localStorage.setItem('deadstab-settings', JSON.stringify(settings)); } catch { /* Incognito still plays normally. */ } };
 const sliderFraction = at => (Number(at) - FPS_MIN) / (FPS_UNCAPPED_SLIDER - FPS_MIN);
 
 // hooks: { setQuality(name), setFps(fps), setMotion(on), setVolumes(volume), changed() }

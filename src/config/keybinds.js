@@ -36,7 +36,7 @@ export const KEY_GROUPS = Object.freeze([['move', 'moving'], ['fight', 'fighting
 export const FIXED_KEYS = Object.freeze([['pause', 'Esc'], ['scoreboard (online)', 'Tab'], ['fire', 'left mouse'], ['aim in', 'right mouse']]);
 // Keys that can never be bound (they belong to the fixed list above, or the browser).
 export const RESERVED = Object.freeze(new Set(['Escape', 'Tab', 'MetaLeft', 'MetaRight', 'ContextMenu', 'F5', 'F11', 'F12']));
-const STORE = 'deadshift.keybinds';
+const STORE = 'deadstab.keybinds';
 const TOKEN = new Map(KEY_ACTIONS.map(a => [a.id, a.key]));
 
 let binds = null, reverse = null, version = 0;

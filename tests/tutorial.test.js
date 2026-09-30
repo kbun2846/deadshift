@@ -7,14 +7,14 @@ import {Simulation} from '../src/simulation.js';
 const STEP=1/60;
 const idle=(tutorial,sim,seconds)=>{for(let t=0;t<seconds;t+=STEP){sim.step({});tutorial.update(sim,STEP);}};
 
-test('Ballast tutorial targets and dummies have 400 health including respawns without changing other tutorials',()=>{
+test('Ballast tutorial targets and dummies have 80 health including respawns without changing other tutorials',()=>{
  const sim=new Simulation(tutorialMapFor('shotgun'));
- assert.ok(sim.targets.every(t=>t.hp===400&&t.maxHp===400));
- for(const target of sim.targets)sim.hit(target,{damage:500,volley:1});
+ assert.ok(sim.targets.every(t=>t.hp===80&&t.maxHp===80));
+ for(const target of sim.targets)sim.hit(target,{damage:100,volley:1});
  for(let i=0;i<280;i++)sim.step({});
- assert.ok(sim.targets.every(t=>t.hp===400));
- sim.reset();assert.ok(sim.targets.every(t=>t.hp===400));
- for(const weapon of ['static','rifle'])assert.deepEqual(new Simulation(tutorialMapFor(weapon)).targets.map(t=>t.hp),[100,75,100,75,100]);
+ assert.ok(sim.targets.every(t=>t.hp===80));
+ sim.reset();assert.ok(sim.targets.every(t=>t.hp===80));
+ for(const weapon of ['static','rifle'])assert.deepEqual(new Simulation(tutorialMapFor(weapon)).targets.map(t=>t.hp),[20,15,20,15,20]);
 });
 
 test('the range is enclosed and clear: five targets in a row and a few breakable crates',()=>{
@@ -148,12 +148,12 @@ test('Omen teaches six lessons without aim-in and credits late timing rather tha
  const t=new Tutorial('omen'),sim={omen:{aiming:true}};
  assert.deepEqual(t.lessons.map(l=>l.id),['ofire','oreload','ocurse','orupture','olate','ocovenant']);
  const events=[{type:'omenShot',kind:'base'},{type:'omenReloaded'},
-  {type:'omenMark',kind:'e'},{type:'omenBurst',kind:'e',power:135/171},
-  {type:'omenBurst',kind:'e',power:153/171},{type:'omenBurst',kind:'x',power:135/171}];
+  {type:'omenMark',kind:'e'},{type:'omenBurst',kind:'e',power:27/34.2},
+  {type:'omenBurst',kind:'e',power:30.6/34.2},{type:'omenBurst',kind:'x',power:27/34.2}];
  for(const e of events){
   t.event({type:'rifleShot'},sim);assert.equal(t.count,0);
   if(t.lesson.id==='olate'){
-   t.event({type:'omenBurst',kind:'e',power:135/171},sim);
+   t.event({type:'omenBurst',kind:'e',power:27/34.2},sim);
    t.event({type:'omenBurst',kind:'x',power:1},sim);assert.equal(t.count,0,'early or X bursts cannot pass the E timing lesson');
   }
   for(let n=0;n<t.goal;n++)t.event(e,sim);

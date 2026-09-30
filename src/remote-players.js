@@ -27,6 +27,8 @@ import { groundY, hilly } from './render/ground-lift.js';
 // Where the gun sits in the hand, as on your own player (renderer makePlayer).
 const GUN_AT = [.27, .74, -.46];
 const templates = new WeakMap();
+// Metres moved in one drawn frame that only a respawn (or a teleport) makes.
+export const RESPAWN_JUMP = 3;
 function gunModel(view, weapon) {
  let byWeapon = templates.get(view); if (!byWeapon) templates.set(view, byWeapon = new Map());
  if (!byWeapon.has(weapon)) {
@@ -78,6 +80,10 @@ export const PLAYER_COLOURS = Object.freeze([
  { coat: '#7a4b3c', arm: '#744737', band: '#553328', collar: '#f0a07a', ring: '#f0a07a', swatch: '#f0a07a' },
  { coat: '#5c5f3a', arm: '#585b37', band: '#3f4127', collar: '#e8e2d0', ring: '#f2eee2', swatch: '#f2eee2' },
  { coat: '#74405a', arm: '#6e3d56', band: '#522c40', collar: '#e58fb8', ring: '#e58fb8', swatch: '#e58fb8' },
+ // 7 and 8 (4V4, 2026-09-29): a muted slate blue and a sand coat with brown trim, apart from
+ // the six above and from the side colours (amber, cyan, violet; lime later).
+ { coat: '#4a5870', arm: '#465469', band: '#333f52', collar: '#8c9fbd', ring: '#8c9fbd', swatch: '#8c9fbd' },
+ { coat: '#c4ad82', arm: '#bca67b', band: '#6b5a3c', collar: '#8a6540', ring: '#a67c52', swatch: '#a67c52' },
 ]);
 export const playerColour = slot => PLAYER_COLOURS[((slot | 0) % PLAYER_COLOURS.length + PLAYER_COLOURS.length) % PLAYER_COLOURS.length];
 
@@ -138,7 +144,7 @@ export class RemotePlayers {
    let avatar = this.avatars.get(p.id);
    // A new side repaints by rebuilding; not a damaged robot's (its armour
    // would be shed a second time): it takes its side at its next life.
-   const sideChanged = avatar && avatar.side !== (p.side || null) && !(avatar.robot && p.hp < (p.maxHp || 500));
+   const sideChanged = avatar && avatar.side !== (p.side || null) && !(avatar.robot && p.hp < (p.maxHp || 100));
    if (avatar && (avatar.slot !== (p.slot ?? 1) || sideChanged)) { this.remove(p.id); avatar = null; }
    if (!avatar) { avatar = this.build(p.id, p.slot ?? 1, false, p.side || null); avatar.side = p.side || null; }
    avatar.seen = true;
@@ -156,7 +162,12 @@ export class RemotePlayers {
    avatar.under = !!(p.below || (deck >= 0 && g.drawnHeightAt(p.x, p.z) < g.decks[deck].h - WADE.step));
    if (avatar.under) anyUnder = true;
    const y = avatar.under ? g.drawnHeightAt(p.x, p.z) : groundY(this.view, p.x, p.z);
-   avatar.y = avatar.y === undefined || !(dt > 0) || y >= avatar.y - .25 ? y : Math.max(y, avatar.y - 9 * dt);
+   // (A new life, or a jump no walk makes in a frame: a respawn somewhere
+   // else. It is there at once, standing on its ground, not sinking to it
+   // from the height of the old spot: competitive overhaul, 2026-09-29.)
+   const moved = (p.life !== undefined && avatar.life !== undefined && p.life !== avatar.life) || (avatar.lastX !== undefined && Math.hypot(p.x - avatar.lastX, p.z - avatar.lastZ) > RESPAWN_JUMP);
+   avatar.life = p.life; avatar.lastX = p.x; avatar.lastZ = p.z;
+   avatar.y = avatar.y === undefined || moved || !(dt > 0) || y >= avatar.y - .25 ? y : Math.max(y, avatar.y - 9 * dt);
    avatar.root.position.set(p.x, avatar.y, p.z);
    avatar.root.visible = !sees || sees(p);
    avatar.group.rotation.y = Math.atan2(-p.aimX, -p.aimZ);
@@ -190,7 +201,7 @@ export class RemotePlayers {
    // Thrown by a Sheath's cut (sheath-view.js).
    this.view.sheathView?.flinch(avatar.body,p.id);
    // A robot sheds armour and sparks as it is damaged (bots/robot-wear.js).
-   if (avatar.robot && p.hp != null && dt > 0) wear(this.view, avatar, p.hp / (p.maxHp || 500), dt);
+   if (avatar.robot && p.hp != null && dt > 0) wear(this.view, avatar, p.hp / (p.maxHp || 100), dt);
    if (avatar.stains && dt > 0) {
     avatar.wading.soakIchor(weapon==='ichor'?p.ichor?.blood||0:0,dt);avatar.stains.set(avatar.wading.update(p.x,p.z,p.vx,p.vz,dt,pools,this.view.drops,this.view.map));
     if(avatar.wading.drench>0||avatar.drench){avatar.drench??=new IchorDrench(avatar.body,avatar.ichorArms?.root);avatar.drench.set(avatar.wading.drench);}

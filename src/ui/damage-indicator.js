@@ -25,7 +25,7 @@ export function createDamageIndicator(parent) {
    if (!(event.damage > 0)) return;
    const angle = damageScreenAngle(event, view);
    if (angle === null) indicator.surround(.44);
-   else indicator.add(angle, Math.min(1, event.damage / 60));
+   else indicator.add(angle, Math.min(1, event.damage / 12));
   },
  };
 }

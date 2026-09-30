@@ -31,12 +31,12 @@ export const FAST_LABEL = 'ds-fast-';
 export const FAST_TYPES = new Set(['snapshot', 'input', 'ping', 'pong']);
 export const CONGESTED = 24000;
 function fastChannels() {
- const P = globalThis.RTCPeerConnection?.prototype; if (!P || P.__deadshiftFast) return;
+ const P = globalThis.RTCPeerConnection?.prototype; if (!P || P.__deadstabFast) return;
  const make = P.createDataChannel;
  P.createDataChannel = function (label, options) {
   return make.call(this, label, String(label).startsWith(FAST_LABEL) ? { ...options, ordered: false, maxRetransmits: 0 } : options);
  };
- P.__deadshiftFast = true;
+ P.__deadstabFast = true;
 }
 export const congested = c => !!c && ((c.bufferSize || 0) > 0 || (c.dataChannel?.bufferedAmount || 0) > CONGESTED);
 // Sends `message` on the right one of a peer's two connections (`fast` may

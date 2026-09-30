@@ -24,25 +24,25 @@ test('distinct lethal damage types drop the gun and preserve a fallen corpse wit
  }
 });
 test('fatal projectiles and blasts preserve the direction away from their impact',()=>{
- const bullet=make();bullet.player.hp=1;
- bullet.hitPlayerProjectile(-2,0,2,0,{owner:'other',damage:20});
+ const bullet=make();bullet.player.hp=.2;
+ bullet.hitPlayerProjectile(-2,0,2,0,{owner:'other',damage:4});
  const shotDeath=bullet.events.find(e=>e.type==='playerDeath');assert.equal(shotDeath.directionX,1);assert.equal(shotDeath.directionZ,0);
- const orb=make();orb.player.hp=1;orb.explode({x:0,z:1,arrived:12},1);
+ const orb=make();orb.player.hp=.2;orb.explode({x:0,z:1,arrived:12},1);
  const orbDeath=orb.events.find(e=>e.type==='playerDeath');assert.equal(orbDeath.directionX,0);assert.equal(orbDeath.directionZ,-1);
- const grenade=make();grenade.weapon='rifle';grenade.player.hp=1;
+ const grenade=make();grenade.weapon='rifle';grenade.player.hp=.2;
  grenade.step({grenade:true,aimX:-1,aimZ:0,aimPointX:-1,aimPointZ:0});
  for(let i=0;i<110&&!grenade.player.dead;i++)grenade.step({});
  const grenadeDeath=grenade.events.find(e=>e.type==='playerDeath');assert.ok(grenadeDeath.directionX>.99);assert.ok(Math.abs(grenadeDeath.directionZ)<.01);
- const fire=make();fire.damagePlayer(500,'crop-fire',true);
+ const fire=make();fire.damagePlayer(100,'crop-fire',true);
  assert.equal(fire.events.find(e=>e.type==='playerDeath').directionX,0);
 });
 test('lethal overkill emits one death, stops movement and attacks, and reset restores the player',()=>{
- const sim=make();sim.player.hp=15;sim.damagePlayer(240,sim.player.id,false,true);
+ const sim=make();sim.player.hp=3;sim.damagePlayer(48,sim.player.id,false,true);
  assert.equal(sim.player.hp,0);assert.equal(sim.player.dead,true);assert.equal(sim.events.filter(e=>e.type==='playerDeath').length,1);
- sim.damagePlayer(99,'other');sim.step({moveX:1,seed:true,launch:true,spray:true,hex:true});
+ sim.damagePlayer(19.8,'other');sim.step({moveX:1,seed:true,launch:true,spray:true,hex:true});
  assert.equal(sim.events.filter(e=>e.type==='playerDeath').length,1);assert.equal(sim.player.x,0);assert.equal(sim.shots.length,0);assert.equal(sim.hexOrbs.length,0);
- sim.reset();assert.equal(sim.player.dead,false);assert.equal(sim.player.hp,500);
- sim.player.hp=-.1;sim.step({});assert.equal(sim.player.hp,0);assert.equal(sim.player.dead,true);
+ sim.reset();assert.equal(sim.player.dead,false);assert.equal(sim.player.hp,100);
+ sim.player.hp=-.02;sim.step({});assert.equal(sim.player.hp,0);assert.equal(sim.player.dead,true);
 });
 test('five distinct pool profiles remain compact and the death screen comes up quickly',()=>{
  const patterns=Array.from({length:5},(_,i)=>bloodPoolPattern(i));

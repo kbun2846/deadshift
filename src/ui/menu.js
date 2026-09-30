@@ -6,69 +6,88 @@ import {shotgunPreview} from '../weapons/shotgun-model.js';
 import { staticPreview } from './weapon-preview.js';
 import { riflePreview } from '../weapons/rifle-model.js';
 import { WEAPONS, DEFAULT_WEAPON } from '../items.js';
+import { MAINTENANCE, stickerHTML } from '../weapon-maintenance.js';
 import { DEFAULT_MAP, menuMaps, soloMaps, multiplayerMaps } from '../maps.js';
 import { NETWORK } from '../config/network.js';
 import { savedName, takeCarry } from '../online-play.js';
 import { pickerHTML, mapGridHTML, wirePicker } from './weapon-grid.js';
-import { createSettingsRows } from './lobby-settings.js';
+import { createSettingsRows, orderedModes, withDevDefaults } from './lobby-settings.js';
 import { cleanSettings, MODES } from '../config/match.js';
 import { buildDuelMenu } from './duel-menu.js';
 import { duelParam } from '../duel.js';
 import { buildKeybindMenu } from './keybind-menu.js';
+import { installMenuFit } from './menu-fit.js';
 
 export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete, online }) {
  let page=document.querySelector('[data-page]:not([hidden])')?.dataset.page||'home';
+ // The pages stay in place: a page taller than the screen is scaled to fit it
+ // (menu-fit.js), never scrolled (owner, 2026-09-29).
+ const shell=document.getElementById('intro');
+ const menuFit=installMenuFit(shell,{pick:()=>shell?.querySelector(':scope > [data-page]:not([hidden])'),items:()=>shell?shell.querySelectorAll(':scope > [data-page]'):[]});
  let selectedMap=DEFAULT_MAP;
  let weaponBack='maps';
  // In a multiplayer game the weapon page is the in-game picker; its back
  // arrow leaves multiplayer (see pickOnline below).
  let onlinePick=null,onlineBack=null;
- const back=()=>{if(onlinePick&&page==='weapons'){onlineBack?.();return;}if(page!=='home')show(page==='weapons'?weaponBack:page==='host-setup'?'online':page==='maps'||page==='online'||page==='duel'?'modes':'home');};
- const show=name=>{if(name==='maps')loadThumbnail();page=name;document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);refreshTypography();document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
+ // Back: join, host, bots and maps go to gamemodes; gamemodes goes home.
+ const back=()=>{if(onlinePick&&page==='weapons'){onlineBack?.();return;}if(page!=='home')show(page==='weapons'?weaponBack:['maps','join','host-setup','duel'].includes(page)?'modes':'home');};
+ const show=name=>{if(name==='maps')loadThumbnail();page=name;document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);refreshTypography();menuFit.refit();document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
  $('tutorial-entry').hidden=tutorialComplete;$('tutorial-mode').hidden=false;
- $('gamemodes').onclick=()=>show('modes');$('practice-mode').onclick=()=>show('maps');
- // 1V1: you against a robot (duel-menu.js picks, duel.js runs it). The
- // choices ride in the URL; a map already loaded starts at once.
+ $('gamemodes').onclick=()=>show('modes');
+ // SKINS (owner, 2026-09-29: "a regular ui with a back arrow that takes back
+ // to main page ... prepped as the tutorial weapons page is for future"): a
+ // title button like TUTORIAL; its page is laid out as the weapons page (the
+ // heading, and #skin-options in the same scrolling card grid, empty until
+ // skins exist: a skin is a .weapon-card like the weapons'). Back: the title.
+ $('title-skins').onclick=()=>show('skins');$('practice-mode').onclick=()=>show('maps');
+ // Gamemodes (owner, 2026-09-29: "join at the top, then host, then below host
+ // there is bots, and then below bots there is tutorial and practice"): JOIN
+ // and HOST open their own pages (online only), BOTS the page against robots.
+ // BOTS: you (and your robots) against robots (duel-menu.js picks, duel.js
+ // runs it). The choices ride in the URL; a map already loaded starts at once.
  const duelMenu=buildDuelMenu($('duel-options'),{maps:soloMaps(map)/* s2-spawns */,start:picks=>{
   const query=new URLSearchParams({map:picks.map||DEFAULT_MAP,weapon:picks.weapon,play:'1',mode:'duel',duel:duelParam(picks)});
   if(map.id===query.get('map')){setLaunch(query);start(picks.weapon);}
   else{showBusy();launchTo(query);}
  }});
  $('duel-mode').onclick=()=>show('duel');$('duel-start').onclick=()=>duelMenu.start();
- // Host setup: the mode and robots (previews) round the round settings.
- // Online: host a room (you get a code to share) or type a friend's code.
+ // Online: HOST a room (you get a code to share) or JOIN with a friend's code.
  // main.js does the connecting; this page only shows how it is going.
  const status=text=>{$('online-status').textContent=text||'';$('host-status').textContent=text||'';};
  let connecting=false;
  const go=async request=>{
   if(connecting)return;connecting=true;
-  $('online-host').disabled=$('online-join').disabled=$('host-create').disabled=true;
+  $('online-join').disabled=$('host-create').disabled=true;
   try{await online(request,status);}
   catch(error){status(error.message||'Could not connect.');}
-  finally{connecting=false;$('online-host').disabled=$('online-join').disabled=$('host-create').disabled=false;}
+  finally{connecting=false;$('online-join').disabled=$('host-create').disabled=false;}
  };
- $('online-mode').hidden=!NETWORK.enabled;
- $('online-mode').onclick=()=>{status('');show('online');};
+ $('join-mode').hidden=$('online-host').hidden=!NETWORK.enabled;
+ $('join-mode').onclick=()=>{status('');show('join');};
  const who=()=>({name:$('online-name').value});
+ // One username for JOIN and HOST: the host page's box mirrors the join
+ // page's #online-name (the one online-play.js reads and saves).
+ const mirror=(from,to)=>$(from).addEventListener('input',()=>{$(to).value=$(from).value;});
+ mirror('online-name','host-name');mirror('host-name','online-name');
  // Room codes are always shown in capitals, whatever was typed.
  $('online-code').addEventListener('input',e=>{const el=e.target,at=el.selectionStart;el.value=el.value.toUpperCase();try{el.setSelectionRange(at,at);}catch{}});
- $('online-name').value=savedName();
- // HOST A GAME: first the host sets up the game (the round settings, which
+ $('online-name').value=$('host-name').value=savedName();
+ // HOST: first the host sets up the game (name, map, mode, rounds, which
  // they can change later in the lobby), then CREATE GAME opens the room and the
  // lobby screen. The last setup is remembered.
- const SETUP_KEY='deadshift-host-settings';
+ const SETUP_KEY='deadstab-host-settings';
  // (The robots' skill is not: it opens at normal every visit, v0.990a.)
  let hostSettings=(()=>{try{const saved=JSON.parse(localStorage.getItem(SETUP_KEY)||'{}')||{};delete saved.robotSkill;return cleanSettings(saved);}catch{return cleanSettings();}})();
  const setupRows=createSettingsRows($('host-settings'),{onChange:(key,value)=>{hostSettings={...hostSettings,[key]:value};try{localStorage.setItem(SETUP_KEY,JSON.stringify(hostSettings));}catch{}setupRows.render({settings:hostSettings,mode:hostMode,editable:true});}});
  setupRows.render({settings:hostSettings,editable:true});
- $('online-host').onclick=()=>{if(!who().name.trim()){status('Enter a username first.');$('online-name').focus();return;}status('');show('host-setup');};
+ $('online-host').onclick=()=>{status('');show('host-setup');};
  // The mode to open with (the lobby can change it), remembered like the settings.
- const MODE_KEY='deadshift-host-mode';
+ const MODE_KEY='deadstab-host-mode';
  let hostMode=(()=>{try{const m=localStorage.getItem(MODE_KEY);return MODES.some(x=>x.id===m)?m:'ffa';}catch{return 'ffa';}})();
  // The map to host on (v0.990a, owner: chosen here too, not only in the
  // lobby): a picker of the multiplayer maps, remembered; CREATE GAME on
  // another map than this page's reloads onto it and opens the room there.
- const MAP_KEY='deadshift-host-map',hostMaps=multiplayerMaps(map);
+ const MAP_KEY='deadstab-host-map',hostMaps=multiplayerMaps(map);
  let hostMap=(()=>{try{const m=localStorage.getItem(MAP_KEY);return hostMaps.some(x=>x.id===m)?m:(hostMaps.some(x=>x.id===map.id)?map.id:hostMaps[0]?.id);}catch{return hostMaps[0]?.id;}})();
  const hostMapRow=document.createElement('div');hostMapRow.className='round-settings host-map';
  hostMapRow.innerHTML='<div class="round-setting duel-setting duel-pictures host-map-row"><span class="round-setting-label">map</span>'+pickerHTML('map',mapGridHTML({label:'map',maps:hostMaps,pressed:hostMap}))+'</div>';
@@ -76,11 +95,13 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const hostMapPicker=wirePicker(hostMapRow.querySelector('.picker'));
  hostMapRow.addEventListener('click',e=>{const b=e.target.closest('[data-choice]');if(!b||b.disabled)return;hostMap=b.dataset.choice;try{localStorage.setItem(MAP_KEY,hostMap);}catch{}for(const t of hostMapRow.querySelectorAll('[data-choice]'))t.setAttribute('aria-pressed',String(t.dataset.choice===hostMap));hostMapPicker.sync();});
  $('host-mode').classList.add('round-settings');
- $('host-mode').innerHTML='<div class="round-setting host-mode-row"><span class="round-setting-label">mode</span><div class="round-choices" role="group" aria-label="mode">'+MODES.map(m=>'<button type="button" class="choice-button" data-mode="'+m.id+'" aria-pressed="false">'+m.name+'</button>').join('')+'</div></div>';
+ $('host-mode').innerHTML='<div class="round-setting host-mode-row"><span class="round-setting-label">mode</span><div class="round-choices" role="group" aria-label="mode">'+orderedModes().map(m=>'<button type="button" class="choice-button" data-mode="'+m.id+'" aria-pressed="false">'+m.name+'</button>').join('')+'</div></div>';
  const showHostMode=()=>{for(const b of $('host-mode').querySelectorAll('[data-mode]'))b.setAttribute('aria-pressed',String(b.dataset.mode===hostMode));setupRows.render({settings:hostSettings,mode:hostMode,editable:true});};
  for(const b of $('host-mode').querySelectorAll('[data-mode]'))b.onclick=()=>{hostMode=b.dataset.mode;try{localStorage.setItem(MODE_KEY,hostMode);}catch{}showHostMode();};
  showHostMode();
- $('host-create').onclick=()=>go({role:'host',...who(),settings:hostSettings,mode:hostMode,map:hostMap});
+ // A host needs a name (asked here, not on the way in). Developer rows stay
+ // at their defaults unless the tools are unlocked (lobby-settings.js).
+ $('host-create').onclick=()=>{if(!who().name.trim()){status('Enter a username first.');$('host-name').focus();return;}go({role:'host',...who(),settings:withDevDefaults(hostSettings),mode:hostMode,map:hostMap});};
  $('online-join-form').onsubmit=e=>{e.preventDefault();go({role:'join',code:$('online-code').value,...who()});};
  // A shared link (?join=CODE) lands straight on this page and joins.
  const invite=NETWORK.enabled&&new URLSearchParams(location.search).get('join');
@@ -91,12 +112,12 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  // (Started by main.js once the page has loaded: autoRoom.)
  const params=new URLSearchParams(location.search),name=savedName().trim();
  const autoJoin=invite&&online&&params.get('autojoin')==='1'&&name,autoHost=!invite&&NETWORK.enabled&&params.get('host')==='1'&&params.get('autohost')==='1'&&online&&name;
- if(invite&&online){$('online-code').value=invite.toUpperCase();show('online');status(autoJoin?'Joining room '+invite.toUpperCase()+'…':'Enter your username, then JOIN.');}
+ if(invite&&online){$('online-code').value=invite.toUpperCase();show('join');status(autoJoin?'Joining room '+invite.toUpperCase()+'…':'Enter your username, then JOIN.');}
  else if(autoHost){show('host-setup');status('Opening the room…');}
- else if(NETWORK.enabled&&params.get('host')==='1'&&online){show('online');status('Enter your username, then HOST A GAME.');}
+ else if(NETWORK.enabled&&params.get('host')==='1'&&online){show('host-setup');status('Enter your username, then CREATE GAME.');}
  const autoRoom=()=>{
   if(autoJoin)go({role:'join',code:invite,name,retry:true});
-  else if(autoHost){const carry=takeCarry();go({role:'host',name,settings:carry?.settings?cleanSettings(carry.settings):hostSettings,mode:MODES.some(m=>m.id===carry?.mode)?carry.mode:hostMode,room:carry?.code||null,carry});}
+  else if(autoHost){const carry=takeCarry();go({role:'host',name,settings:carry?.settings?cleanSettings(carry.settings):withDevDefaults(hostSettings),mode:MODES.some(m=>m.id===carry?.mode)?carry.mode:hostMode,room:carry?.code||null,carry});}
  };
  document.querySelectorAll('.menu-back').forEach(b=>b.onclick=back);
  // The page title says which weapon list this is: a tutorial course or a match.
@@ -124,6 +145,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   const title=document.createElement('span');title.className='weapon-name';
   const label=document.createElement('span');label.className='button-label';label.textContent=weapon.name;title.append(label);
   select.append(picture,title);select.onclick=()=>launch(weapon.id);
+  // Under maintenance (weapon-maintenance.js): the sticker over it; main.js refuses the click.
+  if(MAINTENANCE.includes(weapon.id)){card.classList.add('maintenance-tile');select.dataset.maintenance=weapon.id;picture.insertAdjacentHTML('afterend',stickerHTML());}
   card.append(select);$('weapon-options').append(card);
   // The shipped picture from the start (map-cards.js); a weapon without one
   // is rendered on first view, and one with neither shows its name.
@@ -148,7 +171,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   const scrollResize=new ResizeObserver(updateScrollCue);scrollResize.observe(list);
   for(const card of list.children)scrollResize.observe(card);
  };
- scrollList($('weapon-options'));
+ scrollList($('weapon-options'));scrollList($('skin-options'));
  $('tutorial-basics').onclick=()=>launch(DEFAULT_WEAPON,'basics');
  // One card per map the Practice menu offers (maps.js menuMaps): the stretched
  // name, and a top-down preview for the map already loaded on this page.

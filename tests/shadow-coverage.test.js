@@ -13,7 +13,8 @@
 // to the sun is not cut by the near plane.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lightBasis, shadowFrame, fitShadowBox, shadowBoxOver, settleShadowBox, SHADOW_FIT } from '../src/render/shadow-snap.js';
+import { lightBasis, shadowFrame, fitShadowBox, shadowBoxOver, settleShadowBox, shadowReach, shadowSpan, placeShadowBox, SHADOW_FIT } from '../src/render/shadow-snap.js';
+import { isPlayable } from '../src/playable-area.js';
 import { fairFov, CAMERA_TILT, OUTDOOR_CAMERA_HEIGHT } from '../src/render/camera-framing.js';
 import { groundFor } from '../src/map-kit.js';
 import { FLAT } from '../src/world/heightfield.js';
@@ -185,4 +186,53 @@ test('the renderer fits the box before snapping to its texels, and rolls it with
   assert.match(src, /cam\.up\.set\(frame\.up\.x, frame\.up\.y, frame\.up\.z\)/);
   assert.match(src, /this\.sun\.shadow\.bias = -SHADOW_FIT\.bias \/ \(box\.far - box\.near\)/);
   assert.match(src, /cam\.updateProjectionMatrix\(\)/);
+});
+
+// Owner, 2026-09-29: "in the maps, especially in hollow wick i keep getting
+// these shadow flickerings across places" (walking; every preset). The box
+// used to change size on the hills now and then, moving every texel; now a
+// terrain map's outdoor view has one size and moves in whole texels.
+test('hills: one box size for the whole map, on the world texel grid, covering every spot', () => {
+  const map = maps['hollow-wick'], ground = groundFor(map), points = [];
+  for (let x = -map.width / 2; x <= map.width / 2; x += 4) for (let z = -map.depth / 2; z <= map.depth / 2; z += 4) if (isPlayable(map, x, z, 0)) points.push({ x, z });
+  for (const [shape, aspect] of Object.entries(SCREENS)) {
+    const view = viewFor(aspect), frame = shadowFrame(WICK_SUN, view), reach = shadowReach(view, WICK_SUN, frame.basis, ground, points);
+    for (const texels of [768, 1280, 2560, 4096]) {
+      const span = shadowSpan(reach, texels), spots = Object.values(SPOTS['hollow-wick']);
+      let y = ground.heightAt(spots[0].x, spots[0].z), last = null, placed = 0;
+      for (let k = 1; k < spots.length; k++) {
+        const a = spots[k - 1], b = spots[k], steps = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / .25);
+        for (let i = 1; i <= steps; i++) {
+          const x = a.x + (b.x - a.x) * i / steps, z = a.z + (b.z - a.z) * i / steps;
+          y += (ground.heightAt(x, z) - y) * .3;
+          const box = placeShadowBox(shadowBoxOver(view, WICK_SUN, frame.basis, ground, x, y, z), span);
+          assert.ok(box, `${shape} ${texels}: the walk at ${x.toFixed(1)}, ${z.toFixed(1)} fits the map's box`);
+          // Exactly the same texel everywhere (the kept map compares it exactly),
+          // edges on whole texels, the same depth.
+          assert.equal((box.right - box.left) / texels, span.tx); assert.equal((box.top - box.bottom) / texels, span.ty);
+          assert.equal(box.left / span.tx, Math.round(box.left / span.tx)); assert.equal(box.bottom / span.ty, Math.round(box.bottom / span.ty));
+          if (last) assert.ok(box.near === last.near && box.far === last.far);
+          last = box; placed++;
+        }
+      }
+      assert.ok(placed > 100);
+      // It covers what the view sees, as the fitted box did.
+      if (texels === 1280) for (const spot of spots) {
+        const focus = { x: spot.x, y: ground.heightAt(spot.x, spot.z), z: spot.z };
+        const box = placeShadowBox(shadowBoxOver(view, WICK_SUN, frame.basis, ground, focus.x, focus.y, focus.z), span);
+        const m = misses(box, frame.basis, WICK_SUN, focus, seen(view, ground, focus), ground.maxY + SHADOW_FIT.casters);
+        assert.ok(m.across <= 0 && m.deep <= 0 && m.near <= 0, `${shape}: ${JSON.stringify(m)}`);
+      }
+    }
+    // A little softer than the box a level stretch gets, never much.
+    const middle = settleShadowBox(null, shadowBoxOver(view, WICK_SUN, frame.basis, ground, 0, ground.heightAt(0, 0), 0)), span = shadowSpan(reach, 1280);
+    const ratio = Math.sqrt(span.tx * span.ty * 1280 * 1280 / ((middle.right - middle.left) * (middle.top - middle.bottom)));
+    assert.ok(ratio < 1.35, `${shape}: texels ${ratio.toFixed(2)}x the middle's`);
+  }
+});
+
+test('the renderer uses the one box on hills with the outdoor camera', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/render/renderer.js', import.meta.url), 'utf8');
+  assert.match(src, /placeShadowBox\(needed, this\.shadowSpanFor\(view\)\)/);
 });

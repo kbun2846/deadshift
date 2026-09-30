@@ -4,17 +4,32 @@
 // working. Change balance here, not inside the logic.
 //
 // Units: metres, seconds, radians and damage points.
+//
+// Health and damage (owner, 2026-09-29: "scale all damage taken and given
+// down to 100 health per player. Adjust every single weapons attacks and stuff
+// to this new number proportionally so it's just the numbers that change"):
+// a player has 100 health (500 before) and every damage, heal, drain, health
+// pool and health threshold is a fifth of what it was, so every fight plays
+// exactly as before. What used to round to a whole point now rounds to a fifth
+// of one (`hpRound`, `HP_STEP`); a roll of ±n in those steps is `hpRoll`.
+export const HP_STEP = .2;
+// (x * 5 rather than x / .2, and a hair over, so a value that was exactly
+// n.5 points at 500 health still rounds up despite floating-point error.)
+export const hpRound = x => Math.round(x * 5 + 1e-7) / 5;
+// `base` ± `spread`, in steps of HP_STEP (every step equally likely).
+export const hpRoll = (base, spread, random = Math.random) => { const n = Math.round(spread * 5); return base - spread + Math.floor(random() * (n * 2 + 1)) / 5; };
 
 // ---- Player movement, Static (orbs, lightning stream, hex) ----
 // A launched orb's speed (owner, v0.9b): leaves at `start` m/s, so the throw
 // reads, then ramps (time constant `ramp` s) to `top` and lands fast. Before:
 // 18 up to 38 m/s.
 export const ORB_LAUNCH = Object.freeze({ start: 7, top: 64, ramp: .11 });
-export const HEX_BASE_PULSE=150,HEX_BASE_ZAP=20;
-// The hex's zaps (its spinning edges) hit 15 harder, on top of the boost (owner, v0.83).
-export const HEX_ZAP_BONUS=15;
+export const HEX_BASE_PULSE=30,HEX_BASE_ZAP=4;
+// The hex's zaps (its spinning edges) hit 3 harder (15 at 500 health), on top of the boost (owner, v0.83).
+export const HEX_ZAP_BONUS=3;
 export const HEX_DAMAGE_MULTIPLIER=1.14*1.4;
-export const boostedHexDamage=damage=>Math.round(damage*HEX_DAMAGE_MULTIPLIER*100)/100;
+// (Rounded to a hundredth of a point at 500 health: a five-hundredth now.)
+export const boostedHexDamage=damage=>Math.round(damage*HEX_DAMAGE_MULTIPLIER*500)/500;
 export const RULES = Object.freeze({
   step: 1 / 60, speed: 7.2, acceleration: 10, braking: 14, radius: .38,
   // Keyboard and touch-walk turning: how fast it closes on the new direction,
@@ -28,8 +43,8 @@ export const RULES = Object.freeze({
   dodgeDistance: 3.5, dodgeDuration: .24, maxStamina: 1, dodgeStaminaCost: 1, staminaDelay: .6, staminaRecharge: 1.6, dodgeHitRadius: .18, dodgeDamageMultiplier: .5,
   // sprayAmmoTime: seconds of stream per orb (owner, v0.9b: used 20% faster, .25 before).
   sprayWarmup: .2, sprayAmmoTime: .25 / 1.2, sprayRange: 8, sprayInnerAngle: Math.PI * 8 / 180, sprayOuterAngle: Math.PI * 22 / 180,
-  // (v0.9b, owner: the stream 8% lighter: 196 / 77 before.)
-  sprayInnerDPS: 196 * .92, sprayOuterDPS: 77 * .92, sprayTurnRate: Math.PI * .65, sprayRecoil: 2.8,
+  // (v0.9b, owner: the stream 8% lighter: 196 / 77 before, at 500 health.)
+  sprayInnerDPS: 39.2 * .92, sprayOuterDPS: 15.4 * .92, sprayTurnRate: Math.PI * .65, sprayRecoil: 2.8,
   sprayRampTime: 1.5, sprayMaxMultiplier: 1.5,
   // Placed orbs drift out faster (owner, v0.9b; .72 before).
   maxSeeds: 12, seedInterval: .145, seedLife: 9, driftSpeed: 1.5,
@@ -37,7 +52,7 @@ export const RULES = Object.freeze({
   hexCost: 10, hexFormationTime: .55, hexSpeed: 3.6, hexRange: 12, hexPulseRadius: 1.65, hexReach: 2.3, hexPulseDamage: boostedHexDamage(HEX_BASE_PULSE), hexEdgeDamage: boostedHexDamage(HEX_BASE_ZAP)+HEX_ZAP_BONUS, hexSpinDuration: 1, hexCooldown: 30,
   // Owner (v0.9b): a hex not pulsed holds at its full size, still turning, this long before it fades (X still pulses it).
   hexLinger: 1.6,
-  launchSpeed: 31, launchLife: 1.8, launchOvershoot: .2, interceptCorridor: .5, interceptReach: 1.5, playerHealth: 500, targetHealth: 250, dummyHealth: 300, targetRespawn: 4.5,
+  launchSpeed: 31, launchLife: 1.8, launchOvershoot: .2, interceptCorridor: .5, interceptReach: 1.5, playerHealth: 100, targetHealth: 50, dummyHealth: 60, targetRespawn: 4.5,
   rechargeDelay: .8, rechargeInterval: .65, stationaryRecharge: 1.25 * 1.18, focusDistance: 7,
 });
 
@@ -73,7 +88,7 @@ export const WADE = Object.freeze({ depth: .5, slow: .22, current: .3, dodge: .3
 export const VOLLEY_BOOST = 1.75;
 // Larger volleys trade a long refill for a higher damage return per orb.
 export const ORB_DAMAGE_MULTIPLIER = 1.16*(345/400)*VOLLEY_BOOST;
-export const ORB_VOLLEY_TOTALS=Object.freeze([0,9.28,20.88,34.8,90,125,165,205,245,285,325,363,400].map(d=>d*(345/400)*VOLLEY_BOOST));
+export const ORB_VOLLEY_TOTALS=Object.freeze([0,1.856,4.176,6.96,18,25,33,41,49,57,65,72.6,80].map(d=>d*(345/400)*VOLLEY_BOOST));
 // Mouse players get a very slight pull on a volley's landing point (no other aim
 // help; touch and keys have aim assist): a visible target within `radius` of
 // the cursor draws the point `pull` of the way onto it.
@@ -87,19 +102,19 @@ export const SPLASH = Object.freeze({ edge: .28, heavyCore: .06, heavyFrom: 4, h
 
 // Omen: deliberate diamonds, one E curse and a three-projectile X covenant.
 export const OMEN = Object.freeze({
- damage:36, minDamage:22.5, interval:.42, magazine:4, reload:1.8, speed:30,
+ damage:7.2, minDamage:4.5, interval:.42, magazine:4, reload:1.8, speed:30,
  fullRange:12, falloff:22, range:26, spread:.025,
  muzzle:.88, lateral:.27, radius:.085,
- primeDamage:49.5, primeWindow:5, primeCooldown:10, curseDuration:3.5, tick:.5, tickDamage:10.8, curseTickVariance:1.8, curseRollStep:.9,
+ primeDamage:9.9, primeWindow:5, primeCooldown:10, curseDuration:3.5, tick:.5, tickDamage:2.16, curseTickVariance:.36, curseRollStep:.18,
  curseBeat:1,
- blastDamage:135, lateDamage:171, curseBlastVariance:13.5, lateWindow:1, blastRadius:2.5, splash:67.5, splashEdge:18, blastCap:198,
- volleyDamage:45, volleyCount:3, volleySpeed:20, volleyTurn:1.8, volleyLife:1.5,
+ blastDamage:27, lateDamage:34.2, curseBlastVariance:2.7, lateWindow:1, blastRadius:2.5, splash:13.5, splashEdge:3.6, blastCap:39.6,
+ volleyDamage:9, volleyCount:3, volleySpeed:20, volleyTurn:1.8, volleyLife:1.5,
  volleyDuration:4, volleyCooldown:40, volleyRange:24,
 });
 
 // ---- Nominal (rifle) ----
 // Baseline conventional weapon: metres, seconds, damage per bullet.
-export const RIFLE=Object.freeze({interval:.165,magazine:28,reload:1.95,damage:22,minDamage:16,effectiveRange:10,falloffEnd:22,maxRange:55,magazineLife:30,bulletSpeed:90,aimMoveMultiplier:.55,maxStamina:3,stationaryStamina:1.3,
+export const RIFLE=Object.freeze({interval:.165,magazine:20,reload:1.95,damage:4.4,minDamage:3.2,effectiveRange:10,falloffEnd:22,maxRange:55,magazineLife:30,bulletSpeed:90,aimMoveMultiplier:.55,maxStamina:3,stationaryStamina:1.3,
  // Shot spread in radians: from the hip, aimed in, and how much running at full speed widens either.
  hipSpread:.105,aimSpread:.054,movingSpread:.7,
  // Hip-fire recoil: each shot knocks the whole cone off line by up to
@@ -123,13 +138,13 @@ export const RIFLE_CONVERGE=8;
 // Ballast (v0.83, owner): no charging. Every shot is the same: the old
 // uncharged reach (`range`), `shellDamage` per shell if every pellet lands
 // point blank (+`firstShellBonus` on the first), falling off more gently than
-// before so a mid-range hit still counts (~150 there, ~300 up close). `recoil`
+// before so a mid-range hit still counts (~30 there, ~60 up close). `recoil`
 // is the launch every shot gives. Shift / RMB aims in (a tighter cone).
-// shellDamage 287 (owner, v0.9b: 300 before, a touch lighter).
+// shellDamage 57.4 (287 at 500 health; owner, v0.9b: 300 before, a touch lighter).
 // v140 (owner): `range` is the red part of the cone (full power up close,
 // still decent at its edge); past it pellets fly `fade` metres more, weaker
 // and weaker to nothing, drawn as the red fading out.
-export const SHOTGUN=Object.freeze({shells:2,pellets:12,shellDamage:287,firstShellBonus:15,reload:2.5,dodges:2,range:6.8,fade:4,aimClose:1.08,spread:.30,aimSpread:.18,doubleDelay:.05,doubleRecoilLead:.12,doubleRecoilScale:1.3,interval:.26,
+export const SHOTGUN=Object.freeze({shells:2,pellets:12,shellDamage:57.4,firstShellBonus:3,reload:2.5,dodges:2,range:6.8,fade:4,aimClose:1.08,spread:.30,aimSpread:.18,doubleDelay:.05,doubleRecoilLead:.12,doubleRecoilScale:1.3,interval:.26,
  recoil:5.4,launchScale:8,look:.6});
 // Ballast's X, Scatter (weapons/scatter.js): press X to ready it (the cone
 // turns red), X again to fire `shells` big red shells across a wide cone
@@ -141,7 +156,7 @@ export const SHOTGUN=Object.freeze({shells:2,pellets:12,shellDamage:287,firstShe
 // `bigDamage`, a small one `childDamage`. One target takes at most `max`
 // from one Scatter. `cooldown` from when it fires.
 export const SCATTER=Object.freeze({cooldown:40,prime:3,shells:5,split:4,spread:.55,speed:24,splitAt:5.5,reach:11,childSpread:.34,childNear:.45,childFar:1.4,childSpeed:30,
- bigDamage:40,childDamage:14,burstDamage:18,burstEdge:.3,burstRadius:1.4,max:460,recoil:2.4});
+ bigDamage:8,childDamage:2.8,burstDamage:3.6,burstEdge:.3,burstRadius:1.4,max:92,recoil:2.4});
 // A burst from one attacker that removes this share of max health inside this
 // window is a Ballast "headless" kill (see AGENTS.md).
 export const BALLAST_FATAL_WINDOW=.45;
@@ -156,9 +171,9 @@ export const BALLAST_FATAL_FRACTION=.85;
 // damage taken (.85 → .697), and the cone (hip and aimed, and the recoil kick)
 // tighter while it runs (`spread`).
 export const SURGE=Object.freeze({charge:2,duration:5,cooldown:50,damage:2,taken:.85*.82,speed:1.1*1.15,spread:.6,breakRadius:3.2});
-// bonus: added to every grenade hit (v0.83: +50); surgeBonus: instead, for one
-// thrown during Nominal's Surge (+100).
-export const GRENADE=Object.freeze({range:12,fuse:1.4,windup:.18,cooldown:25,radius:4,coreRadius:.7,damage:240,edgeDamage:35,bonus:50,surgeBonus:100});
+// bonus: added to every grenade hit (v0.83: +10, +50 at 500 health); surgeBonus:
+// instead, for one thrown during Nominal's Surge (+20).
+export const GRENADE=Object.freeze({range:12,fuse:1.4,windup:.18,cooldown:25,radius:4,coreRadius:.7,damage:48,edgeDamage:7,bonus:10,surgeBonus:20});
 
 // ---- Aim assist for direction-only aim (see auto-range.js) ----
 export const AUTO_RANGE = Object.freeze({
@@ -181,10 +196,10 @@ export const AIM_ASSIST = Object.freeze({
 
 // The tutorial's targets stay lighter than practice's (RULES.targetHealth /
 // dummyHealth), so a lesson's shots stay short.
-export const TUTORIAL_TARGET_HEALTH = Object.freeze({ target: 100, dummy: 75 });
+export const TUTORIAL_TARGET_HEALTH = Object.freeze({ target: 20, dummy: 15 });
 
 // Sightline: the rifle and its modest semi-automatic sidearm share E/X.
-export const SIGHTLINE=Object.freeze({dodges:2,dashRechargeScale:.95,pistolMagazine:10,pistolDamage:25,pistolDamageRoll:2,pistolReload:2,pistolInterval:.28,pistolRange:22,pistolSpeed:65,reload:4.2,damageMin:493,damageMax:505,commit:.16,speed:114,hipSpread:.26,turnRate:.35,turnAcceleration:1.1,pistolTurnRate:3.6,setupDuration:4/3,standDuration:.42,drawDuration:.28,cone:45,scopeScale:1.46,scopeLeadShare:.76,scopeElevationRate:.006,scopeElevationMax:.06,muzzleForward:1.73,muzzleLateral:.4,roundHeight:1.28,muzzleRadius:1.5,muzzleDamage:80,hearingScale:1.5,xCooldown:50,blastRadius:4.5,blastCore:1.3,blastDamage:300,blastEdge:40});
+export const SIGHTLINE=Object.freeze({dodges:2,dashRechargeScale:.95,pistolMagazine:10,pistolDamage:5,pistolDamageRoll:.4,pistolReload:2,pistolInterval:.28,pistolRange:22,pistolSpeed:65,reload:4.2,damageMin:98.6,damageMax:101,commit:.16,speed:114,hipSpread:.26,turnRate:.35,turnAcceleration:1.1,pistolTurnRate:3.6,setupDuration:4/3,standDuration:.42,drawDuration:.28,cone:45,scopeScale:1.46,scopeLeadShare:.76,scopeElevationRate:.006,scopeElevationMax:.06,muzzleForward:1.73,muzzleLateral:.4,roundHeight:1.28,muzzleRadius:1.5,muzzleDamage:16,hearingScale:1.5,xCooldown:50,blastRadius:4.5,blastCore:1.3,blastDamage:60,blastEdge:8});
 
 // Bot room fights use short bursts and deliberate pauses; probing never tracks a hidden body.
 export const BOT_INTERIOR=Object.freeze({memory:10,wait:3.2,waitJitter:2.4,burst:.32,pause:.85,pauseJitter:.55,probeBurst:.16,probePause:2.5,probeJitter:1.8});
@@ -193,17 +208,17 @@ export const BOT_SIGHTLINE=Object.freeze({sidekickRange:8,travel:6,travelJitter:
 // Noticing a laser takes time; each chosen escape lasts long enough to read.
 export const BOT_LASER=Object.freeze({width:.7,hotWidth:1.05,reactionMin:.18,reactionMax:.65,notice:.12,linger:.65,step:2.8,chargeRange:20,hold:1.6,holdJitter:.8,dodgeGap:1.8});
 
-// Standalone Sidekick. Sightline's backup retains its separate 25 +/- 2 tuning.
-export const SIDEKICK=Object.freeze({magazine:10,damage:30,damageRoll:2,reload:2,interval:.28,range:22,speed:65,
- mineLimit:2,mineDamage:200,mineRoll:30,mineRadius:3.6,mineCore:.9,mineTrigger:.7,mineArm:1,mineCooldown:30,
+// Standalone Sidekick. Sightline's backup retains its separate 5 +/- .4 tuning.
+export const SIDEKICK=Object.freeze({magazine:10,damage:6,damageRoll:.4,reload:2,interval:.28,range:22,speed:65,
+ mineLimit:2,mineDamage:40,mineRoll:6,mineRadius:3.6,mineCore:.9,mineTrigger:.7,mineArm:1,mineCooldown:30,
  duration:8,summon:.55,fireRate:1.75,moveSpeed:1.2,xCooldown:45});
 
 // Ichor: rapid contact-timed katana swings and eight committed Frenzy cuts.
-export const ICHOR=Object.freeze({damage:30,maxDamage:85,interval:.24,contact:.067,range:2.15,arc:2.9,meterMax:100,gain:7.5,gainRoll:1,waveGain:13,waveGainRoll:1.5,decayDelay:7,decay:3,bleedDuration:8,trailSpeed:1.20,trailLife:18,trailCap:160,dodges:2,dashRechargeScale:1.12,eCooldown:6,eBlood:50,waveDamage:70,waveRoll:10,waveCost:.5,waveSpeed:19,waveRange:17,xCooldown:50,hits:12,frenzyInterval:.20,frenzyDamage:180,frenzyMax:540,healthDrain:80/2.4,splash:.22,dashGrace:.24,dashDamage:1.15,dashReach:.3,frenzyMove:1.3,fullMove:1.05,fullRecharge:1.2,attackMove:.88,regenThreshold:90,regen:6,parryStart:.04,parryEnd:.095,parryRecovery:.28,parryFacing:.55,guardCooldown:20,guardCapacity:50,guardRoll:10,guardMove:.9,chainWindow:.85,chainStep:.07,chainMax:.21,shortArc:1.85,midArc:2.3});
+export const ICHOR=Object.freeze({damage:6,maxDamage:17,interval:.24,contact:.067,range:2.15,arc:2.9,meterMax:100,gain:7.5,gainRoll:1,waveGain:13,waveGainRoll:1.5,decayDelay:7,decay:3,bleedDuration:8,trailSpeed:1.20,trailLife:18,trailCap:160,dodges:2,dashRechargeScale:1.12,eCooldown:6,eBlood:50,waveDamage:14,waveRoll:2,waveCost:.5,waveSpeed:19,waveRange:17,xCooldown:50,hits:12,frenzyInterval:.20,frenzyDamage:36,frenzyMax:108,healthDrain:16/2.4,splash:.22,dashGrace:.24,dashDamage:1.15,dashReach:.3,frenzyMove:1.3,fullMove:1.05,fullRecharge:1.2,attackMove:.88,regenThreshold:90,regen:1.2,parryStart:.04,parryEnd:.095,parryRecovery:.28,parryFacing:.55,guardCooldown:20,guardCapacity:10,guardRoll:2,guardMove:.9,chainWindow:.85,chainStep:.07,chainMax:.21,shortArc:1.85,midArc:2.3});
 
 // Sheath: a white broadsword carried in a black sheath at the hip (owner's
 // brief, 2026-09-28). Heavier than Ichor: one slower, wider swing at a time.
-// Main slashes: `damage` ± `damageRoll` (60-70, about 8 hits for 500 health).
+// Main slashes: `damage` ± `damageRoll` (12-14, about 8 hits for 100 health).
 // A swing every `interval` s (1.9x Ichor's .24): `windup` before the blade
 // meets anyone, then a `hitWindow` in which everyone inside that swing's arc
 // is cut once; the rest is recovery. The first swing out of the sheath is a
@@ -229,8 +244,8 @@ export const ICHOR=Object.freeze({damage:30,maxDamage:85,interval:.24,contact:.0
 // (`xFlourish` s, walking at `xFlourishMove`). Contact comes .29 s after the
 // press at the earliest, ~.43 s at the far end. Blade blood: each hit
 // on a person (never a robot) adds `bloodPerHit` of a full blade.
-export const SHEATH=Object.freeze({damage:65,damageRoll:5,interval:.46,windup:.1,drawWindup:.14,hitWindow:.08,
+export const SHEATH=Object.freeze({damage:13,damageRoll:1,interval:.46,windup:.1,drawWindup:.14,hitWindow:.08,
  range:2.45,arcs:[2.1,2.0,1.9,1.95,1.35,2.35,2.0],reaches:[0,0,0,0,.3,.1,0],attackMove:.85,outMove:.88,sheathedMove:1.02,drawMoveSlow:1.25,
  dodges:2,dashRechargeScale:1.12,sheatheDelay:1.5,bloodPerHit:1/8,
  rushDuration:3,rushSpeed:1.35,eCooldown:12,
- xRange:7.5,xWidth:.75,xDamage:300,xRoll:10,xBack:.12,xBackDist:1.5,xTell:.17,xDashSpeed:52,xLead:.6,xStrike:.3,xFlourish:.5,xFlourishMove:.6,xShort:.55,xCooldown:35,rushReach:2});
+ xRange:7.5,xWidth:.75,xDamage:60,xRoll:2,xBack:.12,xBackDist:1.5,xTell:.17,xDashSpeed:52,xLead:.6,xStrike:.3,xFlourish:.5,xFlourishMove:.6,xShort:.55,xCooldown:35,rushReach:2});

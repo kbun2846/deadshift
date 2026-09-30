@@ -139,7 +139,7 @@ export const deadwater = {
     // on the dry ground between them. Placed off the road corridor, clear of
     // buildings, fences, targets and every existing prop, and inside the
     // playable outline, so they add cover to cross rather than walls to route
-    // around. All of it is breakable: five health, one orb clears it.
+    // around. All of it is breakable: one health (five at 500 per player), one orb clears it.
     { type: 'crate', x: -44, z: -8 }, { type: 'barrel', x: -43.5, z: -5.4 }, { type: 'crate', x: -45.9, z: -6.8 },
     { type: 'crate', x: -62, z: 20 }, { type: 'crate', x: -64.4, z: 19.1 }, { type: 'barrel', x: -63.5, z: 21.3 },
     { type: 'crate', x: -59.7, z: 20.2 }, { type: 'crate', x: -30, z: -58 }, { type: 'crate', x: -31.1, z: -60.2 },

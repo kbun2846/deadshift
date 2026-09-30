@@ -2,17 +2,17 @@
 // Static X presses, orb blasts) and lists every shader program linked after
 // load, with the object that needed it. Each one is a hitch a player feels
 // (tens of ms on Windows' D3D compiler). Expect none. Dev server up, then:
-//   node tools/program-check.mjs [quality=extreme] [weapon=static] [map=deadwater] [port=5173]
+//   node tools/program-check.mjs [quality=extreme] [weapon=static] [map=deadwater] [port=5173] [extra query, e.g. &mode=duel&duel=4v4~...]
 // On a map with hills it also walks the player through the map's named
 // spots (tools/terrain-spots.mjs) and into its stream, and breaks a few props.
 import { chromium } from 'playwright';
-const [q = 'extreme', w = 'static', map = 'deadwater', port = '5173'] = process.argv.slice(2);
+const [q = 'extreme', w = 'static', map = 'deadwater', port = '5173', extra = ''] = process.argv.slice(2);
 const { SPOTS } = await import('./terrain-spots.mjs');
 const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await b.newPage({ viewport: { width: 640, height: 400 } });
 const errs = []; p.on('pageerror', e => errs.push(e.message));
-await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q, qualityAuto: false })), q);
-await p.goto(`http://127.0.0.1:${port}/?play=1&weapon=${w}&map=${map}&capture=thumbnail`);
+await p.addInitScript(q => localStorage.setItem('deadstab-settings', JSON.stringify({ quality: q, qualityAuto: false })), q);
+await p.goto(`http://127.0.0.1:${port}/?play=1&weapon=${w}&map=${map}&capture=thumbnail${extra}`);
 // (A loaded machine loads slowly: PC_TIMEOUT seconds, default 240.)
 await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: (+process.env.PC_TIMEOUT || 240) * 1000 });
 await p.waitForTimeout(q === 'extreme' ? 8000 : 3000); // Extreme's passes load late

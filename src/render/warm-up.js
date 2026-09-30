@@ -7,7 +7,8 @@ import { charMaterial } from '../effects/gore.js';
 import { isDemanding } from '../settings.js';
 import { BloodDrops } from '../effects/blood-drops.js';
 import { HollowBreakFX, handlesBreak } from '../effects/breakable-effects.js';
-import { gunStandIns } from '../remote-players.js';
+import { gunStandIns, RemotePlayers } from '../remote-players.js';
+import { ROBOT_SLOT } from '../bots/robot-model.js';
 import { WEAPONS } from '../items.js';
 // The longest a warm-up step waits on the driver's parallel compile (ms).
 // (v0.996a, owner: "my pc with the high specs used to get 240fps all times on
@@ -198,10 +199,21 @@ export const WarmUp = {
     });
     // Burnt bodies' cracked-char material, both ways (fading or not).
     this.warmCharred ||= [charMaterial(false), charMaterial(true)];
+    // The blood a death leaves on the ground (and a wall, if one is near):
+    // staged too (2026-09-29: the first death of a game built its program
+    // mid-game; found killing Hollow Wick's goat). Its materials are kept.
+    const bloodBefore = this.blood?.splats.length ?? 0;
+    try { this.blood?.add(at.x, at.z, 1, 0, '__warm'); } catch { /* staging only */ }
+    const warmSplats = this.blood ? this.blood.splats.splice(bloodBefore) : [];
     const rack = this.warmRack();
     // Every weapon as a robot or another player holds it (remote-players.js):
     // their guns' shaders, hidden parts too (a magazine shown on a reload).
     for (const model of gunStandIns(this, WEAPONS.map(w => w.id))) rack.add(model);
+    // Robots' and other players' bodies (remote-players.js), built as they are
+    // when one comes into a game (a SOLO robot, a joiner): the merged body,
+    // armour, glow and ring, drawn now. (2026-09-29: the first robot of a
+    // SOLO match built its body's program mid-game, on Extreme and below.)
+    { const stand = new RemotePlayers(this); for (const slot of [1, ROBOT_SLOT + 1]) rack.add(stand.build('warm-' + slot, slot, true).root); }
     // The staged deaths' materials in their indoor-clipped form too (a body
     // under a roof, or seen from indoors), as the rack does for everything else.
     const deathKinds = new Set();
@@ -216,6 +228,8 @@ export const WarmUp = {
     this.scene.add(rack);
     yield* compile();
     this.scene.remove(rack);
+    for (const splat of warmSplats) splat.mesh.removeFromParent();
+    this.warmBlood = warmSplats.map(splat => splat.mesh.material);
     for (const mesh of pulses) rack.remove(mesh);
     // Their materials are kept (not disposed with the staging): disposing the
     // last user of a program destroys it, and the first real death would

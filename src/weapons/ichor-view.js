@@ -68,7 +68,7 @@ export class IchorView{
   for(let i=0;i<count;i++){const side=(Math.random()-.5)*3;if(this.sparks.length>=160)this.sparks.shift();this.sparks.push({x:e.x,z:e.z,y:floorY(v,e.x,e.z,e.below)+.75,vx:dx*(2+Math.random()*3)-dz*side,vz:dz*(2+Math.random()*3)+dx*side,vy:1+Math.random()*2,born:this.clock,life:.22+Math.random()*.2,color:i%2?YELLOW:BLUE});}
   v.burst(e.x,e.z,8+Math.round((e.bloodLevel||0)*12),'hit',tint);return;
  }
- if(e.targetKind==='player'){this.bloodSpray(e.x,e.z,floorY(v,e.x,e.z,e.below)+.85,e.directionX??1,e.directionZ??0,Math.round((v.qualityName==='potato'?24:40)*(1+(e.bloodLevel||0)*1.5)),e.below,{heavy:true,stain:true});v.bleed({...e,damage:Math.max(35,e.damage),bloodLevel:e.bloodLevel||0});const w=e.id===v.lastSim?.player.id?v.wading:avatar?.wading;if(w)w.level=Math.min(1,w.level+.24+(e.bloodLevel||0)*.3);this.pools.push({x:e.x,z:e.z,r:.65,born:this.clock});if(this.pools.length>160)this.pools.shift();}
+ if(e.targetKind==='player'){this.bloodSpray(e.x,e.z,floorY(v,e.x,e.z,e.below)+.85,e.directionX??1,e.directionZ??0,Math.round((v.qualityName==='potato'?24:40)*(1+(e.bloodLevel||0)*1.5)),e.below,{heavy:true,stain:true});v.bleed({...e,damage:Math.max(7,e.damage),bloodLevel:e.bloodLevel||0});const w=e.id===v.lastSim?.player.id?v.wading:avatar?.wading;if(w)w.level=Math.min(1,w.level+.24+(e.bloodLevel||0)*.3);this.pools.push({x:e.x,z:e.z,r:.65,born:this.clock});if(this.pools.length>160)this.pools.shift();}
  }
  ribbon(x,z,y,dir,start,sweep,radius,width,color,n,style={}){
   const m=this.ribbons,pos=m.geometry.attributes.position,col=m.geometry.attributes.color,ring=this.ribbonRing;n=Math.min(96,n);

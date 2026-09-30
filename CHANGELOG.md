@@ -1,6 +1,72 @@
 # Changelog
 
-Deadshift, newest first. Every version is an alpha, playable in the browser on mobile or PC.
+Deadstab, newest first. Every version is an alpha, playable in the browser on mobile or PC.
+
+## v0.1.0-alpha (2026-09-30)
+
+### Deadstab
+- **The game is now deadstab** (it was deadshift): the title, the loading screen, the app name and the GitHub page. Your settings, controls, tutorials and saved picks carry over by themselves.
+- **New version numbers**: this is v0.1.0-alpha, after alpha v0.996. The title screen and the game show v0.1.0; the browser tab shows just "deadstab"; Settings shows the full version at the bottom.
+
+### Menus
+- **PLAY** replaces GAMEMODES on the title: bright white, its lettering drawn over the blood.
+- After PLAY: **JOIN, HOST, BOTS, TUTORIAL, PRACTICE**. JOIN is the username and room code; HOST is the username, map, mode and one row (ROUNDS, or the match length in FFA); BOTS is the old SOLO page cut down to mode, map, your weapon, rounds and difficulty. Every other setting moved behind the developer tools.
+- **ROUNDS: 3, 5, 10 or ∞** everywhere (online and bots): that many rounds, most wins, over as soon as nobody can catch up, a tie plays one more round at a time.
+- Menus never scroll on phones; they fit the screen.
+- **SKINS** on the title, under TUTORIAL (the page is ready for skins; nothing on it yet). The word stays where it was; the buttons grow downward.
+
+### Modes
+- **4V4** online and against bots (up to 8 players in a room).
+- **FFA** ends when its clock runs out (5 or 10 minutes); most kills wins; respawns after 6 s.
+- **FORFEIT**: in 1V1 it hands the match over; in team modes the whole team has to vote.
+- **No friendly fire**: teammates can't hurt each other any more, online or against bots.
+
+### Dying and the end of a match
+- **1V1**: 3 s of aftermath zoomed in on the kill for both players, then a quick FORFEIT / QUIT card for the one who died while the killer's stats panel shows their score turning over; both back together about 5.6 s after the kill.
+- **Team modes**: the card on the right has VIEW STATS, FORFEIT (a vote) and QUIT while you watch your teammates.
+- **The end-of-match card**: everyone's name and stats; online READY or LEAVE (the next match starts as soon as everyone is ready; the host can go to the LOBBY), against bots PLAY, CHANGE SETTINGS or QUIT.
+- **New scoreboard** (hold Tab, or SCORES / VIEW STATS on touch, also while you're down; the end card): bigger, in the game's stretched lettering, one list from most kills to least, each row in its team's colour; in FFA 1st and 2nd get gold and silver rows. Also against bots now. It never pops up by itself: the round's winner sees their score turn over at the top instead.
+- Fixed: the death card sometimes not showing, players showing at their old spot for a moment when they respawn, and the ROUND popup (and other game pop-ups) staying on the main menu when you leave a game right away.
+
+### 1V1 duel circle
+- **Every 1V1** (online and against a bot) is fought inside a circle a little over a quarter of the map across, somewhere new each round and always inside the map's fences. You start on opposite sides of it and can't walk out; shots go through. Robots stay inside it too, and a circle always leaves room to fight (never mostly buildings).
+- It's a thin, see-through wall of mist with a soft red foot, lower and thinner on the side toward the camera; where you walk up to it, it firms up and turns red. The map (M) shows the ring.
+
+### Weapons, robots and health
+- **Sniper under maintenance**: Sightline shows with an "under maintenance" sticker everywhere weapons are picked, and nobody can use it for now (robots included).
+- **Nominal** holds 20 rounds (was 28).
+- **Death screen**: just DEAD for the first second, then the buttons; "hold tab for the scoreboard" sits in the red where it's easy to read.
+- Fixed: the winning point of a match now shows on the top score and its segments (it used to stop one short).
+- **100 health**: every player has 100 health, and every weapon's damage, every heal and every health bar is scaled to match (a fifth of before), so fights play exactly the same; only the numbers changed.
+- **Robots aim more like people**: normal robots miss more (most of all with Omen and with melee, where they now misjudge swings), easy robots are much easier, hard robots are sharper and quicker. Robots with Ichor now raise its guard against gunfire, and Static robots finish a nearly dead player with a quick shot.
+- **Ballast**: after the first X, a timer at the cursor counts down the 3 seconds until Scatter is ready.
+- Developer tools only: a prototype first-person view (Display > First-person view; keyboard and mouse). Players without the tools notice nothing. Files: src/fps-mode.js (new), main.js, render/renderer.js, ui/dev-options.js, tests/fps-mode.test.js. No protocol or golden-replay change.
+
+### The storm
+- **A red storm closes in** every round in 2V2, 3V3, 4V4 and 2V2V2 (online and against bots): 2 minutes to a new final circle, 30 seconds held there, then sudden death as it closes to nothing. In FFA it closes slowly over the whole match and holds a small final zone for the last 45 seconds, with the screen building tension.
+- Out in it you lose 15 health a second in quick ticks, with a rising static drone (no damage numbers or hurt sound for it). It's drawn with red over everything outside, lightning crawling in at the edge and striking across it, and a readout under your health bar.
+- Respawns always land inside the safe circle; robots keep out of it.
+
+### Bots
+- **FFA against robots**: BOTS has an FFA mode — you and five robots, everyone for themselves, for 5 or 10 minutes; most kills wins. Everyone comes back 6 s after dying, inside the storm.
+
+### Syphon
+- A kill now gives its killer **50 health in FFA** (online and against bots) and **25 in the other modes**, up to full health (it used to be half the health you had lost).
+
+### Hollow Wick
+- **The goat can be killed**: shoot it over its pen's hurdles, or cut it through them with a blade. It dies in a heap of gore, and its head drops onto the pile.
+
+### Graphics
+- **Fixed: shadows flickering while you walk on the hills** (Hollow Wick most of all, every preset): the shadow map used to be resized every few metres on hilly ground, which nudged every shadow edge at once. It now keeps one size for the whole map.
+
+### Other
+- **Bigger damage numbers** for the damage you deal.
+- **On phones** the score against bots sits at the top left (it was hidden under the top buttons).
+- Fixed: the first blood of a game could stutter for a moment while it prepared (it is now ready at load).
+
+### Network
+- PROTOCOL_VERSION 23: everyone in a room needs this version (older builds can't join).
+- Online rooms now use deadstab's names, so v0.1.0-alpha players and older builds don't see each other's rooms.
 
 ## alpha v0.996 (2026-09-29)
 

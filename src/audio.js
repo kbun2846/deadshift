@@ -212,10 +212,56 @@ export class Soundscape {
     if(surge){this.tone(1800,520,.07,.045,'sawtooth');this.tone(90,45,.12,.07,'sine');}
   }
 
+  // In the storm (storm.js; owner, 2026-09-29: "a constant anxiety inducing
+  // sound that indicates the damage taking ... it slowly increases
+  // pitch/frequency as player takes more damage and it should sound kinda
+  // staticky. it should fade in when player enters the storm and when they
+  // leave"). One voice made on first use and kept: crackling static (noise
+  // through a band that climbs, chopped by a stutter that quickens), a
+  // rising whine and a low buzz under it. `on`: you are in it; `level` 0-1:
+  // how much it has taken from you this time (main.js), pitch and rate follow.
+  stormVoice(on, level = 0) {
+   const ctx = this.context; if (!ctx || !this.noiseBuffer) return;
+   let v = this.storm;
+   if (!v && !on) return;
+   if (!v) {
+    v = this.storm = {};
+    v.out = ctx.createGain(); v.out.gain.value = 0; v.out.connect(this.buses.effects);
+    const noise = ctx.createBufferSource(); noise.buffer = this.noiseBuffer; noise.loop = true;
+    v.band = ctx.createBiquadFilter(); v.band.type = 'bandpass'; v.band.Q.value = 1.3; v.band.frequency.value = 1400;
+    const high = ctx.createBiquadFilter(); high.type = 'highpass'; high.frequency.value = 500;
+    const crush = ctx.createWaveShaper(); const curve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) { const x = i / 127.5 - 1; curve[i] = Math.round(x * 5) / 5; } crush.curve = curve;
+    v.chop = ctx.createGain(); v.chop.gain.value = .6;
+    v.stutter = ctx.createOscillator(); v.stutter.type = 'square'; v.stutter.frequency.value = 9;
+    const depth = ctx.createGain(); depth.gain.value = .45; v.stutter.connect(depth); depth.connect(v.chop.gain);
+    const hiss = ctx.createGain(); hiss.gain.value = .9;
+    noise.connect(high); high.connect(v.band); v.band.connect(crush); crush.connect(v.chop); v.chop.connect(hiss); hiss.connect(v.out);
+    v.whine = ctx.createOscillator(); v.whine.type = 'sine'; v.whine.frequency.value = 900;
+    const whineGain = ctx.createGain(); whineGain.gain.value = .05; v.whine.connect(whineGain); whineGain.connect(v.out);
+    v.buzz = ctx.createOscillator(); v.buzz.type = 'sawtooth'; v.buzz.frequency.value = 55;
+    const low = ctx.createBiquadFilter(); low.type = 'lowpass'; low.frequency.value = 260;
+    const buzzGain = ctx.createGain(); buzzGain.gain.value = .12; v.buzz.connect(low); low.connect(buzzGain); buzzGain.connect(v.out);
+    noise.start(); v.stutter.start(); v.whine.start(); v.buzz.start();
+   }
+   const now = ctx.currentTime, k = Math.max(0, Math.min(1, level));
+   v.out.gain.setTargetAtTime(on ? .16 + .1 * k : 0, now, on ? .09 : .22);
+   v.band.frequency.setTargetAtTime(1200 + 2600 * k, now, .15);
+   v.stutter.frequency.setTargetAtTime(8 + 16 * k, now, .15);
+   v.whine.frequency.setTargetAtTime(820 + 1500 * k, now, .2);
+   v.buzz.frequency.setTargetAtTime(52 + 40 * k, now, .2);
+  }
+
+  // A storm bolt striking near you: a dry electric crack (`level` 0-1).
+  zap(level = 1) { if (!(level > .02)) return; this.noise(.045, .07 * level, 3400); this.tone(2400 + Math.random() * 900, 700, .05, .02 * level, 'sawtooth'); }
+
+  // A heartbeat-like low double thump (the storm's final stretch, main.js).
+  pulse(level = 1) { this.tone(62, 44, .16, .08 * level, 'sine'); this.tone(58, 40, .14, .06 * level, 'sine', .22); }
+
   healthLoss(damage) {
     if(!(damage>0))return;
     // A tight, urgent crack; small continuous damage ticks remain quiet.
-    const weight=Math.min(1,Math.sqrt(damage/240));
+    const weight=Math.min(1,Math.sqrt(damage/48)); // (240 at 500 health)
     this.impact(.045,.11*weight,1450);
     this.tone(250-35*weight,105,.06,.055*weight,'triangle');
   }
@@ -359,7 +405,8 @@ export class Soundscape {
       const now=this.context?.currentTime??0;
       if(now-(this.lastDamageDing??-1)>.065){this.tone(1250,1190,.075,.032,'sine');this.tone(1875,1785,.055,.012,'sine',.012);this.lastDamageDing=now;}return;
     }
-    if(e.type==='playerDamage'){if(e.damageType!=='ichorCost')this.healthLoss(e.damage);return;}
+    // (Not the storm's: its own voice says so, stormVoice.)
+    if(e.type==='playerDamage'){if(e.damageType!=='ichorCost'&&!e.storm)this.healthLoss(e.damage);return;}
     // Surge: a rising whine and rumble for the power-up, a bright boom as it
     // lands, a falling fizz when it ends.
     if(e.type==='surgeCharge'){this.tone(90,620,SURGE.charge,.06,'sawtooth');this.tone(180,1240,SURGE.charge,.025,'triangle');this.noise(SURGE.charge,.05,300);return;}

@@ -1,4 +1,4 @@
-// The title: the main menu's home page. The game version, "deadshift" in the
+// The title: the main menu's home page. The game version, "deadstab" in the
 // heavy display lettering, the menu's buttons below it, and blood, drawn flat
 // and a little cartoony like the game's own blood, but messy and clean-edged
 // (the brief is in AGENTS.md, Design > Title screen blood):

@@ -15,7 +15,7 @@ const MIN_ROOM = 6;       // metres: anything narrower is a shelter, not a room
 const GRID = 1.4;         // metres between sampled spots
 const CLEARANCE = .25;    // extra room around the body
 
-function blocked(colliders, x, z, r) {
+export function blocked(colliders, x, z, r) {
  for (const b of colliders) {
   if (b.walkOver) continue;
   if (Math.abs(x - b.x) > b.w / 2 + r || Math.abs(z - b.z) > b.d / 2 + r) continue;
@@ -68,6 +68,16 @@ const checked = map => !groundFor(map).flat || !!map.noSpawn;
 // tools' "move to a random spot"): inside the playable area with room round
 // it, clear of every collider, and (when `others` are given) at least
 // `space` metres from each of them. Null if none turns up in `tries`.
+// Whether a body can come in at (x, z): the same tests as openSpot (playable
+// with `margin`, clear of colliders, not in a tiny shell, the hills' spawn
+// rules). The 1V1 duel circle picks its two spots with it (duel-circle.js).
+export function openAt(map, colliders, x, z, margin = 2) {
+ const r = RULES.radius + CLEARANCE + .15;
+ if (!isPlayable(map, x, z, margin) || blocked(colliders, x, z, r)) return false;
+ if (map.buildings?.some(b => (b.w < MIN_ROOM || b.d < MIN_ROOM) && buildingContains(b, { x, z }))) return false;
+ return !(checked(map) && spawnProblem(map, colliders, x, z));
+}
+
 export function openSpot(map, colliders, { random = Math.random, others = [], space = 0, tries = 400, margin = 2 } = {}) {
  const r = RULES.radius + CLEARANCE + .15;
  for (let k = 0; k < tries; k++) {

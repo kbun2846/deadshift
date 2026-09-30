@@ -26,7 +26,7 @@ test('stream windup warns without damage or spending ammo', () => {
 });
 
 test('each ammo provides exactly RULES.sprayAmmoTime of stream (12 of them at full ammo), with no recharge during firing', () => {
-  const sim = make([{ id: 'a', x: 3, z: 0 }]); sim.targets[0].hp = 10000;
+  const sim = make([{ id: 'a', x: 3, z: 0 }]); sim.targets[0].hp = 2000;
   step(sim, {}, .01);
   // Isolate firing time from recoil movement for exact damage integration.
   const startHP = sim.targets[0].hp;
@@ -41,7 +41,7 @@ test('each ammo provides exactly RULES.sprayAmmoTime of stream (12 of them at fu
 
 test('stream ramps per victim, caps, and resets after a miss, cover or release',()=>{
  const sim=make([{id:'a',x:3,z:0},{id:'b',x:3,z:4}]);
- for(const t of sim.targets)t.hp=t.maxHp=10000;
+ for(const t of sim.targets)t.hp=t.maxHp=2000;
  step(sim);sim.spray.warmup=0;sim.dev.ammo=true;
  const a=sim.targets[0],b=sim.targets[1];
  const hit=()=>{const hp=a.hp;sim.stepSpray(.1);return hp-a.hp;};
@@ -88,6 +88,6 @@ test('backward channeling adds only a small recoil boost, including diagonal ret
 test('stream does not use deployed orb reserves or damage the caster', () => {
   const sim = make(); sim.seed(); sim.seed();
   for (let i = 0; i < 180; i++) step(sim);
-  assert.equal(sim.seeds.length, 2); assert.equal(sim.player.hp, 500);
+  assert.equal(sim.seeds.length, 2); assert.equal(sim.player.hp, 100);
   assert.ok(sim.ammo + sim.seeds.length <= 12);
 });

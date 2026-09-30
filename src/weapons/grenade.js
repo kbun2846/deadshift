@@ -1,9 +1,9 @@
 import { cropCircle } from '../crops.js';
 import { collidersAlong } from '../world/collider-grid.js';
-import { GRENADE } from '../config/gameplay.js';
+import { GRENADE, hpRound } from '../config/gameplay.js';
 import { blastReach } from './scatter.js';
 export { GRENADE };
-export const grenadeDamage=distance=>distance>GRENADE.radius?0:Math.round(GRENADE.edgeDamage+(GRENADE.damage-GRENADE.edgeDamage)*Math.max(0,1-Math.max(0,distance-GRENADE.coreRadius)/(GRENADE.radius-GRENADE.coreRadius))**1.4);
+export const grenadeDamage=distance=>distance>GRENADE.radius?0:hpRound(GRENADE.edgeDamage+(GRENADE.damage-GRENADE.edgeDamage)*Math.max(0,1-Math.max(0,distance-GRENADE.coreRadius)/(GRENADE.radius-GRENADE.coreRadius))**1.4);
 export function resetGrenades(sim){sim.grenades=[];sim.grenadeCooldown=0;sim.grenadeThrowTime=-10;}
 export function stepGrenades(sim,input,dt,segmentBox){
  sim.grenadeCooldown=sim.dev.grenadeCooldown||sim.dev.cooldowns?0:Math.max(0,sim.grenadeCooldown-dt);

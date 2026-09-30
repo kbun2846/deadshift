@@ -62,7 +62,7 @@ export function respondToLaser(brain) {
  response.lastSeen=now;
  if(now<response.readyAt)return null;
  if(response.kind&&now<response.until)return response;
- const d=Math.hypot(source.x-p.x,source.z-p.z),healthy=p.hp/(p.maxHp||500)>.55,loaded=!brain.outOfAmmo();
+ const d=Math.hypot(source.x-p.x,source.z-p.z),healthy=p.hp/(p.maxHp||RULES.playerHealth)>.55,loaded=!brain.outOfAmmo();
  const side=brain.random()<.5?-1:1;
  const bold=healthy&&loaded&&brain.pf.aggr>.5&&brain.sim.weapon!=='sightline'&&d<B.chargeRange&&!source.sightline.special;
  const charge=bold&&brain.random()<brain.pf.aggr*.85;

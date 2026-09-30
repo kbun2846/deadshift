@@ -1,4 +1,4 @@
-# Deadshift — Omen, Sightline and shared UI handoff for Claude
+# Deadstab — Omen, Sightline and shared UI handoff for Claude
 
 Updated: 2026-09-27. Running notes requested by the owner. Update this file with each subsequent change in this worktree; keep the current behavior, file inventory, verification and pending work accurate. AGENTS.md remains the project-wide source of truth.
 

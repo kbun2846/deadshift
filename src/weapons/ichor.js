@@ -1,4 +1,4 @@
-import { ICHOR as I, TERRAIN } from '../config/gameplay.js';
+import { ICHOR as I, TERRAIN, HP_STEP, hpRoll } from '../config/gameplay.js';
 import {endIchorGuard} from './ichor-deflect.js';
 import { targetRadius } from '../target-radius.js';
 import { ichorCutForce,ichorCutArc,ichorSpin,ichorCoverMeets,ichorSweepMeets } from './ichor-cut.js';
@@ -46,14 +46,14 @@ function contact(sim,geo){const s=sim.ichor,p=sim.player,spin=ichorSpin(s.varian
 }
 export function stepIchor(sim,input,dt,geo){if(sim.predictOnly)return;const s=sim.ichor,p=sim.player;
  for(const t of sim.ichorTrails)t.life-=dt;sim.ichorTrails=sim.ichorTrails.filter(t=>t.life>0);
- for(const m of sim.ichorBleeds){m.left-=dt;const t=sim.targets.find(t=>t.id===m.id);if(!t||t.hp<=0||t.hp>m.hp+.01){m.left=0;continue;}m.hp=t.hp;m.tick-=dt;if(m.tick<=0){m.tick=.16;const trail={x:t.x,z:t.z,y:sim.standY(t),r:.72,life:I.trailLife};sim.ichorTrails.push(trail);if(sim.ichorTrails.length>I.trailCap)sim.ichorTrails.shift();sim.events.push({type:'ichorDrip',id:t.id,x:t.x,z:t.z,below:!!t.below});}}
+ for(const m of sim.ichorBleeds){m.left-=dt;const t=sim.targets.find(t=>t.id===m.id);if(!t||t.hp<=0||t.hp>m.hp+.002){m.left=0;continue;}m.hp=t.hp;m.tick-=dt;if(m.tick<=0){m.tick=.16;const trail={x:t.x,z:t.z,y:sim.standY(t),r:.72,life:I.trailLife};sim.ichorTrails.push(trail);if(sim.ichorTrails.length>I.trailCap)sim.ichorTrails.shift();sim.events.push({type:'ichorDrip',id:t.id,x:t.x,z:t.z,below:!!t.below});}}
  sim.ichorBleeds=sim.ichorBleeds.filter(m=>m.left>0);s.trail=ichorOnTrail(sim);
  for(const k of ['cooldown','eCooldown','xCooldown'])s[k]=sim.dev.cooldowns&&k!=='cooldown'?0:Math.max(0,s[k]-dt*(k!=='cooldown'&&s.blood>=I.meterMax?I.fullRecharge:1));
  s.parryCooldown=Math.max(0,(s.parryCooldown||0)-dt);
  s.guardCooldown=sim.dev.cooldowns?0:Math.max(0,(s.guardCooldown||0)-dt);s.guardFlash=Math.max(0,(s.guardFlash||0)-dt);
  const guardHeld=!!input.ichorGuard;
  if(s.guarding&&(!guardHeld||input.ichorE||input.ichorX||p.dead||p.hp<=0))endIchorGuard(s);
- if(guardHeld&&!s.guardHeld&&s.guardCooldown<=1e-8&&!input.ichorE&&!input.ichorX&&!p.dead&&p.hp>0){s.guarding=true;if(!(s.guardStrength>0)){s.guardShots=0;s.guardStrength=I.guardCapacity-I.guardRoll+Math.floor(Math.random()*(I.guardRoll*2+1));}s.swing=s.frenzy=0;s.contact=true;sim.events.push({type:'ichorGuardStart',x:p.x,z:p.z});}
+ if(guardHeld&&!s.guardHeld&&s.guardCooldown<=1e-8&&!input.ichorE&&!input.ichorX&&!p.dead&&p.hp>0){s.guarding=true;if(!(s.guardStrength>0)){s.guardShots=0;s.guardStrength=hpRoll(I.guardCapacity,I.guardRoll);}s.swing=s.frenzy=0;s.contact=true;sim.events.push({type:'ichorGuardStart',x:p.x,z:p.z});}
  s.guardHeld=guardHeld;if(s.guarding){s.guardX=p.aimX;s.guardZ=p.aimZ;}
 
  const press=!!input.tapFire||!!input.fire;s.trigger=!!input.fire;
@@ -62,18 +62,18 @@ export function stepIchor(sim,input,dt,geo){if(sim.predictOnly)return;const s=si
  if(p.dead||p.hp<=0){s.frenzy=s.swing=0;sim.ichorBleeds=[];delete p.ichor;}
  else{
   if(s.blood>I.regenThreshold&&!s.frenzy&&!(input.ichorX&&s.xCooldown<=1e-8))p.hp=Math.min(p.maxHp,p.hp+I.regen*dt);
-  if(s.frenzy>0){const spent=Math.min(dt,s.frenzy);s.frenzy=Math.max(0,s.frenzy-dt);if(s.frenzy<1e-8)s.frenzy=0;const cost=Math.min(p.hp-1,I.healthDrain*spent);if(cost>0&&!sim.dev.invulnerable){p.hp-=cost;sim.events.push({type:'playerDamage',damage:cost,damageType:'ichorCost'});}if(!s.frenzy)p.hp=Math.round(p.hp*1e6)/1e6;if(p.hp<=1)s.frenzy=s.swing=0;}
+  if(s.frenzy>0){const spent=Math.min(dt,s.frenzy);s.frenzy=Math.max(0,s.frenzy-dt);if(s.frenzy<1e-8)s.frenzy=0;const cost=Math.min(p.hp-HP_STEP,I.healthDrain*spent);if(cost>0&&!sim.dev.invulnerable){p.hp-=cost;sim.events.push({type:'playerDamage',damage:cost,damageType:'ichorCost'});}if(!s.frenzy)p.hp=Math.round(p.hp*5e6)/5e6;if(p.hp<=HP_STEP)s.frenzy=s.swing=0;}
   if(s.swing>0){s.swing=Math.max(0,s.swing-dt);if(s.swing<1e-8)s.swing=0;if(!s.contact&&s.duration-s.swing>=I.contact){s.contact=true;contact(sim,geo);}}
   if(!s.frenzy&&sim.time-s.lastGain>I.decayDelay)s.blood=Math.max(0,s.blood-I.decay*dt);
   if(!s.guarding&&(!p.dodgeRemaining||s.frenzy>0||press)){
-   if(!p.dodgeRemaining&&input.ichorX&&s.xCooldown<=1e-8&&!s.frenzy&&p.hp>1){s.frenzy=I.hits*I.frenzyInterval;s.index=0;s.combo=(s.combo+1)%ICHOR_COMBOS.length;s.frenzyPower=s.blood/100;s.swing=0;s.xCooldown=I.xCooldown;sim.events.push({type:'ichorFrenzyStart',x:p.x,z:p.z,below:!!p.below,power:s.frenzyPower});}
+   if(!p.dodgeRemaining&&input.ichorX&&s.xCooldown<=1e-8&&!s.frenzy&&p.hp>HP_STEP){s.frenzy=I.hits*I.frenzyInterval;s.index=0;s.combo=(s.combo+1)%ICHOR_COMBOS.length;s.frenzyPower=s.blood/100;s.swing=0;s.xCooldown=I.xCooldown;sim.events.push({type:'ichorFrenzyStart',x:p.x,z:p.z,below:!!p.below,power:s.frenzyPower});}
    if(s.frenzy>0&&s.swing<=1e-8&&s.index<I.hits)start(sim,ICHOR_COMBOS[s.combo][s.index++],s.frenzyPower,true);
-   else if(!s.frenzy&&!s.swing&&!p.dodgeRemaining&&input.ichorE&&s.eCooldown<=1e-8&&s.blood>=I.eBlood){s.eCooldown=I.eCooldown;start(sim,3,s.blood/100);s.contact=true;s.cooldown=I.interval;const wave={id:++sim.serial,volley:++sim.volley,x:p.x,z:p.z,y:sim.standY()+.72,dx:p.aimX,dz:p.aimZ,travel:0,power:s.blood/100,damage:I.waveDamage-I.waveRoll+Math.floor(Math.random()*(I.waveRoll*2+1)),hit:[],below:!!p.below};sim.ichorWaves.push(wave);
+   else if(!s.frenzy&&!s.swing&&!p.dodgeRemaining&&input.ichorE&&s.eCooldown<=1e-8&&s.blood>=I.eBlood){s.eCooldown=I.eCooldown;start(sim,3,s.blood/100);s.contact=true;s.cooldown=I.interval;const wave={id:++sim.serial,volley:++sim.volley,x:p.x,z:p.z,y:sim.standY()+.72,dx:p.aimX,dz:p.aimZ,travel:0,power:s.blood/100,damage:hpRoll(I.waveDamage,I.waveRoll),hit:[],below:!!p.below};sim.ichorWaves.push(wave);
     // The wave's price (owner, v0.990a): as it leaves the blade the wielder
     // splashes blood and loses half the damage that one hit of it deals
     // (its rolled damage, whoever it meets or misses). It never kills: at
-    // least 1 health is left, as Frenzy's drain leaves it.
-    const cost=sim.dev.invulnerable?0:Math.max(0,Math.min(p.hp-1,wave.damage*I.waveCost));
+    // least a fifth of a point (HP_STEP; 1 at 500 health) is left, as Frenzy's drain leaves it.
+    const cost=sim.dev.invulnerable?0:Math.max(0,Math.min(p.hp-HP_STEP,wave.damage*I.waveCost));
     sim.events.push({type:'ichorWave',id:p.id,x:p.x,z:p.z,dx:p.aimX,dz:p.aimZ,cost,below:!!p.below});
     if(cost>0){p.hp-=cost;sim.events.push({type:'playerDamage',damage:cost,damageType:'ichorCost'});}}
    else if(!s.frenzy&&!s.swing&&press&&s.cooldown<=1e-8){start(sim,s.dashWindow>0?6:nextIchorCut(s),s.blood/100);s.cooldown=I.interval;}

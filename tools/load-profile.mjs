@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 const q = process.argv[2] || 'performance', slow = +(process.argv[3] || 4);
 const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await b.newPage({ viewport: { width: 1000, height: 600 } });
-await p.addInitScript(q => localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q, qualityAuto: false })), q);
+await p.addInitScript(q => localStorage.setItem('deadstab-settings', JSON.stringify({ quality: q, qualityAuto: false })), q);
 const cdp = await p.context().newCDPSession(p);
 await cdp.send('Emulation.setCPUThrottlingRate', { rate: slow });
 await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 1000 }); await cdp.send('Profiler.start');

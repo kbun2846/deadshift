@@ -18,7 +18,7 @@ const report = [];
 for (const quality of ['potato', 'performance', 'balanced', 'quality', 'extreme']) {
   const page = await browser.newPage({ viewport: { width: 640, height: 400 }, deviceScaleFactor: 1 });
   await page.addInitScript(q => {
-    localStorage.setItem('deadshift-settings', JSON.stringify({ quality: q, qualityAuto: false, fps: 1, motion: false }));
+    localStorage.setItem('deadstab-settings', JSON.stringify({ quality: q, qualityAuto: false, fps: 1, motion: false }));
     // Seeded, so noise textures and scattered scenery come out the same every load.
     let seed = 20260925; Math.random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   }, quality);

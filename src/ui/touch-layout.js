@@ -1,5 +1,5 @@
 import { viewWidth, viewHeight } from '../viewport.js';
-export const TOUCH_LAYOUT_KEY='deadshift-touch-layout-v2';
+export const TOUCH_LAYOUT_KEY='deadstab-touch-layout-v2';
 export const touchOrientation=({width,height})=>width>height?'landscape':'portrait';
 // swapped: movement on the right and the buttons on the left, for left-handed play.
 export function validateTouchLayouts(value){return {portrait:validateTouchLayout(value?.portrait),landscape:validateTouchLayout(value?.landscape),swapped:value?.swapped===true};}
@@ -37,7 +37,7 @@ export function installTouchLayout({root,controls,canEdit,onEditing,onChange=()=
  try{
   const saved=localStorage.getItem(TOUCH_LAYOUT_KEY);
   if(saved)layouts=validateTouchLayouts(JSON.parse(saved));
-  else layouts[orientation]=validateTouchLayout(JSON.parse(localStorage.getItem('deadshift-touch-layout-v1')));
+  else layouts[orientation]=validateTouchLayout(JSON.parse(localStorage.getItem('deadstab-touch-layout-v1')));
  }catch{}
  let positions=layouts[orientation];
  const elements=TOUCH_CONTROL_IDS.map(id=>document.getElementById(id));

@@ -41,7 +41,15 @@ import { weaponOrDefault } from '../items.js';
 // rather than queued when the link backs up; the loadout only the weapon in
 // hand's blocks; names in player states only now and then.
 // 19 (v0.999a): a 'cropCut' is the blade's shape (crops.js); cut tiles stay.
-export const PROTOCOL_VERSION = 19;
+// 20 (competitive menus, 2026-09-29): 4V4 (eight seats), ROUNDS (match
+// state `rounds`, `played`, `timed`, `forfeit` votes, results `ready`),
+// 'forfeit' and 'ready' from joiners, a 'forfeit' event.
+// 21 (2026-09-29): 1V1's duel circle in the match state (`circle` {x, z, r});
+// joiners confine their own body to it too.
+// 22: the storm (storm.js): `storm` (its plan) and `stormT` in the match state.
+// 23: the world's animals (critters.js): `critters` in the snapshot, [x, z,
+// heading, dead] each (Hollow Wick's goat, which can be killed).
+export const PROTOCOL_VERSION = 23;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);
@@ -127,7 +135,7 @@ export function playerState(id, p, lastSeq = 0) {
   ...nonZero('dodgeRemaining', round(p.dodgeRemaining, 4)), ...nonZero('dodgeX', round(p.dodgeX, 4)), ...nonZero('dodgeZ', round(p.dodgeZ, 4)),
   stamina: round(p.stamina, 4), ...nonZero('staminaWait', round(p.staminaWait, 4)),
   ...nonZero('blastVX', round(p.blastVX)), ...nonZero('blastVZ', round(p.blastVZ)),
-  hp: round(p.hp, 1), maxHp: p.maxHp,
+  hp: Math.round(p.hp * 50) / 50, maxHp: p.maxHp, // (a tenth of a point at 500 health: a fiftieth now)
   // (Hills: wading under a deck. Only sent when so.)
   ...(p.below ? { below: 1 } : {}),
  };
@@ -182,6 +190,8 @@ export function readMessage(data) {
  // A side picked in the lobby (team modes): a known team id, or null.
  if (data.t === 'team') return { t: 'team', team: ['red', 'blue', 'gold'].includes(data.team) ? data.team : null };
  if (data.t === 'pick' || data.t === 'respawn') return { t: data.t };
+ // FORFEIT (a vote in team modes; again takes it back) and READY on the end-of-match card.
+ if (data.t === 'forfeit' || data.t === 'ready') return { t: data.t, on: data.on !== false };
  if (data.t === 'ping' || data.t === 'pong') return Number.isFinite(data.s) ? { t: data.t, s: data.s } : null;
  if (data.t === 'hello') return { t: 'hello', version: data.version, name: cleanName(data.name) };
  // The host moving the room to another map (v0.990a): its id (the client

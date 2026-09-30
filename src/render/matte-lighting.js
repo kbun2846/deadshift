@@ -73,7 +73,7 @@ export function patchPhysicalPars(source) {
   return source.replace(DEFINES, all => all + MATTE);
 }
 
-const kept = globalThis.__deadshiftMatteChunks ||= { original: {}, patched: {} };
+const kept = globalThis.__deadstabMatteChunks ||= { original: {}, patched: {} };
 export const ORIGINAL_MATTE_CHUNKS = kept.original, PATCHED_MATTE_CHUNKS = kept.patched;
 for (const [chunk, patch] of [['lights_physical_fragment', patchPhysicalFragment], ['lights_physical_pars_fragment', patchPhysicalPars]]) {
   if (kept.patched[chunk] && THREE.ShaderChunk[chunk] === kept.patched[chunk]) continue;

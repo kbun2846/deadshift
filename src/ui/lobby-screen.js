@@ -1,19 +1,21 @@
 // The lobby screen: where everyone waits between rounds (the round's phase is
 // 'lobby'). It updates live: players arriving and leaving, their colour, host
-// tag and ping. The host picks the mode (FFA, PRACTICE, 1V1, 2V2, 2V2V2,
-// 3V3; a line under the modes says what it is and who fills it), the map and
-// the settings (robots: fill the empty seats, and their skill), adds robots
+// tag and ping. The host picks the mode (1V1, 2V2, 3V3, 4V4, 2V2V2, FFA,
+// PRACTICE; a line under the modes says what it is and who fills it), the map and
+// the settings (ROUNDS or MATCH LENGTH for the mode; the rest, robots among
+// them, only with the developer tools unlocked: lobby-settings.js), adds robots
 // with + ROBOT on an empty seat (REMOVE takes one out), then STARTS the round.
 // In a team round each player shows their side's colour. Everyone else sees the mode and the map, read-only, but not
 // the settings (those are the host's). LEAVE leaves the room.
-import { MODES, TEAMS, modeById, teamById } from '../config/match.js';
+import { TEAMS, modeById, teamById } from '../config/match.js';
 import { multiplayerMaps } from '../maps.js';
-import { createSettingsRows } from './lobby-settings.js';
+import { createSettingsRows, orderedModes } from './lobby-settings.js';
 import { pingText, swatch } from './multiplayer-hud.js';
 import { emptySlotRows } from './robot-options.js';
 import { pickerHTML, mapGridHTML, wirePicker, weaponGridHTML, weaponFromChoice } from './weapon-grid.js';
 import { WEAPONS } from '../items.js';
 import { MENU_SKILLS } from '../bots/robot-profile.js';
+import { installMenuFit } from './menu-fit.js';
 
 // TUNE on a robot's row (host, owner v138): its weapon (or random), skill,
 // aim and temper, applied at once; APPLY TO ALL gives every robot (and the
@@ -39,6 +41,7 @@ export const MODE_NOTES = Object.freeze({
  '2v2': 'two sides of two · robots fill empty seats',
  '2v2v2': 'three sides of two · robots fill empty seats',
  '3v3': 'two sides of three · robots fill empty seats',
+ '4v4': 'two sides of four · robots fill empty seats',
 });
 
 export function createLobbyScreen(parent, { kick, setMode, setSetting, start, leave, copyInvite, addRobot, chooseTeam, tuneRobot, tuneAllRobots, chooseMap, map = null }) {
@@ -50,7 +53,7 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
     <div class="lobby-columns">
       <div class="lobby-column"><div class="lobby-heading">players <span class="lobby-count"></span></div><ul class="lobby-players"></ul></div>
       <div class="lobby-column">
-        <div class="lobby-heading">mode</div><div class="lobby-modes" role="group" aria-label="Mode">${MODES.map(m => `<button type="button" class="choice-button" data-mode="${m.id}" aria-pressed="false"${m.ready ? '' : ' data-later="1"'}>${m.name}</button>`).join('')}</div><p class="lobby-mode-note"></p>
+        <div class="lobby-heading">mode</div><div class="lobby-modes" role="group" aria-label="Mode">${orderedModes().map(m => `<button type="button" class="choice-button" data-mode="${m.id}" aria-pressed="false"${m.ready ? '' : ' data-later="1"'}>${m.name}</button>`).join('')}</div><p class="lobby-mode-note"></p>
         <div class="lobby-sides" hidden><div class="lobby-heading">your side</div><div class="lobby-side-choices" role="group" aria-label="Your side"></div></div>
         <div class="lobby-heading">map</div><div class="lobby-maps">${pickerHTML('map', mapGridHTML({ label: 'map', maps, pressed: maps[0]?.id }))}</div>
         <div class="lobby-heading lobby-settings-heading">settings</div><div class="lobby-settings"></div>
@@ -59,6 +62,10 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
     <footer class="lobby-screen-foot"><button type="button" id="lobby-start" class="primary">START ROUND</button><p class="lobby-wait">waiting for the host to start the round</p><button type="button" id="lobby-leave" class="secondary">LEAVE</button></footer>
   </div>`;
   parent.append(root);
+  // In place, never scrolled (menu-fit.js, owner 2026-09-29): a card taller
+  // than the screen is scaled to fit; the player list and dropdowns scroll inside.
+  const card = root.querySelector('.lobby-screen-card');
+  installMenuFit(root, { pick: () => card, items: () => [card] });
   const $ = selector => root.querySelector(selector);
   let lastArgs = null, isHost = false, mode = 'ffa', rowsKey = '', sideKey = '', tuning = null, tunePicker = null;
   const settings = createSettingsRows($('.lobby-settings'), { onChange: (key, value) => isHost && setSetting(key, value) });
@@ -140,8 +147,9 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
       for (const tile of root.querySelectorAll('.lobby-maps [data-choice]')) tile.setAttribute('aria-pressed', String(tile.dataset.choice === mapId));
       root.querySelector('.lobby-maps .picker-toggle').disabled = !isHost; if (!isHost) mapPicker.open(false);
       mapPicker.sync();
-      settings.render({ settings: lobby.settings || {}, mode, editable: isHost });
-      $('.lobby-settings').hidden = $('.lobby-settings-heading').hidden = !isHost;
+      const plain = settings.render({ settings: lobby.settings || {}, mode, editable: isHost });
+      // Practice has no plain rows: no "settings" heading over nothing.
+      $('.lobby-settings').hidden = !isHost; $('.lobby-settings-heading').hidden = !isHost || !plain;
       $('#lobby-start').hidden = !isHost; $('.lobby-wait').hidden = isHost;
     },
   };

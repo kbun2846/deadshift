@@ -43,7 +43,7 @@ export function roomPlan(brain,target) {
  const p=brain.sim.player;
  let plan=brain.roomPlan;
  if(!plan||plan.id!==target.id||plan.at!==entry.at||brain.time>plan.until){
-  const healthy=p.hp/(p.maxHp||500)>.4,loaded=!brain.outOfAmmo();
+  const healthy=p.hp/(p.maxHp||100)>.4,loaded=!brain.outOfAmmo();
   const push=healthy&&loaded&&brain.random()<.15+brain.pf.aggr*.7;
   const kind=push?'push':brain.random()<.55?'hold':'probe';
   const offset=(brain.random()<.5?-1:1)*(kind==='hold'?1.5:.35);

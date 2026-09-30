@@ -1,7 +1,7 @@
 import { buildingPoint } from '../maps.js';
 import { BUILDING_FINISHES } from '../world/building-finishes.js';
 import {playableOutline} from '../playable-area.js';
-import { hillsOverheadMapSVG } from './overhead-hills.js'; // s3-look: maps with hills
+import { hillsOverheadMapSVG, duelCircleSVG } from './overhead-hills.js'; // s3-look: maps with hills
 
 // Read the rendered road profile and current layout, never a hand-maintained image.
 export function overheadMapSVG(map, view, player) {
@@ -27,6 +27,6 @@ export function overheadMapSVG(map, view, player) {
     }).join('')}</g>
     </g>
     <polygon points="${perimeter}" fill="none" stroke="#b0a087" stroke-width=".65" opacity=".9"/>
-    ${player ? `<circle cx="${player.x}" cy="${player.z}" r="3.8" fill="#a8e2ff" opacity=".18"/><circle cx="${player.x}" cy="${player.z}" r="1.65" fill="#c7efff" stroke="#203844" stroke-width=".65"/>` : ''}
+    ${duelCircleSVG(view)}${player ? `<circle cx="${player.x}" cy="${player.z}" r="3.8" fill="#a8e2ff" opacity=".18"/><circle cx="${player.x}" cy="${player.z}" r="1.65" fill="#c7efff" stroke="#203844" stroke-width=".65"/>` : ''}
   </svg>`;
 }

@@ -1,4 +1,4 @@
-// deadshift is made by killerbunny2846. The mark sits faintly at the foot of
+// deadstab is made by killerbunny2846. The mark sits faintly at the foot of
 // the screen in every state (menus, play, pause) and never takes a click.
 export const WATERMARK = 'killerbunny2846';
 export function addWatermark(parent) {

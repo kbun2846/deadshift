@@ -67,7 +67,9 @@ test('a robot left to itself moves, aims and fights with its weapon', () => {
   let fired = 0;
   // (v146: robots close in to your screen before they may fire, so longer.)
   // You fire now and then, so it can hear where you are.
-  for (let i = 0; i < 60 * 20; i++) {
+  // (2026-09-29: 30 s: a normal robot is slower to settle and waits its
+  // patience out before it opens up on someone not looking at it.)
+  for (let i = 0; i < 60 * 30; i++) {
    bots.before(you); you.step({ moveX: 0, moveZ: 0, aimX: 1, aimZ: 0, fire: i % 90 < 3 }); bots.after(you); bots.step(you);
    for (const { e } of bots.drain()) if (['rifleShot', 'shotgunShot', 'launch', 'sprayStart', 'seed', 'hexDeploy'].includes(e.type)) fired++;
   }
@@ -121,6 +123,10 @@ test('allies are on your side: never your targets, never hurt you, and an escort
 });
 
 test('an ally fights enemy robots, and a dead enemy is forgotten (no chasing ghosts)', () => {
+ // (Seeded: the rifle's spread and the robots' misses draw on Math.random, and
+ // since the aim rebalance an unlucky run could go 30 s without a hit.)
+ const old = Math.random; let seed = 12345; Math.random = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+ try {
  const you = new Simulation(map); you.player.id = 'you'; you.dev.invulnerable = true;
  const bots = new BotMatch(map, { createSim: m => new Simulation(m), random });
  const ally = bots.spawn(you, 'rifle', { team: 'blue' }), foe = bots.spawn(you, 'rifle', { team: 'red' });
@@ -134,6 +140,7 @@ test('an ally fights enemy robots, and a dead enemy is forgotten (no chasing gho
  }
  assert.ok(allyHitFoe > 0, 'the ally shot the enemy');
  assert.equal(ghost, 0, 'nothing remembered about an enemy that is not there');
+ } finally { Math.random = old; }
 });
 
 test('no two robots in a game share a make, each keeps its make for the session, and never an ally-green visor', async () => {

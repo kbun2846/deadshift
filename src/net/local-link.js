@@ -10,7 +10,7 @@
 // to, body }. Bodies are JSON strings, so a message arrives exactly as it would
 // over the WebRTC data channel (serialization: 'json').
 
-const channelName = code => 'deadshift-room-' + code;
+const channelName = code => 'deadstab-room-' + code;
 const supported = () => typeof BroadcastChannel !== 'undefined';
 
 // While hosting: let windows of this browser join room `code`.

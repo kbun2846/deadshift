@@ -30,8 +30,10 @@ test('the types are registered: the pen and the washing posts are solid at hones
  const of = type => colliders.filter(c => props.some(p => p.id === c.propId && p.type === type));
  const pen = of('goatPen'), posts = of('laundryLine');
  assert.equal(pen.length, 4, 'four hurdles');
- // Low cover (under 1.5 m): a round meets it only at its own height.
- for (const c of pen) assert.ok(c.height === .95 && !c.blocksSight && !c.walkOver && !c.playerOnly);
+ // Low (0.95 m), and body-only since the goat can be killed (owner,
+ // 2026-09-29: "it can be shot or killed with blades that pass through the
+ // fence"; critters.js): rounds and blades pass, bodies do not.
+ for (const c of pen) assert.ok(c.height === .95 && !c.blocksSight && !c.walkOver && c.playerOnly);
  assert.equal(posts.length, 2); for (const c of posts) assert.ok(c.height > 1.8 && c.w < .2);
  assert.equal(of('effigy').length, 0, 'the effigies are cosmetic');
  assert.ok(props.filter(p => p.type === 'effigy').length >= 4 && props.filter(p => p.type === 'effigy').length <= 6);

@@ -1,7 +1,7 @@
 import { readLaunch, launchParams } from './launch.js';
 import './styles/omen.css';
 import './styles/sightline.css';
-// deadshift, by killerbunny2846.
+// deadstab, by killerbunny2846.
 import {bindTouchAction} from './ui/touch-action.js';
 import { installMobileBrowser, enterFullscreen } from './ui/mobile-browser.js';
 import { playFullscreen, leaveFullscreen } from './ui/key-lock.js';
@@ -32,13 +32,15 @@ import { showBusy, hideBusy } from './ui/busy-screen.js';
 import { createDamageFeedback } from './ui/damage-feedback.js';
 import { createDeathScreen, DEATH_MENU_DELAY, RESPAWN_TIME } from './ui/death-screen.js';
 import { createSpectate, spectateView, SPECTATE_AFTER } from './ui/spectate.js';
-import { createScoreFlash } from './ui/score-flash.js';
+import { createScoreFlash, rollHTML } from './ui/score-flash.js';
+import { createStatsPanel } from './ui/stats-panel.js';
+import { createMatchEnd, onlineOutcome, soloOutcome, readyLabel } from './ui/match-end.js';
 import { refreshTypography } from './ui/button-typography.js';
 import { createLobbyPanel } from './ui/lobby-panel.js';
 import { createLobbyScreen } from './ui/lobby-screen.js';
 import { createWeaponPick } from './ui/weapon-pick.js';
 import { pickView, lobbyView } from './render/pick-view.js';
-import { PICK, MODES, SETTINGS as MATCH_SETTINGS, SIDE_COLOURS, TEAMS, teamById } from './config/match.js';
+import { PICK, MODES, SETTINGS as MATCH_SETTINGS, SIDE_COLOURS, TEAMS, teamById, roundsDecided } from './config/match.js';
 const modeLabel=document.querySelector('.brand .mode');
 import { GAME_KEYS } from './config/controls.js';
 import { gameCode, displayKeys } from './config/keybinds.js';
@@ -52,16 +54,19 @@ import { SIGHTLINE } from './config/gameplay.js';
 import { tutorialMapFor, Tutorial } from './tutorial.js';
 import { createTutorialCard } from './ui/tutorial-card.js';
 import { installMenu } from './ui/menu.js';
-import { createDuel, readDuel, DUEL_MODES } from './duel.js';
+import { createDuel, readDuel, DUEL_MODES, AFTERMATH, FFA_RESPAWN } from './duel.js';
 import { createOnlinePlay } from './online-play.js';
 import { drawSim } from './net/projectiles.js';
 import { createMultiplayerHud } from './ui/multiplayer-hud.js';
-import { TAB_TITLE, VERSION } from './version.js';
+import { TAB_TITLE, VERSION, VERSION_FULL } from './version.js';
 import { installUiSounds } from './ui/ui-sounds.js';
 import { mapById, menuMaps } from './maps.js';
 import { targetRadius } from './target-radius.js';
 import { createTargetLock, TARGET_LOCK } from './target-lock.js';
 import { weapon as weaponInfo, weaponOrDefault, usesTrigger, DEFAULT_WEAPON } from './items.js';
+import { playableOr, underMaintenance } from './weapon-maintenance.js';
+import { STORM, stormAt, stormPhase, inStorm } from './storm.js';
+import { createStormHud } from './ui/storm-hud.js';
 import { Simulation, RULES } from './simulation.js';
 import { WorldView } from './render/renderer.js';
 import { Soundscape, hearingLevel, HEARING } from './audio.js';
@@ -72,6 +77,7 @@ import { validateSettings, RenderBudget, AdaptiveResolution } from './settings.j
 import { gpuInfo, detectTier, autoQuality, AutoQualityWatch } from './device-tier.js';
 import { installSettingsPanel } from './ui/settings-panel.js';
 import {keyboardAim} from './keyboard-aim.js';
+import { createFpsLook, seedFpsLook, fpsMove, fpsAim, installFpsInput } from './fps-mode.js'; // dev-only first person
 import { overheadMapSVG } from './ui/overhead-map.js';
 import { installDevWiring } from './ui/dev-wiring.js';
 import { openSpot } from './net/spawn-points.js';
@@ -82,10 +88,18 @@ import { addWatermark } from './ui/watermark.js';
 import { viewWidth, viewHeight } from './viewport.js';
 import { installTitle } from './ui/title-screen.js';
 import { createSheathScreen } from './ui/sheath-screen.js';
+import { Critters } from './critters.js';
 
 const $ = id => document.getElementById(id);
 try{migrateGameStorage(localStorage);}catch{}
 const toast = createToast(document.getElementById('game'));
+// Weapons under maintenance (weapon-maintenance.js): every menu shows them with
+// the sticker; a click or tap on one (or Enter on it) only shakes the sticker.
+for(const type of ['click','dblclick'])document.addEventListener(type,e=>{
+ const hit=e.target?.closest?.('[data-maintenance]');if(!hit||!underMaintenance(hit.dataset.maintenance))return;
+ e.preventDefault();e.stopImmediatePropagation();
+ if(type==='click'){const tile=hit.closest('.maintenance-tile')||hit;tile.classList.remove('maintenance-nope');void tile.offsetWidth;tile.classList.add('maintenance-nope');setTimeout(()=>tile.classList.remove('maintenance-nope'),500);}
+},true);
 const robotMinds = createRobotMinds(document.getElementById('game'));
 try{migrateGameStorage(sessionStorage);}catch{}
 // (v0.996a: the launch's settings ride sessionStorage, not the address bar: launch.js.)
@@ -99,15 +113,17 @@ const map = import.meta.env.DEV && params.get('start') === 'farm' && selectedMap
   : landmarkStart ? { ...selectedMap, spawn: { x: landmarkStart.x, z: landmarkStart.z + 6 } }
   : roomStart ? { ...selectedMap, spawn: { x: roomStart.x, z: roomStart.z } } : selectedMap;
 document.title = TAB_TITLE;
-// The version as 'v' + VERSION everywhere it shows (owner, v0.990a: "v0.990a",
-// its letter the stage: a alpha, b beta), from version.js, not the page's text.
+// The version as 'v' + VERSION on the title and in the corner (v0.1.0; owner,
+// 2026-09-30), from version.js, not the page's text.
 for (const el of document.querySelectorAll('.game-version')) el.textContent = 'v' + VERSION;
+// The full form (stage included) in Settings (owner, 2026-09-30: "v0.1.0-alpha ... in settings").
+for (const el of document.querySelectorAll('.settings-version')) el.textContent = 'deadstab v' + VERSION_FULL;
 document.querySelector('.brand .map-name').textContent = map.name.toUpperCase();
 document.querySelector('.mode').textContent=map.training?'TUTORIAL':'PRACTICE';
 let settings;
 const detectedInput=detectedControls({coarsePointer:matchMedia('(pointer: coarse)').matches,hoverAvailable:matchMedia('(hover: hover)').matches});
 const deviceDefaults={mobile:detectedInput==='touch'};
-try { settings = validateSettings(JSON.parse(localStorage.getItem('deadshift-settings') || '{}'),deviceDefaults); }
+try { settings = validateSettings(JSON.parse(localStorage.getItem('deadstab-settings') || '{}'),deviceDefaults); }
 catch { settings = validateSettings({},deviceDefaults); }
 // The graphics preset for this device (device-tier.js), unless one was chosen
 // by hand in Settings > Graphics: Performance, Balanced or Quality.
@@ -115,21 +131,25 @@ const deviceTier=detectTier({gpu:gpuInfo(),mobile:deviceDefaults.mobile,cores:na
 if(settings.qualityAuto)settings.quality=autoQuality(deviceTier.tier,settings.qualityAutoStep);
 const autoWatch=new AutoQualityWatch();
 const sim = new Simulation(map), sound = new Soundscape(), budget = new RenderBudget(settings.fps);
+// The world's animals (critters.js: Hollow Wick's goat): this sim holds them
+// (SOLO); online the host's arena does and a joiner draws the host's.
+{const critters=map.training?null:new Critters(map);if(critters?.any)sim.critters=critters;}
 // Robots (bots/): spawned from the developer tools in a solo game.
 const bots = new BotMatch(map, { createSim: m => new Simulation(m) });
 // 1V1 against a robot (duel.js): set up by start() from the URL.
 const duel=createDuel($('game'),{sim,bots,hooks:{
- // (Dead when it ended, a team match: the death screen and its weapon grid go.)
- over:()=>{if(deathPick){deathPick=false;weaponPick.hide();}clearDeath();running=false;releaseInput();sound.suspend(true);updateHUD();},
- rematch:()=>{clearDeath();reset();running=true;paused=false;sound.suspend(false);$('world').focus();updateHUD();},
- menu:()=>returnToMenu(),
+ // The match is over: the death screen and the aftermath go, the game stops
+ // and the end card comes up (ui/match-end.js: START, CHANGE SETTINGS, QUIT).
+ over:outcome=>{if(deathPick){deathPick=false;weaponPick.hide();}clearDeath();endAftermath();running=false;releaseInput();sound.suspend(true);updateHUD();showSoloEnd(outcome);},
+ // (1V1) You took the round: the camera goes to the body (the aftermath).
+ pointWon:side=>{const foe=duel.bot;if(duel.config?.mode==='1v1'&&side==='you'&&!deathActive&&foe)startAftermath('d'+duel.score.played,foe.sim.player);},
  // (v0.999a) A side went out: everyone back at full health at fresh spots.
  newRound:()=>newDuelRound(),
 }});
 // Menu clacks (ui-sounds.js): muted with the game, at the master and effects levels.
 installUiSounds({muted:()=>!sound.enabled,level:()=>sound.volume.master*sound.volume.effects});
 const adaptiveResolution = new AdaptiveResolution();
-sim.weapon=weaponOrDefault(params.get('weapon'));
+sim.weapon=playableOr(weaponOrDefault(params.get('weapon')));
 let rifleFiring=false,rifleAiming=false,worldPress=false,pointerOnUI=false,firePointer=null,aimPointer=null;
 const updateWeaponHUD=createWeaponHUD($('weapon'));
 const updateHealthHUD=createHealthHUD($('game'));
@@ -179,11 +199,11 @@ if(map.training&&tutorialCourse==='basics')sim.weapon=DEFAULT_WEAPON;
 let tutorial=map.training?new Tutorial(courseFor(sim.weapon)):null, tutorialSaved=false, settingsOpen=false;
 const tutorialCard=createTutorialCard();
 let inputOverride=null;
-try{inputOverride=sessionStorage.getItem('deadshift-controls-override');}catch{}
+try{inputOverride=sessionStorage.getItem('deadstab-controls-override');}catch{}
 const inputPreference=createInputPreference(detectedInput,inputOverride);
 let touchPrompts=inputPreference.surface==='touch';
 let view;
-try { view = new WorldView($('world'), map, settings.quality); view.motion = settings.motion; }
+try { view = new WorldView($('world'), map, settings.quality); view.motion = settings.motion; view.critters = sim.critters || null; }
 catch (error) {
   $('error-message').textContent = /WebGL|context/i.test(error.message) ? 'This prototype needs WebGL 2. Try an up-to-date browser with hardware acceleration enabled.' : 'The game could not finish loading. Reload the page to try again.';
   $('error').classList.remove('hidden'); console.error(error); throw error;
@@ -209,9 +229,28 @@ const deathScreen=createDeathScreen($('game'),{
  // count runs out with the grid still open: whatever is picked there).
  changeWeapon:()=>{if(online.active){online.pickAgain();return;}deathPick=true;deathScreen.root.classList.add('hidden');weaponPick.show(nextWeapon||sim.weapon,{timed:false});},
  lobby:()=>openLobby(),
+ // Team modes: the vertical stats panel beside the card (again: it goes).
+ viewStats:()=>{if(statsPanel.open&&statsFrom==='death')closeStats();else openStats('death');},
+ // FORFEIT (owner, 2026-09-29): SOLO the robots take the match at once;
+ // online your vote (again: taken back); a team goes when everyone on it
+ // (robots do not vote) has voted, 1V1 at once.
+ forfeit:()=>{if(online.active){online.forfeit(!myForfeitVote());syncDeathCard(true);}else duel.forfeit();},
 });
+// Which death card: practice, online-practice, ffa, duel (1V1: online and
+// SOLO) or team (2V2, 3V3, 4V4, 2V2V2), death-screen.js.
+function deathMode(){
+ if(online.active){const m=online.match();return m?.mode==='practice'?'online-practice':!m?.elimination?'ffa':m.mode==='1v1'?'duel':'team';}
+ if(duel.active)return duel.ffa?'ffa':duel.config?.mode==='1v1'?'duel':'team';
+ return 'practice';
+}
 function beginDeath(){
  if(deathActive)return;
+ // (Your own fall takes the camera from a kill you were watching.)
+ endAftermath();
+ // 1V1: the zoom onto your body is not slid aside for the card (owner: "a
+ // quick pop up on the screen ... without wasting time moving the whole death
+ // menu to the right").
+ view.deathAside=deathMode()!=='duel';
  damageIndicator.clear();
  deathActive=true;deathElapsed=0;running=false;paused=false;mapOpen=false;settingsOpen=false;
  releaseInput();accumulator=0;sound.clearFlights();
@@ -349,7 +388,9 @@ function randomPracticeSpawn(){
  // "with my team": beside one of your robots.
  const mate=bots.teamSpawn&&bots.living().find(b=>b.team==='blue');
  // s2-spawns: a map with bases and FFA points (net/map-spawns.js) first.
- const at=bots.youSpot(sim)||(mate&&bots.spot(mate.sim.player,2.5,6))||openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:bots.apart||14})||openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:14});
+ let at=bots.youSpot(sim)||(mate&&bots.spot(mate.sim.player,2.5,6))||openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:bots.apart||14})||openSpot(map,sim.colliders,{others:bots.living().map(b=>b.sim.player),space:14});
+ // SOLO FFA with the storm closing: inside its safe circle (duel.js safeSpawn).
+ if(at&&duel.active)at=duel.safeSpawn(at)||at;
  if(!at)return false;
  const aim={aimX:sim.player.aimX,aimZ:sim.player.aimZ};sim.respawn(at);Object.assign(sim.player,aim);previousPlayer={...sim.player};
  return true;
@@ -357,7 +398,7 @@ function randomPracticeSpawn(){
 async function start(weapon=sim.weapon,course) {
   if (started) return;
   if(course!==undefined)tutorialCourse=course;
-  sim.weapon=map.training&&tutorialCourse==='basics'?DEFAULT_WEAPON:weaponOrDefault(weapon);
+  sim.weapon=map.training&&tutorialCourse==='basics'?DEFAULT_WEAPON:playableOr(weaponOrDefault(weapon));
   sim.player.stamina=sim.maxStamina;
   if(map.training){tutorial=new Tutorial(courseFor(sim.weapon));tutorialSaved=false;tutorialCard.invalidate();sim.reset();}
   else if(randomPracticeSpawn())view.cutCamera?.();
@@ -370,7 +411,7 @@ async function start(weapon=sim.weapon,course) {
   $('intro').classList.add('hidden'); ['weapon', 'reticle'].forEach(id => $(id).classList.remove('hidden'));
   $('world').focus();
   // 1V1: the URL carries the choices (menu.js); one robot, no targets.
-  {const q=launchParams();if(!map.training&&q.get('mode')==='duel'){duel.begin(readDuel(q.get('duel'))||{});if(hasAuthoredSpawns(map)&&randomPracticeSpawn())view.cutCamera?.();/* s2-spawns: you to your base / an FFA point */modeLabel.textContent=(DUEL_MODES[duel.config?.mode]?.name||'1V1');}}
+  {const q=launchParams();if(!map.training&&q.get('mode')==='duel'){duel.begin(readDuel(q.get('duel'))||{});if(duel.placeDuel()||(hasAuthoredSpawns(map)&&randomPracticeSpawn())){view.cutCamera?.();previousPlayer={...sim.player};}/* s2-spawns: you to your base / an FFA point */modeLabel.textContent=(DUEL_MODES[duel.config?.mode]?.name||'1V1');}}
   if(tutorial){$('tutorial-guide').classList.remove('hidden');updateTutorial();}
   try { await sound.start(); if (paused) sound.suspend(true); }
   catch (error) { console.warn('Audio unavailable:', error); }
@@ -391,6 +432,10 @@ window.addEventListener('keydown',e=>{
 function returnToMenu(){
   online.close();perfReadout.reset();devWindow.hide();bots.clear();if(deathPick){deathPick=false;weaponPick.hide();}nextWeapon=null;if(duel.active){duel.stop();modeLabel.textContent='PRACTICE';}
   if(choosing)menuFlow.cancelOnlinePick();choosing=false;lastKiller=null;lastOneShot=false;onlineMenus(false);view.deathView?.clear();
+  endAftermath();matchEnd.hide();closeStats();clockRoll=null;view.deathAside=true;
+  // (Owner, 2026-09-29: leaving right after a game starts, ROUND 1 and other
+  // game pop-ups showed over the menu for a moment.) Every in-game pop-up goes now.
+  roundPopup.classList.remove('show');roundShown='';scoreFlash.hide();stopSpectate();damageFeedback.clear();outgoingFeedback.clear();damageIndicator.clear();
   running=false;started=false;paused=false;mapOpen=false;mapWasPaused=false;settingsOpen=false;
   releaseInput();reset();sound.suspend(true);
   document.body.classList.remove('playing','paused');
@@ -413,7 +458,8 @@ function releaseInput() {
 }
 
 function setPaused(value) {
-  if (!started || deathActive || value === paused || duel.resultOpen) return;
+  // (Not over the end card, nor while you watch your kill: 1V1's aftermath.)
+  if (!started || deathActive || value === paused || duel.resultOpen || matchEnd.open || aftermath) return;
   if (value) layoutPauseMenu();
   paused = value; running = !value && !choosing; releaseInput();
   $('pause-panel').classList.toggle('hidden', !value); $('reticle').classList.toggle('hidden', value);
@@ -434,7 +480,7 @@ function reset() {
   // All out first, so each side's first robot is placed afresh (VS ROBOTS "with my team").
   for(const bot of bots.bots)bot.alive=false;
   for(const bot of bots.bots)bots.respawnAt(bot,sim);
-  duel.reset();
+  duel.reset();bots.resetStats?.();if(duel.active)duel.placeDuel();
   previousPlayer = { ...sim.player }; dirty = true; devTools.syncSpeed();updateHUD();
   if(tutorial&&started)$('tutorial-guide').classList.remove('hidden');
 }
@@ -522,6 +568,7 @@ function aimOnTarget(){
 function updateReticle(){$('reticle').classList.toggle('on-target',aimOnTarget());aimOverlay.update({sim,view,running,coneFlicker,aiming:aimingNow(),point:aimDotPoint()});}
 
 function updateHUD() {
+ {const scores=$('scores-toggle'),want=!(online.active||(duel.active&&started));if(scores&&scores.hidden!==want)scores.hidden=want;}
   // The health bar has its own per-frame update in the frame loop, because the
   // tremble needs every frame; calling it again on the 80ms HUD tick was pure
   // duplication.
@@ -550,7 +597,10 @@ function event(e) {
   // fires six times a second and a long blink would just look like flicker.
   if(e.type==='shotgunShot')coneFlicker=.12;
   if(e.type==='rifleShot')coneFlicker=.055;
-  if(e.type==='playerDamage'){damageFeedback.add(e.damage,sim.time);if(e.damageType!=='ichorCost')damageIndicator.hit(e,view);buzz(e.damage>=40?HAPTICS.heavy:HAPTICS.hurt,{enabled:settings.vibration,touch:touchPrompts});}
+  // The storm's bites: none of the damage readouts (owner, 2026-09-29), only
+  // its own sound (stepStormScreen) and the health bar.
+  if(e.type==='playerDamage'&&e.storm){stormDose+=e.damage;return;}
+  if(e.type==='playerDamage'){damageFeedback.add(e.damage,sim.time);if(e.damageType!=='ichorCost')damageIndicator.hit(e,view);buzz(e.damage>=8?HAPTICS.heavy:HAPTICS.hurt,{enabled:settings.vibration,touch:touchPrompts});}
   if(e.type==='kill'&&e.targetKind!=='player')buzz(HAPTICS.kill,{enabled:settings.vibration,touch:touchPrompts});
   if(e.type==='outgoingDamage')outgoingFeedback.add(e,sim.time);
   // You killed a player (or a robot): KILL where they fell.
@@ -687,6 +737,12 @@ let touchAimStart = null;
 
 $('world').tabIndex = 0;
 // Developer tools (ui/dev-wiring.js).
+// Dev-only first person (Developer tools > Display > First-person view;
+// keyboard and mouse only). See fps-mode.js.
+const fpsLook=createFpsLook();
+const fpsOn=()=>!!sim.dev.fps&&!touchPrompts;
+const fpsInput=installFpsInput({world:$('world'),look:fpsLook,active:()=>fpsOn()&&running&&!deathActive,
+ onUnlock:()=>setTimeout(()=>{if(fpsOn()&&running&&!deathActive)setPaused(true);},60)});
 const {devTools,devWindow,devDialog,showDevNotice}=installDevWiring({$,sim,view,bots,toast,
  online:()=>online,settings:()=>settings,settingsPanel:()=>settingsPanel,started:()=>started,paused:()=>paused,
  randomSpot:()=>{const ok=randomPracticeSpawn();if(ok)view.cutCamera?.();return ok;},
@@ -697,7 +753,7 @@ installTitle({page:document.querySelector('[data-page="home"]'),shell:$('intro')
 // Cached per map, so each map is captured once per session.
 function thumbnail(){
  if(!menuMaps().includes(selectedMap))return '';
- const cacheKey='deadshift-thumbnail-'+map.id;
+ const cacheKey='deadstab-thumbnail-'+map.id;
  try{const cached=sessionStorage.getItem(cacheKey);if(cached)return cached;}catch{}
  const image=view.captureMapThumbnail();
  try{sessionStorage.setItem(cacheKey,image);}catch{}
@@ -712,6 +768,9 @@ const menuFlow=installMenu({$,map,thumbnail,start,openSettings,closeSettings,ret
 // running game, fight, die, respawn after 5 s or change weapon, leave.
 let choosing=false,lastKiller=null,lastOneShot=false;
 const mpHud=createMultiplayerHud($('game'));
+// SCORES (touch; keyboard players hold Tab): the same stats panel as Tab,
+// online and against robots (owner, 2026-09-29: the scoreboard only when asked for).
+$('scores-toggle').onclick=()=>{if(statsFrom==='tab')closeStats();else if(!statsFrom)openStats('tab');};
 // The lobby (lobby-panel.js): a page of the pause menu, and of the online
 // death screen. Everyone sees it; its controls work for the host only.
 const lobbyPanel=createLobbyPanel($('game'),{
@@ -742,7 +801,7 @@ const lobbyScreen=createLobbyScreen($('game'),{
 });
 const weaponPick=createWeaponPick($('game'),{
  pick:weapon=>{if(online.active)online.choose(weapon,false);},
- go:weapon=>{if(online.active){online.choose(weapon,true);weaponPick.hide();}else if(deathPick){nextWeapon=weaponOrDefault(weapon);closeDeathPick();toast('NEXT LIFE · '+(weaponInfo(nextWeapon)?.name||'').toUpperCase(),1800);}else changeWeaponSolo(weapon);},
+ go:weapon=>{if(online.active){online.choose(weapon,true);weaponPick.hide();}else if(deathPick){nextWeapon=playableOr(weaponOrDefault(weapon));closeDeathPick();toast('NEXT LIFE · '+(weaponInfo(nextWeapon)?.name||'').toUpperCase(),1800);}else changeWeaponSolo(weapon);},
  back:()=>closeSoloPick(),
 });
 // CHANGE WEAPON in the pause menu: solo practice (the same weapon grid, no
@@ -768,7 +827,7 @@ function closeSoloPick(){
 function changeWeaponSolo(weapon){
  weaponPick.hide();
  const p=sim.player,aim={aimX:p.aimX,aimZ:p.aimZ};
- sim.weapon=weaponOrDefault(weapon);sim.respawn({x:p.x,z:p.z});Object.assign(sim.player,aim);
+ sim.weapon=playableOr(weaponOrDefault(weapon));sim.respawn({x:p.x,z:p.z});Object.assign(sim.player,aim);
  previousPlayer={...sim.player};applyInputPreference();updateHUD();
  $('pause-panel').classList.remove('hidden');setPaused(false);
 }
@@ -822,6 +881,7 @@ function onlineMenus(on){
 // settled (it goes at the next death, a map reset or leaving).
 function clearDeath(){
  if(deathActive){deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');}
+ if(statsFrom==='death')closeStats();
  stopSpectate();
  // Nothing from the last life pops up in the new one.
  damageFeedback.clear();outgoingFeedback.clear();damageIndicator.clear();
@@ -830,7 +890,134 @@ function clearDeath(){
 }
 // Elimination (v0.999a): SOLO 1V1/2V2/3V3 and every multiplayer mode but FFA
 // and practice. Nobody respawns alone; the fallen watch a teammate.
-function eliminationNow(){return online.active?!!online.match()?.elimination:duel.active;}
+function eliminationNow(){return online.active?!!online.match()?.elimination:duel.active&&!duel.ffa;}
+// The stats panel (ui/stats-panel.js, Task C's): VIEW STATS on a team death
+// card ('death': to the left, the card on the right stays usable), and by
+// itself for the one who took a 1V1 round ('aftermath': in the middle, their
+// number turning over in it).
+const statsPanel=createStatsPanel($('game'));
+let statsFrom=null,statsAt=0;
+// The round score over the table: each side and its points (null in FFA and practice).
+function statsSides(){
+ if(online.active){const m=online.match();return m?.elimination&&m.sides?m.sides.map(t=>({id:t.id,name:t.team?String(t.name).toLowerCase():t.name,colour:t.colour||null,points:t.points})):null;}
+ if(!duel.active||duel.ffa)return null;
+ const team=DUEL_MODES[duel.config?.mode]?.allies>0,sc=duel.score;
+ return [{id:'you',name:team?'your team':'you',colour:team?TEAMS[1].colour:null,points:sc.you},{id:'robot',name:team?'enemies':'robot',colour:team?TEAMS[0].colour:null,points:sc.robot}];
+}
+// Everyone's line: online the host's scoreboard; SOLO the robots' match
+// (BotMatch statsRows), or until it has one, the names and sides alone.
+function statsRows(){
+ if(online.active)return online.scoreboard();
+ const rows=bots.statsRows?.(sim,'YOU');if(rows)return rows;
+ const team=DUEL_MODES[duel.config?.mode]?.allies>0,line=(id,name,side,robot,weapon,present)=>({id,name,team:team?side:null,robot,kills:0,deaths:0,dealt:0,taken:0,time:0,weapon,present});
+ return [line('you','YOU','blue',false,sim.weapon,true),...bots.bots.map(b=>line(b.id,b.name,b.team,true,b.sim.weapon,b.alive))];
+}
+function statsOpts(extra){return {rows:statsRows(),myId:online.active?online.myId:'you',mode:online.active?online.match()?.mode:duel.config?.mode||null,sides:statsSides(),final:false,place:statsFrom==='death'||(deathActive&&deathMenuOpen)?'left':'center',...extra};}
+function openStats(from,extra={}){statsFrom=from;statsAt=0;statsPanel.show(statsOpts(extra));deathScreen.setStats(from==='death');}
+function closeStats(){if(!statsFrom&&!statsPanel.open)return;statsPanel.hide();statsFrom=null;deathScreen.setStats(false);}
+// VIEW STATS' panel follows the match a few times a second.
+function refreshStats(dt){if((statsFrom!=='death'&&statsFrom!=='tab')||!statsPanel.open||(statsAt+=dt)<.25)return;statsAt=0;statsPanel.update(statsOpts());}
+// 1V1's aftermath for the one who took the round (owner, 2026-09-29: "after
+// any kill in 1v1, it should show the aftermath for a solid 3 seconds ... and
+// same for the winning player"): hands off, the camera eases onto the body
+// and zooms in (renderer.js `aftermath`, death-view.js killCamFrame); at 3 s
+// the stats panel opens by itself with your number turning over in it ("the
+// player who does the killing gets the point update first ... within the menu
+// that shows stats"), until both are back. (SOLO's last kill: the end card.)
+let aftermath=null;
+function startAftermath(key,at){
+ if(aftermath?.key===key||!at)return;
+ aftermath={key,x:at.x,z:at.z,start:elapsed,panel:false};view.aftermath=aftermath;
+ running=false;releaseInput();document.body.classList.add('aftermath');
+}
+// The storm (storm.js) on screen and in your ears: the safe circle and its
+// tension for the view, the readout, the in-storm voice (rising with what it
+// has taken from you this time, `stormDose`) and, near the end, a heartbeat.
+let stormDose=0,stormPulseAt=0;
+const stormHud=createStormHud($('game'),document.querySelector('#game .health-hud')||$('game'));
+function stepStormScreen(dt){
+ const now=started?(online.active?online.stormNow():duel.stormNow()):null;
+ const circle=now?stormAt(now.plan,now.t):null,phase=now?stormPhase(now.plan,now.t):null;
+ const m=online.active?online.match():null,ffa=!!now&&now.plan.kind==='ffa';
+ const end=ffa?(m?.timed?m.left:online.active?null:duel.left):null;
+ // FFA: winds up over its final stretch; team rounds: the final zone a little, sudden death fully.
+ const tension=!phase?0:ffa?(phase.phase==='closing'?0:Math.max(.25,Math.min(1,1-(end??STORM.ffaHold)/STORM.ffaHold))):phase.phase==='final'?.3:phase.phase==='sudden'?1:0;
+ view.setStorm(circle,tension,now?{x:now.plan.x1,z:now.plan.z1,r:now.plan.r1}:null);
+ const total=!phase?0:phase.phase==='closing'?now.plan.close:phase.phase==='final'?(ffa?STORM.ffaHold:now.plan.hold):now.plan.sudden;
+ stormHud.update(running||deathActive?phase:null,{end,tension,total});
+ const me=sim.player,inside=!!circle&&started&&!paused&&!me.dead&&me.hp>0&&inStorm(circle,me.x,me.z);
+ if(!inside)stormDose*=Math.exp(-dt*1.2);
+ sound.stormVoice(inside,Math.min(1,stormDose/45));
+ if(tension>.2&&started&&!paused&&(stormPulseAt-=dt)<=0){stormPulseAt=1.35-tension*.8;sound.pulse(.4+tension*.6);}
+ // Bolts that struck near you crack (quieter further off; a few at most a frame).
+ let zapped=0;for(const z of view.stormView?.takeZaps?.()||[]){const d=Math.hypot(z.x-me.x,z.z-me.z);if(d<16&&zapped++<2&&started&&!paused)sound.zap(z.size*(1-d/16));}
+}
+function endAftermath(){
+ if(!aftermath)return;
+ aftermath=null;view.aftermath=null;document.body.classList.remove('aftermath');
+ if(statsFrom==='aftermath')closeStats();
+}
+// (Owner, 2026-09-29: "dont show [the scoreboard] for a player after winning,
+// only show it if a player hits tab": the winner's number turns over on the
+// top score as the round is won (duel.js, syncClockRoll) instead of in a
+// panel that opened by itself.)
+function stepAftermath(){}
+// Online 1V1: the match clock keeps the old number through the break and
+// turns it over as both come back (as duel.js does SOLO's).
+let clockRoll=null;
+const clockNumber=side=>side==null?null:document.querySelector(`#match-clock [data-side="${CSS.escape(String(side))}"] b`);
+function syncClockRoll(m){
+ if(m?.phase==='playing'&&m.elimination&&m.mode==='1v1'&&m.roundBreak>0&&m.roundWinner!=null){
+  const key=m.number+':'+m.played;
+  if(clockRoll?.key!==key){const to=(m.sides||[]).find(t=>t.id===m.roundWinner)?.points;clockRoll=Number.isFinite(to)?{key,side:m.roundWinner,from:Math.max(0,to-1),to,now:m.roundWinner===online.myId||roundsDecided((m.sides||[]).map(t=>t.points),m.played,m.rounds)}:null;}
+  // (The one who took it: turned over at once; the one who fell: held till both
+  // are back; the deciding point: at once for both, nobody comes back.)
+  const b=clockNumber(clockRoll?.side);
+  if(b&&clockRoll.now){if(!clockRoll.done){b.innerHTML=rollHTML(clockRoll.from,clockRoll.to);clockRoll.done=true;}}
+  else if(b&&b.textContent!==String(clockRoll.from))b.textContent=clockRoll.from;
+ }else if(clockRoll){const b=clockNumber(clockRoll.side);if(b&&!clockRoll.now)b.innerHTML=rollHTML(clockRoll.from,clockRoll.to);clockRoll=null;}
+}
+// Where everyone else was last drawn (the one who fell: the kill's place).
+const lastSeen=new Map();
+// FORFEIT online: your vote is in; the card shows your side's count.
+function myForfeitVote(){const m=online.match(),side=online.myTeam||online.myId;return !!m?.forfeit?.[side]?.includes(online.myId);}
+let forfeitShown='',forfeitAt=0;
+function syncDeathCard(force=false,dt=0){
+ if(!deathActive||!deathMenuOpen||!online.active||!['duel','team'].includes(deathScreen.mode))return;
+ if(!force&&(forfeitAt+=dt)<.2)return;forfeitAt=0;
+ const m=online.match(),mine=online.myTeam,votes=(m?.forfeit?.[mine||online.myId]||[]).length;
+ const needed=mine?online.lobby().players.filter(p=>!p.robot&&p.team===mine).length:1,voted=myForfeitVote(),key=votes+'/'+needed+':'+voted;
+ if(key!==forfeitShown||force){forfeitShown=key;deathScreen.setForfeit(votes,Math.max(1,needed),voted);}
+}
+// The end of a match (ui/match-end.js): one card online and SOLO.
+const matchEnd=createMatchEnd($('game'),{act:id=>{
+ if(id==='ready'){const m=online.match();online.setReady(!(m?.ready||[]).includes(online.myId));}
+ else if(id==='leave'||id==='quit')$('main-menu').click();
+ else if(id==='lobby')online.endRound();
+ // START: a new match, same settings, at once (the old REMATCH).
+ else if(id==='start'){matchEnd.hide();clearDeath();reset();running=true;paused=false;sound.suspend(false);$('world').focus();updateHUD();}
+ // CHANGE SETTINGS: the bots page, its picks as they were; its START resumes.
+ else if(id==='settings'){matchEnd.hide();returnToMenu();if(menuFlow.showPage)menuFlow.showPage('duel');else $('duel-mode')?.click();}
+}});
+function showSoloEnd(outcome){
+ closeStats();
+ const {title,detail}=soloOutcome(outcome);
+ matchEnd.show({title,detail,rows:statsRows(),myId:'you',mode:outcome.mode,buttons:[{id:'start',label:'PLAY',primary:true},{id:'settings',label:'CHANGE SETTINGS'},{id:'quit',label:'QUIT'}]});
+}
+// Online: the card while the host's round is on 'results' (READY n/m, the
+// host's LOBBY, LEAVE); it goes by itself when the round moves on.
+function syncMatchEnd(m){
+ if(m?.phase!=='results'||!m.results){if(matchEnd.open)matchEnd.hide();return;}
+ if(!matchEnd.open){
+  clearDeath();endAftermath();closeStats();scoreFlash.hide();mpHud.hideBoard();closeLobby();
+  if(paused){paused=false;$('pause-panel').classList.add('hidden');document.body.classList.remove('paused');}
+  for(const id of ['settings-panel','map-panel'])$(id).classList.add('hidden');settingsOpen=mapOpen=false;
+  running=false;releaseInput();
+ }
+ const myId=online.myId,ready=m.ready||[],people=online.lobby().players.filter(p=>!p.robot).length||1;
+ const {title,detail}=onlineOutcome(m.results,{myId,myTeam:online.myTeam});
+ matchEnd.show({title,detail,rows:m.results.board||[],myId,mode:m.mode,buttons:[{id:'ready',label:readyLabel(Math.min(ready.length,people),people),pressed:ready.includes(myId),primary:true},...(online.isHost?[{id:'lobby',label:'LOBBY'}]:[]),{id:'leave',label:'LEAVE'}]});
+}
 const spectate=createSpectate($('game'));
 let spectatePrev=null;
 // Your living teammates, in a steady order: SOLO your robots; online your side.
@@ -858,30 +1045,34 @@ function showRound(key,n){
  roundPopup.innerHTML=`<small>${online.active?(MODES.find(m=>m.id===online.match()?.mode)?.name||''):(DUEL_MODES[duel.config?.mode]?.name||'')}</small>round ${n}`;
  roundPopup.classList.remove('show');void roundPopup.offsetWidth;roundPopup.classList.add('show');
 }
-function updateSpectate(){
+function updateSpectate(dt=0){
  const elim=started&&eliminationNow();
+ stepAftermath();refreshStats(dt);syncDeathCard(false,dt);
  // Up and playing: the round's popup once per round.
  if(elim&&!deathActive&&!sim.player.dead&&sim.player.hp>0&&!choosing){
   if(online.active){const m=online.match();if(m?.phase==='playing'&&online.me?.present)showRound('o'+m.number+':'+(m.round||1),m.round||1);}
-  else if(!duel.pointBreak&&!duel.over)showRound('d'+duel.config?.mode+':'+duel.score.you+':'+duel.score.robot+':'+duel.round,duel.round);
+  else if(!duel.pointBreak&&!duel.over&&!aftermath)showRound('d'+duel.config?.mode+':'+duel.score.you+':'+duel.score.robot+':'+duel.round,duel.round);
  }
  if(!elim)roundShown='';
- const watching=elim&&deathActive&&deathMenuOpen&&deathElapsed>=DEATH_MENU_DELAY+SPECTATE_AFTER&&!duel.resultOpen&&!choosing;
+ // (Team modes only: in 1V1 there is nobody on your side to watch.)
+ const watching=elim&&deathActive&&deathMenuOpen&&deathScreen.mode==='team'&&deathElapsed>=DEATH_MENU_DELAY+SPECTATE_AFTER&&!duel.resultOpen&&!choosing;
  const mates=watching?spectateMates():[];
  if(mates.length)spectate.update(mates);
  else if(spectate.open)stopSpectate();
  // Down in an elimination round: the world and the game's HUD go dull until you are back.
  document.body.classList.toggle('watching',elim&&deathActive&&deathElapsed>=DEATH_MENU_DELAY);
+ // (The big score between points: team modes. 1V1 has the aftermath, the
+ // stats panel's flip and the top score turning over instead: owner.)
  if(elim&&online.active){
   const m=online.match(),teams=document.querySelector('#match-clock .clock-teams');
-  if(m?.phase==='playing'&&m.roundBreak>0&&m.roundWinner!=null&&teams){
+  if(m?.phase==='playing'&&m.mode!=='1v1'&&m.roundBreak>0&&m.roundWinner!=null&&teams){
    const to=(m.sides||[]).find(t=>t.id===m.roundWinner)?.points;
    scoreFlash.show(m.number+':'+(m.sides||[]).map(t=>t.id+'='+t.points).join(','),{look:'match-clock',html:teams.outerHTML,changed:`[data-side="${CSS.escape(String(m.roundWinner))}"] b`,to});
    scoreFlash.countdown(m.roundBreak);
   }else scoreFlash.hide();
  }else if(elim){
   const b=duel.pointBreak;
-  if(b?.side){
+  if(b?.side&&duel.config?.mode!=='1v1'){
    scoreFlash.show('duel:'+duel.score.you+':'+duel.score.robot,{look:'duel-score',html:duel.scoreElement.innerHTML,changed:b.side==='you'?'.duel-side.duel-you b':'.duel-side.duel-robot b',to:duel.score[b.side]});
    scoreFlash.countdown(b.left);
   }else scoreFlash.hide();
@@ -891,11 +1082,11 @@ function updateSpectate(){
 // nobody yet; then the robots, each away from the rest), your pick applied.
 function newDuelRound(){
  if(deathPick){nextWeapon=weaponPick.selected||nextWeapon;deathPick=false;weaponPick.hide();}
- clearDeath();
+ clearDeath();endAftermath();
  if(nextWeapon){sim.weapon=weaponOrDefault(nextWeapon);nextWeapon=null;applyInputPreference();}
  for(const bot of bots.bots)bot.alive=false;
- sim.respawn({x:map.spawn.x,z:map.spawn.z});randomPracticeSpawn();
- for(const bot of bots.bots)bots.respawnAt(bot,sim);
+ // (1V1: a new duel circle, you and the robot on its two spots.)
+ if(!duel.placeDuel()){sim.respawn({x:map.spawn.x,z:map.spawn.z});randomPracticeSpawn();for(const bot of bots.bots)bots.respawnAt(bot,sim);}
  view.cutCamera();previousPlayer={...sim.player};accumulator=0;
  if(!paused&&!duel.resultOpen){running=true;sound.suspend(false);$('world').focus();}
  updateHUD();
@@ -964,14 +1155,24 @@ function multiplayerFrame(){
  if(mpHud.boardOpen)mpHud.setBoard(online.scoreboard(),myId);
  const me=online.me;
  if(deathActive&&me&&!online.match()?.elimination)deathScreen.setTimer(me.respawnIn,online.lobby().settings?.respawn||MATCH_SETTINGS.respawn.default);
- mpHud.setMatch(online.match(),myId);
+ const m=online.match();
+ mpHud.setMatch(m,myId);syncClockRoll(m);
+ // 1V1: you took the round (the other one down): the aftermath.
+ if(m?.phase==='playing'&&m.elimination&&m.mode==='1v1'&&m.roundBreak>0&&m.roundWinner===myId){
+  const foe=(m.sides||[]).find(t=>t.id!==myId);
+  if(!deathActive&&me?.present&&!me.dead)startAftermath('o'+m.number+':'+m.played,(foe&&lastSeen.get(foe.id))||sim.player);
+ }else if(aftermath)endAftermath();
+ // (The death screen that never came: you are down as the host has it, but
+ // its playerDeath event was not seen here. The card still comes.)
+ if(!deathActive&&started&&m?.phase==='playing'&&me?.present&&me.dead)beginDeath();
+ syncMatchEnd(m);
  renderLobby();syncOnlineScreens();
  // Top left: where you are, map · mode (the round's mode, or the lobby).
  const phase=online.match()?.phase,modeText='MULTIPLAYER · '+(phase==='playing'||phase==='results'?(MODES.find(m=>m.id===online.match().mode)?.name||''):'LOBBY');
  if(modeLabel.textContent!==modeText)modeLabel.textContent=modeText;
 }
 function reviveOnline(){
- clearDeath();lastKiller=null;lastOneShot=false;view.cutCamera();previousPlayer={...sim.player};
+ clearDeath();endAftermath();lastKiller=null;lastOneShot=false;view.cutCamera();previousPlayer={...sim.player};
  applyInputPreference();syncOnlineScreens();
  if(!paused&&!choosing){running=true;$('world').focus();}
  updateHUD();
@@ -1148,12 +1349,17 @@ window.addEventListener('keydown', e => {
   if(document.body.classList.contains('loading'))return;
   // Multiplayer: hold Tab for the scoreboard (Tab has no game action).
   if(e.code==='Tab'&&online.active&&started&&!settingsOpen&&!mapOpen&&!paused&&!choosing&&!devDialog.isOpen){
-   e.preventDefault();if(!e.repeat){mpHud.setBoard(online.scoreboard(),online.myId);mpHud.showBoard();}return;
+   // (The same stats panel as SOLO's; beside the death card while you are down.)
+   e.preventDefault();if(!e.repeat&&(!statsFrom||statsFrom==='tab'))openStats('tab');return;
+  }
+  // SOLO vs robots: the same stats panel while Tab is held (BotMatch statsRows).
+  if(e.code==='Tab'&&!online.active&&duel.active&&started&&!settingsOpen&&!mapOpen&&!paused&&!devDialog.isOpen&&!matchEnd.open&&(!statsFrom||statsFrom==='tab')){
+   e.preventDefault();if(!e.repeat)openStats('tab');return;
   }
   if(lobbyPanel.open){navigateMenu(e,lobbyPanel.root,()=>closeLobby());if(['Space','Tab','KeyQ','KeyE','Escape','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();return;}
   if(devDialog.isOpen){devDialog.keydown(e);return;}
-  // The match result card (VS ROBOTS): the keys work its buttons.
-  if(duel.resultOpen){navigateMenu(e,duel.root,()=>{});if(['Space','Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();return;}
+  // The end-of-match card (online and SOLO): the keys work its buttons.
+  if(matchEnd.open){navigateMenu(e,matchEnd.root,()=>{});if(['Space','Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();return;}
   if(deathActive){
    // Spectating: ← / → (A / D) switch teammate.
    if(spectate.open&&!deathPick&&['ArrowLeft','ArrowRight','KeyA','KeyD'].includes(e.code)){e.preventDefault();if(!e.repeat)spectate.step(e.code==='ArrowLeft'||e.code==='KeyA'?-1:1);return;}
@@ -1226,7 +1432,7 @@ window.addEventListener('keydown', e => {
 // a keyup with no code, which left Space held and the rifle firing).
 const downAs=new Map();
 window.addEventListener('keydown',e=>{if(e.key)downAs.set(e.key.toLowerCase(),e.code);},true);
-window.addEventListener('keyup', e => {const was=e.key&&downAs.get(e.key.toLowerCase());if(was){downAs.delete(e.key.toLowerCase());const c=gameCode(was);if(c)keys.delete(c);keys.delete(was);}const code=gameCode(e.code);if(code)keys.delete(code);keys.delete(e.code);if(e.code==='Tab'&&mpHud.boardOpen)mpHud.hideBoard();});
+window.addEventListener('keyup', e => {const was=e.key&&downAs.get(e.key.toLowerCase());if(was){downAs.delete(e.key.toLowerCase());const c=gameCode(was);if(c)keys.delete(c);keys.delete(was);}const code=gameCode(e.code);if(code)keys.delete(code);keys.delete(e.code);if(e.code==='Tab'&&mpHud.boardOpen)mpHud.hideBoard();if(e.code==='Tab'&&statsFrom==='tab')closeStats();});
 window.addEventListener('blur', releaseInput);
 // Switching apps (an iPad's app switcher) can swallow key and pointer releases.
 document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseInput();});
@@ -1262,8 +1468,11 @@ function frame(time) {
   // still playing, so the simulation keeps running with your hands off.
   // (v0.999a) SOLO 1V1/2V2/3V3: while you are down the fight goes on (you
   // watch a teammate) until a side is out; your hands are off.
-  const soloWatch = !online.active && duel.active && deathActive && started && !paused && !duel.resultOpen;
+  // (1V1's aftermath too: the one who took the round watches it, hands off.)
+  const soloWatch = !online.active && duel.active && (deathActive || !!aftermath) && started && !paused && !duel.resultOpen;
   const stepping = running || (online.active && started) || soloWatch;
+  // Dev first person: body class, pointer let go outside play, the renderer told.
+  { const on = fpsOn(); fpsInput.sync(on, running && !deathActive); if (on) seedFpsLook(fpsLook, sim.player); view.fpsLook = on ? fpsLook : null; }
   // The shape of this screen, for the robots' off-screen rule (a phone turns).
   const aspect = view.camera.aspect; bots.viewAspect = aspect; sim.viewAspect = aspect; online.session?.setAspect?.(aspect);
   if (stepping) {
@@ -1287,8 +1496,8 @@ function frame(time) {
       const follow = 1 - Math.exp(-RULES.step / MOVE_STICK.smoothing);
       touchMove.x += (touch.moveX - touchMove.x) * follow; touchMove.z += (touch.moveZ - touchMove.z) * follow;
       if (!touch.moveX && !touch.moveZ && Math.hypot(touchMove.x, touchMove.z) < .05) touchMove.x = touchMove.z = 0;
-      const moveX = touchMove.x || Number(held('KeyD')) - Number(held('KeyA'));
-      const moveZ = touchMove.z || Number(held('KeyS')) - Number(held('KeyW'));
+      let moveX = touchMove.x || Number(held('KeyD')) - Number(held('KeyA'));
+      let moveZ = touchMove.z || Number(held('KeyS')) - Number(held('KeyW'));
       const arrows=keyboardAim(keys,tappedKeys);
       const manualX = touch.aimX || arrows.x;
       const manualZ = touch.aimZ || arrows.z;
@@ -1341,6 +1550,12 @@ function frame(time) {
       if(tutorial){tutorial.touch=touchPrompts;tutorial.touchAiming=touchAimPointer!==null;tutorial.walking=Math.hypot(touchMove.x,touchMove.z)>.2;if(arrows.active)tutorial.arrowAim=true;if(tappedKeys.has(GAME_KEYS.shoot)&&tutorial.arrowAim&&inputMode==='keyboard')tutorial.event({type:'keyboardShot'},sim);}
       const ballast=ballastInput(rifleFiring,keys,tappedKeys);
       const aiming = aimingNow();
+      // Dev first person (fps-mode.js): WASD turned to the look, aim along it.
+      if (fpsOn()) {
+        ({ moveX, moveZ } = fpsMove(fpsLook, moveX, moveZ));
+        ({ aimX, aimZ, aimPointX, aimPointZ } = fpsAim(fpsLook, sim.player)); digitalAim = false;
+        if (pendingAimPoint) pendingAimPoint = { aimX, aimZ, aimPointX, aimPointZ };
+      }
       if(!online.active)bots.before(sim);
       // Freezing is a solo tool: online it would stop only the host.
       if(online.active&&sim.dev.freeze)sim.dev.freeze=false;
@@ -1357,6 +1572,11 @@ function frame(time) {
     sound.update(sim.player, sim.time);
     sound.updateHex(sim);
   }
+  // (Before this frame is drawn, competitive overhaul: a respawn the host just
+  // made, yours or the new round's, is taken now, so the frame shows you at
+  // the new spot with the camera cut there, not one frame at the old place or
+  // gliding between the two.)
+  online.frame({onRespawn:reviveOnline});
   // No view.update during pause: the rendered scene and all effect clocks freeze.
   if (paused) {
     if (dirty) { view.render(); dirty = false; }
@@ -1370,6 +1590,7 @@ function frame(time) {
       // Team games: your ring your side's colour, like your teammates' (SIDE_COLOURS).
       view.setTeamRing(online.active?(SIDE_COLOURS[online.myTeam]?.ring||null):bots.bots.some(b=>b.team==='blue')?SIDE_COLOURS.blue.ring:null);
       view.remotePlayers = online.active ? online.others(running ? accumulator / RULES.step : 1) : bots.others(running ? accumulator / RULES.step : 1);
+      for (const o of view.remotePlayers || []) lastSeen.set(o.id, o);
       const drawn=online.active?drawSim(sim,online.foreign()):bots.active?drawSim(sim,bots.foreign(elapsed)):sim;
       // Spectating: the camera, rooms and roofs follow the teammate you watch.
       const watched=spectate.watched;view.spectating=!!watched;
@@ -1387,14 +1608,13 @@ function frame(time) {
     // next start (one smooth for long enough a step lower climbs back).
     if(running&&!document.hidden&&settings.qualityAuto&&!view.holdRender){
      const move=autoWatch.sample(dt,renderDelta>0?1:0,Math.min(settings.fps||60,60),settings.qualityAutoStep);
-     if(move){settings.qualityAutoStep=Math.max(-2,Math.min(0,settings.qualityAutoStep+move));try{localStorage.setItem('deadshift-settings',JSON.stringify(settings));}catch{}}
+     if(move){settings.qualityAutoStep=Math.max(-2,Math.min(0,settings.qualityAutoStep+move));try{localStorage.setItem('deadstab-settings',JSON.stringify(settings));}catch{}}
     }
     else adaptiveResolution.reset();
     fpsTime += dt;
     if (fpsTime >= 1) { measuredFPS = Math.round(renderedFrames / fpsTime); fpsTime = 0; renderedFrames = 0; }
   }
   if(paused)adaptiveResolution.reset();
-  online.frame({onRespawn:reviveOnline});
   if(online.active)multiplayerFrame();
   perfReadout.update(started && !paused ? dt : 0, measuredFPS);
   syncGameCursor();
@@ -1405,21 +1625,30 @@ function frame(time) {
   damageFeedback.update(sim,view);outgoingFeedback.update(sim,view);
   if(started&&!paused)duel.frame(dt,!sim.player.dead&&sim.player.hp>0);
   updateSpectate(dt);
+  // 1V1's duel circle (online: the host's, in the match state; SOLO: duel.js's).
+  view.setDuelCircle(started?(online.active?online.match()?.circle:duel.circle):null);
+  // The world's animals (critters.js): this page's own (SOLO, the host's arena), or a joiner's copy of the host's.
+  view.critters=sim.critters||null;view.critterState=view.critters?null:online.active?online.critterState():null;
+  stepStormScreen(dt);
   {const rp=view.player.position,me=view.screenPoint(rp.x,rp.z);fireIndicator.update(running&&!deathActive?dt:10,me.x,me.y,viewWidth(),viewHeight());
    if(running&&!deathActive)damageIndicator.update(dt,me.x,me.y,viewWidth(),viewHeight());else damageIndicator.clear();}
   if(deathActive){
    deathElapsed+=dt;
-   if(!deathMenuOpen&&!duel.over&&deathElapsed>=DEATH_MENU_DELAY){
+   // (SOLO's last point: the end card comes instead, duel.js.)
+   if(!deathMenuOpen&&!duel.over&&!matchEnd.open&&deathElapsed>=DEATH_MENU_DELAY){
     deathMenuOpen=true;document.body.classList.add('dead-menu');damageFeedback.clear();outgoingFeedback.clear();
-    deathScreen.show(online.active?(online.match()?.mode==='practice'?'online-practice':'online'):'practice',{elimination:eliminationNow()});
+    deathScreen.show(deathMode());
     // The tutorial keeps its course's weapon (the pause menu hides it too).
-    $('death-change-weapon').hidden=!online.active&&!!map.training;
+    // (It used to un-hide the button in every other mode, online FFA's too.)
+    if(map.training)$('death-change-weapon').hidden=true;
     deathScreen.setKiller(online.active?lastKiller:undefined,lastOneShot);
+    syncDeathCard(true);
     if(!online.active)sound.suspend(true);
    }
    // Practice counts its own respawn; online the host's countdown is shown
    // (multiplayerFrame) and the host brings you back.
-   if(!online.active&&!duel.over&&!duel.active){deathScreen.setTimer(RESPAWN_TIME-deathElapsed);if(deathElapsed>=RESPAWN_TIME)respawnPractice();}
+   // (SOLO FFA: everyone comes back after FFA_RESPAWN, as online, duel.js.)
+   if(!online.active&&(!duel.active||duel.ffa)&&!duel.over){const wait=duel.ffa?FFA_RESPAWN:RESPAWN_TIME;deathScreen.setTimer(wait-deathElapsed);if(deathElapsed>=wait)respawnPractice();}
   }
   requestAnimationFrame(frame);
 }
@@ -1471,7 +1700,7 @@ for(const [id,value] of [['input-keyboard','keyboard'],['input-mobile','touch']]
  // The selector in the menu IS deliberate, and it is used out of play, so a
  // full reset is right here even though an automatic switch must not do one.
  inputPreference.select(value);touchPrompts=value==='touch';releaseInput();
- try{sessionStorage.setItem('deadshift-controls-override',value);}catch{}
+ try{sessionStorage.setItem('deadstab-controls-override',value);}catch{}
  applyInputPreference();
 };
 // Noticing which input was last used is not a deliberate act by the player, so
@@ -1490,7 +1719,7 @@ function detectActiveInput(mode){
 }
 window.addEventListener('pointerdown',e=>{
  // (Not a tap on the controls choice itself: that tap is the choice.)
- if(e.pointerType==='touch'||e.pointerType==='pen'){if(e.target.closest?.('#input-preference'))return;if(inputPreference.surface!=='touch'){try{sessionStorage.removeItem('deadshift-controls-override');}catch{}}detectActiveInput('touch');}
+ if(e.pointerType==='touch'||e.pointerType==='pen'){if(e.target.closest?.('#input-preference'))return;if(inputPreference.surface!=='touch'){try{sessionStorage.removeItem('deadstab-controls-override');}catch{}}detectActiveInput('touch');}
  else if(e.pointerType==='mouse')detectActiveInput('keyboard');
 },true);
 window.addEventListener('keydown',e=>{

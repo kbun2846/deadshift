@@ -9,29 +9,29 @@ import { playerInput, movementInput, loadout, applyLoadout, playerState, PROTOCO
 
 const map = { id: 'sheath-test', width: 90, depth: 90, spawn: { x: 0, z: 0 }, buildings: [], fences: [], props: [], targets: [] };
 const make = () => { const s = new Simulation(map); s.weapon = 'sheath'; s.player.id = 'you'; s.player.stamina = s.maxStamina; return s; };
-const target = (id = 'victim', x = 1.8, z = 0, kind = 'player') => ({ id, kind, x, z, baseX: x, spawnX: x, spawnZ: z, hp: 2000, maxHp: 2000, flash: 0, respawn: 0 });
+const target = (id = 'victim', x = 1.8, z = 0, kind = 'player') => ({ id, kind, x, z, baseX: x, spawnX: x, spawnZ: z, hp: 400, maxHp: 400, flash: 0, respawn: 0 });
 const run = (s, n, input = {}) => { for (let i = 0; i < n; i++) s.step({ aimX: 1, aimZ: 0, ...input }); };
 const ticks = seconds => Math.round(seconds / RULES.step);
 
-test('a slash lands after its wind-up for 60 to 70, once per swing per body', () => {
+test('a slash lands after its wind-up for 12 to 14, once per swing per body', () => {
  const s = make(), t = target();
  s.targets = [t];
  run(s, 1, { fire: true });
- assert.equal(t.hp, 2000, 'nothing lands on the press');
+ assert.equal(t.hp, 400, 'nothing lands on the press');
  run(s, ticks(S.drawWindup) - 3);
- assert.equal(t.hp, 2000, 'the draw-slash wind-up');
+ assert.equal(t.hp, 400, 'the draw-slash wind-up');
  run(s, ticks(S.hitWindow) + 4);
- const dealt = 2000 - t.hp;
- assert.ok(dealt >= 60 && dealt <= 70, 'one hit, rolled: ' + dealt);
+ const dealt = 400 - t.hp;
+ assert.ok(dealt >= 12 - 1e-9 && dealt <= 14 + 1e-9, 'one hit, rolled: ' + dealt);
  run(s, 10);
- assert.equal(2000 - t.hp, dealt, 'the hit window never hits the same body twice');
- for (let i = 0; i < 200; i++) { const d = sheathDamage(); assert.ok(d >= 60 && d <= 70 && Number.isInteger(d)); }
+ assert.equal(400 - t.hp, dealt, 'the hit window never hits the same body twice');
+ for (let i = 0; i < 200; i++) { const d = sheathDamage(); assert.ok(d >= 12 - 1e-9 && d <= 14 + 1e-9 && Math.abs(d * 5 - Math.round(d * 5)) < 1e-9, 'whole fifths of a point: ' + d); }
 });
 
-test('the swing cycle is clearly slower than Ichor and kills 500 health in about 3 to 3.5 s', () => {
+test('the swing cycle is clearly slower than Ichor and kills 100 health in about 3 to 3.5 s', () => {
  assert.ok(S.interval >= ICHOR.interval * 1.25);
  assert.ok(S.windup > .08 && S.windup < .12 && S.hitWindow >= .07 && S.hitWindow <= .09);
- const s = make(), t = { ...target(), hp: 500, maxHp: 500 };
+ const s = make(), t = { ...target(), hp: 100, maxHp: 100 };
  s.targets = [t];
  let n = 0;
  while (t.hp > 0 && n < 600) { run(s, 1, { fire: true }); n++; }
@@ -43,9 +43,9 @@ test('the arc is wide, reaches past Ichor, and every body in it is cut', () => {
  const s = make(), a = target('a', 2.2, 0), b = target('b', 1.2, 1.4), c = target('c', 1.2, -1.4), back = target('back', -1.8, 0), far = target('far', 3.4, 0);
  s.targets = [a, b, c, back, far];
  run(s, 1, { fire: true }); run(s, 30);
- for (const t of [a, b, c]) assert.ok(t.hp < 2000, t.id + ' is cut');
- assert.equal(back.hp, 2000, 'not behind');
- assert.equal(far.hp, 2000, 'not out of reach');
+ for (const t of [a, b, c]) assert.ok(t.hp < 400, t.id + ' is cut');
+ assert.equal(back.hp, 400, 'not behind');
+ assert.equal(far.hp, 400, 'not out of reach');
  assert.ok(S.range > ICHOR.range);
  assert.ok(S.arcs.every(a => a > 1.2 && a < 2.5));
 });
@@ -55,7 +55,7 @@ test('a solid wall between stops a cut; a body at another height is missed', () 
  s.targets = [t];
  s.colliders = [{ x: .9, z: 0, w: .2, d: 3 }];
  run(s, 1, { fire: true }); run(s, 30);
- assert.equal(t.hp, 2000);
+ assert.equal(t.hp, 400);
 });
 
 test('swings chain from where the last one ended, never repeat and never loop', () => {
@@ -119,7 +119,7 @@ test('walking while slashing is a little slower; Gold Rush is 35% faster for 3 s
 // Ticks from the press to the end of the dash (the line from where the hop ends).
 const dashTicks = (length = S.xRange) => ticks(S.xBack + S.xTell) + Math.ceil((length - S.xShort) / (S.xDashSpeed * RULES.step)) + 3;
 
-test('the Draw-cut hops back, sets, then dashes along the way you faced, cutting everyone it passes once for 290 to 310', () => {
+test('the Draw-cut hops back, sets, then dashes along the way you faced, cutting everyone it passes once for 58 to 62', () => {
  const s = make(), a = target('a', 2.5, .3), b = target('b', 4.5, -.4), off = target('off', 3, 2.2), past = target('past', 9, 0);
  s.targets = [a, b, off, past];
  const stamina = s.player.stamina;
@@ -130,12 +130,12 @@ test('the Draw-cut hops back, sets, then dashes along the way you faced, cutting
  assert.ok(Math.abs(s.player.x + S.xBackDist) < .05, 'hopped back: ' + s.player.x.toFixed(2));
  const tell = s.drainEvents().find(e => e.type === 'sheathDrawTell');
  assert.ok(tell && tell.dx === 1 && Math.abs(tell.length - S.xRange) < .1, 'the line shown, along the facing at the press');
- assert.equal(a.hp, 2000, 'nothing cut during the set');
+ assert.equal(a.hp, 400, 'nothing cut during the set');
  run(s, dashTicks() - ticks(S.xBack) - 1, { aimX: 0, aimZ: 1 });
  assert.ok(Math.abs(s.player.x - (-S.xBackDist + S.xRange - S.xShort)) < .3, 'lands just short of the end: ' + s.player.x.toFixed(2));
  assert.equal(s.player.z, 0, 'straight, whatever the aim did after');
- for (const t of [a, b]) { const dealt = 2000 - t.hp; assert.ok(dealt >= 290 && dealt <= 310, t.id + ' ' + dealt); }
- assert.equal(off.hp, 2000); assert.equal(past.hp, 2000);
+ for (const t of [a, b]) { const dealt = 400 - t.hp; assert.ok(dealt >= 58 - 1e-9 && dealt <= 62 + 1e-9, t.id + ' ' + dealt); }
+ assert.equal(off.hp, 400); assert.equal(past.hp, 400);
  assert.equal(s.player.stamina, stamina, 'no dash charge is used');
  assert.ok(!s.drainEvents().some(e => e.type === 'dodge'), 'not a dash');
  const hp = a.hp; run(s, 60); assert.equal(a.hp, hp, 'once each');
@@ -151,11 +151,11 @@ test('the Draw-cut can be dodged: step off the line during the set and it misses
  run(s, ticks(S.xBack + S.xTell) - 2);
  t.z = 2; t.x = 5;
  run(s, dashTicks());
- assert.equal(t.hp, 2000, 'nothing cut');
+ assert.equal(t.hp, 400, 'nothing cut');
  const far = make(), u = target('u', 5, 0);
  far.targets = [u];
  run(far, 1, { sheathX: true }); run(far, dashTicks());
- assert.ok(u.hp < 2000, 'but cut when it stays');
+ assert.ok(u.hp < 400, 'but cut when it stays');
 });
 
 test('the Draw-cut stops at the first solid wall and cuts the breakables on its line', () => {
@@ -209,7 +209,7 @@ test('back into the sheath after 1.5 s without attacking; the first swing is the
 });
 
 test('death clears a swing, a rush and a Draw-cut; the killing hit carries its damage type', () => {
- const s = make(), t = { ...target(), hp: 30, maxHp: 500 };
+ const s = make(), t = { ...target(), hp: 6, maxHp: 100 };
  s.targets = [t];
  run(s, 1, { fire: true }); run(s, 20);
  const kill = s.drainEvents().find(e => e.type === 'kill');
@@ -257,7 +257,7 @@ test('a body on the far side of the swing is cut after one on the near side', ()
  run(s, 1, { fire: true });
  assert.equal(s.sheath.variant % 2 === 0 || s.sheath.variant === 4, true);
  const order = [];
- for (let i = 0; i < 20; i++) { run(s, 1); for (const t of [right, left]) if (t.hp < 2000 && !order.includes(t.id)) order.push(t.id); }
+ for (let i = 0; i < 20; i++) { run(s, 1); for (const t of [right, left]) if (t.hp < 400 && !order.includes(t.id)) order.push(t.id); }
  // (+z is the player's right, facing +x.)
  assert.deepEqual(order, ['right', 'left']);
 });
@@ -375,12 +375,12 @@ test('Gold Rush draws the sword, keeps it out, doubles the slash reach and lifts
  assert.equal(s.sheath.out, true, 'drawn');
  assert.equal(s.drainEvents().find(e => e.type === 'sheathRush').draw, true);
  run(s, 1, { fire: true }); run(s, 40);
- assert.ok(near.hp < 2000, 'cut at 1.7x the normal reach');
+ assert.ok(near.hp < 400, 'cut at 1.7x the normal reach');
  assert.ok(s.drainEvents().find(e => e.type === 'sheathSwing').rush);
  run(s, ticks(1.2));
  assert.equal(s.sheath.out, true, 'not sheathed while it runs');
  const plain = make(), far = target('far', S.range * 1.7, 0);
  plain.targets = [far]; run(plain, 1, { fire: true }); run(plain, 40);
- assert.equal(far.hp, 2000, 'out of reach without it');
+ assert.equal(far.hp, 400, 'out of reach without it');
  assert.equal(S.xCooldown, 35);
 });

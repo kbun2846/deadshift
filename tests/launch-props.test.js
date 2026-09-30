@@ -6,7 +6,7 @@ const step=(s,n,input={})=>{for(let i=0;i<n;i++)s.step(input);};
 test('Ballast launch smashes crates, barrels and rotated cacti without losing travel',()=>{
  const s=make([{id:'a',type:'crate',x:-1.7,z:0,angle:.35},{id:'b',type:'barrel',x:-3.5,z:0},{id:'c',type:'cactus',x:-5.4,z:0,angle:Math.PI/2}]);
  s.step({doubleShot:true});step(s,120);
- assert.ok(s.props.every(p=>p.hp===0));assert.equal(s.events.filter(e=>e.type==='propBreak').length,3);assert.ok(s.player.x<-7);assert.equal(s.player.hp,500);assert.equal(s.player.ballastLaunch,false);
+ assert.ok(s.props.every(p=>p.hp===0));assert.equal(s.events.filter(e=>e.type==='propBreak').length,3);assert.ok(s.player.x<-7);assert.equal(s.player.hp,100);assert.equal(s.player.ballastLaunch,false);
  assert.ok(s.colliders.every(c=>!c.propId));s.reset();assert.ok(s.props.every(p=>p.hp>0));assert.equal(s.player.ballastLaunch,false);
 });
 test('walking into a prop and being blasted into one do not smash it',()=>{
@@ -48,7 +48,7 @@ test('solid barriers stop launch and protect props behind them',()=>{
 
 test('a shot break and a dash break are distinguishable, and only the dash is flagged',()=>{
  const shot=make([{type:'crate',x:-1.7,z:0}]);
- shot.hitProp(shot.props[0],{damage:5,x:-1.7,z:0,vx:-1,vz:0});
+ shot.hitProp(shot.props[0],{damage:1,x:-1.7,z:0,vx:-1,vz:0});
  const fromShot=shot.drainEvents().find(e=>e.type==='propBreak');
  assert.equal(fromShot.dashed,false,'a shot break must not claim to be a dash');
 

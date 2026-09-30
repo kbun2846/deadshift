@@ -347,3 +347,58 @@ export function spilledBrains(detail = 2, random = Math.random) {
  made.forEach(x => x.dispose()); lobe.dispose();
  return { group, materials: [lit, unlit], geometries: [] };
 }
+
+// A slaughtered animal's heap (Hollow Wick's goat, critters.js; owner,
+// 2026-09-29: "give the goat ... gore and make its head drop in the pile of
+// gore when its killed"): torn black hide, raw flesh and gristle, ribs
+// standing out of it, a leg or two with the hoof on, in a dark soaked pool.
+// Centred on (0, 0), lying on the ground (y 0 up); about a metre across.
+// One draw: every part lit and opaque, merged by `compact` into the shared
+// vertex-coloured material (the one every burst of gore already draws with,
+// so nothing new compiles). `coat`: the hide's colours.
+export function carcassPile({ coat = ['#1b1917', '#2b2521', '#120f0e'], detail = 2, random = Math.random } = {}) {
+ const m = materials(), geo = geometries(), group = new THREE.Group(), own = [];
+ const mat = color => { const x = new THREE.MeshLambertMaterial({ color, flatShading: true }); own.push(x); return x; };
+ const hides = coat.map(mat), hoof = mat('#2f2a24');
+ const put = (geometry, material, x, y, z, sx, sy, sz, ry = 0, rx = 0, rz = 0) => {
+  const o = new THREE.Mesh(geometry, material); o.position.set(x, y, z); o.scale.set(sx, sy, sz); o.rotation.set(rx, ry, rz); group.add(o); return o;
+ };
+ // The pool: soaked earth under it all, a darker wet middle (lit discs, a
+ // hair above the ground).
+ put(geo.disc, m.soaked, 0, .006, 0, .66, .5, 1, 0, -Math.PI / 2);
+ put(geo.disc, m.blood, .04, .009, -.02, .44, .32, 1, 0, -Math.PI / 2);
+ for (let i = 0; i < 3 + detail; i++) { const a = random() * Math.PI * 2, d = .45 + random() * .3; put(geo.disc, m.soaked, Math.cos(a) * d, .007, Math.sin(a) * d * .75, .08 + random() * .1, .05 + random() * .07, 1, 0, -Math.PI / 2); }
+ // The heap: lumps of hide, the biggest low in the middle.
+ const lumps = 5 + detail * 2;
+ for (let i = 0; i < lumps; i++) {
+  const a = random() * Math.PI * 2, d = random() * .28, big = 1 - d / .4;
+  put(geo.chunk, hides[i % hides.length], Math.cos(a) * d, .05 + big * .05, Math.sin(a) * d * .7, .14 + big * .1, .06 + big * .06, .12 + big * .08, random() * 6, (random() - .5) * .5, (random() - .5) * .5);
+ }
+ // Opened up on top: flesh, gristle and blood, glistening.
+ for (let i = 0; i < 4 + detail * 2; i++) {
+  const a = random() * Math.PI * 2, d = random() * .2;
+  put(geo.chunk, [m.flesh, m.gristle, m.blood, m.seared][i % 4], Math.cos(a) * d, .12 + random() * .05, Math.sin(a) * d * .7, .06 + random() * .06, .035 + random() * .035, .06 + random() * .05, random() * 6);
+ }
+ // Ribs arching up out of the heap, one side of the cage.
+ for (let i = 0; i < 3 + (detail >= 2 ? 1 : 0); i++) {
+  const rib = put(geo.rib, m.bone, -.08 + i * .07, .13, .02, 1.05, 1.05, 1.05, 0, 0, 0);
+  rib.rotation.set(0, Math.PI / 2 + (random() - .5) * .3, (random() - .5) * .25);
+ }
+ // A leg thrown out to the side, the hoof still on; another snapped short.
+ for (const [x, z, len, ry] of [[.3, .16, .34, .5], [-.28, -.14, .2, 2.4]]) {
+  const bone = put(geo.bone, m.bone, x, .05, z, 1.4, len, 1.4, ry, 0, Math.PI / 2 - .12);
+  bone.rotation.order = 'YXZ';
+  const tip = put(geo.box, hoof, x + Math.cos(ry) * len * .55, .04, z - Math.sin(ry) * len * .55, .07, .06, .09, ry);
+  put(geo.chunk, m.flesh, x - Math.cos(ry) * len * .45, .06, z + Math.sin(ry) * len * .45, .05, .04, .05, ry);
+  if (len < .3) tip.visible = false;
+ }
+ // Scraps flung a little way off.
+ for (let i = 0; i < 3 + detail * 2; i++) {
+  const a = random() * Math.PI * 2, d = .38 + random() * .35;
+  put(geo.chunk, i % 3 ? m.flesh : hides[0], Math.cos(a) * d, .015, Math.sin(a) * d * .8, .025 + random() * .025, .015, .025 + random() * .025, random() * 6);
+ }
+ for (const o of [...group.children]) if (!o.visible) o.removeFromParent();
+ compact(group);
+ own.forEach(x => x.dispose());
+ return group;
+}

@@ -15,16 +15,16 @@ import * as THREE from 'three';
 import { settle } from './settle.js';
 
 export const HOLLOW_BREAKABLES = Object.freeze({
-  pumpkin: { w: .8, d: .8, health: 5 },
-  ciderKeg: { w: 1.3, d: .72, health: 5 },
-  appleCrate: { w: 1, d: .72, health: 5 },
-  grainSacks: { w: 1.25, d: .95, health: 5 },
-  chickenCoop: { w: 1.6, d: 1, health: 8 },
-  beeSkep: { w: .8, d: .8, health: 5 },
-  stoneware: { w: 1.05, d: .8, health: 5 },
-  tinLantern: { w: .42, d: .42, health: 3 },
-  cordwood: { w: 1.9, d: .85, health: 12 },
-  squashBarrow: { w: 1.9, d: .82, health: 8 },
+  pumpkin: { w: .8, d: .8, health: 1 },
+  ciderKeg: { w: 1.3, d: .72, health: 1 },
+  appleCrate: { w: 1, d: .72, health: 1 },
+  grainSacks: { w: 1.25, d: .95, health: 1 },
+  chickenCoop: { w: 1.6, d: 1, health: 1.6 },
+  beeSkep: { w: .8, d: .8, health: 1 },
+  stoneware: { w: 1.05, d: .8, health: 1 },
+  tinLantern: { w: .42, d: .42, health: .6 },
+  cordwood: { w: 1.9, d: .85, health: 2.4 },
+  squashBarrow: { w: 1.9, d: .82, health: 1.6 },
 });
 
 // The palette (design notes): dull, with the oranges and yellows popping.

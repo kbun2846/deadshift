@@ -26,9 +26,9 @@ test('a mouse volley is drawn onto a target near the cursor; others land where p
  assert.equal(plain.focusZ, 0);
 });
 
-test('the hex ring spreads faster, and Nominal holds 28', () => {
+test('the hex ring spreads faster, and Nominal holds 20 (owner, 2026-09-29: "reduce nominals ammo in a clip down to 20")', () => {
  assert.equal(RULES.hexSpeed, 3.6);
- assert.equal(RIFLE.magazine, 28);
+ assert.equal(RIFLE.magazine, 20);
 });
 
 test('a kill reads KILL, or ONE SHOT', () => {

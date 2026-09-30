@@ -40,6 +40,7 @@ import {ichorGuardFor} from '../weapons/ichor-deflect.js';
 // robots (slots from ROBOT_SLOT up). No DOM, no three.js here.
 import { RULES } from '../config/gameplay.js';
 import { WEAPONS } from '../items.js';
+import { playableOr, randomPlayableWeapon } from '../weapon-maintenance.js';
 import { pack, ProjectileMirror } from '../net/projectiles.js';
 import { NavGrid } from './nav-grid.js';
 import { RobotBrain } from './robot-brain.js';
@@ -52,10 +53,11 @@ import { SIDE_COLOURS } from '../config/match.js';
 import { Squads } from './squad.js';
 
 export const ROBOT_RESPAWN = 4;          // seconds
-export const MAX_ROBOTS = 6;
+export const MAX_ROBOTS = 8; // (SOLO 4V4: three allies and four enemies, 2026-09-29)
 export const TEAMS = Object.freeze(['ffa', 'red', 'blue']);   // blue: your side
 export const hostile = (a, b) => a === 'ffa' || b === 'ffa' || a !== b;
 const YOU_TEAM = 'blue';
+const STAT_CREDIT = 10;   // seconds a hit still counts as the kill (stats)
 // What anyone can see of a gun: being reloaded, or empty.
 export const reloading = sim => sim.weapon==='sidekick'?!sim.sidekick.active&&(sim.sidekick.reload>0||sim.sidekick.ammo<=0):sim.weapon==='sightline'?sim.sightline.crouched?sim.sightline.rifleReload>0||!sim.sightline.rifleAmmo:sim.sightline.pistolReload>0||!sim.sightline.pistolAmmo: sim.weapon==='omen'?sim.omen.reload>0||sim.omen.ammo<=0: sim.weapon === 'rifle' ? sim.rifle.reload > 0 || sim.rifle.ammo <= 0 : sim.weapon === 'shotgun' ? sim.shotgun.reload > 0 || sim.shotgun.ammo <= 0 : sim.ammo + sim.seeds.length < 2;
 export const LOUD = new Set(['sidekickShot','sidekickRush','sightlineShot','omenShot','omenVolley','omenBurst','rifleShot', 'shotgunShot', 'launch', 'explosion', 'grenadeExplosion', 'sprayStart', 'hexPulse', 'scatterFire', 'scatterBurst']);
@@ -84,6 +86,10 @@ export class BotMatch {
   // The shape of your screen (width / height; main.js keeps it current): no
   // robot fires on you from off it (robot-brain.js offScreen). 0: unknown.
   this.viewAspect = 0;
+  // SOLO stats (stats-panel.js): per robot `bot.stats`, yours in `youStats`
+  // ({ kills, deaths, dealt, taken }); a kill goes to whoever last hurt the
+  // victim within STAT_CREDIT seconds. Plain numbers, nothing made per tick.
+  this.youStats = { kills: 0, deaths: 0, dealt: 0, taken: 0 }; this.youDown = false; this.youId = 'you';
  }
 
  get active() { return this.bots.length > 0; }
@@ -108,9 +114,9 @@ export class BotMatch {
   const profile = makeProfile({ skill, style, temper, random: this.random });
   const sim = this.createSim(this.map);
   sim.worldAuthority = false; sim.dev = { speed: 1 }; sim.targets = []; sim.otherPlayers = [];
-  sim.weapon = weapon || WEAPONS[Math.floor(this.random() * WEAPONS.length)].id;
+  sim.weapon = playableOr(weapon, null) || randomPlayableWeapon(this.random); // (not a weapon under maintenance: weapon-maintenance.js)
   const bot = { id, slot, skin, team, profile, aim, human, make: human?'human':ROBOT_SKINS[skin].id, name: (human?'PLAYER BOT ':ally ? 'ALLY ' : 'ROBOT ') + n, sim,
-   brain: new RobotBrain({ sim, nav: this.nav, random: this.random, team, profile, slotIndex: this.bots.filter(b => b.team === team).length }), alive: true, respawnIn: 0, prev: null };
+   brain: new RobotBrain({ sim, nav: this.nav, random: this.random, team, profile, slotIndex: this.bots.filter(b => b.team === team).length }), alive: true, respawnIn: 0, prev: null, stats: { kills: 0, deaths: 0, dealt: 0, taken: 0 }, lastHitBy: null, lastHitAt: 0 };
   this.place(bot, main, ...(ally ? [3, 6] : this.enemyRange));
   this.bots.push(bot);
   return bot;
@@ -179,7 +185,7 @@ export class BotMatch {
  }
 
  // Where a robot comes back: allies near you, the others away from you.
- respawnAt(bot, main) { if (bot.team === YOU_TEAM) this.place(bot, main, 4, 9); else this.place(bot, main, ...this.enemyRange); }
+ respawnAt(bot, main) { const safe = this.respawnSpot?.(bot, main); if (safe) return this.putAt(bot, main, safe); if (bot.team === YOU_TEAM) this.place(bot, main, 4, 9); else this.place(bot, main, ...this.enemyRange); }
 
  // An open spot between `near` and `far` metres from `from`, reachable on foot.
  spot(from, near, far, colliders = null) {
@@ -209,7 +215,34 @@ export class BotMatch {
  hurtAll(amount) { let n = 0; for (const b of this.living()) { b.sim.damagePlayer(amount, 'dev', false, false, null, 'gunshot'); n++; } return n; }
  destroyAll() { return this.hurtAll(1e6); }
 
- clear() { this.squads?.clear(); this.enemyRange = [22, 60]; this.friendlyFire = 0; this.apart = 0; this.teamSpawn = false; this.baseSpawn = false; this.bots = []; this.out = []; this.noises = []; this.mirror = new ProjectileMirror(); this.intel.clear(); this.youHurtBy = null; }
+ clear() { this.onKill = null; this.respawnSpot = null; this.respawnWait = null; this.squads?.clear(); this.enemyRange = [22, 60]; this.friendlyFire = 0; this.apart = 0; this.teamSpawn = false; this.baseSpawn = false; this.bots = []; this.out = []; this.noises = []; this.mirror = new ProjectileMirror(); this.intel.clear(); this.youHurtBy = null; this.resetStats(); }
+
+ // A new SOLO match: everyone's numbers back to nothing.
+ resetStats() { for (const b of this.bots) { const s = b.stats; s.kills = s.deaths = s.dealt = s.taken = 0; b.lastHitBy = null; } const y = this.youStats; y.kills = y.deaths = y.dealt = y.taken = 0; }
+
+ byId(id) { for (const b of this.bots) if (b.id === id) return b; return null; }
+
+ // A robot went down (once per death): its death, and the kill to whoever last hurt it.
+ fell(bot) {
+  bot.stats.deaths++;
+  if (bot.lastHitBy && this.clock - bot.lastHitAt < STAT_CREDIT) this.credit(bot.lastHitBy, bot.team);
+  bot.lastHitBy = null;
+ }
+ // A kill for `id` ('you' or a robot) if it is against the victim's side.
+ credit(id, team) {
+  const killer = id === this.youId ? null : this.byId(id), side = killer ? killer.team : YOU_TEAM;
+  if (!hostile(side, team)) return;
+  (killer ? killer.stats : this.youStats).kills++;
+  // (SOLO FFA's syphon: duel.js. `killer`: the robot, or null for you.)
+  this.onKill?.(killer);
+ }
+
+ // Rows for the stats panel (ui/stats-panel.js), in its shape.
+ statsRows(main, youName = 'YOU') {
+  const team = this.bots.some(b => b.team !== 'ffa') ? YOU_TEAM : null, y = this.youStats;
+  return [{ id: 'you', name: youName, slot: main.slot ?? 0, team, robot: false, kills: y.kills, deaths: y.deaths, dealt: Math.round(y.dealt), taken: Math.round(y.taken), weapon: main.weapon, present: true },
+   ...this.bots.map(b => ({ id: b.id, name: b.name, slot: b.slot, team: b.team === 'ffa' ? null : b.team, robot: !b.human, kills: b.stats.kills, deaths: b.stats.deaths, dealt: Math.round(b.stats.dealt), taken: Math.round(b.stats.taken), weapon: b.sim.weapon, present: true }))];
+ }
 
  hand(sim, main) { sim.props = main.props; sim.colliders = main.colliders; sim.crops = main.crops; }
 
@@ -224,6 +257,7 @@ export class BotMatch {
   main.shields = this.shields;
   // With allies about, you are on their side (your hex lets them in).
   main.player.team = this.bots.some(b => b.team === YOU_TEAM) ? YOU_TEAM : undefined;
+  this.youId = main.player.id;
   this.proxies = null; if (!this.active) return;
   this.proxies = new Map();
   // Friends are bodies to bump into, not targets.
@@ -258,6 +292,9 @@ export class BotMatch {
  // Damage a robot took from `owner` (the last hit report on it names the kind).
  deal(bot, lost, owner, events) {
   if (lost <= 0 || !bot.alive) return;
+  // (Stats: what it really lost, never more than it had left.)
+  { const took = Math.min(lost, Math.max(0, bot.sim.player.hp)), from = owner === this.youId ? this.youStats : this.byId(owner)?.stats;
+   bot.stats.taken += took; if (from && from !== bot.stats) { from.dealt += took; bot.lastHitBy = owner; bot.lastHitAt = this.clock; } }
   const report = [...events].reverse().find(e => (e.type === 'kill' || e.type === 'hit') && e.id === bot.id) || {};
   const type = report.damageType || (report.electric ? 'electric' : 'gunshot');
   const impact = report.directionX || report.directionZ ? { x: report.directionX, z: report.directionZ } : null;
@@ -278,6 +315,9 @@ export class BotMatch {
   // The tick's allowance for costly searches, shared by every robot.
   if (this.nav) this.nav.budget = { search: 2, path: 3 };
   const you = main.player, youHere = you.hp > 0 && !you.dead && !main.dev.ghost;
+  // (Stats: your death, once, to whoever hurt you in the last few seconds.)
+  this.youId = you.id;
+  if (you.dead && !this.youDown) { this.youDown = true; this.youStats.deaths++; const by = this.youHurtBy; if (by && this.clock - by.at < STAT_CREDIT) this.credit(by.id, YOU_TEAM); } else if (!you.dead) this.youDown = false;
   const dev = main.dev || {}, passive = !!dev.robotPassive;
   // Who is already after whom: a target others are on is less tempting.
   const targeting = new Map();
@@ -291,7 +331,7 @@ export class BotMatch {
     // Killed by someone else's step: its death is already in its events.
     const events = sim.events.splice(0), shooter = { x: p.x, z: p.z, aimX: p.aimX, aimZ: p.aimZ, vx: 0, vz: 0 };
     for (const e of events) { if (e.type === 'playerDeath') { e.weapon = sim.weapon; } this.out.push({ e, shooter, slot: bot.slot }); }
-    bot.alive = false; bot.respawnIn = ROBOT_RESPAWN; continue;
+    bot.alive = false; bot.respawnIn = this.respawnWait ?? ROBOT_RESPAWN; this.fell(bot); continue;
    }
    if (!bot.alive) {
     // (SOLO 1V1/2V2/3V3, v0.999a: nobody comes back until a side is out, duel.js.)
@@ -362,6 +402,7 @@ export class BotMatch {
     } else if (entry.you) {
      if (lost > 0) {
       this.youHurtBy = { id: bot.id, at: this.clock };
+      { const took = Math.min(lost, Math.max(0, you.hp)); this.youStats.taken += took; bot.stats.dealt += took; }
       const report = [...events].reverse().find(e => (e.type === 'kill' || e.type === 'hit') && e.id === you.id) || {};
       main.damagePlayer(lost, bot.id, false, false, report.directionX || report.directionZ ? { x: report.directionX, z: report.directionZ } : null,
        report.damageType || (report.electric ? 'electric' : 'gunshot'), p);
@@ -372,10 +413,10 @@ export class BotMatch {
    this.listen(events, bot.id);
    const shooter = { x: p.x, z: p.z, aimX: p.aimX, aimZ: p.aimZ, vx: p.vx, vz: p.vz };
    for (const e of events) {
-    if (e.type === 'playerDeath') { bot.alive = false; bot.respawnIn = ROBOT_RESPAWN; e.weapon = sim.weapon; }
+    if (e.type === 'playerDeath') { if (bot.alive) this.fell(bot); bot.alive = false; bot.respawnIn = this.respawnWait ?? ROBOT_RESPAWN; e.weapon = sim.weapon; }
     this.out.push({ e, shooter, slot: bot.slot });
    }
-   if (p.dead && bot.alive) { bot.alive = false; bot.respawnIn = ROBOT_RESPAWN; }
+   if (p.dead && bot.alive) { bot.alive = false; bot.respawnIn = this.respawnWait ?? ROBOT_RESPAWN; this.fell(bot); }
    // A robot killed by damage this tick falls on its next tick (Simulation.step).
   }
   this.share(main, youHere, dt);

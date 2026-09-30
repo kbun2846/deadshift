@@ -5,9 +5,9 @@ import {GRENADE,grenadeDamage} from '../src/weapons/grenade.js';
 const make=()=>{const s=new Simulation({id:'test',width:120,depth:120,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});s.weapon='rifle';return s;};
 const tick=(s,input={},n=1)=>{for(let i=0;i<n;i++)s.step({aimX:1,aimZ:0,aimPointX:10,aimPointZ:0,...input});};
 test('grenade has a wide full-damage center and bounded splash falloff',()=>{
- assert.equal(grenadeDamage(0),240);assert.equal(grenadeDamage(.7),240);
- assert.ok(grenadeDamage(2)>130&&grenadeDamage(2)<150);
- assert.equal(grenadeDamage(4),35);assert.equal(grenadeDamage(4.001),0);
+ assert.equal(grenadeDamage(0),48);assert.equal(grenadeDamage(.7),48);
+ assert.ok(grenadeDamage(2)>26&&grenadeDamage(2)<30);
+ assert.equal(grenadeDamage(4),7);assert.equal(grenadeDamage(4.001),0);
 });
 test('Nominal grenade releases from the free hand, caps range and uses a 1.4-second fuse',()=>{
  const s=make();tick(s,{grenade:true,aimPointX:50});
@@ -28,12 +28,12 @@ test('grenade cooldown lasts 25 seconds, resets, and has a separate developer ov
 });
 test('grenade damages exposed targets and the player but solid cover blocks splash',()=>{
  const s=make();tick(s,{grenade:true});tick(s,{},70);
- s.targets=[{id:'open',x:10,z:0,hp:500,maxHp:500},{id:'covered',x:12,z:0,hp:500,maxHp:500}];
+ s.targets=[{id:'open',x:10,z:0,hp:100,maxHp:100},{id:'covered',x:12,z:0,hp:100,maxHp:100}];
  s.player.x=10;s.player.z=1;s.colliders=[{x:11,z:0,w:.2,d:4,height:3}];
  tick(s,{},43);
- // (Every grenade hit carries GRENADE.bonus, +50, since v0.83.)
- assert.equal(s.targets[0].hp,260-GRENADE.bonus);assert.equal(s.targets[1].hp,500);
- assert.equal(s.player.hp,500-grenadeDamage(1)-GRENADE.bonus);
+ // (Every grenade hit carries GRENADE.bonus, +10, since v0.83.)
+ assert.equal(s.targets[0].hp,52-GRENADE.bonus);assert.equal(s.targets[1].hp,100);
+ assert.equal(s.player.hp,100-grenadeDamage(1)-GRENADE.bonus);
 });
 test('grenade flight stops at tall walls and clears low cover',()=>{
  for(const [height,blocked]of [[5,true],[.2,false]]){

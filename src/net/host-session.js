@@ -14,6 +14,7 @@ import { PROTOCOL_VERSION, playerInput, playerState, readMessage, loadout, packE
 import { Arena, SPAWN_MODES, SETTINGS } from './arena.js';
 import { pack } from './projectiles.js';
 import { mapHash } from '../maps.js';
+import { hpRound } from '../config/gameplay.js';
 
 // Seconds between our own ticks that count as us being frozen, not them.
 const STALL = 1;
@@ -102,6 +103,8 @@ export class HostSession {
   if (message.t === 'pick') this.arena.pickAgain(from);
   if (message.t === 'respawn') this.arena.respawnNow(from);
   if (message.t === 'team') this.arena.chooseTeam(from, message.team);
+  if (message.t === 'forfeit') this.arena.forfeit(from, message.on);
+  if (message.t === 'ready') this.arena.setReady(from, message.on);
  }
 
  admit(id, hello) {
@@ -185,6 +188,9 @@ export class HostSession {
  endRound() { this.arena.endRound(); }
  restartMatch() { return this.arena.newMatch(); }
  match() { return this.arena.matchState(); }
+ // The world's animals (critters.js), for the host's own view.
+ critterState() { return this.arena.critters?.state() || null; }
+ stormNow() { return this.arena.stormPlan ? { plan: this.arena.stormPlan, t: this.arena.stormClock } : null; }
 
  remove(id, why) {
   const remote = this.remotes.get(id);
@@ -200,6 +206,8 @@ export class HostSession {
  pickAgain() { return this.arena.pickAgain('host'); }
  respawnNow() { return this.arena.respawnNow('host'); }
  chooseTeam(team) { return this.arena.chooseTeam('host', team); }
+ forfeit(on = true) { return this.arena.forfeit('host', on); }
+ setReady(on = true) { return this.arena.setReady('host', on); }
  toMenu() { this.arena.leaveWorld('host'); }
 
  // Called by main.js right before it steps the host's own sim this tick,
@@ -302,12 +310,14 @@ export class HostSession {
   const feed = this.arena.feed.slice(-8), board = slow ? this.scoreboard() : null, world = slow ? this.worldState() : undefined;
   const match = this.match(), lobby = slow ? this.lobby() : undefined;
   // Practice targets move and break: every snapshot, compact.
-  const targets = this.arena.targets.length ? this.arena.targets.map(t => [t.id, Math.round(t.x * 100) / 100, Math.round(t.z * 100) / 100, Math.round(t.hp), Math.round((t.flash || 0) * 100) / 100]) : null;
+  const targets = this.arena.targets.length ? this.arena.targets.map(t => [t.id, Math.round(t.x * 100) / 100, Math.round(t.z * 100) / 100, hpRound(t.hp), Math.round((t.flash || 0) * 100) / 100]) : null;
+  // The world's animals (critters.js): where each stands, and whether it is dead.
+  const critters = this.arena.critters?.state() || null;
   this.sentTick = this.tick; this.folds.clear();
   for (const remote of this.remotes.values()) {
    const snapshot = { t: 'snapshot', tick: this.tick, players, you: { ...loadout(remote.sim), life: remote.seat.life, present: remote.seat.present, dead: remote.seat.dead, respawnIn: remote.seat.respawnIn,
      weapon: remote.seat.weapon, picking: pickState(remote.seat.picking) },
-    proj, ev: [], feed, board, world, match, lobby, targets };
+    proj, ev: [], feed, board, world, match, lobby, targets, ...(critters ? { critters } : null) };
    // As many waiting events, oldest first, as fit the message (WIRE_BUDGET).
    // (One too big for any message is skipped, not left to block the rest.)
    const space = WIRE_BUDGET - JSON.stringify(snapshot).length;
@@ -389,7 +399,13 @@ export class HostSession {
 // A player's weapon pick as the screens need it: seconds left, what is picked.
 export const pickState = picking => (picking ? { left: Math.max(0, Math.round(picking.left * 10) / 10), weapon: picking.weapon, go: !!picking.go } : null);
 
+// A body that moved further than anyone can between two steps (a respawn,
+// a new round's spot) is drawn at the new place at once, never glided
+// across the map (owner, 2026-09-29: "it should take them to the new
+// location at first without stutter").
+export const BLEND_JUMP = 4;
 export function blend(id, name, a, b, alpha) {
+ if (a !== b && (b.x - a.x) ** 2 + (b.z - a.z) ** 2 > BLEND_JUMP * BLEND_JUMP) { a = b; alpha = 1; }
  const angleA = Math.atan2(a.aimZ, a.aimX), angleB = Math.atan2(b.aimZ, b.aimX);
  const turn = Math.atan2(Math.sin(angleB - angleA), Math.cos(angleB - angleA)), angle = angleA + turn * alpha;
  return {

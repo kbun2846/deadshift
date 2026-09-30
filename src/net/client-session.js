@@ -20,6 +20,8 @@ import { PROTOCOL_VERSION, movementInput, playerInput, applyPlayerState, applyLo
 import { blend } from './host-session.js';
 import { ProjectileMirror } from './projectiles.js';
 import { mapColliders, mapHash, maps, supportsMode } from '../maps.js';
+import { HP_STEP } from '../config/gameplay.js';
+import { readStormState, stormAt } from '../storm.js';
 // A map the room can move to: one of ours, played online.
 const roomMap = id => typeof id === 'string' && Object.hasOwn(maps, id) && supportsMode(maps[id], 'multiplayer') ? id : null;
 
@@ -77,7 +79,7 @@ export class ClientSession {
    if (message.mapHash !== undefined && message.mapHash !== mapHash(this.map)) { this.ended = 'The host is on a different map or version. Reload the page on both devices.'; return; }
    this.id = String(message.id); this.slot = message.slot; if (message.name) this.name = String(message.name);
    // The host burns the crops; this sim only mirrors them (applyWorld).
-   this.local.dev = { speed: 1 }; this.local.targets = []; this.local.player.id = this.id; this.local.worldAuthority = false;
+   this.local.dev = { speed: 1 }; this.local.targets = []; this.local.player.id = this.id; this.local.worldAuthority = false; this.local.critters = null;
    this.local.player.hp = 0; this.local.player.dead = true;
    this.accept({ tick: message.tick, players: message.players || [], world: message.world });
    return;
@@ -109,10 +111,17 @@ export class ClientSession {
   }
   if (snapshot.world) this.applyWorld(snapshot.world);
   if ('targets' in snapshot) this.applyTargets(snapshot.targets);
+  // The host's animals (critters.js): drawn from here, never hit here.
+  this.critters = snapshot.critters || null;
   for (const line of snapshot.feed || []) if (line.serial > this.feedSeen) { this.feedLines.push(line); this.feedSeen = line.serial; }
   if (snapshot.board) this.board = snapshot.board;
   if (snapshot.lobby) this.lobbyState = snapshot.lobby;
-  if (snapshot.match) this.matchState = snapshot.match;
+  if (snapshot.match) {
+   this.matchState = snapshot.match; this.local.boundary = this.scratch.boundary = snapshot.match.circle || null;
+   // The storm (storm.js): the host's plan and its clock; the circle is read off it.
+   this.stormPlan = readStormState(snapshot.match.storm); this.stormT = snapshot.match.stormT || 0; this.stormHeard = this.now();
+   this.local.storm = this.scratch.storm = this.stormPlan ? stormAt(this.stormPlan, this.stormT) : null;
+  }
   this.projectiles.update(snapshot.proj, this.now());
   // Others as the host last reported them: what both our prediction and the
   // replay collide with, so the replay matches what the host ran.
@@ -179,7 +188,7 @@ export class ClientSession {
   // Sheath: Gold Rush's speed and a Draw-cut under way, from the host's word.
   if(replay.weapon==='sheath'){const h=state.sheath||{};replay.sheath={...this.local.sheath,rush:h.rush||0,x:h.cut?{phase:h.cut,t:h.cutT||0,dx:h.cutDX||0,dz:h.cutDZ||0,length:h.cutLen||0,sx:h.cutSX??state.x,sz:h.cutSZ??state.z,travel:h.cutTr||0,back:h.cutBack||0,hitIds:[],hits:0}:null};}
   replay.props = this.local.props; replay.colliders = this.local.colliders; replay.crops = this.local.crops;
-  applyPlayerState(replay.player, state); replay.player.hp = Math.max(1, state.hp || 1); replay.player.dead = false;
+  applyPlayerState(replay.player, state); replay.player.hp = Math.max(HP_STEP, state.hp || HP_STEP); replay.player.dead = false;
   for (const input of this.pending) { replay.step(movementInput(input,this.local.weapon)); replay.drainEvents(); }
   const r = replay.player, dx = r.x - p.x, dz = r.z - p.z, error = Math.hypot(dx, dz);
   this.correction = error;
@@ -221,6 +230,8 @@ export class ClientSession {
  chooseTeam(team) { this.transport.send('host', { t: 'team', team }); }
  pickAgain() { this.transport.send('host', { t: 'pick' }); }
  respawnNow() { this.transport.send('host', { t: 'respawn' }); }
+ forfeit(on = true) { this.transport.send('host', { t: 'forfeit', on }); }
+ setReady(on = true) { this.transport.send('host', { t: 'ready', on }); }
 
  // Events that arrived since the last call: [{ s, by, e }].
  drainEvents() { return this.inbox.splice(0); }
@@ -230,6 +241,11 @@ export class ClientSession {
  // match clock. Joiners see these but cannot change them.
  lobby() { return this.lobbyState || { players: [], spawnMode: 'random' }; }
  match() { return this.matchState || { phase: 'playing', left: 0, number: 1, results: null }; }
+ // The storm now: its plan and clock, run on a little from the last snapshot
+ // (not between rounds) so the circle moves smoothly.
+ // The host's animals (critters.js state: [x, z, heading, dead] each), or null.
+ critterState() { return this.critters || null; }
+ stormNow() { if (!this.stormPlan) return null; const on = !(this.matchState?.roundBreak > 0); return { plan: this.stormPlan, t: this.stormT + (on ? Math.min(.3, Math.max(0, this.now() - this.stormHeard)) : 0) }; }
 
  // Everyone's shots, to draw (see projectiles.js).
  foreignProjectiles(isEnemy = null) { return this.projectiles.lists(this.now(), isEnemy); }

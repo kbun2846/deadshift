@@ -139,9 +139,9 @@ test('Nominal and Static have one dodge, Ballast two',()=>{
  s.weapon='static';s.reset();assert.equal(s.maxStamina,1);
  s.weapon='shotgun';s.reset();assert.equal(s.maxStamina,2);assert.equal(s.player.stamina,2);
 });
-test('Nominal: a 28-round magazine and a slightly longer reload',()=>{
- assert.equal(M,28);assert.equal(RIFLE.reload,1.95);
- const s=make();assert.equal(s.rifle.ammo,28);
+test('Nominal: a 20-round magazine (2026-09-29; 28 before) and a slightly longer reload',()=>{
+ assert.equal(M,20);assert.equal(RIFLE.reload,1.95);
+ const s=make();assert.equal(s.rifle.ammo,20);
 });
 test('Surge: two seconds of power-up, then five of 2x bullets that use no ammo and never reload, then a full magazine and the cooldown',()=>{
  const s=make();s.targets=[{id:'t',x:6,z:0,hp:5000,maxHp:5000}];

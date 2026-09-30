@@ -1,5 +1,16 @@
 // Keep a common font size; fit the visible glyph bounds, not the font's padded line box.
 let fitNow=null;
+// Readable lettering (owner, 2026-09-29: "see how these are so stretched in
+// they can't be read? make it easier to read. do this everywhere"): the
+// stretch never makes a letter narrower than this share of its height
+// (horizontal scale / vertical scale). A label that would need more squeeze
+// than that to fit its button is drawn shorter instead, centred in the
+// button, keeping these proportions, rather than as a row of hairlines. (The
+// usual buttons sit near .44: .86 wide over about 1.95 tall.)
+export const MIN_LETTER_RATIO=.3;
+// How tall a label is drawn: its fitted vertical scale `sy`, unless the
+// horizontal scale `sx` it gets would squeeze it past MIN_LETTER_RATIO.
+export const readableScale=(sx,sy)=>Math.min(sy,sx/MIN_LETTER_RATIO);
 // A menu page was just shown: fit everything on it now, before it is painted
 // (the observers alone could leave a map card's small badge for a later frame).
 export function refreshTypography(){fitNow?.();}
@@ -61,7 +72,9 @@ export function installButtonTypography(root){
    const fa=m.fontBoundingBoxAscent??size*.8,fd=m.fontBoundingBoxDescent??size*.2;
    const baseline=(size-fa-fd)/2+fa,top=baseline-ascent;
    const inkWidth=m.actualBoundingBoxLeft+m.actualBoundingBoxRight;
-   const available=Math.max(1,button.clientWidth-20);
+   // (Side room: 10 px a side, less on a narrow segment so its label keeps
+   // what little width it has.)
+   const available=Math.max(1,button.clientWidth-Math.min(20,Math.max(6,button.clientWidth*.14)));
    // (A weapon card's name fits its own box, whose height the layout sets.)
    const height=button.classList.contains('weapon-choice')?(button.querySelector('.weapon-name')?.clientHeight||40):button.clientHeight-parseFloat(css.paddingBottom);
    const sx=Math.min(.86,available/Math.max(1,inkWidth,m.width)),sy=height*1.08/(ascent+descent);
@@ -70,10 +83,13 @@ export function installButtonTypography(root){
   const shared=new Map();
   for(const f of fits)shared.set(f.group,Math.min(shared.get(f.group)??Infinity,f.sx/f.sy));
   for(const f of fits){
-   const {label,css,m,top,inkWidth,available,height,sy}=f,sx=Math.min(f.sx,shared.get(f.group)*sy);
+   const {label,css,m,top,inkWidth,available,height}=f,sx=Math.min(f.sx,shared.get(f.group)*f.sy),sy=readableScale(sx,f.sy);
+   // Full height: the ink fills the button (a slight crop top and bottom).
+   // Squeezed past readable: shorter, centred in the button's height.
+   const inkTop=sy<f.sy?(height-(m.actualBoundingBoxAscent+m.actualBoundingBoxDescent)*sy)/2:-height*.04;
    // Centred buttons keep a narrower label centred; others stay on their side.
    const x=css.textAlign==='right'?available-m.actualBoundingBoxRight*sx:css.textAlign==='center'?(available-inkWidth*sx)/2+m.actualBoundingBoxLeft*sx:Math.max(0,m.actualBoundingBoxLeft)*sx;
-   label.style.transform=`matrix(${sx},0,0,${sy},${x},${-top*sy-height*.04})`;
+   label.style.transform=`matrix(${sx},0,0,${sy},${x},${inkTop-top*sy})`;
    label.dataset.fit='';
   }
  }

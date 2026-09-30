@@ -14,7 +14,9 @@ import { setMatte } from './matte-lighting.js';
 import { RifleView } from '../weapons/rifle-view.js';
 import { RIFLE_QUALITY } from '../weapons/rifle-quality.js';
 import { GrenadeView } from '../weapons/grenade-view.js';
-import { DeathView } from '../effects/death-view.js';
+import { DeathView, killCamFrame } from '../effects/death-view.js';
+import { DuelCircleView } from './duel-circle-view.js';
+import { StormView } from './storm-view.js';
 
 import { SurgeView } from '../effects/surge-view.js';
 import { PropInstances } from './prop-instances.js';
@@ -33,9 +35,11 @@ import { Birds } from '../effects/birds.js';
 import { CropView } from '../world/crop-view.js';
 import { cropEntityVisible } from '../crops.js';
 import { InteriorVisibility } from './interior-visibility.js';
-import { lightBasis, snapShadowFocus, shadowFrame, shadowBoxOver, settleShadowBox, SHADOW_FIT } from './shadow-snap.js';
+import { lightBasis, snapShadowFocus, shadowFrame, shadowBoxOver, settleShadowBox, shadowReach, shadowSpan, placeShadowBox, SHADOW_FIT } from './shadow-snap.js';
+import { isPlayable } from '../playable-area.js';
 import { ShadowCache } from './shadow-cache.js';
 import { ChunkCull } from './chunk-cull.js';
+import { placeFpsCamera } from '../fps-mode.js';
 import { castersOnlyInShadow } from './bake-colors.js';
 import { ditherFade, roofFade, prepareFades, shownInside, WALL_FADE } from '../world/roof-fade.js';
 
@@ -376,6 +380,10 @@ export class WorldView {
     this.surfaceMarks = new SurfaceMarks(this);
     // Blood on the floor wherever a player dies (blood-splatter.js).
     this.blood = new BloodSplatters(this);
+    // 1V1's duel circle (duel-circle-view.js): made now, hidden, so its program is warmed with the rest.
+    this.duelCircleView = new DuelCircleView(this);
+    // The storm (storm-view.js): made here, hidden, so its program is warmed with the rest.
+    this.stormView = new StormView(this);
     // A canvas, not a masked div. The shroud used to be a full-viewport SVG
     // data URI carrying an erode and a gaussian blur, rebuilt twenty times a
     // second and handed to `mask-image`. Three separate problems came out of
@@ -421,6 +429,10 @@ export class WorldView {
 
   // The ground's height at (x, z): 0 on a flat map.
   gy(x, z) { return groundY(this, x, z); }
+  // 1V1's duel circle ({ x, z, r } or null), from main.js every frame (cheap: redrawn only on a change).
+  setDuelCircle(circle) { this.duelCircleView?.set(circle || null); }
+  // The storm's safe circle ({ x, z, r }) or null, and its tension (0-1).
+  setStorm(circle, tension = 0, final = null) { this.stormView?.set(circle || null, tension, final); }
   // Hills, decks: is (x, z) inside a deck's outline with the body nearest it
   // (you or another player within UNDER_REACH m) wading under that deck?
   // Then what is made there is drawn under it (ground-lift.js groundY). Only
@@ -557,12 +569,33 @@ export class WorldView {
       this.sunBasis = frame.basis; cam.up.set(frame.up.x, frame.up.y, frame.up.z);
       this.shadowAspect = view.aspect; this.shadowBox = null;
     }
-    const box = settleShadowBox(this.shadowBox, shadowBoxOver(view, this.sunOffset, this.sunBasis, this.ground, fx, fy, fz),
-      SHADOW_FIT, this.ground.flat ? 0 : SHADOW_FIT.slack);
+    const needed = shadowBoxOver(view, this.sunOffset, this.sunBasis, this.ground, fx, fy, fz);
+    // Hills, the outdoor camera: one size for the whole map, moved in whole
+    // texels (shadow-snap.js shadowSpan), so walking never pops the shadows.
+    const outdoor = !this.ground.flat && Math.abs(view.height - OUTDOOR_CAMERA_HEIGHT) < OUTDOOR_CAMERA_HEIGHT * .02;
+    const fixed = outdoor ? placeShadowBox(needed, this.shadowSpanFor(view)) : null;
+    const next = fixed && this.shadowBox && ['left', 'right', 'bottom', 'top', 'near', 'far'].every(k => this.shadowBox[k] === fixed[k]) ? this.shadowBox : fixed;
+    const box = next || settleShadowBox(this.shadowBox, needed, SHADOW_FIT, this.ground.flat ? 0 : SHADOW_FIT.slack);
     if (box === this.shadowBox) return;
     this.shadowBox = box; Object.assign(cam, box); cam.updateProjectionMatrix();
     // The same few millimetres of depth bias whatever the box's depth.
     this.sun.shadow.bias = -SHADOW_FIT.bias / (box.far - box.near);
+  }
+
+  // The terrain map's one shadow box size for this screen shape and preset
+  // (shadow-snap.js shadowReach / shadowSpan): measured over its playable
+  // ground every 4 m, once per screen shape (about 10 ms on Hollow Wick).
+  shadowSpanFor(view) {
+    this.shadowReaches ||= new Map();
+    const key = view.aspect.toFixed(4);
+    if (!this.shadowReaches.has(key)) {
+      if (!this.shadowPoints) {
+        const map = this.map, points = this.shadowPoints = [];
+        for (let x = -map.width / 2; x <= map.width / 2; x += 4) for (let z = -map.depth / 2; z <= map.depth / 2; z += 4) if (isPlayable(map, x, z, 0)) points.push({ x, z });
+      }
+      this.shadowReaches.set(key, shadowReach({ ...view, height: OUTDOOR_CAMERA_HEIGHT }, this.sunOffset, this.sunBasis, this.ground, this.shadowPoints));
+    }
+    return shadowSpan(this.shadowReaches.get(key), this.quality.shadows);
   }
 
   // A preset change while playing or in the menus (owner, v0.995a: "changing
@@ -1182,6 +1215,14 @@ export class WorldView {
   // A gunshot lights its surroundings for a few hundredths of a second, using
   // the effects light every tier with lights already has (so no new shader
   // variants and no cost when idle). Warm, like the powder flash.
+  // The goat hit (critters.js): blood, more on the kill, a stain where it fell.
+  goatHit(e) {
+    this.bleed({ ...e, damage: (e.damage || 5) * (e.type === 'kill' ? 3 : 1.4) });
+    if (e.type !== 'kill') return;
+    this.blood.add(e.x, e.z, e.directionX, e.directionZ, 'goat');
+    this.goatRed ||= new THREE.Color('#6e0d16'); this.burst(e.x, e.z, 30, 'kill', this.goatRed);
+  }
+
   // Sparks off a robot (bots/): an electric crackle at the hit, steel chips,
   // and a flash of the effects light; bigger on a kill.
   robotHit(e) {
@@ -1432,8 +1473,12 @@ export class WorldView {
       // A robot (bots/): never blood. Sparks, a crackle of electricity and a
       // few bright chips of steel instead.
       else if (e.targetKind === 'robot') this.robotHit(e);
+      // Hollow Wick's goat (critters.js): it bleeds; killed, a burst of blood
+      // and a soaked patch where it fell (its heap and its head: hollow-life.js).
+      else if (e.targetKind === 'goat') this.goatHit(e);
       else this.burst(e.x, e.z, e.type === 'kill' ? 34 : 9, e.type);
-      if (e.type === 'kill') {
+      if (e.type === 'kill' && e.targetKind === 'goat') this.shake = Math.max(this.shake, .08);
+      else if (e.type === 'kill') {
         this.shake = Math.max(this.shake, .1);
         // Shared geometry; each ring still needs its own material because they
         // fade on independent clocks.
@@ -1468,7 +1513,7 @@ export class WorldView {
     const now = this.effectTime ?? 0, key = e.id ?? '?', record = (this.bleeds ||= new Map()).get(key);
     const same = record && now - record.at < 1e-3, streak = record && now - record.at < BLEED.window ? record.streak + (same ? .1 : 1) : 0;
     this.bleeds.set(key, { streak, at: now });
-    let amount = Math.min(BLEED.max, 1 + streak * BLEED.step) * Math.max(.5, Math.min(1.6, (e.damage || 25) / 35));
+    let amount = Math.min(BLEED.max, 1 + streak * BLEED.step) * Math.max(.5, Math.min(1.6, (e.damage || 5) / 7)); // (25 / 35 at 500 health)
     if (e.blast) amount *= BLEED.blast;
     if(e.damageType?.startsWith('ichor'))amount*=2.5+(e.bloodLevel||0)*5.5;
     if(e.damageType?.startsWith('blade'))amount*=2.2;
@@ -1797,6 +1842,8 @@ export class WorldView {
     this.orbBeams?.update(fdt);
     if(!this.grenadeView)this.grenadeView=new GrenadeView(this);
     this.grenadeView.update(sim);
+    this.duelCircleView?.update(fdt, this.player.position);
+    this.stormView?.update(fdt, this.focus, this.qualityName);
     this.deathView?.update(fdt); this.remoteCorpses?.update(fdt); this.robotWrecks?.update(fdt); this.robotScrap?.update(fdt); this.surgeView?.update(fdt);
     if(sim.weapon==='static')this.updateStaticCrackle(elapsed);
     // Shared live endpoint keeps short-lived stream arcs attached during recoil and aiming.
@@ -1804,6 +1851,9 @@ export class WorldView {
     this.player.userData.gun.localToWorld(this.staticMuzzle);
     const cameraRate = this.motion ? 5.7 : 16;
     const cut = this.cameraCut; this.cameraCut = false;
+    // (A cut, a respawn: the shadows are redrawn for the new place this very
+    // frame, not up to a shadow tick later over the old one.)
+    if (cut) this.sun.shadow.needsUpdate = true;
     // (An open shed, the forge, the horse sheds, the woodshed, is a room like
     // any other for you inside it: the camera comes in and the shroud greys
     // what its walls hide (owner, stage 5 review; the stage 4 audit had them
@@ -1812,7 +1862,12 @@ export class WorldView {
     const scoped=scopeActive(sim),scopeAim=scopeFacing(p),scopeFrame=scoped?sightlineCamera(this.camera.aspect,scopeAim.x,scopeAim.z,sim.standY()):null;
     const cameraRoom = scoped?null:sim.interior, blend = cut ? 1 : 1 - Math.exp(-cameraRate * dt);
     // (Spectating a teammate, v0.999a: the camera follows them, not your fall.)
-    const deathCamera=this.deathView?.active&&!this.spectating?this.deathView.cameraFrame(this.camera.aspect):null;
+    // (1V1, competitive overhaul: your own fall is not slid aside, deathAside
+    // false; the killer's view zooms onto the body, `aftermath` { x, z, start }
+    // set by main.js for the round's break: killCamFrame.)
+    const after = this.aftermath;
+    if (after && after.fromX === undefined) { after.fromX = this.focus.x; after.fromZ = this.focus.z; after.fromHeight = this.cameraHeight || OUTDOOR_CAMERA_HEIGHT; }
+    const deathCamera=this.deathView?.active&&!this.spectating?this.deathView.cameraFrame(this.camera.aspect,this.deathAside!==false):after?killCamFrame(after,elapsed-after.start,this.killCam||={x:0,z:0,height:0}):null;
     // Online weapon pick: straight down on the pick spot from high above
     // (setPickView), before the death or room camera.
     const pick = this.pickCamera;
@@ -1917,6 +1972,15 @@ export class WorldView {
         roof.castsShadow=castsShadow;
       }
     }
+    // Dev first person (fps-mode.js; main.js sets fpsLook only while it is on):
+    // the camera at your eye, your own body hidden. Off again, the overhead lens back.
+    // (Placed after the roofs, which only read the player, so it sits apart from
+    // the camera line other work hooks onto.)
+    // (1V1's aftermath, the killer's camera on the body, stays overhead: competitive overhaul.)
+    const fpsView = !!this.fpsLook && !sim.player.dead && !this.deathView?.active && !this.spectating && !pick && !this.aftermath;
+    if (fpsView) { placeFpsCamera(this.camera, this.fpsLook, renderX, sim.standY?.() ?? this.gy(renderX, renderZ), renderZ); this.player.visible = false; }
+    else if (this.fpsWasOn) { this.camera.near = CAMERA_NEAR; this.camera.fov = fairFov(this.camera.aspect); this.camera.updateProjectionMatrix(); this.camera.updateMatrixWorld(); }
+    this.fpsWasOn = fpsView;
     // Practice targets not in the sim's list (multiplayer has none) stay hidden.
     if (sim.targets.length !== this.targets.size) for (const g of this.targets.values()) g.visible = false;
     for (const t of sim.targets) {

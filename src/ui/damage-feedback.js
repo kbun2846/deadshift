@@ -2,7 +2,7 @@ import { setText, setStyle } from './dom-writes.js';
 import { viewWidth, viewHeight } from '../viewport.js';
 const FEEDBACK_LIFE=3;
 export const DAMAGE_FEEDBACK_COLORS=Object.freeze(['#ff5365','#ef4056','#ff7180']);
-export const damageFeedbackSize=damage=>21+9*Math.min(1,Math.sqrt(Math.max(0,damage)/500));
+export const damageFeedbackSize=damage=>21+9*Math.min(1,Math.sqrt(Math.max(0,damage)/100));
 export const damageFeedbackScale=age=>1+.26*Math.exp(-Math.max(0,age)/.075)*Math.cos(Math.max(0,age)*26);
 // A tilt of 4-10 degrees either way; given the previous tilt, the new one
 // leans the other way so a re-pop reads as a change.

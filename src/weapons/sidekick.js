@@ -1,11 +1,12 @@
-import { SIDEKICK as S, TERRAIN } from '../config/gameplay.js';
+import { SIDEKICK as S, TERRAIN, hpRoll, hpRound } from '../config/gameplay.js';
 import { collidersAlong } from '../world/collider-grid.js';
 import { targetRadius } from '../target-radius.js';
 import { roundOnGround, roundMeets, roundSees } from './rifle.js';
 import { pistolSpread } from './sightline.js';
 import { cropCircle } from '../crops.js';
 export { S as SIDEKICK };
-const roll=(base,spread)=>base-spread+Math.floor(Math.random()*(spread*2+1));
+// ± spread in fifths of a point (gameplay.js hpRoll; whole points at 500 health).
+const roll=(base,spread)=>hpRoll(base,spread);
 export function resetSidekick(sim,keep=false){
  const old=sim.sidekick;
  sim.sidekick={ammo:S.magazine,offAmmo:0,reload:0,cooldown:0,trigger:false,aiming:false,active:0,summon:0,xCooldown:keep?old?.xCooldown||0:0,mineCooldown:keep?old?.mineCooldown||0:0,mineCharges:keep?(old?.mineCharges??S.mineLimit):S.mineLimit,hand:0,shotClock:0};
@@ -25,7 +26,7 @@ export function stepSidekickMobility(sim,input,dt){
  }
  sim.player.sidekick={active:s.active,summon:s.summon,reload:s.reload,hand:s.hand,shotClock:s.shotClock};
 }
-export const mineDamage=(distance,damage=S.mineDamage)=>distance>S.mineRadius?0:distance<=S.mineCore?damage:Math.round(damage*(1-.8*(distance-S.mineCore)/(S.mineRadius-S.mineCore)));
+export const mineDamage=(distance,damage=S.mineDamage)=>distance>S.mineRadius?0:distance<=S.mineCore?damage:hpRound(damage*(1-.8*(distance-S.mineCore)/(S.mineRadius-S.mineCore)));
 export function stepSidekickMines(sim,dt,segmentBox){
  if(sim.predictOnly)return;
  for(const mine of sim.sidekickMines){

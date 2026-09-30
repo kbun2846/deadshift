@@ -7,7 +7,7 @@
 // development flag stays). A link that still carries them (an old link, the
 // development tools' ?capture) works as before.
 export const GAME_KEYS = Object.freeze(['map', 'weapon', 'play', 'mode', 'duel', 'course']);
-const QUERY = 'deadshift.launchQuery', PENDING = 'deadshift.launch';
+const QUERY = 'deadstab.launchQuery', PENDING = 'deadstab.launch';
 let current = null;
 const store = (key, value) => { try { if (value === null) sessionStorage.removeItem(key); else sessionStorage.setItem(key, value); } catch { /* private mode: the query still rides this page */ } };
 const read = key => { try { return sessionStorage.getItem(key); } catch { return null; } };

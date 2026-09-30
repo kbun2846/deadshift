@@ -43,20 +43,20 @@ export const PROP_TYPES = Object.freeze({
   ...HOLLOW_TYPES, // (s2-props)
   ...DRESSING_TYPES, // s5-props: stocks, pillory, hitching rails, the bier, the rowboat... (world/hollow-dressing.js)
   ...HOLLOW_BREAKABLES, // s2-breakables: Hollow Wick's breakables
-  // Breakable scenery shares one low health so a single orb clears it on the way
+  // Breakable scenery shares one low health (1; 5 when players had 500) so a single orb clears it on the way
   // through. They are dressing and light cover, never a damage sponge that eats
   // a volley meant for something behind them.
-  barrel: { w: 1, d: 1, health: 5 }, crate: { w: 1.25, d: 1.25, health: 5 },
-  cactus: { w: 1.5, d: .55, health: 5 }, sign: { w: 2.2, d: .4, health: 5 },
-  deadwood: { w: 1.2, d: .7, health: 5 },
+  barrel: { w: 1, d: 1, health: 1 }, crate: { w: 1.25, d: 1.25, health: 1 },
+  cactus: { w: 1.5, d: .55, health: 1 }, sign: { w: 2.2, d: .4, health: 1 },
+  deadwood: { w: 1.2, d: .7, health: 1 },
   // Ankle-height floor clutter. Breakable and shootable like the rest, but
   // `walkOver` keeps it out of the movement solver: a pot that snags the player
   // in a two-metre gap between a counter and a wall is a bug, not detail. A
   // dash still takes them, and a stray round still finds them.
-  pot: { w: .52, d: .52, health: 5, walkOver: true },
-  pottedPlant: { w: .58, d: .58, health: 5, walkOver: true },
-  brokenChair: { w: .78, d: .78, health: 5, walkOver: true },
-  hay: { w: 1.6, d: 1.25, health: 5 }, well: { w: 2, d: 2, health: null },
+  pot: { w: .52, d: .52, health: 1, walkOver: true },
+  pottedPlant: { w: .58, d: .58, health: 1, walkOver: true },
+  brokenChair: { w: .78, d: .78, health: 1, walkOver: true },
+  hay: { w: 1.6, d: 1.25, health: 1 }, well: { w: 2, d: 2, health: null },
   tower: { w: 3.2, d: 3.2, health: null }, cart: { w: 2.5, d: 1.5, health: null },
   brokenWagon: { w: 3.5, d: 2.2, health: null }, windmill: { w: 2.6, d: 2.6, health: null }, trough: { w: 2.8, d: 1, health: null },
   cistern: { w: 4.2, d: 4.2, health: null }, ruinedArch: { w: 4, d: 1.3, health: null, collisionBoxes: [[-1.4,0,.88,1.15],[1.4,0,.88,1.15]] }, telegraph: { w: .4, d: .4, health: null },

@@ -10,7 +10,7 @@ import { DEV_OPTIONS, buildDevOptions, refill } from './dev-options.js';
 import { viewWidth, viewHeight } from '../viewport.js';
 export { refill };
 
-export const DEV_WINDOW_KEY = 'deadshift-dev-window';
+export const DEV_WINDOW_KEY = 'deadstab-dev-window';
 // The switches, as [key, label] pairs (kept for anything that lists them).
 export const DEV_TOGGLES = Object.freeze(DEV_OPTIONS.filter(o => o.kind === 'toggle').map(o => [o.key, o.label]));
 export const DEV_SELECTS = Object.freeze(DEV_OPTIONS.filter(o => o.kind === 'select' && o.options));

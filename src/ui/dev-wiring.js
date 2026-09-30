@@ -16,6 +16,7 @@ import { createDevUnlockDialog } from './dev-unlock-dialog.js';
 import { weaponFromChoice } from './weapon-grid.js';
 import { weapon as weaponInfo } from '../items.js';
 import { workMaps } from '../maps.js';
+import { setMaintenanceLifted } from '../weapon-maintenance.js';
 
 export function installDevWiring(ctx) {
  const { $, sim, view, bots, toast } = ctx;
@@ -27,6 +28,7 @@ export function installDevWiring(ctx) {
  }
  function showDevEntry(unlocked) {
   $('dev-open').hidden = !unlocked;
+  document.body.classList.toggle('dev-unlocked', !!unlocked);
   if (!unlocked) closeDevPanel();
  }
  function devChanged() {
@@ -34,6 +36,7 @@ export function installDevWiring(ctx) {
   else sim.syncTargetHealth();
   ctx.changed();
   document.body.classList.toggle('dev-hide-hud', !!sim.dev.hideHud);
+  setMaintenanceLifted(!!sim.dev.maintenanceOff);
   devTools.sync(); devWindow.sync();
  }
  const robotsAllowed = () => {
@@ -43,7 +46,7 @@ export function installDevWiring(ctx) {
  };
  const hooks = {
   spawnBird: () => { const name = spawnBird(); if (name) toast('BIRD · ' + String(name).toUpperCase()); },
-  hurt: () => sim.damagePlayer(50, 'dev', false, false, null, 'gunshot'),
+  hurt: () => sim.damagePlayer(10, 'dev', false, false, null, 'gunshot'),
   kill: () => sim.damagePlayer(sim.player.hp, 'dev', false, false, null, 'gunshot'),
   respawnTargets: () => toast(sim.respawnTargets() + ' TARGETS BACK'),
   restoreProps: () => toast(sim.restoreAllProps() + ' PROPS REBUILT'),

@@ -26,7 +26,7 @@ export const tutorialMap = {
  id: 'tutorial', name: 'Training Range', width: 32, depth: 28, training: true, spawn: { x: 0, z: 6 },
  palette: { ground: '#756750', road: '#756750' }, look: { warmth: .15 }, scenerySeed: 12, buildings: [], props: TUTORIAL_CRATES, crops: [], zones: [],
  fences: [{ x: 0, z: -14, length: 32, axis: 'x' }, { x: 0, z: 14, length: 32, axis: 'x' }, { x: -16, z: 0, length: 28, axis: 'z' }, { x: 16, z: 0, length: 28, axis: 'z' }],
- // The course keeps its own, lighter targets (practice's are 250 / 300 hp).
+ // The course keeps its own, lighter targets (practice's are 50 / 60 hp).
  targets: [-9, -4.5, 0, 4.5, 9].map((x, i) => ({ id: 'training-' + i, x, z: -5, kind: i % 2 ? 'dummy' : 'target', maxHp: i % 2 ? TUTORIAL_TARGET_HEALTH.dummy : TUTORIAL_TARGET_HEALTH.target })),
 };
 export function tutorialMapFor(weapon) {

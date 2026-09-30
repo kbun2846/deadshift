@@ -35,9 +35,14 @@
 //
 // Solid parts (the pen's hurdles, the washing posts) are props like any
 // other: health null, colliders with honest heights, merged into the static
-// batches (world-build.js makeProp hands them here). The goat, the linens and
-// the effigies are cosmetic: nothing collides with them or hurts them.
+// batches (world-build.js makeProp hands them here). The linens and the
+// effigies are cosmetic: nothing collides with them or hurts them. The goat
+// can be killed (critters.js): the simulation steps its mind, and the view
+// draws that mind (goatSource), its gore and its falling head.
 import * as THREE from 'three';
+import { GoatMind, GOAT, PEN_INSIDE } from './goat-mind.js';
+import { carcassPile, disposeMerged, GORE_DETAIL } from '../effects/gore.js';
+export { GoatMind, GOAT, PEN_INSIDE };
 
 // Collision boxes are [x, z, w, d, height] in the prop's own frame. The pen:
 // four wattle hurdles, 0.95 m (low cover); between their inner faces it is
@@ -45,12 +50,13 @@ import * as THREE from 'three';
 // ever spawned in it (net/map-spawns.js spawnProblem). The washing line: its
 // two posts (the line and the linens are walked under). An effigy: nothing.
 export const LIFE_TYPES = Object.freeze({
- goatPen: { w: 3.6, d: 2.5, health: null, collisionBoxes: [[0, -1.05, 3.4, .2, .95], [0, 1.05, 3.4, .2, .95], [-1.6, 0, .2, 1.9, .95], [1.6, 0, .2, 1.9, .95]] },
+ // (`screen`: the hurdles stop bodies, not shots or blades: the goat can be
+ // killed over and through them, owner 2026-09-29; critters.js.)
+ goatPen: { w: 3.6, d: 2.5, health: null, screen: true, collisionBoxes: [[0, -1.05, 3.4, .2, .95], [0, 1.05, 3.4, .2, .95], [-1.6, 0, .2, 1.9, .95], [1.6, 0, .2, 1.9, .95]] },
  laundryLine: { w: 3.5, d: .6, health: null, collisionBoxes: [[-1.6, 0, .16, .16, 1.95], [1.6, 0, .16, .16, 1.95]] },
  effigy: { w: .7, d: .7, health: null, collisionBoxes: [] },
 });
-// The pen's inside (between the hurdles' inner faces), half extents.
-export const PEN_INSIDE = Object.freeze({ hx: 1.5, hz: .95 });
+// The pen's inside (between the hurdles' inner faces), half extents: PEN_INSIDE (goat-mind.js).
 
 // Which mesh a moving piece joins: the nearest of these (x, z).
 export const LIFE_REGIONS = Object.freeze({ town: [34, -24], farm: [-44, 36], woods: [4, -53] });
@@ -138,144 +144,8 @@ function shift(m, v, k) {
  for (let i = 0; i < 4; i++) e[12 + i] += e[i] * x + e[4 + i] * y + e[8 + i] * z;
 }
 
-// ---------------------------------------------------------------------------
-// The goat's mind (pure: no three.js). Pen-local metres (x along the pen, z
-// across it), heading in radians (0 faces +z; forward is (sin h, cos h)).
-// Out: where it stands and faces, the neck's turn and bend, the head's bend,
-// the ears, the tail, the legs' stride and how much it is moving.
-export const GOAT = Object.freeze({
- notice: 14,       // m: a player this near is stared at
- forget: 16,       // m: ...until they are this far (for 1.5 s)
- bodyTurn: 1.3,    // rad/s the body turns
- neckTurn: 2.6,    // rad/s the neck turns
- bend: 2.2,        // rad/s the neck and head bend
- walk: .3,         // m/s
- reach: 1.1,       // rad: how far the neck turns from the body
- front: .64, back: .46, half: .27, // its footprint about its centre: the nose, the tail, the horns' spread
- margin: .05,      // m kept from the hurdles
-});
-// Pose targets per state: [neck bend (down +), head bend (down +)].
-const BEND = { graze: [1.8, -.3], look: [-.1, .15], step: [.35, .2], stare: [-.22, .05] };
-
-export class GoatMind {
- constructor(seed = 1, inside = PEN_INSIDE) {
-  this.random = seededRandom(seed * 7919 + 13);
-  // The nearest player (pen-local) and how far (Infinity: nobody); set
-  // before each step (see `step`).
-  this.player = { x: 0, z: 0, d: Infinity };
-  this.hx = inside.hx - GOAT.margin; this.hz = inside.hz - GOAT.margin;
-  this.x = (this.random() - .5) * .4; this.z = 0; this.heading = Math.PI / 2 + (this.random() - .5) * .6;
-  this.neckYaw = 0; this.neckBend = BEND.graze[0]; this.headBend = BEND.graze[1];
-  this.earL = 0; this.earR = 0; this.perk = 0; this.tail = 0; this.stride = 0; this.moving = 0; this.chew = 0;
-  this.state = 'graze'; this.timer = 3 + this.random() * 4; this.lookYaw = 0; this.lookTimer = 0;
-  this.tx = 0; this.tz = 0; this.stareFor = 0; this.lost = 0;
-  this.earTimer = 1 + this.random() * 3; this.earFlick = 0; this.earSide = 1;
-  this.tailTimer = 2 + this.random() * 4; this.tailFlick = 0;
-  this.fit();
- }
- // The allowed range of its centre for its heading, so no part of it (the
- // horns, the tail) pokes through a hurdle; it is moved into it (a shuffle
- // of the feet as it turns).
- fit() {
-  const s = Math.sin(this.heading), c = Math.cos(this.heading), f0 = GOAT.front, f1 = -GOAT.back, w = GOAT.half;
-  // The footprint's four corners about its centre: the extremes in x and z.
-  const ax = Math.abs(w * c), az = Math.abs(w * s);
-  const x0 = Math.min(f0 * s, f1 * s) - ax, x1 = Math.max(f0 * s, f1 * s) + ax, z0 = Math.min(f0 * c, f1 * c) - az, z1 = Math.max(f0 * c, f1 * c) + az;
-  const lo = -this.hx - x0, hi = this.hx - x1, loZ = -this.hz - z0, hiZ = this.hz - z1;
-  this.x = lo > hi ? (lo + hi) / 2 : clamp(this.x, lo, hi); this.z = loZ > hiZ ? (loZ + hiZ) / 2 : clamp(this.z, loZ, hiZ);
- }
- // The footprint's corners now (pen-local), for the tests.
- corners() {
-  const s = Math.sin(this.heading), c = Math.cos(this.heading), out = [];
-  for (const f of [GOAT.front, -GOAT.back]) for (const w of [GOAT.half, -GOAT.half]) out.push([this.x + f * s + w * c, this.z + f * c - w * s]);
-  return out;
- }
- next(state) {
-  const r = this.random;
-  this.state = state;
-  if (state === 'graze') this.timer = 4 + r() * 6;
-  else if (state === 'look') { this.timer = 2.5 + r() * 3; this.lookTimer = 0; }
-  else if (state === 'step') {
-   // A step or two to somewhere else in the pen.
-   this.timer = 5;
-   for (let k = 0; k < 8; k++) {
-    const a = r() * Math.PI * 2, d = .35 + r() * .55, x = this.x + Math.sin(a) * d, z = this.z + Math.cos(a) * d;
-    if (Math.abs(x) < this.hx - GOAT.front && Math.abs(z) < Math.max(.05, this.hz - GOAT.front)) { this.tx = x; this.tz = z; return; }
-   }
-   this.tx = (r() - .5) * (this.hx - GOAT.front) * 2; this.tz = 0;
-  }
- }
- // One step of clock.dt s, the nearest player in this.player. (Time and the
- // player come in objects, not as number arguments, so a frame boxes no
- // numbers: nothing is allocated.)
- step(clock) {
-  const r = this.random, dt = clock.dt, px = this.player.x, pz = this.player.z, near = this.player.d;
-  if (near <= GOAT.notice) { if (this.state !== 'stare') { this.state = 'stare'; this.stareFor = 0; } this.lost = 0; }
-  else if (this.state === 'stare') {
-   this.lost = near > GOAT.forget ? this.lost + dt : 0;
-   if (this.lost > 1.5) this.next('look');
-  }
-  let turn = 0, mx = 0, mz = 0, yaw = this.neckYaw;
-  if (this.state === 'stare') {
-   // The head first; the body follows once it has looked a moment.
-   this.stareFor += dt;
-   if (this.stareFor > .9) turn = wrap(Math.atan2(px - this.x, pz - this.z) - this.heading);
-  } else {
-   this.timer -= dt;
-   if (this.state === 'graze') {
-    this.lookTimer -= dt;
-    if (this.lookTimer <= 0) { this.lookYaw = (r() - .5) * .8; this.lookTimer = 1.5 + r() * 2.5; }
-    yaw = this.lookYaw;
-    if (this.timer <= 0) this.next(r() < .6 ? 'look' : 'step');
-   } else if (this.state === 'look') {
-    this.lookTimer -= dt;
-    if (this.lookTimer <= 0) { this.lookYaw = (r() - .5) * 2; this.lookTimer = .7 + r() * 1.6; }
-    yaw = this.lookYaw;
-    if (this.timer <= 0) this.next(r() < .65 ? 'graze' : 'step');
-   } else if (this.state === 'step') {
-    const dx = this.tx - this.x, dz = this.tz - this.z, d = Math.sqrt(dx * dx + dz * dz);
-    yaw = 0;
-    if (d < .03 || this.timer <= 0) this.next(r() < .7 ? 'graze' : 'look');
-    else {
-     turn = wrap(Math.atan2(dx, dz) - this.heading);
-     if (Math.abs(turn) < .6) { const v = Math.min(GOAT.walk * dt, d); mx = dx / d * v; mz = dz / d * v; }
-    }
-   }
-  }
-  const dh = clamp(turn, -GOAT.bodyTurn * dt, GOAT.bodyTurn * dt);
-  this.heading = wrap(this.heading + dh);
-  const x0 = this.x, z0 = this.z;
-  this.x += mx; this.z += mz;
-  this.fit();
-  // Legs: the stride runs with how far the feet moved (walking, turning on
-  // the spot, a shuffle to fit).
-  const travel = Math.sqrt((this.x - x0) ** 2 + (this.z - z0) ** 2) + Math.abs(dh) * .22;
-  this.stride += travel * 11;
-  this.moving = approach(this.moving, travel > 1e-4 ? 1 : 0, dt * 5);
-  // The neck: at a stare it keeps the player in view while the body turns under it.
-  if (this.state === 'stare') yaw = clamp(wrap(Math.atan2(px - this.x, pz - this.z) - this.heading), -GOAT.reach, GOAT.reach);
-  this.neckYaw = approach(this.neckYaw, yaw, GOAT.neckTurn * dt);
-  const bend = BEND[this.state], neck = bend[0], head = bend[1];
-  // Grazing: the head jerks a little as it pulls at the straw, and chews.
-  this.chew += dt;
-  const pull = this.state === 'graze' ? .07 * Math.max(0, Math.sin(this.chew * 2.3)) ** 6 + .03 * Math.sin(this.chew * 9) : 0;
-  this.neckBend = approach(this.neckBend, neck, GOAT.bend * dt);
-  this.headBend = approach(this.headBend, head - pull, GOAT.bend * dt);
-  // Ears: a flick now and then (a quick double twitch of one ear); pricked
-  // forward while it stares. The tail: a flick or two, still while it stares.
-  this.perk = approach(this.perk, this.state === 'stare' ? 1 : 0, dt * 3);
-  this.earTimer -= dt;
-  if (this.earTimer <= 0) { this.earSide = r() < .5 ? -1 : 1; this.earFlick = .4; this.earTimer = (this.state === 'stare' ? 5 : 2.2) + r() * 5; }
-  const ear = this.earFlick > 0 ? Math.sin((1 - this.earFlick / .4) * Math.PI * 2) ** 2 : 0;
-  this.earFlick = Math.max(0, this.earFlick - dt);
-  this.earL = this.earSide < 0 ? ear : 0; this.earR = this.earSide > 0 ? ear : 0;
-  // (The tail: a quick wag side to side, dying away, -1..1.)
-  this.tailTimer -= dt;
-  if (this.tailTimer <= 0) { if (this.state !== 'stare') this.tailFlick = .6; this.tailTimer = 3 + r() * 6; }
-  this.tail = this.tailFlick > 0 ? Math.sin((1 - this.tailFlick / .6) * Math.PI * 4) * (this.tailFlick / .6) : 0;
-  this.tailFlick = Math.max(0, this.tailFlick - dt);
- }
-}
+// The goat's mind (GoatMind, GOAT): world/goat-mind.js (pure; the
+// simulation steps it too: critters.js).
 
 // ---------------------------------------------------------------------------
 // Swinging things (pure): a loose shutter on one hinge and the tavern's sign.
@@ -612,8 +482,13 @@ function goatPen(view, p, g) {
 // Ten rigid parts in its region's one mesh: body, neck, head (with horns,
 // beard and eyes), two ears, tail, four legs.
 function goat(view, p, f, seed) {
- const mind = new GoatMind(seed), life = lifeOf(view);
- life.goats.push({ mind, prop: p });
+ // Its mind: the world's (critters.js, SOLO and the host: the simulation
+ // steps it and can kill it), else this view's own (a joiner, placed where
+ // the host's is; the menus). `index`: this pen's place among the map's pens
+ // (the host's state is in that order).
+ const own = new GoatMind(seed), life = lifeOf(view), index = life.goats.length;
+ let mind = own;
+ life.goats.push({ get mind() { return mind; }, prop: p });
  // Body frame: origin on the ground under its middle, +z forward.
  const body = new Shape()
   .box(0, .64, -.03, .34, .3, .76, C.coat)
@@ -657,19 +532,35 @@ function goat(view, p, f, seed) {
  // withers, the head at the neck's top, the ears, the tail, the hips):
  // nothing is allocated per frame.
  const v = new Float64Array(17), OFFSET = new Float64Array([...NECK, 0, AX[1] * LEN, AX[2] * LEN, ...earPivot[0], ...earPivot[1], 0, .76, -.44, ...HIPS.flat()]);
- const look = { gx: 0, gz: 0 }, seen = mind.player;
+ const look = { gx: 0, gz: 0 }, seen = own.player;
  const consider = q => {
   const dx = q.x - look.gx, dz = q.z - look.gz, d = Math.sqrt(dx * dx + dz * dz);
   if (d < seen.d) { seen.d = d; const ox = q.x - p.x, oz = q.z - p.z; seen.x = ox * f.c - oz * f.s; seen.z = ox * f.s + oz * f.c; }
  };
  const avatar = a => { if (a.root?.visible && a.root.parent) consider(a.root.position); };
+ // Dead: the ears hang limp off the fallen head.
+ const LIMP = new Float64Array([.15, 1.2, -.15, -1.2]);
+ const death = goatDeath(view, p, f, seed, ms => {
+  ms[3].copy(ms[2]); shift(ms[3], OFFSET, 6); turnY(ms[3], LIMP, 0); turnZ(ms[3], LIMP, 1);
+  ms[4].copy(ms[2]); shift(ms[4], OFFSET, 9); turnY(ms[4], LIMP, 2); turnZ(ms[4], LIMP, 3);
+ });
  const pose = (clock, ms) => {
-  // The nearest player it can see (you, and every other body the view draws), pen-local.
-  seen.d = Infinity; look.gx = p.x + mind.x * f.c + mind.z * f.s; look.gz = p.z - mind.x * f.s + mind.z * f.c;
-  const me = view.player;
-  if (me && me.visible !== false) consider(me.position);
-  view.remote?.avatars?.forEach(avatar);
-  mind.step(clock);
+  const shared = view.critters?.goats?.find(g => g.penId === p.id) || null, wire = shared ? null : view.critterState?.[index] || null;
+  mind = shared ? shared.mind : own;
+  // Dead (killed here, or the host says so): its gore and its falling head.
+  if (shared ? shared.dead : !!wire?.[3]) { death.pose(clock, ms, mind); return; }
+  if (death.started) death.clear();
+  if (!shared) {
+   // The nearest player it can see (you, and every other body the view draws), pen-local.
+   seen.d = Infinity; look.gx = p.x + own.x * f.c + own.z * f.s; look.gz = p.z - own.x * f.s + own.z * f.c;
+   const me = view.player;
+   if (me && me.visible !== false) consider(me.position);
+   view.remote?.avatars?.forEach(avatar);
+   // (A joiner: where the host's goat stands and faces; the neck, ears and
+   // tail are its own.)
+   if (wire) { const ox = wire[0] - p.x, oz = wire[1] - p.z; own.x = ox * f.c - oz * f.s; own.z = ox * f.s + oz * f.c; own.heading = wire[2] - (p.angle || 0); }
+   own.step(clock);
+  }
   // The frame's numbers in `v` (see turnX...): where it stands, a breath and
   // a bob as it walks, how it faces, the neck, the head, ears, tail, legs.
   v[0] = mind.x; v[1] = .006 * Math.sin(clock.t * 1.7 + seed) + .018 * mind.moving * Math.abs(Math.sin(mind.stride)); v[2] = mind.z;
@@ -685,6 +576,7 @@ function goat(view, p, f, seed) {
   // Ears: hanging down and out; a flick lifts one; pricked forward at a stare.
   ms[3].copy(ms[2]); shift(ms[3], OFFSET, 6); turnY(ms[3], v, 7); turnZ(ms[3], v, 8);
   ms[4].copy(ms[2]); shift(ms[4], OFFSET, 9); turnY(ms[4], v, 9); turnZ(ms[4], v, 10);
+  death.alive = clock.t;
   // Tail: up at the rump, wagged.
   ms[5].copy(body); shift(ms[5], OFFSET, 12); turnX(ms[5], v, 11); turnZ(ms[5], v, 12);
   // Legs: diagonal pairs swing together as it walks or turns.
@@ -692,6 +584,64 @@ function goat(view, p, f, seed) {
  };
  const centre = new THREE.Vector3(p.x, f.base + .6, p.z);
  life.region(p.x, p.z).add(new Rig(parts, pose, centre, 2.2));
+}
+
+// The goat's death (critters.js; owner, 2026-09-29: "give the goat that
+// lives in hollow wick gore and make its head drop in the pile of gore when
+// its killed"): where it stood, a heap of torn hide, flesh, ribs and a leg in
+// a soaked pool (effects/gore.js carcassPile: one draw in the gore's own
+// material, nothing new to compile); the rest of its body gone into it, and
+// its head, horns and all, thrown up off its neck, turning over, and dropping
+// onto the heap, where it lies on its side. (The blood, the spray and the
+// shake are the renderer's, from the kill: renderer.js goatKilled.) Seen
+// dead from the start (a joiner arriving late, the region off screen when it
+// fell): the head already lies there.
+const GOAT_FALL = Object.freeze({ time: .62, hop: .38, bounce: .07, bounceTime: .2, rest: .17, ahead: .14, roll: 1.38, turn: .7, tumble: 2.4 });
+function goatDeath(view, p, f, seed, ears) {
+ const q0 = new THREE.Quaternion(), q1 = new THREE.Quaternion(), q = new THREE.Quaternion(), tumble = new THREE.Quaternion();
+ const p0 = new THREE.Vector3(), p1 = new THREE.Vector3(), at = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), scratch = new THREE.Vector3();
+ const euler = new THREE.Euler(0, 0, 0, 'YZX'), axis = new THREE.Vector3(1, 0, 0);
+ const pile = new THREE.Vector3();
+ const state = {
+  started: false, alive: -Infinity, since: 0, group: null,
+  start(clock, ms, mind) {
+   state.started = true;
+   const [x, z] = f.world(mind.x, mind.z), y = view.gy ? view.gy(x, z) : f.base, yaw = (p.angle || 0) + mind.heading;
+   pile.set(x, y, z);
+   // Seen alive just now: the head flies from its neck; else it already lies there.
+   const fresh = clock.t - state.alive < .5;
+   state.since = fresh ? clock.t : clock.t - 10;
+   if (fresh) ms[2].decompose(p0, q0, scratch); else { p0.set(x, y + .8, z); q0.setFromEuler(euler.set(0, yaw, 0)); }
+   const headYaw = Math.atan2(2 * (q0.w * q0.y + q0.x * q0.z), 1 - 2 * (q0.y * q0.y + q0.x * q0.x));
+   p1.set(x + Math.sin(yaw) * GOAT_FALL.ahead, y + GOAT_FALL.rest, z + Math.cos(yaw) * GOAT_FALL.ahead);
+   q1.setFromEuler(euler.set(headYaw + GOAT_FALL.turn, 0, GOAT_FALL.roll));
+   const detail = GORE_DETAIL[view.qualityName] ?? 2;
+   const group = state.group = carcassPile({ detail, random: seededRandom(seed * 31 + 7) });
+   group.position.copy(pile); group.rotation.y = yaw; group.userData.goatGore = true;
+   view.scene?.add(group);
+  },
+  pose(clock, ms, mind) {
+   if (!state.started) state.start(clock, ms, mind);
+   const t = clock.t - state.since, fall = GOAT_FALL;
+   // The rest of it: gone into the heap.
+   for (const k of [0, 1, 5, 6, 7, 8, 9]) { const e = ms[k].makeScale(0, 0, 0).elements; e[12] = pile.x; e[13] = pile.y; e[14] = pile.z; }
+   // The head: up, over and down onto the heap, a little bounce, still.
+   const s = Math.min(1, t / fall.time), ease = s * s * (3 - 2 * s);
+   at.lerpVectors(p0, p1, s);
+   at.y = p0.y + (p1.y - p0.y) * s * s + fall.hop * 4 * s * (1 - s);
+   if (t > fall.time && t < fall.time + fall.bounceTime) at.y = p1.y + fall.bounce * Math.sin(Math.PI * (t - fall.time) / fall.bounceTime);
+   q.slerpQuaternions(q0, q1, ease);
+   tumble.setFromAxisAngle(axis, fall.tumble * Math.sin(Math.PI * s) * (1 - s));
+   q.multiply(tumble);
+   ms[2].compose(at, q, one);
+   ears(ms);
+  },
+  clear() {
+   state.started = false;
+   if (state.group) { state.group.removeFromParent(); disposeMerged(state.group); state.group = null; }
+  },
+ };
+ return state;
 }
 
 // The washing line: two posts with a fork at the top, the line sagging

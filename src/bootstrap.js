@@ -1,6 +1,7 @@
 import { installButtonTypography } from './ui/button-typography.js';
 import { fitSvgWords, watchSvgWords } from './ui/svg-fit.js';
 import { rememberWheel } from './ui/busy-screen.js';
+import { migrateGameStorage } from './storage-migration.js';
 
 const game=document.getElementById('game');
 const loading=document.getElementById('loading-screen');
@@ -36,6 +37,8 @@ async function boot(){
   // good, its menu dead underneath. Nothing here may wait for ever: the shader
   // warm-up is given READY_WAIT at most, the fonts FONT_WAIT; past them the
   // game opens and whatever is unfinished finishes as it is first drawn.)
+  // (Saves under the game's old names carried across before anything reads them: storage-migration.js.)
+  for(const kind of ['localStorage','sessionStorage']){try{migrateGameStorage(globalThis[kind]);}catch{}}
   const [app]=await Promise.all([import('./main.js'),minimumSplash]);
   await Promise.race([app.ready,wait(READY_WAIT)]);
   await Promise.race([document.fonts.ready,wait(FONT_WAIT)]);
@@ -46,7 +49,7 @@ async function boot(){
   app.finishLoading();
   await reveal();
  }catch(error){
-  console.error('Deadshift startup failed:',error);
+  console.error('Deadstab startup failed:',error);
   const message=document.getElementById('error-message');
   if(!message.textContent)message.textContent='The game could not finish loading. Reload the page to try again.';
   document.getElementById('error').classList.remove('hidden');

@@ -41,9 +41,9 @@ const speeds = [['1', '1×'], ['2', '2×'], ['4', '4×']];
 const timeScales = [['0.25', '¼×'], ['0.5', '½×'], ['1', '1×'], ['2', '2×']];
 const multipliers = [['0.5', '½×'], ['1', '1×'], ['2', '2×'], ['4', '4×']];
 const takenScales = [['0', 'None'], ['0.5', '½×'], ['1', '1×'], ['2', '2×']];
-const healths = [['500', '500'], ['1000', '1000'], ['2000', '2000'], ['100', '100']];
-const robotHealths = [['500', '500 (normal)'], ['100', '100'], ['250', '250'], ['1000', '1000']];
-const targetHealths = [['0', 'Normal (per target)'], ['100', '100'], ['250', '250'], ['500', '500'], ['1000', '1000']];
+const healths = [['100', '100'], ['200', '200'], ['400', '400'], ['20', '20']];
+const robotHealths = [['100', '100 (normal)'], ['20', '20'], ['50', '50'], ['200', '200']];
+const targetHealths = [['0', 'Normal (per target)'], ['20', '20'], ['50', '50'], ['100', '100'], ['200', '200']];
 const orbCounts = Array.from({ length: 11 }, (_, i) => [String(i + 2), (i + 2) + ' orbs']);
 
 export const DEV_OPTIONS = Object.freeze([
@@ -55,6 +55,10 @@ export const DEV_OPTIONS = Object.freeze([
   { section: 'general', kind: 'toggle', key: 'stamina', label: 'Unlimited dodge', bulk: true },
   { section: 'general', kind: 'toggle', key: 'cooldowns', label: 'No ability cooldowns', bulk: true, quick: true },
   { section: 'general', kind: 'toggle', key: 'noKnockback', label: 'No knockback or launch' },
+  // Owner, 2026-09-29: "make a disable maintenance option in dev tools" (weapon-maintenance.js).
+  { section: 'general', kind: 'toggle', key: 'maintenanceOff', label: 'Lift weapon maintenance' },
+  // The storm (storm.js), SOLO: off from the next round (online: the host's storm setting).
+  { section: 'general', kind: 'toggle', key: 'noStorm', label: 'Storm off (SOLO)' },
   { section: 'general', kind: 'action', key: 'everything', label: 'Unlimited everything', button: 'On', quick: true },
   { section: 'general', kind: 'action', key: 'resetDev', label: 'All settings back to normal', button: 'Reset' },
   { section: 'general', kind: 'select', key: 'damageOut', label: 'Damage dealt', options: multipliers, fallback: 1 },
@@ -66,11 +70,11 @@ export const DEV_OPTIONS = Object.freeze([
   // a slight blue, is picked here: render/player-skin.js.)
   { section: 'player', kind: 'select', key: 'playerSkin', label: 'Player skin', options: [['0', 'Cowboy'], ['1', 'White figure'], ['2', 'Blue figure']], fallback: 0 },
   { section: 'player', kind: 'select', key: 'damageIn', label: 'Damage taken', options: takenScales, fallback: 1 },
-  { section: 'player', kind: 'select', key: 'maxHealth', label: 'Max health', options: healths, fallback: 500 },
+  { section: 'player', kind: 'select', key: 'maxHealth', label: 'Max health', options: healths, fallback: 100 },
   { section: 'player', kind: 'action', key: 'randomSpot', label: 'Move to a random spot', button: 'Move' },
   { section: 'player', kind: 'toggle', key: 'regen', label: 'Regenerate health' },
   { section: 'player', kind: 'action', key: 'refill', label: 'Restore health / ammo', button: 'Restore', quick: true },
-  { section: 'player', kind: 'action', key: 'hurt', label: 'Take 50 damage', button: 'Hurt' },
+  { section: 'player', kind: 'action', key: 'hurt', label: 'Take 10 damage', button: 'Hurt' },
   { section: 'player', kind: 'action', key: 'kill', label: 'Die now', button: 'Die' },
 
   { weapon: 'static', kind: 'toggle', key: 'orbs', label: 'Unlimited floating orbs', bulk: true },
@@ -115,7 +119,7 @@ export const DEV_OPTIONS = Object.freeze([
   { section: 'robots', kind: 'select', key: 'robotStyle', label: 'Robot style', options: [['0', 'Random'], ['1', 'Balanced'], ['2', 'Rusher'], ['3', 'Marksman'], ['4', 'Flanker'], ['5', 'Cautious'], ['6', 'Blend']], fallback: 6 },
   { section: 'robots', kind: 'select', key: 'robotTemper', label: 'Robot temper', options: [['0', 'None (steady)'], ['1', 'Calm'], ['2', 'Shifting'], ['3', 'Aggressive']], fallback: 2 },
   { section: 'robots', kind: 'select', key: 'robotCount', label: 'Robots per spawn', options: [['1', '1'], ['2', '2'], ['3', '3'], ['6', '6']], fallback: 1 },
-  { section: 'robots', kind: 'select', key: 'robotHealth', label: 'Robot health', options: robotHealths, fallback: 500 },
+  { section: 'robots', kind: 'select', key: 'robotHealth', label: 'Robot health', options: robotHealths, fallback: 100 },
   { section: 'robots', kind: 'select', key: 'robotAim', label: 'Robot aim', options: [['1', 'As its skill'], ['0.6', 'Sharper'], ['1.6', 'Sloppier']], fallback: 1 },
   { section: 'robots', kind: 'toggle', key: 'robotPassive', label: 'Robots ignore me' },
   { section: 'robots', kind: 'toggle', key: 'robotHoldFire', label: 'Robots hold fire' },
@@ -131,6 +135,8 @@ export const DEV_OPTIONS = Object.freeze([
 
   { section: 'display', kind: 'select', key: 'quality', label: 'Graphics preset', where: 'window' },
   { section: 'display', kind: 'toggle', key: 'hideHud', label: 'Hide HUD' },
+  // Prototype first-person view, keyboard and mouse (fps-mode.js).
+  { section: 'display', kind: 'toggle', key: 'fps', label: 'First-person view' },
 ]);
 
 export const optionsFor = where => DEV_OPTIONS.filter(o => !o.where || o.where === where);

@@ -1,6 +1,6 @@
 {
-  "name": "Deadshift",
-  "short_name": "Deadshift",
+  "name": "Deadstab",
+  "short_name": "Deadstab",
   "description": "A minimalist top-down shooter with distinct weapons, explosive combat and online multiplayer.",
   "start_url": "./",
   "scope": "./",

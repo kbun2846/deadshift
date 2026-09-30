@@ -1,4 +1,7 @@
 import {damageFeedbackSize,damageFeedbackScale,damageFeedbackTilt} from './damage-feedback.js';
+// The numbers on who you hit, bigger than the ones on you (owner, 2026-09-29:
+// "make the damage dealt popups bigger"): 21-30 px there, about 29-42 here.
+export const OUTGOING_SCALE=1.4;
 import { setText, setStyle } from './dom-writes.js';
 const ADDITION_LIFE=1.2;
 // Catch up to the latest hit position on a readable beat, not on every pellet
@@ -55,7 +58,7 @@ export function createOutgoingFeedback(parent){
    setStyle(i.addition,'opacity',Math.max(0,Math.min(1,(ADDITION_LIFE-sinceHit)/.3)));
    setStyle(i.addition,'display',i.added>0&&sinceHit<ADDITION_LIFE?'flex':'none');
    const point=view.screenPoint(i.x,i.z,1.3);setStyle(i.node,'display',sim.canSeeEntity(i.x,i.z,.2)?'':'none');setText(i.total,format(i.damage));
-   setStyle(i.node,'color',i.maxHp>0&&i.hp<i.maxHp*.25?'#84edb0':'#80caff');setStyle(i.node,'fontSize',damageFeedbackSize(i.damage)+'px');
+   setStyle(i.node,'color',i.maxHp>0&&i.hp<i.maxHp*.25?'#84edb0':'#80caff');setStyle(i.node,'fontSize',Math.round(damageFeedbackSize(i.damage)*OUTGOING_SCALE)+'px');
    setStyle(i.node,'opacity',Math.min(1,age/.04,(2.5-sinceHit)/.5));
    // Placed by transform alone (left/top stay 0): no layout per number per frame.
    setStyle(i.node,'left','0px');setStyle(i.node,'top','0px');

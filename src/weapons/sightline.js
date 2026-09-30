@@ -1,6 +1,6 @@
 // Two magazines, one stance. Only E enters the crouch; X never equips a
 // firing stance. Projectiles outlive their shooter, pending shots do not.
-import { SIGHTLINE as S, TERRAIN, RULES } from '../config/gameplay.js';
+import { SIGHTLINE as S, TERRAIN, RULES, hpRoll } from '../config/gameplay.js';
 import { collidersAlong } from '../world/collider-grid.js';
 import { targetRadius } from '../target-radius.js';
 import { roundOnGround, roundSees, roundMeets } from './rifle.js';
@@ -77,7 +77,7 @@ export function prepareSightline(sim,input){
  if(s.crouched){p.vx=p.vz=0;p.dodgeQueued=0;return {...input,moveX:0,moveZ:0,dodge:false};}
  return input;
 }
-export const sightlineSplash=d=>d>S.blastRadius?0:d<=S.blastCore?S.blastDamage-(S.blastDamage-250)*Math.max(0,d)/S.blastCore:250+(S.blastEdge-250)*(d-S.blastCore)/(S.blastRadius-S.blastCore);
+export const sightlineSplash=d=>d>S.blastRadius?0:d<=S.blastCore?S.blastDamage-(S.blastDamage-50)*Math.max(0,d)/S.blastCore:50+(S.blastEdge-50)*(d-S.blastCore)/(S.blastRadius-S.blastCore);
 function impact(sim,b,t,geo){
  const shot={owner:sim.player.id,volley:b.volley,damage:b.damage,damageType:b.pistol?'sightlinePistol':'sightlineShot',bullet:true,vx:b.dx,vz:b.dz,x:b.x,z:b.z};
  if(!b.special){if(t)sim.hit(t,shot);sim.events.push({type:'sightlineImpact',x:b.x,z:b.z,y:b.y,pistol:b.pistol,below:b.below});return;}
@@ -147,7 +147,7 @@ export function stepSightline(sim,input,dt,geo){
     const max=rifle?sightlineRange(sim.viewAspect||16/9,dx,dz,sim.standY()):S.pistolRange;
     // Breach is placed at the chosen point; ordinary aimed rounds keep their
     // long sniper reach. Both still stop at an earlier body or solid cover.
-    const b={id:++sim.serial,volley:++sim.volley,dx,dz,travel:0,aimDistance:reach,range:rifle&&(!s.aiming||s.special)?Math.min(max,Math.max(.1,Math.sqrt(Math.max(0,reach*reach-S.muzzleLateral*S.muzzleLateral))-S.muzzleForward)):max,pistol:!rifle,special:rifle&&s.special,damage:rifle?S.damageMin+Math.floor(Math.random()*(S.damageMax-S.damageMin+1)):S.pistolDamage-S.pistolDamageRoll+Math.floor(Math.random()*(S.pistolDamageRoll*2+1)),pierced:[]};
+    const b={id:++sim.serial,volley:++sim.volley,dx,dz,travel:0,aimDistance:reach,range:rifle&&(!s.aiming||s.special)?Math.min(max,Math.max(.1,Math.sqrt(Math.max(0,reach*reach-S.muzzleLateral*S.muzzleLateral))-S.muzzleForward)):max,pistol:!rifle,special:rifle&&s.special,damage:rifle?hpRoll((S.damageMin+S.damageMax)/2,(S.damageMax-S.damageMin)/2):hpRoll(S.pistolDamage,S.pistolDamageRoll),pierced:[]};
     if(rifle){if(!sim.dev.ammo)s.rifleAmmo--;s.commit=S.commit;sim.sightlinePending=b;if(s.special){s.special=false;s.xCooldown=S.xCooldown;}}
     else{if(!sim.dev.ammo)s.pistolAmmo--;launch(sim,b,geo);}
     s.cooldown=rifle?S.commit:S.pistolInterval;
