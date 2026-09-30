@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { pickRooms, SORTS } from '../src/ui/join-rooms.js';
+import { pickRooms, SORTS, filterName } from '../src/ui/join-rooms.js';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const order = { mapOrder: ['deadwater', 'hollow-wick'], modeOrder: ['ffa', '1v1', '2v2', '3v3', '4v4', '2v2v2'] };
@@ -44,4 +44,14 @@ test('a row: map picture left, mode and players/seats middle, MAP NAME in capita
  assert.match(menu, /join:code=>[^]*?go\(\{role:'join',code,\.\.\.who\(\),via:'server'\}\)/);
  assert.match(menu, /if\(name==='join'\)joinList\?\.start\(\);else joinList\?\.stop\(\);/, 'it refreshes only while the JOIN page is open');
  assert.match(read('../src/online-play.js'), /async rooms\(\) \{ const \{ fetchRooms \} = await import\(.\.\/net\/socket-transport\.js.\); return fetchRooms\(serverUrl\); \}/);
+});
+
+test('the filters read like the rest of the menus: short labels, one lettering for all three rows, modes four over three', () => {
+ assert.deepEqual(SORTS.map(s => s.name), ['FEWEST', 'MOST']);
+ assert.equal(filterName('Deadwater Outpost'), 'Deadwater'); assert.equal(filterName('Hollow Wick'), 'Hollow Wick');
+ assert.match(read('../src/ui/join-list.js'), /class="round-settings join-filters" data-fit-group/);
+ assert.match(read('../src/ui/button-typography.js'), /button\.closest\('\[data-fit-group\]'\)\|\|button\.parentElement/);
+ const css = read('../src/styles/menu-theme.css');
+ assert.match(css, /\.join-filter\[data-filter=mode\] \.round-choices>button\.choice-button\{grid-column:span 3\}/);
+ assert.match(css, /\.join-filter\[data-filter=mode\] \.round-choices>button\.choice-button:nth-child\(n\+5\)\{grid-column:span 4/);
 });

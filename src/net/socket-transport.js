@@ -48,7 +48,11 @@ export function connectServer({ url, request, pid, timeout = 8000, WebSocketClas
   socket.onerror = () => fail('Could not reach the game server. Check your connection and try again.');
   socket.onclose = () => {
    if (!settled) { fail('The game server closed the connection.'); return; }
-   if (!transport.closed) { transport.closed = true; transport.onLeave('host'); }
+   // Called through a local, not as transport.onLeave(...): Vite's build drops a
+   // direct call to a method that is empty in this literal (the session sets
+   // the real one later), and the page then never hears the socket close.
+   // tools/check-build.mjs fails the deploy if it happens again (v0.1.1).
+   if (!transport.closed) { transport.closed = true; const leave = transport.onLeave; leave.call(transport, 'host'); }
   };
   socket.onmessage = event => {
    let message; try { message = JSON.parse(event.data); } catch { return; }
@@ -66,7 +70,9 @@ export function connectServer({ url, request, pid, timeout = 8000, WebSocketClas
    }
    if (message.t === 'note') { transport.notes.push(String(message.text || '')); return; }
    if (message.t === 'nope') { transport.notes.push(String(message.reason || '')); return; }
-   transport.onMessage('host', message);
+   // (Through a local for the same reason: a direct call was dropped from the
+   // build, so no message after 'room' reached the game; v0.1.1.)
+   const handler = transport.onMessage; handler.call(transport, 'host', message);
   };
  });
 }

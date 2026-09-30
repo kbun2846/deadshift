@@ -9,7 +9,7 @@
 // they are joined by their code.
 import { cardImage } from './map-cards.js';
 import { orderedModes } from './lobby-settings.js';
-import { pickRooms, SORTS } from './join-rooms.js';
+import { pickRooms, SORTS, filterName } from './join-rooms.js';
 
 const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const FILTER_KEY = 'deadstab-join-filters';
@@ -23,8 +23,10 @@ export function createJoinList(parent, { maps, fetchRooms, join, version }) {
  const root = document.createElement('section');
  root.className = 'join-list'; root.setAttribute('aria-label', 'Open games');
  const row = (key, label, choices) => '<div class="round-setting join-filter" data-filter="' + key + '"><span class="round-setting-label">' + label + '</span><div class="round-choices" role="group" aria-label="' + label + '">' + choices.map(c => '<button type="button" class="choice-button" data-choice="' + esc(c.id) + '" aria-pressed="false">' + esc(c.name) + '</button>').join('') + '</div></div>';
- root.innerHTML = '<h3 class="join-list-title">open games</h3><div class="round-settings join-filters">'
-  + row('map', 'map', [{ id: 'any', name: 'ANY' }, ...maps.map(m => ({ id: m.id, name: m.name }))])
+ // (One lettering for all three rows: `data-fit-group` makes button-typography.js
+ // give every filter button the same letter proportions.)
+ root.innerHTML = '<h3 class="join-list-title">open games</h3><div class="round-settings join-filters" data-fit-group>'
+  + row('map', 'map', [{ id: 'any', name: 'ANY' }, ...maps.map(m => ({ id: m.id, name: filterName(m.name) }))])
   + row('mode', 'mode', [{ id: 'any', name: 'ANY' }, ...modes.map(m => ({ id: m.id, name: m.name }))])
   + row('sort', 'players', SORTS)
   + '</div><div class="join-rooms" role="list"></div><p class="join-list-note" role="status" aria-live="polite"></p>';

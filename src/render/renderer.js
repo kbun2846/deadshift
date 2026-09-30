@@ -1876,7 +1876,8 @@ export class WorldView {
     // (Spectating: the teammate framed in the part of the screen the death
     // card leaves clear, as the death camera frames your fall.)
     const wideView = this.camera.aspect > 1 && (typeof innerWidth !== 'number' || innerWidth > 700);
-    const asideX = this.spectating && wideView ? this.cameraHeight * .3 : 0, asideZ = this.spectating && !wideView ? this.cameraHeight * .22 : 0;
+    // (The robot lab's follow camera keeps its robot in the middle: `spectateCentre`.)
+    const aside = this.spectating && !this.spectateCentre, asideX = aside && wideView ? this.cameraHeight * .3 : 0, asideZ = aside && !wideView ? this.cameraHeight * .22 : 0;
     this.focus.x = deathCamera?deathCamera.x:lerp(this.focus.x, (cameraRoom && !cameraRoom.followCamera ? cameraRoom.x : renderX+(scoped?scopeAim.x*scopeFrame.lead:0)) + asideX, blend);
     this.focus.z = deathCamera?deathCamera.z:lerp(this.focus.z, (cameraRoom && !cameraRoom.followCamera ? cameraRoom.z : renderZ+(scoped?scopeAim.z*scopeFrame.lead:0)) + asideZ, blend);
     this.cameraHeight = deathCamera?deathCamera.height:lerp(this.cameraHeight, cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT*(scoped?scopeFrame.scale:1), cut ? 1 : 1 - Math.exp(-5.7 * dt));

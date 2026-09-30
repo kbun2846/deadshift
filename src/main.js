@@ -85,6 +85,8 @@ import { openSpot } from './net/spawn-points.js';
 import { hasAuthoredSpawns } from './net/map-spawns.js'; // s2-spawns
 import { createToast } from './ui/toast.js';
 import { createRobotMinds } from './ui/robot-minds.js';
+import { RobotLab, watchInput } from './bots/robot-lab.js';
+import { createRobotLabPanel } from './ui/robot-lab-panel.js';
 import { addWatermark } from './ui/watermark.js';
 import { viewWidth, viewHeight } from './viewport.js';
 import { installTitle } from './ui/title-screen.js';
@@ -137,6 +139,8 @@ const sim = new Simulation(map), sound = new Soundscape(), budget = new RenderBu
 {const critters=map.training?null:new Critters(map);if(critters?.any)sim.critters=critters;}
 // Robots (bots/): spawned from the developer tools in a solo game.
 const bots = new BotMatch(map, { createSim: m => new Simulation(m) });
+// The robot lab (dev tools > Robots): placed robots fighting round after round (bots/robot-lab.js).
+const robotLab = new RobotLab({ bots });
 // 1V1 against a robot (duel.js): set up by start() from the URL.
 const duel=createDuel($('game'),{sim,bots,hooks:{
  // The match is over: the death screen and the aftermath go, the game stops
@@ -431,7 +435,7 @@ window.addEventListener('keydown',e=>{
  else void playFullscreen(true);
 },true);
 function returnToMenu(){
-  online.close();perfReadout.reset();devWindow.hide();bots.clear();if(deathPick){deathPick=false;weaponPick.hide();}nextWeapon=null;if(duel.active){duel.stop();modeLabel.textContent='PRACTICE';}
+  online.close();perfReadout.reset();devWindow.hide();robotLab.lost(sim);bots.clear();if(deathPick){deathPick=false;weaponPick.hide();}nextWeapon=null;if(duel.active){duel.stop();modeLabel.textContent='PRACTICE';}
   if(choosing)menuFlow.cancelOnlinePick();choosing=false;lastKiller=null;lastOneShot=false;onlineMenus(false);view.deathView?.clear();
   endAftermath();matchEnd.hide();closeStats();clockRoll=null;view.deathAside=true;
   // (Owner, 2026-09-29: leaving right after a game starts, ROUND 1 and other
@@ -479,8 +483,10 @@ function reset() {
   // Restart keeps the robots (enemies sent back out away from you, allies by
   // you); the menu clears them.
   // All out first, so each side's first robot is placed afresh (VS ROBOTS "with my team").
-  for(const bot of bots.bots)bot.alive=false;
-  for(const bot of bots.bots)bots.respawnAt(bot,sim);
+  // (The robot lab: the round starts again, everyone on their spots, not counted.)
+  if(robotLab.active)robotLab.skip(sim);
+  else{for(const bot of bots.bots)bot.alive=false;
+  for(const bot of bots.bots)bots.respawnAt(bot,sim);}
   duel.reset();bots.resetStats?.();if(duel.active)duel.placeDuel();
   previousPlayer = { ...sim.player }; dirty = true; devTools.syncSpeed();updateHUD();
   if(tutorial&&started)$('tutorial-guide').classList.remove('hidden');
@@ -748,6 +754,18 @@ const {devTools,devWindow,devDialog,showDevNotice}=installDevWiring({$,sim,view,
  online:()=>online,settings:()=>settings,settingsPanel:()=>settingsPanel,started:()=>started,paused:()=>paused,
  randomSpot:()=>{const ok=randomPracticeSpawn();if(ok)view.cutCamera?.();return ok;},
  changed:()=>{dirty=true;updateHUD();}});
+// The robot lab's window (ui/robot-lab-panel.js): open while its dev option is
+// on in a solo game; its close button turns the option off.
+const labPanel=createRobotLabPanel($('game'),{lab:robotLab,bots,sim,toast:text=>toast(text,2200),
+ close:()=>{robotLab.stop(sim);delete sim.dev.robotLab;devTools.sync();devWindow.sync();},
+ canRun:()=>online.active?'Robots are solo only':!started?'Start a game first':duel.active?'The lab runs in practice, not BOTS':null});
+// PLACE mode: a click on the ground places (or moves, or with the right
+// button removes) a lab robot instead of firing.
+$('world').addEventListener('pointerdown',e=>{if(!labPanel.placing||online.active)return;e.preventDefault();e.stopImmediatePropagation();const at=view.aim(e.clientX,e.clientY,sim.player);if(Number.isFinite(at.aimPointX))labPanel.place(at.aimPointX,at.aimPointZ,e.button);},true);
+$('world').addEventListener('contextmenu',e=>{if(labPanel.placing)e.preventDefault();});
+if(import.meta.env.DEV){window.__robotLab=robotLab;window.__labPanel=labPanel;}
+// Where the follow camera last was: leaving it, your ghost carries on from there.
+let labFollowAt=null;
 installTitle({page:document.querySelector('[data-page="home"]'),shell:$('intro'),overlay:document.querySelector('#intro .title-blood')});
 // The map page's preview of the map this page has loaded (only a loaded map
 // can be photographed; the others show their name until picked once).
@@ -1490,7 +1508,7 @@ function frame(time) {
     while (accumulator >= RULES.step && (running || (online.active && started) || soloWatch)) {
       if (soloWatch) {
         previousPlayer = { ...sim.player };
-        bots.before(sim); sim.step({ moveX: 0, moveZ: 0, aimX: sim.player.aimX, aimZ: sim.player.aimZ }); bots.after(sim); bots.step(sim);
+        bots.before(sim); sim.step({ moveX: 0, moveZ: 0, aimX: sim.player.aimX, aimZ: sim.player.aimZ }); bots.after(sim); bots.step(sim); robotLab.step(sim, RULES.step);
         tappedKeys.clear(); accumulator -= RULES.step;
         for (const e of sim.drainEvents()) event(e);
         continue;
@@ -1567,10 +1585,11 @@ function frame(time) {
       if(!online.active)bots.before(sim);
       // Freezing is a solo tool: online it would stop only the host.
       if(online.active&&sim.dev.freeze)sim.dev.freeze=false;
-      sim.step(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), surge:sim.weapon==='rifle'&&tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(usesTrigger(sim.weapon)&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),scatter:sim.weapon==='shotgun'&&tappedKeys.has('KeyX'),doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming,reload:tappedKeys.has('KeyR'), ichorGuard:weaponGuarding(sim.weapon,rifleAiming,keys),ichorE:sim.weapon==='ichor'&&tappedKeys.has(GAME_KEYS.secondary),ichorX:sim.weapon==='ichor'&&tappedKeys.has('KeyX'),sheathE:sim.weapon==='sheath'&&tappedKeys.has(GAME_KEYS.secondary),sheathX:sim.weapon==='sheath'&&tappedKeys.has('KeyX'),sidekickMine:sim.weapon==='sidekick'&&tappedKeys.has(GAME_KEYS.secondary),sidekickX:sim.weapon==='sidekick'&&tappedKeys.has('KeyX'),sightlineStance:sim.weapon==='sightline'&&tappedKeys.has(GAME_KEYS.secondary),sightlineX:sim.weapon==='sightline'&&tappedKeys.has('KeyX'),omenPrime:sim.weapon==='omen'&&tappedKeys.has(GAME_KEYS.secondary), omenVolley:sim.weapon==='omen'&&tappedKeys.has('KeyX'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
-        launchPointX: arrows.active?undefined:pendingAimPoint?.aimPointX, launchPointZ: arrows.active?undefined:pendingAimPoint?.aimPointZ }));
+      // (Robot lab running: you only watch, so your hands do nothing but walk the free camera.)
+      sim.step((robotLab.active?watchInput:i=>i)(online.input({ moveX, moveZ, aimX, aimZ, aimPointX, aimPointZ, autoRange:locked?false:assistMode(), smoothAim:digitalAim, grenade:tappedKeys.has(GAME_KEYS.secondary), surge:sim.weapon==='rifle'&&tappedKeys.has('KeyX'), fire:sim.weapon==='shotgun'?ballast.fire:rifleFiring||pendingLaunch||(usesTrigger(sim.weapon)&&held(GAME_KEYS.shoot)),tapFire:pendingLaunch&&!tappedKeys.has(GAME_KEYS.shoot),scatter:sim.weapon==='shotgun'&&tappedKeys.has('KeyX'),doubleShot:tappedKeys.has(GAME_KEYS.secondary),aiming,reload:tappedKeys.has('KeyR'), ichorGuard:weaponGuarding(sim.weapon,rifleAiming,keys),ichorE:sim.weapon==='ichor'&&tappedKeys.has(GAME_KEYS.secondary),ichorX:sim.weapon==='ichor'&&tappedKeys.has('KeyX'),sheathE:sim.weapon==='sheath'&&tappedKeys.has(GAME_KEYS.secondary),sheathX:sim.weapon==='sheath'&&tappedKeys.has('KeyX'),sidekickMine:sim.weapon==='sidekick'&&tappedKeys.has(GAME_KEYS.secondary),sidekickX:sim.weapon==='sidekick'&&tappedKeys.has('KeyX'),sightlineStance:sim.weapon==='sightline'&&tappedKeys.has(GAME_KEYS.secondary),sightlineX:sim.weapon==='sightline'&&tappedKeys.has('KeyX'),omenPrime:sim.weapon==='omen'&&tappedKeys.has(GAME_KEYS.secondary), omenVolley:sim.weapon==='omen'&&tappedKeys.has('KeyX'), spray: held('KeyC'), dodge: tappedKeys.has(GAME_KEYS.dodge), hex: tappedKeys.has('KeyX'), seed: held(GAME_KEYS.secondary) || touch.seeding || pendingSeed, launch: pendingLaunch, quickShot:pendingQuickShot,
+        launchPointX: arrows.active?undefined:pendingAimPoint?.aimPointX, launchPointZ: arrows.active?undefined:pendingAimPoint?.aimPointZ })));
       online.afterStep();
-      if(!online.active){bots.after(sim);bots.step(sim);}
+      if(!online.active){bots.after(sim);bots.step(sim);robotLab.step(sim, RULES.step);}
       if(tutorial){tutorial.update(sim,RULES.step);updateTutorial();}
       tappedKeys.clear(); pendingQuickShot=false; pendingLaunch = pendingSeed = false; pendingAimPoint = null; accumulator -= RULES.step;
       for (const e of sim.drainEvents()) event(e);
@@ -1585,6 +1604,9 @@ function frame(time) {
   // the new spot with the camera cut there, not one frame at the old place or
   // gliding between the two.)
   online.frame({onRespawn:reviveOnline});
+  labPanel.sync(!!sim.dev.robotLab&&!online.active&&started);
+  // (While the lab runs you only watch: your own HUD, aim and reticle are hidden.)
+  if(document.body.classList.contains('lab-watching')!==robotLab.active)document.body.classList.toggle('lab-watching',robotLab.active);
   // No view.update during pause: the rendered scene and all effect clocks freeze.
   if (paused) {
     if (dirty) { view.render(); dirty = false; }
@@ -1601,10 +1623,13 @@ function frame(time) {
       for (const o of view.remotePlayers || []) lastSeen.set(o.id, o);
       const drawn=online.active?drawSim(sim,online.foreign()):bots.active?drawSim(sim,bots.foreign(elapsed)):sim;
       // Spectating: the camera, rooms and roofs follow the teammate you watch.
-      const watched=spectate.watched;view.spectating=!!watched;
+      // (Robot lab: the camera follows the robot picked in the lab, like spectating.)
+      const labWatch=!spectate.watched&&robotLab.watched(),watched=spectate.watched||(labWatch&&((view.remotePlayers||[]).find(o=>o.id===labWatch.id)||labWatch));view.spectating=!!watched;view.spectateCentre=!!labWatch;
+      if(labWatch)labFollowAt={x:watched.x,z:watched.z};else if(labFollowAt){if(robotLab.active){sim.player.x=labFollowAt.x;sim.player.z=labFollowAt.z;previousPlayer={...sim.player};view.cutCamera?.();}labFollowAt=null;}
       if(watched){spectatePrev||={x:watched.x,z:watched.z};view.update(spectateView(drawn,watched),renderDelta,true,elapsed,{...sim.player,x:spectatePrev.x,z:spectatePrev.z},1);spectatePrev={x:watched.x,z:watched.z};}
       else{spectatePrev=null;view.update(drawn, renderDelta, running||online.active||soloWatch, elapsed, previousPlayer, running ? accumulator / RULES.step : 1);}
       robotMinds.update(bots,view,!!sim.dev.robotMinds&&!online.active);
+      labPanel.frame(view);
       if(running||online.active||deathActive)hollow?.update(renderDelta,sim); // s3-sound: the crows (on the death screen too: they fly on while you wait)
       dirty = false; renderedFrames++;
     }

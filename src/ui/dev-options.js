@@ -111,6 +111,9 @@ export const DEV_OPTIONS = Object.freeze([
   { section: 'world', kind: 'select', key: 'workMap', label: 'Map in progress', options: workMaps().map((m, i) => [String(i), m.name]), fallback: 0 },
   { section: 'world', kind: 'action', key: 'loadWorkMap', label: 'Load that map', button: 'Load' },
 
+  // Robot lab (bots/robot-lab.js, ui/robot-lab-panel.js; owner 2026-09-30):
+  // its own window for placing robots and watching them fight round after round.
+  { section: 'robots', kind: 'toggle', key: 'robotLab', label: 'Robot lab (repeat fights)', quick: true },
   { section:'robots',kind:'select',key:'robotBody',label:'AI body · human or robot',options:[['0','Robot'],['1','Human AI · bleeds']],fallback:0 },
   {section:'robots',kind:'action',key:'spawnHumanBot',label:'Spawn Human AI (bleeds)',button:'Spawn human'},
   { section: 'robots', kind: 'select', key: 'robotWeapon', label: 'Robot weapon', options: weaponChoices().map(([value, name]) => [value, name]), grid: 'weapons', fallback: 0 },

@@ -2,6 +2,22 @@
 
 Deadstab, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## v0.1.1-alpha (2026-09-30)
+
+### Online on the game server
+- **Matches now run on Deadstab's own server** (play.deadstab.com) instead of in the host's browser: no host advantage, and a match no longer ends when the person who made the room leaves or switches tabs.
+- **JOIN lists open rooms** for every map and mode. Pick one and you're in; they start by themselves a few seconds after someone joins, and robots fill the empty seats. Filter by map, by mode, and fewest or most players first.
+- **HOST** makes your own room with a 5-number code to share. Whoever made it runs the lobby (mode, settings, robots, START).
+- **Map vote**: when a round starts, everyone votes for the next map on its picture; most votes wins, a tie is a coin flip.
+- **Robots fill seats**: an ON/OFF switch when you host (always on in listed rooms).
+- Fixed: JOIN and HOST connected to the server but left the game after a few seconds without letting you in.
+
+### Menus
+- The JOIN filters are laid out like HOST's mode picker, and their lettering fits the buttons and matches the rest of the menus. The room list is shorter, so the page doesn't have to shrink as much on phones.
+
+### Developer tools
+- **Robot lab** (Robots > Robot lab): place robots on spots and watch them fight round after round from full health, with fixed, random or every-weapon-against-every-weapon line-ups, a free or follow camera, live health, ammo and ability readouts, and results by weapon and line-up (win %, K/D, damage, time to kill), with a CSV download.
+
 ## v0.1.0-alpha (2026-09-30)
 
 ### Deadstab

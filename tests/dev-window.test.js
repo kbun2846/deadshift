@@ -49,7 +49,7 @@ test('every toggle names a real override the simulation reads',()=>{
   'rifleInstantReload','shotgunInstantReload','omenInstantReload','omenCooldowns','grenadeCooldown',
   'oneHit','ghost','freezeTargets','hideHud','noRecoil','endlessSurge',
   'robotPassive','robotHoldFire','robotFreeze','robotStayDead','robotSeeAll',
-  'freeze','noKnockback','maintenanceOff','noStorm','regen','fastSeeds','instantHex','rapidFire','noSpread','shotgunRapid','robotMinds','fps']);
+  'freeze','noKnockback','maintenanceOff','noStorm','regen','fastSeeds','instantHex','rapidFire','noSpread','shotgunRapid','robotMinds','fps','robotLab']);
  for(const [key,label] of DEV_TOGGLES){
   assert.ok(known.has(key),`${key} is not an override the game honours`);
   assert.ok(label&&label===label.trim()&&label.length<32,`${key} needs a short plain label`);

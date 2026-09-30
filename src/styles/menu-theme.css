@@ -354,6 +354,82 @@ body.dying .health-hud,body.dying #weapon,body.dying #reticle,body.dying .rifle-
 #game :is(.dev-tools,.dev-window) .dev-empty{margin:0;padding:6px 10px;font:600 11px/1.4 var(--hud-font);color:#7f8b86;text-transform:none!important}
 #game #settings-controls .weapons-group>.weapon-control-list{padding:0 10px 4px}
 body.dev-hide-hud #game :is(.health-hud,#weapon,.masthead .brand,.masthead .mode,.footer,#online-badge,.damage-feedback,.touch-controls){visibility:hidden!important}
+/* Robot lab (ui/robot-lab-panel.js): a dev window of its own, on the left. */
+#game .dev-window.robot-lab{left:12px;top:64px;right:auto;width:min(372px,calc(100vw - 24px));display:flex;flex-direction:column;max-height:calc(100dvh - 80px)}
+#game .dev-window.robot-lab.hidden{display:none}
+#game .robot-lab .lab-status{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;padding:8px 11px 4px;font:700 11px/1.3 var(--hud-font);letter-spacing:.05em;color:#b9c5c0}
+#game .robot-lab .lab-state{font-size:12px;letter-spacing:.14em;color:#9fb0aa}
+#game .robot-lab .lab-state[data-state=fighting]{color:#ff8f8f}
+#game .robot-lab .lab-state[data-state=next-round],#game .robot-lab .lab-state[data-state=frozen]{color:#ffd37a}
+#game .robot-lab .lab-state[data-state=done]{color:#8fe3a4}
+#game .robot-lab .lab-last{flex-basis:100%;color:#8a9893;font-size:10.5px}
+#game .robot-lab .lab-controls{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px 10px}
+#game .robot-lab .lab-page .lab-controls{grid-template-columns:1fr 1fr;padding:8px 0 2px}
+#game .robot-lab button{min-height:30px;padding:7px 6px;text-align:center;font-size:10px;letter-spacing:.08em;border-radius:4px}
+#game .robot-lab .lab-tabs{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid #3c4543;border-bottom:1px solid #3c4543}
+#game .robot-lab .lab-tabs button{border:0;border-radius:0;background:#1e2423;color:#8a9893;min-height:30px}
+#game .robot-lab .lab-tabs button[aria-selected=true]{background:#2a3230;color:var(--ui-accent);box-shadow:inset 0 -2px 0 var(--ui-accent)}
+#game .robot-lab .lab-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:8px 10px 10px;overscroll-behavior:contain;scrollbar-width:thin}
+#game .robot-lab .lab-note{margin:4px 0 6px;font:600 10.5px/1.4 var(--hud-font);color:#8a9893;letter-spacing:.02em}
+#game .robot-lab .lab-place{width:100%;min-height:36px;font-size:11px}
+#game .robot-lab .lab-place.on{background:var(--ui-accent);color:#151718}
+#game .robot-lab .lab-danger{width:100%;margin-top:8px;color:#ff9a9a}
+#game .robot-lab .lab-group{margin:8px 0 0;padding:6px 8px 8px;border:1px solid #3c4543;border-radius:5px;display:grid;gap:5px}
+#game .robot-lab legend{padding:0 4px;font:700 10px/1 var(--hud-font);letter-spacing:.14em;text-transform:uppercase;color:#9fb0aa}
+#game .robot-lab .lab-field{display:grid;grid-template-columns:104px 1fr;align-items:center;gap:8px;font:600 11px/1.2 var(--hud-font);color:#c9d2ce}
+#game .robot-lab select{min-width:0;width:100%;height:26px;padding:0 6px;background:#161a19;color:#e6ebe8;border:1px solid #46514e;border-radius:4px;font:600 11px var(--hud-font)}
+#game .robot-lab .lab-check{display:flex;align-items:center;gap:8px;font:600 11px/1.2 var(--hud-font);color:#c9d2ce;cursor:pointer}
+#game .robot-lab .lab-check input{width:15px;height:15px;margin:0;accent-color:var(--ui-accent)}
+#game .robot-lab .lab-card{margin:0 0 8px;padding:7px 8px;border:1px solid #3c4543;border-left:3px solid #9fb0aa;border-radius:5px;background:#202624}
+#game .robot-lab .lab-card.down{opacity:.6}
+#game .robot-lab .lab-card.lab-a{border-left-color:#ffb020}
+#game .robot-lab .lab-card.lab-b{border-left-color:#2ee6ff}
+#game .robot-lab .lab-card.lab-f{border-left-color:#e8afb9}
+#game .robot-lab .lab-card header{display:flex;align-items:center;gap:6px;font:700 11px/1.2 var(--hud-font)}
+#game .robot-lab .lab-tag{font-size:13px;letter-spacing:.08em}
+#game .robot-lab .lab-weapon{flex:1 1 auto;min-width:0;color:#c9d2ce;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#game .robot-lab .lab-card-actions{display:flex;gap:2px}
+#game .robot-lab .lab-card-actions button{min-height:20px;height:20px;padding:0 5px;font-size:9px;background:#2a3230;border:1px solid #3c4543;color:#b9c5c0}
+#game .robot-lab .lab-card-actions button[aria-pressed=true]{background:var(--ui-accent);color:#151718}
+#game .robot-lab .lab-hp{position:relative;height:14px;margin:6px 0 4px;background:#141817;border-radius:3px;overflow:hidden}
+#game .robot-lab .lab-hp i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#d64545,#e8afb9);transition:width .12s linear}
+#game .robot-lab .lab-hp span{position:relative;display:block;text-align:center;font:700 10px/14px var(--hud-font);color:#fff;text-shadow:0 1px 2px #000}
+#game .robot-lab .lab-line{margin:2px 0;font:600 10.5px/1.35 var(--hud-font);color:#b9c5c0;letter-spacing:.02em}
+#game .robot-lab .lab-mind{color:#e6ebe8}
+#game .robot-lab .lab-profile,#game .robot-lab .lab-totals,#game .robot-lab .lab-used{color:#8a9893}
+#game .robot-lab .lab-abilities{display:flex;flex-wrap:wrap;gap:3px;margin:3px 0}
+#game .robot-lab .lab-chip{padding:2px 6px;border-radius:9px;font:700 9.5px/1.3 var(--hud-font);letter-spacing:.04em;background:#2a3230;color:#c9d2ce}
+#game .robot-lab .lab-chip[data-state=ready]{background:#e8afb9;color:#151718}
+#game .robot-lab .lab-chip[data-state=cooldown]{background:#4a2c2f;color:#f0b7b7}
+#game .robot-lab .lab-chip[data-state=charging]{background:#5a4a16;color:#ffe08a}
+#game .robot-lab .lab-chip[data-state=active]{background:#173f55;color:#8fe0ff}
+#game .robot-lab .lab-chip[data-state=locked]{background:#2a3230;color:#6f7b77}
+#game .robot-lab .lab-edit{margin-top:4px}
+#game .robot-lab .lab-edit summary{cursor:pointer;font:700 10px/1.6 var(--hud-font);letter-spacing:.12em;text-transform:uppercase;color:#9fb0aa}
+#game .robot-lab .lab-edit[open]{display:grid;gap:5px}
+#game .robot-lab h4{margin:10px 0 4px;font:700 10px/1 var(--hud-font);letter-spacing:.14em;text-transform:uppercase;color:#9fb0aa}
+#game .robot-lab .lab-table{width:100%;border-collapse:collapse;font:600 10.5px/1.3 var(--hud-font);color:#c9d2ce}
+#game .robot-lab .lab-table th,#game .robot-lab .lab-table td{padding:3px 4px;border-bottom:1px solid #2c3432;text-align:right;white-space:nowrap}
+#game .robot-lab .lab-table th[scope=row],#game .robot-lab .lab-table thead th:first-child{text-align:left;white-space:normal}
+#game .robot-lab .lab-table thead th{color:#8a9893;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase}
+#game .robot-lab .lab-log{margin:0;padding-left:18px;font:600 10.5px/1.4 var(--hud-font);color:#b9c5c0}
+#game .robot-lab .lab-log li{margin:0 0 5px}
+#game .robot-lab .lab-log small{color:#8a9893}
+#game .robot-lab .lab-log .lab-a{color:#ffc86a}#game .robot-lab .lab-log .lab-b{color:#7ff0ff}#game .robot-lab .lab-log .lab-f{color:#f3c9d0}
+/* Over the world: bars over the lab's robots, rings on their spots. */
+#game .lab-overlay{position:absolute;inset:0;pointer-events:none;z-index:6;overflow:hidden}
+#game .lab-bar-over{position:absolute;left:0;top:0;display:grid;justify-items:center;gap:2px;will-change:transform}
+#game .lab-bar-over b{font:700 10px/1 var(--hud-font);letter-spacing:.06em;color:#fff;text-shadow:0 1px 2px #000,0 0 4px #000}
+#game .lab-bar-over i{display:block;width:54px;height:6px;border:1px solid #0009;border-radius:3px;background:#1a1f1ecc;overflow:hidden}
+#game .lab-bar-over s{display:block;height:100%;background:#9fb0aa;transform-origin:left;text-decoration:none}
+#game .lab-bar-over.lab-a s{background:#ffb020}#game .lab-bar-over.lab-b s{background:#2ee6ff}#game .lab-bar-over.lab-f s{background:#e8afb9}
+#game .lab-spot{position:absolute;left:0;top:0;width:34px;height:34px;display:grid;place-items:center;border:2px dashed #9fb0aa;border-radius:50%;font:700 10px/1 var(--hud-font);color:#fff;text-shadow:0 1px 2px #000;background:#0003}
+#game .lab-spot.lab-a{border-color:#ffb020}#game .lab-spot.lab-b{border-color:#2ee6ff}#game .lab-spot.lab-f{border-color:#e8afb9}
+#game .lab-spot.moving{border-style:solid;animation:lab-pulse .8s ease-in-out infinite alternate}
+@keyframes lab-pulse{to{opacity:.4}}
+#game .robot-lab.placing{outline:2px solid var(--ui-accent)}
+body.lab-watching #game :is(.health-hud,#weapon,#reticle,#charge-ring,#hit-marker,.aim-cone,.damage-feedback,.fire-indicator,.damage-indicator){visibility:hidden!important}
+#game .robot-lab.folded :is(.lab-tabs,.lab-body){display:none}
 @media(max-width:520px){#game .dev-window{width:210px}}
 
 /* Frame-limit prongs: one per weighted stop, sitting under the handle on the
@@ -1554,3 +1630,15 @@ body.dev-unlocked #game .online-p2p.dev-only{display:flex!important}
 #game .join-room-map{max-width:8.5em;white-space:normal!important;word-break:normal;font:700 13px/1.1 var(--hud-font,Arial),sans-serif;letter-spacing:.1em;text-align:right}
 #game .join-list-note{min-height:16px;margin:8px 0 0;font:700 12px/1.4 Arial,sans-serif;color:#a8b6b2}
 @media(max-width:520px){#game button.join-room{grid-template-columns:60px minmax(0,1fr) auto;gap:8px;padding-right:10px;height:52px;min-height:52px}#game .join-room-mid b{font-size:14px}#game .join-room-map{font-size:11px;letter-spacing:.06em}}
+/* JOIN filters (owner 2026-09-30: fitted like the rest of the menus and easy
+   to read): the host page's mode picker layout. Modes: four over three; the
+   map row gives the map names more room than ANY; one letter size for all
+   (data-fit-group). The list below is shorter, so the page needs less shrinking. */
+#game .join-filter .round-choices:has(>.choice-button){display:grid;grid-template-columns:repeat(12,minmax(0,1fr))}
+#game .join-filter[data-filter=mode] .round-choices>button.choice-button{grid-column:span 3}
+#game .join-filter[data-filter=mode] .round-choices>button.choice-button:nth-child(n+5){grid-column:span 4;border-top:1px solid var(--button-edge)}
+#game .join-filter[data-filter=mode] .round-choices>button.choice-button:nth-child(5){border-left:0}
+#game .join-filter[data-filter=map] .round-choices>button.choice-button{grid-column:span 5}
+#game .join-filter[data-filter=map] .round-choices>button.choice-button:first-child{grid-column:span 2}
+#game .join-filter[data-filter=sort] .round-choices>button.choice-button{grid-column:span 6}
+#game .join-rooms{max-height:min(34dvh,300px)}
