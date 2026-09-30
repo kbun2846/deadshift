@@ -88,8 +88,8 @@ export const SETTINGS = Object.freeze({
  // (Owner, 2026-09-30: "robots have a on and off switch for filling up
  // server": a plain row for the host, ROBOTS FILL SEATS  ON | OFF. The
  // listed rooms on the game server always fill: server/room.js.)
- robots: { label: 'robots fill seats', values: ['fill', 'off'], names: ['ON', 'OFF'], default: 'fill', modes: COUNTED },
- robotSkill: { label: 'robot difficulty', values: ['easy', 'normal', 'hard'], names: ['easy', 'normal', 'hard'], default: 'normal', modes: MODES.map(m => m.id), dev: true },
+ robots: { label: 'bots fill seats', values: ['fill', 'off'], names: ['ON', 'OFF'], default: 'fill', modes: COUNTED },
+ robotSkill: { label: 'bot difficulty', values: ['easy', 'normal', 'hard'], names: ['easy', 'normal', 'hard'], default: 'normal', modes: MODES.map(m => m.id), dev: true },
 });
 // The rows everyone sees (the rest are the developer tools').
 export const PLAIN_SETTINGS = Object.freeze(Object.keys(SETTINGS).filter(key => !SETTINGS[key].dev));

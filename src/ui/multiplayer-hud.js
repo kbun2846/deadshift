@@ -33,7 +33,7 @@ export const swatch = slot => `<i class="player-swatch" style="--swatch:${player
 // A side's chip (team modes): its colour and name.
 export const teamChip = id => { const t = teamById(id); return t ? `<span class="board-team" style="--team:${t.colour}">${t.name.toLowerCase()}</span>` : ''; };
 export function scoreboardRows(rows, myId) {
- return rows.map((r, i) => `<tr class="${r.id === myId ? 'board-you' : ''}${r.present ? '' : ' board-away'}"><td>${i + 1}</td><th scope="row">${swatch(r.slot)}${esc(r.name)}${teamChip(r.team)}${r.robot ? '<span class="board-robot">robot</span>' : ''}</th><td>${r.kills}</td><td>${r.deaths}</td><td>${r.dealt}</td><td>${r.taken}</td><td>${formatTime(r.time)}</td><td>${esc(weaponName(r.weapon))}</td><td class="board-ping">${r.robot ? '—' : pingText(r.ping)}</td></tr>`).join('');
+ return rows.map((r, i) => `<tr class="${r.id === myId ? 'board-you' : ''}${r.present ? '' : ' board-away'}"><td>${i + 1}</td><th scope="row">${swatch(r.slot)}${esc(r.name)}${teamChip(r.team)}${r.robot ? '<span class="board-robot">bot</span>' : ''}</th><td>${r.kills}</td><td>${r.deaths}</td><td>${r.dealt}</td><td>${r.taken}</td><td>${formatTime(r.time)}</td><td>${esc(weaponName(r.weapon))}</td><td class="board-ping">${r.robot ? '—' : pingText(r.ping)}</td></tr>`).join('');
 }
 
 export function createMultiplayerHud(root) {

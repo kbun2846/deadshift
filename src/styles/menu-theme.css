@@ -1252,8 +1252,7 @@ body.watching #game :is(.duel-score:not(.score-flash),.match-clock:not(.score-fl
  #game .menu-shell [data-page]:not([data-page=home])>.menu-back{float:left;margin:0 14px 0 0}
  #game .menu-shell [data-page]:not([data-page=home])>h2{margin:0 0 10px;line-height:40px}
  #game .menu-shell [data-page=host-setup],#game .menu-shell [data-page="duel"]{width:min(1000px,100%)}
- #game [data-page=host-setup]>.host-identity,#game [data-page=host-setup]>.host-map{display:inline-grid;width:calc(50% - 7px);vertical-align:top;margin:0 0 8px}
- #game [data-page=host-setup]>.host-map{margin-left:14px}
+ #game [data-page=host-setup]>.host-identity{margin:0 0 8px}
  #game #host-settings .round-dev-rows,#game .duel-options,#game .duel-options .round-dev-rows{grid-template-columns:repeat(3,minmax(0,1fr));column-gap:14px;row-gap:8px}
  #game .duel-options>.round-dev{grid-column:1/-1}
  #game :is(#host-settings,.duel-options) .round-setting:not(.round-toggle){flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:6px}
@@ -1264,7 +1263,7 @@ body.watching #game :is(.duel-score:not(.score-flash),.match-clock:not(.score-fl
  #game .lobby-screen-card{padding:12px 18px}
  #game .lobby-screen-foot{margin-top:10px}
  /* (A column is narrow: map tiles two across in its dropdown, their usual height.) */
- #game :is(#host-settings,.duel-options,.host-map) .weapon-grid.map-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #game :is(#host-settings,.duel-options) .weapon-grid.map-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 /* An open dropdown that has more room above its bar than under it opens
    upward (weapon-grid.js placePanel), its grid capped to the room there. */

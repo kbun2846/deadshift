@@ -758,7 +758,7 @@ const {devTools,devWindow,devDialog,showDevNotice}=installDevWiring({$,sim,view,
 // on in a solo game; its close button turns the option off.
 const labPanel=createRobotLabPanel($('game'),{lab:robotLab,bots,sim,toast:text=>toast(text,2200),
  close:()=>{robotLab.stop(sim);delete sim.dev.robotLab;devTools.sync();devWindow.sync();},
- canRun:()=>online.active?'Robots are solo only':!started?'Start a game first':duel.active?'The lab runs in practice, not BOTS':null});
+ canRun:()=>online.active?'Bots are solo only':!started?'Start a game first':duel.active?'The lab runs in practice, not BOTS':null});
 // PLACE mode: a click on the ground places (or moves, or with the right
 // button removes) a lab robot instead of firing.
 $('world').addEventListener('pointerdown',e=>{if(!labPanel.placing||online.active)return;e.preventDefault();e.stopImmediatePropagation();const at=view.aim(e.clientX,e.clientY,sim.player);if(Number.isFinite(at.aimPointX))labPanel.place(at.aimPointX,at.aimPointZ,e.button);},true);
@@ -812,7 +812,7 @@ const lobbyScreen=createLobbyScreen($('game'),{
  start:()=>{if(!online.startMatch(online.lobby().mode||'ffa'))toast((online.startError()||'CANNOT START').toUpperCase(),3200);},
  addRobot:()=>{if(!online.addRobot())toast('THE ROOM IS FULL',2000);},
  tuneRobot:(id,setup)=>online.tuneRobot(id,setup),
- tuneAllRobots:setup=>{if(online.tuneAllRobots(setup))toast('EVERY ROBOT SET',1600);},
+ tuneAllRobots:setup=>{if(online.tuneAllRobots(setup))toast('EVERY BOT SET',1600);},
  chooseTeam:team=>online.chooseTeam(team),
  chooseMap:id=>{if(online.moveRoom(id))toast('MOVING THE ROOM TO '+(mapById(id).name||id).toUpperCase(),3000);},
  leave:()=>$('main-menu').click(),

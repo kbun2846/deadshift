@@ -119,7 +119,7 @@ export class BotMatch {
   const sim = this.createSim(this.map);
   sim.worldAuthority = false; sim.dev = { speed: 1 }; sim.targets = []; sim.otherPlayers = [];
   sim.weapon = playableOr(weapon, null) || randomPlayableWeapon(this.random); // (not a weapon under maintenance: weapon-maintenance.js)
-  const bot = { id, slot, skin, team, profile, aim, human, make: human?'human':ROBOT_SKINS[skin].id, name: (human?'PLAYER BOT ':ally ? 'ALLY ' : 'ROBOT ') + n, sim,
+  const bot = { id, slot, skin, team, profile, aim, human, make: human?'human':ROBOT_SKINS[skin].id, name: (human?'PLAYER BOT ':ally ? 'ALLY ' : 'BOT ') + n, sim,
    brain: new RobotBrain({ sim, nav: this.nav, random: this.random, team, profile, slotIndex: this.bots.filter(b => b.team === team).length }), alive: true, respawnIn: 0, prev: null, stats: { kills: 0, deaths: 0, dealt: 0, taken: 0 }, lastHitBy: null, lastHitAt: 0 };
   this.place(bot, main, ...(ally ? [3, 6] : this.enemyRange));
   this.bots.push(bot);

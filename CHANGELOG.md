@@ -2,6 +2,11 @@
 
 Deadstab, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## v0.1.2-alpha (2026-09-30)
+
+- **HOST** no longer asks for a map: CREATE GAME opens the room on the map you're on, and everyone votes on the map when the round starts (PRACTICE still picks it in the lobby).
+- **Robots are now called bots** everywhere you see them: BOT 1 in the lobby and scoreboard, + BOT, "bots fill seats", the BOTS page, match results, the developer tools (Bot lab) and the admin page.
+
 ## v0.1.1-alpha (2026-09-30)
 
 ### Online on the game server

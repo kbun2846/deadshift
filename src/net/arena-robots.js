@@ -62,7 +62,7 @@ export class ArenaRobots {
   const skin = free[Math.floor(arena.random() * free.length)], n = ++this.serial;
   this.nav ||= new NavGrid(arena.map, arena.world.colliders);
   const setup = cleanSetup(arena.robotSetup), profile = this.profile(setup);
-  const seat = arena.addSeat('bot-' + n, 'ROBOT ' + n, null, { robot: true });
+  const seat = arena.addSeat('bot-' + n, 'BOT ' + n, null, { robot: true });
   seat.slot = ROBOT_SLOT + skin + 1;
   seat.robot = { skin, auto, setup, profile, brain: new RobotBrain({ sim: seat.sim, nav: this.nav, random: arena.random, team: 'ffa', profile, slotIndex: n }) };
   seat.robot.brain.aimScale = ROBOT_AIMS[setup.aim];

@@ -10,7 +10,6 @@ import { MAINTENANCE, stickerHTML } from '../weapon-maintenance.js';
 import { DEFAULT_MAP, menuMaps, soloMaps, multiplayerMaps } from '../maps.js';
 import { NETWORK } from '../config/network.js';
 import { savedName, takeCarry } from '../online-play.js';
-import { pickerHTML, mapGridHTML, wirePicker } from './weapon-grid.js';
 import { createSettingsRows, orderedModes, withDevDefaults } from './lobby-settings.js';
 import { cleanSettings, MODES } from '../config/match.js';
 import { buildDuelMenu } from './duel-menu.js';
@@ -83,7 +82,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  // Room codes are always shown in capitals, whatever was typed.
  $('online-code').addEventListener('input',e=>{const el=e.target,at=el.selectionStart;el.value=el.value.toUpperCase();try{el.setSelectionRange(at,at);}catch{}});
  $('online-name').value=$('host-name').value=savedName();
- // HOST: first the host sets up the game (name, map, mode, rounds, which
+ // HOST: first the host sets up the game (name, mode, rounds, which
  // they can change later in the lobby), then CREATE GAME opens the room and the
  // lobby screen. The last setup is remembered.
  const SETUP_KEY='deadstab-host-settings';
@@ -95,16 +94,13 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  // The mode to open with (the lobby can change it), remembered like the settings.
  const MODE_KEY='deadstab-host-mode';
  let hostMode=(()=>{try{const m=localStorage.getItem(MODE_KEY);return MODES.some(x=>x.id===m)?m:'ffa';}catch{return 'ffa';}})();
- // The map to host on (v0.990a, owner: chosen here too, not only in the
- // lobby): a picker of the multiplayer maps, remembered; CREATE GAME on
- // another map than this page's reloads onto it and opens the room there.
- const MAP_KEY='deadstab-host-map',hostMaps=multiplayerMaps(map);
- let hostMap=(()=>{try{const m=localStorage.getItem(MAP_KEY);return hostMaps.some(x=>x.id===m)?m:(hostMaps.some(x=>x.id===map.id)?map.id:hostMaps[0]?.id);}catch{return hostMaps[0]?.id;}})();
- const hostMapRow=document.createElement('div');hostMapRow.className='round-settings host-map';
- hostMapRow.innerHTML='<div class="round-setting duel-setting duel-pictures host-map-row"><span class="round-setting-label">map</span>'+pickerHTML('map',mapGridHTML({label:'map',maps:hostMaps,pressed:hostMap}))+'</div>';
- $('host-mode').before(hostMapRow);
- const hostMapPicker=wirePicker(hostMapRow.querySelector('.picker'));
- hostMapRow.addEventListener('click',e=>{const b=e.target.closest('[data-choice]');if(!b||b.disabled)return;hostMap=b.dataset.choice;try{localStorage.setItem(MAP_KEY,hostMap);}catch{}for(const t of hostMapRow.querySelectorAll('[data-choice]'))t.setAttribute('aria-pressed',String(t.dataset.choice===hostMap));hostMapPicker.sync();});
+ // The map to host on: no picker here any more (owner, 2026-09-30: "remove the
+ // map option in the initial create game menu"). The room opens on this page's
+ // map when it is a multiplayer one, else the first; the map vote at START (or
+ // the lobby's picker in PRACTICE) chooses where it plays from there.
+ const hostMaps=multiplayerMaps(map);
+ const hostMap=hostMaps.some(x=>x.id===map.id)?map.id:hostMaps[0]?.id;
+ try{localStorage.removeItem('deadstab-host-map');}catch{}
  $('host-mode').classList.add('round-settings');
  $('host-mode').innerHTML='<div class="round-setting host-mode-row"><span class="round-setting-label">mode</span><div class="round-choices" role="group" aria-label="mode">'+orderedModes().map(m=>'<button type="button" class="choice-button" data-mode="'+m.id+'" aria-pressed="false">'+m.name+'</button>').join('')+'</div></div>';
  const showHostMode=()=>{for(const b of $('host-mode').querySelectorAll('[data-mode]'))b.setAttribute('aria-pressed',String(b.dataset.mode===hostMode));setupRows.render({settings:hostSettings,mode:hostMode,editable:true});};

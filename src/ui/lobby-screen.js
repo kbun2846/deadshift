@@ -28,20 +28,20 @@ const weaponValue = id => (id ? String(WEAPONS.findIndex(w => w.id === id) + 1) 
 function tunePanelHTML(p) {
  const setup = p.setup || {};
  const rows = TUNE_ROWS.map(r => `<div class="round-setting lobby-tune-row" data-tune="${r.key}"><span class="round-setting-label">${r.label}</span><div class="round-choices" role="group" aria-label="${r.label}">${r.choices.map(([v, t]) => `<button type="button" class="choice-button" data-choice="${v}" aria-pressed="${setup[r.key] === v}">${t}</button>`).join('')}</div></div>`).join('');
- return `<li class="lobby-tune-panel" data-for="${esc(p.id)}"><div class="round-setting lobby-tune-row" data-tune="weapon"><span class="round-setting-label">weapon</span>${pickerHTML('robot weapon', weaponGridHTML({ label: 'robot weapon', pressed: weaponValue(setup.weapon) }))}</div>${rows}<div class="lobby-tune-foot"><button type="button" class="secondary plain-text lobby-tune-all" title="Give every robot these settings">APPLY TO ALL</button><button type="button" class="secondary plain-text lobby-tune-done">DONE</button></div></li>`;
+ return `<li class="lobby-tune-panel" data-for="${esc(p.id)}"><div class="round-setting lobby-tune-row" data-tune="weapon"><span class="round-setting-label">weapon</span>${pickerHTML('bot weapon', weaponGridHTML({ label: 'bot weapon', pressed: weaponValue(setup.weapon) }))}</div>${rows}<div class="lobby-tune-foot"><button type="button" class="secondary plain-text lobby-tune-all" title="Give every bot these settings">APPLY TO ALL</button><button type="button" class="secondary plain-text lobby-tune-done">DONE</button></div></li>`;
 }
 
 const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // What each mode is, under the mode buttons (robots: SETTINGS.robots).
 export const MODE_NOTES = Object.freeze({
- ffa: 'everyone for themselves · robots fill up to 4',
- practice: 'targets out, nothing counted · + robot to add sparring robots',
- '1v1': 'two players, one on one · a robot fills an empty seat',
- '2v2': 'two sides of two · robots fill empty seats',
- '2v2v2': 'three sides of two · robots fill empty seats',
- '3v3': 'two sides of three · robots fill empty seats',
- '4v4': 'two sides of four · robots fill empty seats',
+ ffa: 'everyone for themselves · bots fill up to 4',
+ practice: 'targets out, nothing counted · + bot to add sparring bots',
+ '1v1': 'two players, one on one · a bot fills an empty seat',
+ '2v2': 'two sides of two · bots fill empty seats',
+ '2v2v2': 'three sides of two · bots fill empty seats',
+ '3v3': 'two sides of three · bots fill empty seats',
+ '4v4': 'two sides of four · bots fill empty seats',
 });
 
 export function createLobbyScreen(parent, { kick, setMode, setSetting, start, leave, copyInvite, addRobot, chooseTeam, tuneRobot, tuneAllRobots, chooseMap, map = null }) {
@@ -107,7 +107,7 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
       if (key !== rowsKey) {
         rowsKey = key;
         const team = p => { const t = teamById(p.team); return t ? `<span class="lobby-tag lobby-team" style="--team:${t.colour}">${t.name.toLowerCase()}</span>` : ''; };
-        $('.lobby-players').innerHTML = players.map(p => `<li class="lobby-player${p.robot ? ' lobby-robot' : ''}" data-id="${esc(p.id)}">${swatch(p.slot)}<span class="lobby-name">${esc(p.name)}</span>${p.host ? '<span class="lobby-tag">host</span>' : ''}${p.robot ? '<span class="lobby-tag">robot</span>' : ''}${team(p)}${p.id === myId ? '<span class="lobby-tag lobby-you">you</span>' : ''}<span class="lobby-ping"></span>${isHost && p.robot && robotsOn ? `<button type="button" class="secondary plain-text lobby-tune" aria-expanded="${tuning === p.id}" aria-label="Tune ${esc(p.name)}">TUNE</button>` : ''}${isHost && !p.host && (p.robot || !lobby.publicRoom) ? `<button type="button" class="secondary plain-text lobby-remove" aria-label="Remove ${esc(p.name)} from the game">REMOVE</button>` : ''}</li>${tuning === p.id ? tunePanelHTML(p) : ''}`).join('')
+        $('.lobby-players').innerHTML = players.map(p => `<li class="lobby-player${p.robot ? ' lobby-robot' : ''}" data-id="${esc(p.id)}">${swatch(p.slot)}<span class="lobby-name">${esc(p.name)}</span>${p.host ? '<span class="lobby-tag">host</span>' : ''}${p.robot ? '<span class="lobby-tag">bot</span>' : ''}${team(p)}${p.id === myId ? '<span class="lobby-tag lobby-you">you</span>' : ''}<span class="lobby-ping"></span>${isHost && p.robot && robotsOn ? `<button type="button" class="secondary plain-text lobby-tune" aria-expanded="${tuning === p.id}" aria-label="Tune ${esc(p.name)}">TUNE</button>` : ''}${isHost && !p.host && (p.robot || !lobby.publicRoom) ? `<button type="button" class="secondary plain-text lobby-remove" aria-label="Remove ${esc(p.name)} from the game">REMOVE</button>` : ''}</li>${tuning === p.id ? tunePanelHTML(p) : ''}`).join('')
          + emptySlotRows((max || 0) - players.length, isHost && robotsOn);
         for (const button of root.querySelectorAll('.lobby-remove')) button.onclick = () => kick(button.closest('li').dataset.id);
         for (const button of root.querySelectorAll('.lobby-add-robot')) button.onclick = () => addRobot?.();

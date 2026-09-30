@@ -50,15 +50,15 @@ const check = (attr, key, on, label) => `<label class="lab-check"><input type="c
 export function createRobotLabPanel(root, { lab, bots, sim, toast = () => {}, close = () => {}, canRun = () => null, document: doc = globalThis.document }) {
  const panel = doc.createElement('section');
  panel.className = 'dev-window robot-lab hidden';
- panel.setAttribute('aria-label', 'Robot lab');
+ panel.setAttribute('aria-label', 'Bot lab');
  // The next robot placed gets these.
  const next = { side: 'red', weaponMode: 'fixed', weapon: playableWeapons()[0]?.id || WEAPONS[0].id, skill: 'normal', style: 'blend', temper: 'shifting', health: 100, aim: 1 };
  const view = { tab: 'setup', bars: true, spots: true };
  let placing = false, moving = null, cardsAt = 0, resultsAt = 0, resultsKey = '';
- panel.innerHTML = `<header class="dev-window-bar lab-bar"><span>ROBOT LAB</span><span class="dev-window-actions"><button type="button" class="dev-window-close plain-text" data-act="fold" aria-label="Fold the robot lab to its status" aria-pressed="false">–</button><button type="button" class="dev-window-close plain-text" data-act="close" aria-label="Close the robot lab">×</button></span></header>
+ panel.innerHTML = `<header class="dev-window-bar lab-bar"><span>BOT LAB</span><span class="dev-window-actions"><button type="button" class="dev-window-close plain-text" data-act="fold" aria-label="Fold the bot lab to its status" aria-pressed="false">–</button><button type="button" class="dev-window-close plain-text" data-act="close" aria-label="Close the bot lab">×</button></span></header>
   <div class="lab-status" role="status" aria-live="polite"><b class="lab-state">STOPPED</b><span class="lab-round"></span><span class="lab-last"></span></div>
   <div class="lab-controls"><button type="button" data-act="start">START</button><button type="button" data-act="stop">STOP</button><button type="button" data-act="skip">NEXT ROUND</button><button type="button" data-act="reset">RESET STATS</button></div>
-  <nav class="lab-tabs" role="tablist"><button type="button" role="tab" data-tab="setup" aria-selected="true">SETUP</button><button type="button" role="tab" data-tab="robots" aria-selected="false">ROBOTS</button><button type="button" role="tab" data-tab="results" aria-selected="false">RESULTS</button></nav>
+  <nav class="lab-tabs" role="tablist"><button type="button" role="tab" data-tab="setup" aria-selected="true">SETUP</button><button type="button" role="tab" data-tab="robots" aria-selected="false">BOTS</button><button type="button" role="tab" data-tab="results" aria-selected="false">RESULTS</button></nav>
   <div class="lab-body">
    <div class="lab-page" data-page="setup"></div>
    <div class="lab-page" data-page="robots" hidden></div>
@@ -78,9 +78,9 @@ export function createRobotLabPanel(root, { lab, bots, sim, toast = () => {}, cl
   const s = lab.settings;
   const follow = [['', 'Free (walk to fly)'], ...lab.entries.map(e => [e.key, 'Follow ' + e.label])];
   page('setup').innerHTML = `
-   <button type="button" class="lab-place${placing ? ' on' : ''}" data-act="place" aria-pressed="${placing}">${placing ? 'PLACING: CLICK THE GROUND' : 'PLACE ROBOTS'}</button>
-   <p class="lab-note">${placing ? 'Left click: drop a robot · right click on a spot: take it away' : lab.count + ' of 8 placed · ' + (lab.count ? 'START runs them' : 'place at least one on each side')}</p>
-   <fieldset class="lab-group"><legend>next robot</legend>
+   <button type="button" class="lab-place${placing ? ' on' : ''}" data-act="place" aria-pressed="${placing}">${placing ? 'PLACING: CLICK THE GROUND' : 'PLACE BOTS'}</button>
+   <p class="lab-note">${placing ? 'Left click: drop a bot · right click on a spot: take it away' : lab.count + ' of 8 placed · ' + (lab.count ? 'START runs them' : 'place at least one on each side')}</p>
+   <fieldset class="lab-group"><legend>next bot</legend>
     ${select('data-next', 'side', LAB_CHOICES.side, next.side, 'Side')}
     ${select('data-next', 'weaponMode', LAB_CHOICES.weaponMode, next.weaponMode, 'Weapon')}
     ${next.weaponMode === 'fixed' ? `<label class="lab-field"><span>Which</span><select data-next="weapon">${weaponOptions(next.weapon)}</select></label>` : ''}
@@ -102,10 +102,10 @@ export function createRobotLabPanel(root, { lab, bots, sim, toast = () => {}, cl
     ${select('data-view', 'follow', follow, lab.follow || '', 'Camera')}
     ${select('data-dev', 'speed', LAB_CHOICES.fly, sim.dev.speed || 1, 'Fly speed')}
     ${select('data-dev', 'timeScale', LAB_CHOICES.timeScale, sim.dev.timeScale || 1, 'Game speed')}
-    ${check('data-dev', 'freeze', !!sim.dev.freeze, 'Freeze (robots hold still)')}
-    ${check('data-view', 'bars', view.bars, 'Health bars over robots')}
+    ${check('data-dev', 'freeze', !!sim.dev.freeze, 'Freeze (bots hold still)')}
+    ${check('data-view', 'bars', view.bars, 'Health bars over bots')}
     ${check('data-view', 'spots', view.spots, 'Show spots')}
-    ${check('data-dev', 'robotMinds', !!sim.dev.robotMinds, 'Thoughts over robots')}
+    ${check('data-dev', 'robotMinds', !!sim.dev.robotMinds, 'Thoughts over bots')}
    </fieldset>
    <button type="button" class="lab-danger" data-act="clear">CLEAR ALL SPOTS</button>`;
  }
@@ -138,7 +138,7 @@ export function createRobotLabPanel(root, { lab, bots, sim, toast = () => {}, cl
   const keys = lab.entries.map(e => e.key + e.side + e.label + (lab.follow === e.key)).join();
   if (keys !== cardKeys) {
    cardKeys = keys;
-   page('robots').innerHTML = lab.count ? lab.entries.map(card).join('') : '<p class="lab-note">No robots yet. SETUP → PLACE ROBOTS, then click the ground.</p>';
+   page('robots').innerHTML = lab.count ? lab.entries.map(card).join('') : '<p class="lab-note">No bots yet. SETUP → PLACE BOTS, then click the ground.</p>';
   }
   const name = id => lab.nameOf(id);
   for (const e of lab.entries) {
@@ -207,7 +207,7 @@ export function createRobotLabPanel(root, { lab, bots, sim, toast = () => {}, cl
  };
 
  // --- clicks and changes ---------------------------------------------------------------
- const csvFile = () => { const blob = new Blob([lab.csv()], { type: 'text/csv' }), a = doc.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'robot-lab-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); };
+ const csvFile = () => { const blob = new Blob([lab.csv()], { type: 'text/csv' }), a = doc.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'bot-lab-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); };
  panel.addEventListener('click', e => {
   const tab = e.target.closest('[data-tab]'); if (tab) { showTab(tab.dataset.tab); return; }
   const act = e.target.closest('[data-act]')?.dataset.act;
@@ -215,8 +215,8 @@ export function createRobotLabPanel(root, { lab, bots, sim, toast = () => {}, cl
   // Folded: only the status and the buttons (a phone keeps the fight in view).
   if (act === 'fold') { const on = panel.classList.toggle('folded'); e.target.closest('[data-act]').setAttribute('aria-pressed', String(on)); return; }
   if (act === 'place') { api.setPlacing(!placing); return; }
-  if (act === 'start') { const why = canRun() || lab.start(sim); if (why) toast(why.toUpperCase()); else { api.setPlacing(false); toast('ROBOT LAB RUNNING'); showTab('robots'); } drawStatus(); return; }
-  if (act === 'stop') { lab.stop(sim); toast('ROBOT LAB STOPPED'); cardKeys = ''; drawCards(); return; }
+  if (act === 'start') { const why = canRun() || lab.start(sim); if (why) toast(why.toUpperCase()); else { api.setPlacing(false); toast('BOT LAB RUNNING'); showTab('robots'); } drawStatus(); return; }
+  if (act === 'stop') { lab.stop(sim); toast('BOT LAB STOPPED'); cardKeys = ''; drawCards(); return; }
   if (act === 'skip') { lab.skip(sim); return; }
   if (act === 'reset') { lab.resetStats(); resultsKey = ''; drawResults(); toast('LAB STATS RESET'); return; }
   if (act === 'clear') { lab.clear(sim); cardKeys = ''; drawSetup(); toast('ALL SPOTS CLEARED'); return; }

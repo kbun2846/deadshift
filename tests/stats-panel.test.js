@@ -38,12 +38,12 @@ test('FFA match over: gold and silver on rows one and two only, and only when fi
  assert.ok(!/stats-(gold|silver)/.test(statsTableHTML(list, { mode: 'practice', final: true })));
 });
 
-test('your row is marked, robots tagged, away players dimmed; unknown numbers are left out', () => {
+test('your row is marked, bots tagged, away players dimmed; unknown numbers are left out', () => {
  const html = statsTableHTML([row('me', 'Me', 4, 1, 800, { time: 125, weapon: 'rifle', ping: 48.6 }), row('r1', 'ROBOT 1', 2, 3, 100, { robot: true }), row('x', 'X', 0, 0, 0, { present: false, ping: 20 })], { myId: 'me' });
  const [mine, robot, away] = html.split('<li ').slice(1);
  assert.ok(mine.includes('stats-you') && mine.includes('feed-you">Me<'));
  assert.ok(!robot.includes('stats-you') && !robot.includes('feed-you'));
- assert.ok(robot.includes('<span class="stats-robot">robot</span>') && !mine.includes('stats-robot'));
+ assert.ok(robot.includes('<span class="stats-robot">bot</span>') && !mine.includes('stats-robot'));
  assert.ok(away.includes('stats-away'));
  assert.ok(mine.includes('2:05') && mine.includes('Nominal') && mine.includes('49</i> ms'), 'time, weapon, ping for a human');
  assert.ok(!robot.includes(' ms') && !/\d:\d\d/.test(robot), 'no ping or time for a robot without them');

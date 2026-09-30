@@ -35,9 +35,9 @@ const robotRows = (prefix, label) => [
 // Rows: key, label, [value, text] choices, and a note for the picked choice.
 export const DUEL_ROWS = Object.freeze([
  { key: 'mode', label: 'mode', choices: Object.entries(DUEL_MODES).map(([id, m]) => [id, m.name]),
-  notes: { '1v1': 'you against a robot', '2v2': 'you and a robot vs two', '3v3': 'you and two robots vs three', '4v4': 'you and three robots vs four', ffa: 'everyone for themselves' } },
+  notes: { '1v1': 'you against a bot', '2v2': 'you and a bot vs two', '3v3': 'you and two bots vs three', '4v4': 'you and three bots vs four', ffa: 'everyone for themselves' } },
  ...robotRows('', 'difficulty'),
- ...robotRows('ally', 'your robots\' difficulty'),
+ ...robotRows('ally', 'your bots\' difficulty'),
  // Rounds (the picks' `firstTo` holds the number; 0: endless, the ∞ sign).
  { key: 'firstTo', label: 'rounds', choices: DUEL_ROUNDS.map(n => [String(n), n ? String(n) : '∞']), notes: {} },
  // FFA: the match's length instead of rounds (most kills when it runs out).
@@ -87,7 +87,7 @@ export function duelOptionsHTML(picks, maps) {
   + '<details class="dev-only round-dev"><summary>developer</summary><div class="round-settings round-dev-rows">'
   + pictures('botWeapon', 'enemy weapon', weaponGridHTML({ label: 'enemy weapon', pressed: weaponValue(picks.botWeapon), soon: true }))
   + '<div class="duel-allies">'
-  + pictures('allyWeapon', 'your robots\' weapon', weaponGridHTML({ label: 'your robots\' weapon', pressed: weaponValue(picks.allyWeapon), soon: true }))
+  + pictures('allyWeapon', 'your bots\' weapon', weaponGridHTML({ label: 'your bots\' weapon', pressed: weaponValue(picks.allyWeapon), soon: true }))
   + rowHTML('allySkill') + rowHTML('spawn') + '</div></div></details>';
 }
 

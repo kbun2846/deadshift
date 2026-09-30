@@ -14,9 +14,9 @@ import { weaponChoices, weaponGridHTML, watchWeaponGrid } from './weapon-grid.js
 
 export const ROBOT_OPTIONS = Object.freeze({
  fill: { label: 'empty slots', names: ['stay empty', 'robots'], default: 0 },
- skill: { label: 'robot skill', names: ['easy', 'normal', 'hard'], default: 1 },
+ skill: { label: 'bot skill', names: ['easy', 'normal', 'hard'], default: 1 },
  // Drawn as a picture grid (weapon-grid.js); names from the item registry.
- weapon: { label: 'robot weapon', names: weaponChoices().map(([, name]) => name.toLowerCase()), default: 0, grid: 'weapons' },
+ weapon: { label: 'bot weapon', names: weaponChoices().map(([, name]) => name.toLowerCase()), default: 0, grid: 'weapons' },
  mode: { label: 'mode', names: MODES.map(m => m.name), default: 0 },
 });
 
@@ -46,5 +46,5 @@ export function robotOptionRows(container, keys, { soon = true } = {}) {
 // The lobby's empty seats: "empty seat · + ROBOT" rows under the players
 // (the host's + ROBOT adds one: net/arena-robots.js).
 export function emptySlotRows(count, canAdd) {
- return Array.from({ length: Math.max(0, count) }, () => `<li class="lobby-player lobby-empty"><span class="lobby-empty-dot" aria-hidden="true"></span><span class="lobby-name">empty seat</span>${canAdd ? '<button type="button" class="secondary plain-text lobby-add-robot" title="Add a robot to this room">+ ROBOT</button>' : ''}</li>`).join('');
+ return Array.from({ length: Math.max(0, count) }, () => `<li class="lobby-player lobby-empty"><span class="lobby-empty-dot" aria-hidden="true"></span><span class="lobby-name">empty seat</span>${canAdd ? '<button type="button" class="secondary plain-text lobby-add-robot" title="Add a bot to this room">+ BOT</button>' : ''}</li>`).join('');
 }

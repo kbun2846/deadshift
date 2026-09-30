@@ -130,7 +130,7 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
  let circle = null, cfg = null, tally = new DuelScore(), robots = [], alive = new Map(), overIn = -1, shownKey = '', breakIn = -1, lastPoint = null, round = 1, forfeited = false, ended = false, held = null, roll = null;
  const team = () => DUEL_MODES[cfg?.mode]?.allies > 0;
  const ffa = () => !!DUEL_MODES[cfg?.mode]?.ffa;
- const names = () => (team() ? ['YOUR TEAM', 'ENEMIES'] : ffa() ? ['YOU', 'TOP ROBOT'] : ['YOU', 'ROBOT']);
+ const names = () => (team() ? ['YOUR TEAM', 'ENEMIES'] : ffa() ? ['YOU', 'TOP BOT'] : ['YOU', 'BOT']);
  const clockText = t => { const n = Math.max(0, Math.ceil(t)); return Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0'); };
  // FFA's syphon (owner: "50 siphon off each kill"): the killer (a robot, or
  // null for you), if still standing, gets 50 health back, up to full; yours

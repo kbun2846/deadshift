@@ -124,7 +124,7 @@ export class RobotLab {
  }
  // A new spot (the panel's choices for it). Returns the entry, or an error.
  add(main, x, z, { side = 'red', weaponMode = 'fixed', weapon = null, skill = 'normal', style = 'blend', temper = 'shifting', health = 100, aim = 1 } = {}) {
-  if (this.entries.length >= LAB.maxRobots) return { error: 'The lab holds ' + LAB.maxRobots + ' robots.' };
+  if (this.entries.length >= LAB.maxRobots) return { error: 'The lab holds ' + LAB.maxRobots + ' bots.' };
   const at = this.snap(main, x, z); if (!at) return { error: 'No open ground there.' };
   const key = 'lab-' + (++this.serial);
   const entry = { key, x: at.x, z: at.z, side: LAB_SIDES.some(s => s.id === side) ? side : 'red', weaponMode: WEAPON_MODES.includes(weaponMode) ? weaponMode : 'fixed', weapon: weapon || this.weapons()[0], skill, style, temper, health, aim, bot: null, label: '' };
@@ -198,9 +198,9 @@ export class RobotLab {
  // START: a robot on every spot; any other robots leave. Returns an error or null.
  start(main) {
   this.stoppedWhy = null;
-  if (!this.entries.length) return 'Place some robots first.';
+  if (!this.entries.length) return 'Place some bots first.';
   const sides = new Set(this.entries.map(sideKey));
-  if (sides.size < 2) return 'Place robots on two sides (or two free for all).';
+  if (sides.size < 2) return 'Place bots on two sides (or two free for all).';
   this.stop(main);
   for (const bot of [...this.bots.bots]) this.bots.remove(bot);
   this.resetStats(); this.roundFirst = true;
@@ -381,7 +381,7 @@ export class RobotLab {
  // --- export ------------------------------------------------------------------------------
  // Every round in the log, one row per robot per round, as CSV.
  csv() {
-  const head = 'round,matchup,time_s,winner,reason,robot,side,weapon,result,hp_left,dealt,taken,kills';
+  const head = 'round,matchup,time_s,winner,reason,bot,side,weapon,result,hp_left,dealt,taken,kills';
   const rows = this.log.flatMap(r => r.robots.map(b => [r.round, r.matchup ? r.matchup.index + '/' + r.matchup.total : '', r.time.toFixed(1), r.winner || 'draw', r.reason, b.label, b.side, b.weapon, b.result, b.hp, b.dealt, b.taken, b.kills].join(',')));
   const weapons = [...this.stats.weapons.entries()].map(([id, s]) => { const a = averages(s); return [id, s.rounds, s.wins, s.losses, s.draws, s.kills, s.deaths, Math.round(s.dealt), Math.round(s.taken), s.attacks, s.hits, a.ttk == null ? '' : a.ttk.toFixed(2), a.dealtPerRound.toFixed(1), (a.winRate * 100).toFixed(1)].join(','); });
   return [head, ...rows, '', 'weapon,rounds,wins,losses,draws,kills,deaths,dealt,taken,attacks,hits,avg_ttk_s,dealt_per_round,win_pct', ...weapons].join('\n');

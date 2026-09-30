@@ -201,7 +201,7 @@ export class Room {
     const id = String(m.id);
     if (arena.seats.get(id)?.robot) { s.removeRobot(id); break; }
     // Players: only in a room a player made (the always-open ones are the owner's to police).
-    if (this.isPublic) { this.note(conn, 'Only robots can be removed here.'); break; }
+    if (this.isPublic) { this.note(conn, 'Only bots can be removed here.'); break; }
     const target = this.conns.get(id);
     if (!target || target === conn || !s.remotes.has(id)) break;
     this.removedPids.add(target.pid);

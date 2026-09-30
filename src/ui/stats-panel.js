@@ -63,7 +63,7 @@ export function statsTableHTML(rows, { myId = null, mode = null, final = false }
   const gun = weaponById(r.weapon)?.name; if (gun) bits.push(stat(esc(gun)));
   if (!r.robot && r.present !== false && Number.isFinite(r.ping)) bits.push(stat(Math.round(r.ping), 'ms'));
   return `<li class="${classes.join(' ')}"${style}${side ? ` data-team="${esc(r.team)}"` : ''}><span class="stats-rank"><span class="stats-fit"><i>${i + 1}</i></span></span>`
-   + `<span class="stats-who"><span class="stats-name"><i class="player-swatch" style="--swatch:${playerColour(r.slot).swatch}" aria-hidden="true"></i><span class="stats-fit stats-name-fit"><span class="stats-name-text${r.id === myId ? ' feed-you' : ''}">${esc(r.name)}</span></span>${r.robot ? '<span class="stats-robot">robot</span>' : ''}</span>`
+   + `<span class="stats-who"><span class="stats-name"><i class="player-swatch" style="--swatch:${playerColour(r.slot).swatch}" aria-hidden="true"></i><span class="stats-fit stats-name-fit"><span class="stats-name-text${r.id === myId ? ' feed-you' : ''}">${esc(r.name)}</span></span>${r.robot ? '<span class="stats-robot">bot</span>' : ''}</span>`
    + (bits.length ? `<span class="stats-line">${bits.join('')}</span>` : '') + '</span>'
    + `<span class="stats-kills"><span class="stats-fit stats-fit-end"><b>${num(r.kills) ?? 0}</b></span><small>kills</small></span></li>`;
  }).join('') + '</ol>';

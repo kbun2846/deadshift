@@ -217,7 +217,7 @@ export class Arena {
   const humans = [...this.seats.values()].filter(s => !s.robot).length, kept = [...this.seats.values()].filter(s => !s.robot?.auto).length;
   if (entry.size && humans > entry.size) return entry.name + ' is for ' + entry.size + ' players';
   const fill = this.settings.robots === 'fill' && entry.fillTo ? Math.max(0, Math.min(MAX_SEATS, entry.fillTo) - kept) : 0;
-  if (entry.size && Math.min(kept, entry.size) + fill < entry.size) return entry.name + ' needs ' + entry.size + ' players: add robots, or set robots to fill';
+  if (entry.size && Math.min(kept, entry.size) + fill < entry.size) return entry.name + ' needs ' + entry.size + ' players: add bots, or set bots to fill';
   return null;
  }
 
@@ -230,11 +230,11 @@ export class Arena {
   const humans = [...this.seats.values()].filter(s => !s.robot).length, kept = [...this.seats.values()].filter(s => !s.robot?.auto).length;
   if (entry.size && humans > entry.size) { this.startError = entry.name + ' is for ' + entry.size + ' players'; return false; }
   const fill = this.settings.robots === 'fill' && entry.fillTo ? Math.max(0, Math.min(MAX_SEATS, entry.fillTo) - kept) : 0;
-  if (entry.size && Math.min(kept, entry.size) + fill < entry.size) { this.startError = entry.name + ' needs ' + entry.size + ' players: add robots, or set robots to fill'; return false; }
+  if (entry.size && Math.min(kept, entry.size) + fill < entry.size) { this.startError = entry.name + ' needs ' + entry.size + ' players: add bots, or set bots to fill'; return false; }
   for (const seat of [...this.seats.values()]) if (seat.robot?.auto) this.dropSeat(seat.id);
   if (entry.size) while (this.seats.size > entry.size) { const bot = [...this.seats.values()].reverse().find(s => s.robot); if (!bot) break; this.dropSeat(bot.id); }
   if (this.settings.robots === 'fill' && entry.fillTo) while (this.seats.size < entry.fillTo && this.robots.add({ auto: true }));
-  if (entry.size && this.seats.size < entry.size) { this.startError = entry.name + ' needs ' + entry.size + ' players: add robots, or set robots to fill'; return false; }
+  if (entry.size && this.seats.size < entry.size) { this.startError = entry.name + ' needs ' + entry.size + ' players: add bots, or set bots to fill'; return false; }
   // Sides: players who picked one first (while it has room), then the rest
   // of the players, then robots, each to the side with the fewest.
   for (const seat of this.seats.values()) { seat.team = null; seat.bench = false; }

@@ -44,8 +44,8 @@ export function onlineOutcome(results, { myId = null, myTeam = null } = {}) {
 // SOLO: `winner` 'you' / 'robot', the score, whether you forfeited, a team mode.
 export function soloOutcome({ winner, you = 0, robot = 0, forfeited = false, team = false, ffa = false }) {
  // FFA: most kills when the clock runs out (a tie at the top is a draw).
- if (ffa) return { title: winner === 'you' ? 'you win' : winner === 'draw' ? 'draw' : 'robots win', detail: `you <b>${you}</b> <i>·</i> <b>${robot}</b> top robot` };
- const title = winner === 'you' ? (team ? 'your team wins' : 'you win') : (team ? 'enemies win' : 'robot wins');
+ if (ffa) return { title: winner === 'you' ? 'you win' : winner === 'draw' ? 'draw' : 'bots win', detail: `you <b>${you}</b> <i>·</i> <b>${robot}</b> top bot` };
+ const title = winner === 'you' ? (team ? 'your team wins' : 'you win') : (team ? 'enemies win' : 'bot wins');
  const [mine, theirs] = team ? ['your team', 'enemies'] : ['you', 'robot'];
  return { title, detail: `${mine} <b>${you}</b> <i>·</i> <b>${robot}</b> ${theirs}${forfeited ? ` <i>·</i> ${team ? 'your team forfeited' : 'you forfeited'}` : ''}` };
 }

@@ -40,7 +40,7 @@ export function installDevWiring(ctx) {
   devTools.sync(); devWindow.sync();
  }
  const robotsAllowed = () => {
-  if (ctx.online().active) { toast('ROBOTS ARE SOLO ONLY'); return false; }
+  if (ctx.online().active) { toast('BOTS ARE SOLO ONLY'); return false; }
   if (!ctx.started()) { toast('START A GAME FIRST'); return false; }
   return true;
  };
@@ -72,17 +72,17 @@ export function installDevWiring(ctx) {
    const made = [];
    for (let i = 0; i < (sim.dev.robotCount || 1); i++) { const bot = bots.spawn(sim, weapon, { team: ['ffa', 'red', 'blue'][sim.dev.robotSide || 0] || 'ffa', skill, style, temper, human:body===1 }); if (bot) made.push(bot); else break; }
    const bot = made[0];
-   toast(!bot ? 'ROBOT LIMIT REACHED' : made.length > 1 ? made.length + ' ROBOTS IN' : [bot.name, bot.make, weaponInfo(bot.sim.weapon)?.name || bot.sim.weapon, bot.profile.label].join(' · ').toUpperCase());
+   toast(!bot ? 'BOT LIMIT REACHED' : made.length > 1 ? made.length + ' BOTS IN' : [bot.name, bot.make, weaponInfo(bot.sim.weapon)?.name || bot.sim.weapon, bot.profile.label].join(' · ').toUpperCase());
   },
   spawnHumanBot: () => hooks.spawnRobot(1),
   // Four enemies, every weapon and skill at random, free for all.
   spawnBrawl: () => {
    if (!robotsAllowed()) return;
    let n = 0; for (let i = 0; i < 4; i++) if (bots.spawn(sim, null, { team: 'ffa' })) n++;
-   toast(n ? n + ' ROBOTS IN · FREE FOR ALL' : 'ROBOT LIMIT REACHED');
+   toast(n ? n + ' BOTS IN · FREE FOR ALL' : 'BOT LIMIT REACHED');
   },
-  hurtRobots: () => toast(bots.hurtAll(100) + ' ROBOTS HURT'),
-  destroyRobots: () => toast(bots.destroyAll() + ' ROBOTS DESTROYED'),
+  hurtRobots: () => toast(bots.hurtAll(100) + ' BOTS HURT'),
+  destroyRobots: () => toast(bots.destroyAll() + ' BOTS DESTROYED'),
   randomSpot: () => { toast(ctx.randomSpot() ? 'MOVED' : 'NO SPOT FOUND'); },
   breakNearby: () => { const p = sim.player; sim.breakAround(p.x, p.z, 8); },
   // Everyday overrides all on at once.
@@ -106,7 +106,7 @@ export function installDevWiring(ctx) {
    sim.scatter.cooldown = 0; sim.scatter.armed = true; sim.events.push({ type: 'scatterArm', x: sim.player.x, z: sim.player.z });
   },
   killTargets: () => { let n = 0; for (const t of sim.targets) if (t.hp > 0 && t.kind !== 'robot' && t.kind !== 'player') { sim.hit(t, { damage: t.hp, owner: 'dev' }); n++; } toast(n + ' TARGETS DOWN'); },
-  removeRobots: () => { const n = bots.count; for(const b of bots.bots)if(b.human)view.remoteCorpses?.remove(b.slot); bots.clear(); view.robotWrecks?.clear(); view.remote?.clear(); toast(n + ' ROBOTS REMOVED'); },
+  removeRobots: () => { const n = bots.count; for(const b of bots.bots)if(b.human)view.remoteCorpses?.remove(b.slot); bots.clear(); view.robotWrecks?.clear(); view.remote?.clear(); toast(n + ' BOTS REMOVED'); },
   // Looks only: the same event a real volley sends, with no damage behind it.
   previewBlast: () => {
    const p = sim.player, count = sim.dev.blastOrbs || 6, blast = explosionFor(count);
