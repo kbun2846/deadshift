@@ -39,6 +39,7 @@ import { refreshTypography } from './ui/button-typography.js';
 import { createLobbyPanel } from './ui/lobby-panel.js';
 import { createLobbyScreen } from './ui/lobby-screen.js';
 import { createWeaponPick } from './ui/weapon-pick.js';
+import { createMapVote } from './ui/map-vote.js';
 import { pickView, lobbyView } from './render/pick-view.js';
 import { PICK, MODES, SETTINGS as MATCH_SETTINGS, SIDE_COLOURS, TEAMS, teamById, roundsDecided } from './config/match.js';
 const modeLabel=document.querySelector('.brand .mode');
@@ -762,8 +763,8 @@ function thumbnail(){
 // Online play (see AGENTS.md > Networking). Practice overrides never go online:
 // the sessions reset sim.dev every tick and P / O / map teleport are refused.
 const online=createOnlinePlay({$,map,sim,createSim:m=>new Simulation(m),start,toast:text=>toast(text,2600),leave:()=>$('main-menu').click(),
- server:import.meta.env.DEV?params.get('peerhost'):null,pickWeapon:()=>enterOnline()});
-const menuFlow=installMenu({$,map,thumbnail,start,openSettings,closeSettings,returnToMenu,tutorialComplete:readTutorialComplete(),online:(request,status)=>online.request(request,status)});
+ server:import.meta.env.DEV?params.get('peerhost'):null,gameServer:import.meta.env.DEV?params.get('server'):null,pickWeapon:()=>enterOnline()});
+const menuFlow=installMenu({$,map,thumbnail,start,openSettings,closeSettings,returnToMenu,tutorialComplete:readTutorialComplete(),online:(request,status)=>online.request(request,status),onlineRooms:()=>online.rooms()});
 // Multiplayer flow (see AGENTS.md > Multiplayer): pick a weapon over the
 // running game, fight, die, respawn after 5 s or change weapon, leave.
 let choosing=false,lastKiller=null,lastOneShot=false;
@@ -789,7 +790,8 @@ const lobbyScreen=createLobbyScreen($('game'),{
  kick:id=>online.kick(id),
  setMode:mode=>online.setMode(mode),
  setSetting:(key,value)=>online.setSetting(key,value),
- start:()=>{if(!online.startRound(online.lobby().mode||'ffa'))toast((online.startError()||'CANNOT START').toUpperCase(),3200);},
+ // START: the map vote first (online-play.js startMatch; practice starts at once).
+ start:()=>{if(!online.startMatch(online.lobby().mode||'ffa'))toast((online.startError()||'CANNOT START').toUpperCase(),3200);},
  addRobot:()=>{if(!online.addRobot())toast('THE ROOM IS FULL',2000);},
  tuneRobot:(id,setup)=>online.tuneRobot(id,setup),
  tuneAllRobots:setup=>{if(online.tuneAllRobots(setup))toast('EVERY ROBOT SET',1600);},
@@ -799,6 +801,8 @@ const lobbyScreen=createLobbyScreen($('game'),{
  copyInvite:()=>online.copyInvite(),
  map,// s2-spawns: the lobby's map list
 });
+// The map vote (map-vote.js): shown while the host's vote is open, over the lobby.
+const mapVote=createMapVote($('game'),{vote:id=>online.vote(id),map});
 const weaponPick=createWeaponPick($('game'),{
  pick:weapon=>{if(online.active)online.choose(weapon,false);},
  go:weapon=>{if(online.active){online.choose(weapon,true);weaponPick.hide();}else if(deathPick){nextWeapon=playableOr(weaponOrDefault(weapon));closeDeathPick();toast('NEXT LIFE · '+(weaponInfo(nextWeapon)?.name||'').toUpperCase(),1800);}else changeWeaponSolo(weapon);},
@@ -854,7 +858,7 @@ function layoutPauseMenu(){
 const lobbyBtn=document.createElement('button');lobbyBtn.id='pause-lobby';lobbyBtn.className='secondary';lobbyBtn.textContent='LOBBY';lobbyBtn.hidden=true;
 $('main-menu').before(lobbyBtn);lobbyBtn.onclick=()=>openLobby();
 let lobbyFrom=null;
-function renderLobby(){if(lobbyPanel.open)lobbyPanel.render({lobby:online.lobby(),match:online.match(),code:online.code,isHost:online.isHost,myId:online.myId,max:NETWORK.maxPlayers});}
+function renderLobby(){if(lobbyPanel.open)lobbyPanel.render({lobby:online.lobby(),match:online.match(),code:online.code,isHost:online.leads,myId:online.myId,max:NETWORK.maxPlayers});}
 function openLobby(){
  if(!online.active)return;
  lobbyFrom=deathActive&&deathScreen.open?'death':'pause';
@@ -873,7 +877,7 @@ function closeLobby(){
 // and you can be hit): RESUME, LOBBY, SETTINGS, LEAVE MULTIPLAYER.
 function onlineMenus(on){
  lobbyBtn.hidden=!on;$('reset').hidden=on;
- if(!on){lobbyPanel.hide();lobbyScreen.hide();weaponPick.hide();view.setPickView(null);document.body.classList.remove('mp-between');}
+ if(!on){lobbyPanel.hide();lobbyScreen.hide();weaponPick.hide();mapVote.hide();view.setPickView(null);document.body.classList.remove('mp-between');}
  $('main-menu').textContent=on?'LEAVE MULTIPLAYER':'MAIN MENU';
  mpHud.active=on;
 }
@@ -1016,7 +1020,7 @@ function syncMatchEnd(m){
  }
  const myId=online.myId,ready=m.ready||[],people=online.lobby().players.filter(p=>!p.robot).length||1;
  const {title,detail}=onlineOutcome(m.results,{myId,myTeam:online.myTeam});
- matchEnd.show({title,detail,rows:m.results.board||[],myId,mode:m.mode,buttons:[{id:'ready',label:readyLabel(Math.min(ready.length,people),people),pressed:ready.includes(myId),primary:true},...(online.isHost?[{id:'lobby',label:'LOBBY'}]:[]),{id:'leave',label:'LEAVE'}]});
+ matchEnd.show({title,detail,rows:m.results.board||[],myId,mode:m.mode,buttons:[{id:'ready',label:readyLabel(Math.min(ready.length,people),people),pressed:ready.includes(myId),primary:true},...(online.leads?[{id:'lobby',label:'LOBBY'}]:[]),{id:'leave',label:'LEAVE'}]});
 }
 const spectate=createSpectate($('game'));
 let spectatePrev=null;
@@ -1116,8 +1120,12 @@ function syncOnlineScreens(){
    for(const id of ['settings-panel','map-panel'])$(id).classList.add('hidden');settingsOpen=mapOpen=false;
    releaseInput();lobbyScreen.show();
   }
-  lobbyScreen.render({lobby:online.lobby(),code:online.code,isHost:online.isHost,myId:online.myId,max:NETWORK.maxPlayers});
+  // (isHost: the lobby controls; a game server room's leader has them too.)
+  lobbyScreen.render({lobby:online.lobby(),code:online.code,isHost:online.leads,myId:online.myId,max:NETWORK.maxPlayers});
  }else if(lobbyScreen.open)lobbyScreen.hide();
+ // The map vote, over the lobby while it is open.
+ const ballot=inLobby?online.voteNow():null;
+ if(ballot){if(!mapVote.open){releaseInput();mapVote.show();}mapVote.render(ballot);}else if(mapVote.open)mapVote.hide();
  if(picking){
   if(!weaponPick.open){closeLobby();releaseInput();weaponPick.show(me.picking.weapon||me.weapon||null);}
   weaponPick.setTimer(me.picking.left,PICK.time);

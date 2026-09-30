@@ -1,0 +1,11 @@
+# Every 2 minutes: is there a new version on GitHub? (update.sh)
+[Unit]
+Description=Check for Deadstab game server updates
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

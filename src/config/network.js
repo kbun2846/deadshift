@@ -1,14 +1,19 @@
-// Online play settings. Switching from peer-to-peer to a dedicated server is a
-// change here (transport: 'websocket' plus its url), not a rewrite: the game
-// only talks to the Transport interface in net/transport.js.
+// Online play settings. The game talks only to the Transport interface in
+// net/transport.js; net/online.js picks the wire: the game server (a
+// WebSocket, net/socket-transport.js) or, from the developer tools,
+// browser-to-browser PeerJS.
 //
 // Units: seconds, ticks of the 60 Hz simulation, players.
 export const NETWORK = Object.freeze({
  // Multiplayer ships in a later alpha. The code is built and tested; this
  // keeps the ONLINE menu and ?join= / ?host= links out of this build.
  enabled: true,
- // 'peerjs' = browser-to-browser WebRTC, one player hosts.
- // 'websocket' = a dedicated server (not built yet; see AGENTS.md).
+ // The game server (server/, on the owner's VPS; 2026-09-30): JOIN, HOST
+ // and the always-open rooms play there. A development build can point at
+ // another with ?server=ws://127.0.0.1:8787 (AGENTS.md > The game server).
+ gameServer: 'wss://play.deadstab.com',
+ // The peer-to-peer game (developer tools only now): 'peerjs' =
+ // browser-to-browser WebRTC, one player hosts.
  transport: 'peerjs',
  // The PeerJS signalling server only introduces the two browsers; game
  // traffic then flows directly between them. null uses the free public PeerJS
@@ -25,10 +30,11 @@ export const NETWORK = Object.freeze({
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
  ],
- // Room codes: short, easy to read out loud, no 0/O or 1/I mix-ups.
+ // Room codes: five digits (owner, 2026-09-30: numbers only; easy to read out
+ // and to type on a phone's number pad; 100,000 codes).
  roomPrefix: 'deadstab-',
  codeLength: 5,
- codeAlphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+ codeAlphabet: '0123456789',
  maxPlayers: 8, // (4V4, 2026-09-29; config/match.js MAX_SEATS)
  // The host sends the world state 20 times a second (every 3rd tick).
  snapshotEvery: 3,

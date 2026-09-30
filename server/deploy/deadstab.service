@@ -1,0 +1,32 @@
+# The Deadstab game server (server/index.js), run by systemd on the VPS.
+# Installed by install.sh into /etc/systemd/system/.
+#   systemctl status deadstab        is it running
+#   journalctl -u deadstab -f        its log, live
+#   systemctl restart deadstab       restart (players are told, then disconnected)
+[Unit]
+Description=Deadstab game server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deadstab
+Group=deadstab
+WorkingDirectory=/opt/deadstab
+EnvironmentFile=/etc/deadstab.env
+ExecStart=/usr/bin/node server/index.js
+Restart=always
+RestartSec=2
+# Players get a moment to be told the server is restarting.
+TimeoutStopSec=10
+# It only needs to read the game and write its data folder.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/var/lib/deadstab
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

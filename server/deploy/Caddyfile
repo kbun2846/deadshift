@@ -1,0 +1,8 @@
+# Caddy: HTTPS for the game server (it gets and renews the certificate
+# itself). Installed by install.sh into /etc/caddy/Caddyfile.
+# Players' pages connect to wss://play.deadstab.com/play; Caddy passes that
+# (and /rooms, /health, /admin) to the server on this machine.
+play.deadstab.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8787
+}

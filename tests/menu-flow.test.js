@@ -39,11 +39,13 @@ test('JOIN has the username, room code and status but no HOST; HOST asks for the
  assert.match(menu, /\$\('online-code'\)\.value=invite\.toUpperCase\(\);show\('join'\);/);
 });
 
-test('host a game: every mode in order, and one row that depends on the mode', () => {
+test('host a game: every mode in order, its one row, and ROBOTS FILL SEATS', () => {
  assert.deepEqual(orderedModes().map(m => m.name), ['1V1', '2V2', '3V3', '4V4', '2V2V2', 'FFA', 'PRACTICE']);
  assert.equal(orderedModes().length, MODES.length);
- for (const mode of ['1v1', '2v2', '3v3', '4v4', '2v2v2']) { assert.ok(ROUNDED.includes(mode)); assert.deepEqual(rowsFor(mode), ['rounds'], mode); }
- assert.deepEqual(rowsFor('ffa'), ['roundLength']);
+ for (const mode of ['1v1', '2v2', '3v3', '4v4', '2v2v2']) { assert.ok(ROUNDED.includes(mode)); assert.deepEqual(rowsFor(mode), ['rounds', 'robots'], mode); }
+ assert.deepEqual(rowsFor('ffa'), ['roundLength', 'robots']);
+ // (Owner, 2026-09-30: the host's ON / OFF switch for robots filling seats.)
+ assert.deepEqual(SETTINGS.robots.names, ['ON', 'OFF']);
  assert.deepEqual(rowsFor('practice'), []);
  assert.deepEqual(SETTINGS.rounds.names, ['3', '5', '10', '∞']);
  assert.deepEqual(SETTINGS.roundLength.names, ['5 MIN', '10 MIN']);

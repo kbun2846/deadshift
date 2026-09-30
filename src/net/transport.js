@@ -21,8 +21,8 @@ export function makeRoomCode(random = Math.random, config = NETWORK) {
  return code;
 }
 
-// Typed codes forgive case, spaces and dashes. The alphabet has no O, 0, I or
-// 1, so there is no look-alike to guess between.
+// Typed codes forgive spaces and dashes (and case, for any letters an
+// alphabet might have; the codes are digits now: config/network.js).
 export function cleanRoomCode(text, config = NETWORK) {
  const code = String(text || '').toUpperCase().replace(/[\s-]/g, '');
  const valid = [...code].every(c => config.codeAlphabet.includes(c));

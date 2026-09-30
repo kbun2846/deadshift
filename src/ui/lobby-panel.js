@@ -55,10 +55,10 @@ export function createLobbyPanel(parent, { back, kick, setSetting, resetMap, end
       $('.lobby-room').textContent = ['room ' + (code || ''), modeName, players.length + '/' + max + ' players', left].filter(Boolean).join(' · ');
       // The rows are rebuilt only when who is here changes, so focus survives;
       // pings are updated in place.
-      const key = isHost + '|' + players.map(p => p.id + ':' + p.slot + ':' + p.name).join(',');
+      const key = isHost + '|' + players.map(p => p.id + ':' + p.slot + ':' + p.name + (p.host ? ':h' : '')).join(',');
       if (key !== rowsKey) {
         rowsKey = key;
-        $('.lobby-players').innerHTML = players.map(p => `<li class="lobby-player" data-id="${esc(p.id)}">${swatch(p.slot)}<span class="lobby-name">${esc(p.name)}</span>${p.host ? '<span class="lobby-tag">host</span>' : ''}${p.id === myId ? '<span class="lobby-tag lobby-you">you</span>' : ''}<span class="lobby-ping"></span>${isHost && !p.host ? `<button type="button" class="secondary plain-text lobby-remove" aria-label="Remove ${esc(p.name)} from the game">REMOVE</button>` : ''}</li>`).join('');
+        $('.lobby-players').innerHTML = players.map(p => `<li class="lobby-player" data-id="${esc(p.id)}">${swatch(p.slot)}<span class="lobby-name">${esc(p.name)}</span>${p.host ? '<span class="lobby-tag">host</span>' : ''}${p.id === myId ? '<span class="lobby-tag lobby-you">you</span>' : ''}<span class="lobby-ping"></span>${isHost && !p.host && (p.robot || !lobby.publicRoom) ? `<button type="button" class="secondary plain-text lobby-remove" aria-label="Remove ${esc(p.name)} from the game">REMOVE</button>` : ''}</li>`).join('');
         for (const button of root.querySelectorAll('.lobby-remove')) button.onclick = () => kick(button.closest('li').dataset.id);
       }
       for (const p of players) {

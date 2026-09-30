@@ -55,7 +55,7 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
       <div class="lobby-column">
         <div class="lobby-heading">mode</div><div class="lobby-modes" role="group" aria-label="Mode">${orderedModes().map(m => `<button type="button" class="choice-button" data-mode="${m.id}" aria-pressed="false"${m.ready ? '' : ' data-later="1"'}>${m.name}</button>`).join('')}</div><p class="lobby-mode-note"></p>
         <div class="lobby-sides" hidden><div class="lobby-heading">your side</div><div class="lobby-side-choices" role="group" aria-label="Your side"></div></div>
-        <div class="lobby-heading">map</div><div class="lobby-maps">${pickerHTML('map', mapGridHTML({ label: 'map', maps, pressed: maps[0]?.id }))}</div>
+        <div class="lobby-heading">map</div><div class="lobby-maps">${pickerHTML('map', mapGridHTML({ label: 'map', maps, pressed: maps[0]?.id }))}</div><p class="lobby-map-note"></p>
         <div class="lobby-heading lobby-settings-heading">settings</div><div class="lobby-settings"></div>
       </div>
     </div>
@@ -75,7 +75,7 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
   // (online-play.js moveRoom: everyone reloads onto it and rejoins).
   const mapPicker = wirePicker(root.querySelector('.lobby-maps .picker'));
   root.querySelector('.lobby-maps').addEventListener('click', event => {
-    const tile = event.target.closest('[data-choice]'); if (!tile || tile.disabled || !isHost) return;
+    const tile = event.target.closest('[data-choice]'); if (!tile || tile.disabled || !isHost || mode !== 'practice' || lastArgs?.lobby?.listed) return;
     const current = lastArgs?.lobby?.map || maps[0]?.id;
     if (tile.dataset.choice !== current) chooseMap?.(tile.dataset.choice);
   });
@@ -91,20 +91,23 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
     // lobby: { players, settings, mode, map }; chosen: the host's pending mode.
     render(args) {
       lastArgs = args;
-      const { lobby, code, isHost: host, myId, max, chosenMode } = args;
+      const { lobby, code, isHost: host, myId, chosenMode } = args;
+      let max = args.max;
       isHost = !!host; mode = chosenMode || lobby.mode || 'ffa';
       const players = lobby.players || [];
       $('.lobby-code').textContent = 'room ' + (code || '');
+      // (A listed room holds its mode's seats: 1V1 two.)
+      max = lobby.capacity || max;
       $('.lobby-count').textContent = players.length + '/' + max;
 
       if (tuning && (!isHost || !players.some(p => p.id === tuning && p.robot))) tuning = null;
       const robotsOn = lobby.settings?.robots !== 'off';
       if (!robotsOn) tuning = null;
-      const key = isHost + '|' + robotsOn + '|' + max + '|' + tuning + '|' + players.map(p => p.id + ':' + p.slot + ':' + p.name + ':' + (p.team || '') + (p.robot ? ':' + JSON.stringify(p.setup || {}) : '')).join(',');
+      const key = isHost + '|' + robotsOn + '|' + max + '|' + tuning + '|' + players.map(p => p.id + ':' + p.slot + ':' + p.name + (p.host ? ':h' : '') + ':' + (p.team || '') + (p.robot ? ':' + JSON.stringify(p.setup || {}) : '')).join(',');
       if (key !== rowsKey) {
         rowsKey = key;
         const team = p => { const t = teamById(p.team); return t ? `<span class="lobby-tag lobby-team" style="--team:${t.colour}">${t.name.toLowerCase()}</span>` : ''; };
-        $('.lobby-players').innerHTML = players.map(p => `<li class="lobby-player${p.robot ? ' lobby-robot' : ''}" data-id="${esc(p.id)}">${swatch(p.slot)}<span class="lobby-name">${esc(p.name)}</span>${p.host ? '<span class="lobby-tag">host</span>' : ''}${p.robot ? '<span class="lobby-tag">robot</span>' : ''}${team(p)}${p.id === myId ? '<span class="lobby-tag lobby-you">you</span>' : ''}<span class="lobby-ping"></span>${isHost && p.robot && robotsOn ? `<button type="button" class="secondary plain-text lobby-tune" aria-expanded="${tuning === p.id}" aria-label="Tune ${esc(p.name)}">TUNE</button>` : ''}${isHost && !p.host ? `<button type="button" class="secondary plain-text lobby-remove" aria-label="Remove ${esc(p.name)} from the game">REMOVE</button>` : ''}</li>${tuning === p.id ? tunePanelHTML(p) : ''}`).join('')
+        $('.lobby-players').innerHTML = players.map(p => `<li class="lobby-player${p.robot ? ' lobby-robot' : ''}" data-id="${esc(p.id)}">${swatch(p.slot)}<span class="lobby-name">${esc(p.name)}</span>${p.host ? '<span class="lobby-tag">host</span>' : ''}${p.robot ? '<span class="lobby-tag">robot</span>' : ''}${team(p)}${p.id === myId ? '<span class="lobby-tag lobby-you">you</span>' : ''}<span class="lobby-ping"></span>${isHost && p.robot && robotsOn ? `<button type="button" class="secondary plain-text lobby-tune" aria-expanded="${tuning === p.id}" aria-label="Tune ${esc(p.name)}">TUNE</button>` : ''}${isHost && !p.host && (p.robot || !lobby.publicRoom) ? `<button type="button" class="secondary plain-text lobby-remove" aria-label="Remove ${esc(p.name)} from the game">REMOVE</button>` : ''}</li>${tuning === p.id ? tunePanelHTML(p) : ''}`).join('')
          + emptySlotRows((max || 0) - players.length, isHost && robotsOn);
         for (const button of root.querySelectorAll('.lobby-remove')) button.onclick = () => kick(button.closest('li').dataset.id);
         for (const button of root.querySelectorAll('.lobby-add-robot')) button.onclick = () => addRobot?.();
@@ -145,12 +148,19 @@ export function createLobbyScreen(parent, { kick, setMode, setSetting, start, le
       }
       const mapId = lobby.map || maps[0]?.id;
       for (const tile of root.querySelectorAll('.lobby-maps [data-choice]')) tile.setAttribute('aria-pressed', String(tile.dataset.choice === mapId));
-      root.querySelector('.lobby-maps .picker-toggle').disabled = !isHost; if (!isHost) mapPicker.open(false);
       mapPicker.sync();
+      // The map (owner, 2026-09-30): in practice the host picks it here; every
+      // other mode votes on it when the host presses START (map-vote.js). A
+      // listed room on the game server keeps its own map.
+      const picksMap = isHost && mode === 'practice' && !lobby.listed;
+      root.querySelector('.lobby-maps .picker-toggle').disabled = !picksMap; if (!picksMap) mapPicker.open(false);
+      $('.lobby-map-note').textContent = lobby.listed ? "this room's map" : mode === 'practice' ? (isHost ? '' : 'the host picks the map') : 'everyone votes on the map when the round starts';
       const plain = settings.render({ settings: lobby.settings || {}, mode, editable: isHost });
       // Practice has no plain rows: no "settings" heading over nothing.
       $('.lobby-settings').hidden = !isHost; $('.lobby-settings-heading').hidden = !isHost || !plain;
       $('#lobby-start').hidden = !isHost; $('.lobby-wait').hidden = isHost;
+      // A listed room starts by itself (server/room.js): its countdown.
+      $('.lobby-wait').textContent = lobby.listed ? (Number.isFinite(lobby.startsIn) ? 'starting in ' + lobby.startsIn : 'starting soon') : 'waiting for the host to start the round';
     },
   };
   return api;

@@ -17,8 +17,10 @@ import { buildDuelMenu } from './duel-menu.js';
 import { duelParam } from '../duel.js';
 import { buildKeybindMenu } from './keybind-menu.js';
 import { installMenuFit } from './menu-fit.js';
+import { createJoinList } from './join-list.js';
+import { PROTOCOL_VERSION } from '../net/protocol.js';
 
-export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete, online }) {
+export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete, online, onlineRooms }) {
  let page=document.querySelector('[data-page]:not([hidden])')?.dataset.page||'home';
  // The pages stay in place: a page taller than the screen is scaled to fit it
  // (menu-fit.js), never scrolled (owner, 2026-09-29).
@@ -31,7 +33,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  let onlinePick=null,onlineBack=null;
  // Back: join, host, bots and maps go to gamemodes; gamemodes goes home.
  const back=()=>{if(onlinePick&&page==='weapons'){onlineBack?.();return;}if(page!=='home')show(page==='weapons'?weaponBack:['maps','join','host-setup','duel'].includes(page)?'modes':'home');};
- const show=name=>{if(name==='maps')loadThumbnail();page=name;document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);refreshTypography();menuFit.refit();document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
+ const show=name=>{if(name==='maps')loadThumbnail();page=name;if(name==='join')joinList?.start();else joinList?.stop();document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);refreshTypography();menuFit.refit();document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
  $('tutorial-entry').hidden=tutorialComplete;$('tutorial-mode').hidden=false;
  $('gamemodes').onclick=()=>show('modes');
  // SKINS (owner, 2026-09-29: "a regular ui with a back arrow that takes back
@@ -65,6 +67,15 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  $('join-mode').hidden=$('online-host').hidden=!NETWORK.enabled;
  $('join-mode').onclick=()=>{status('');show('join');};
  const who=()=>({name:$('online-name').value});
+ // Where a game goes (net/online.js `via`): the game server, unless the
+ // developer tools' PEER-TO-PEER box is ticked (this device hosts, or joins
+ // one that does; a p2p invite link ticks it on JOIN, for any player).
+ const p2pBox=id=>{const label=document.createElement('label');label.className='dev-only online-p2p';label.innerHTML='<input type="checkbox" id="'+id+'"><span>peer-to-peer</span>';return label;};
+ $('online-join-form').after(p2pBox('join-p2p'));$('host-create').before(p2pBox('host-p2p'));
+ const via=id=>($(id).checked?'p2p':'server');
+ // The list of open games under the code box (join-list.js): the game
+ // server's listed rooms, open to anyone; a row joins its room by code.
+ const joinList=NETWORK.enabled&&onlineRooms?createJoinList($('online-status').parentElement,{maps:multiplayerMaps(map),fetchRooms:onlineRooms,version:PROTOCOL_VERSION,join:code=>{if(!who().name.trim()){status('Enter a username first.');$('online-name').focus();return;}go({role:'join',code,...who(),via:'server'});}}):null;
  // One username for JOIN and HOST: the host page's box mirrors the join
  // page's #online-name (the one online-play.js reads and saves).
  const mirror=(from,to)=>$(from).addEventListener('input',()=>{$(to).value=$(from).value;});
@@ -101,8 +112,8 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  showHostMode();
  // A host needs a name (asked here, not on the way in). Developer rows stay
  // at their defaults unless the tools are unlocked (lobby-settings.js).
- $('host-create').onclick=()=>{if(!who().name.trim()){status('Enter a username first.');$('host-name').focus();return;}go({role:'host',...who(),settings:withDevDefaults(hostSettings),mode:hostMode,map:hostMap});};
- $('online-join-form').onsubmit=e=>{e.preventDefault();go({role:'join',code:$('online-code').value,...who()});};
+ $('host-create').onclick=()=>{if(!who().name.trim()){status('Enter a username first.');$('host-name').focus();return;}go({role:'host',...who(),settings:withDevDefaults(hostSettings),mode:hostMode,map:hostMap,via:via('host-p2p')});};
+ $('online-join-form').onsubmit=e=>{e.preventDefault();go({role:'join',code:$('online-code').value,...who(),via:via('join-p2p')});};
  // A shared link (?join=CODE) lands straight on this page and joins.
  const invite=NETWORK.enabled&&new URLSearchParams(location.search).get('join');
  // The link fills in the room code; the username is typed here.
@@ -111,13 +122,14 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  // saved username, else ask for one as before.
  // (Started by main.js once the page has loaded: autoRoom.)
  const params=new URLSearchParams(location.search),name=savedName().trim();
+ if(params.get('p2p')==='1')$('join-p2p').checked=$('host-p2p').checked=true;
  const autoJoin=invite&&online&&params.get('autojoin')==='1'&&name,autoHost=!invite&&NETWORK.enabled&&params.get('host')==='1'&&params.get('autohost')==='1'&&online&&name;
  if(invite&&online){$('online-code').value=invite.toUpperCase();show('join');status(autoJoin?'Joining room '+invite.toUpperCase()+'…':'Enter your username, then JOIN.');}
  else if(autoHost){show('host-setup');status('Opening the room…');}
  else if(NETWORK.enabled&&params.get('host')==='1'&&online){show('host-setup');status('Enter your username, then CREATE GAME.');}
  const autoRoom=()=>{
-  if(autoJoin)go({role:'join',code:invite,name,retry:true});
-  else if(autoHost){const carry=takeCarry();go({role:'host',name,settings:carry?.settings?cleanSettings(carry.settings):withDevDefaults(hostSettings),mode:MODES.some(m=>m.id===carry?.mode)?carry.mode:hostMode,room:carry?.code||null,carry});}
+  if(autoJoin)go({role:'join',code:invite,name,retry:true,via:via('join-p2p')});
+  else if(autoHost){const carry=takeCarry();go({role:'host',name,settings:carry?.settings?cleanSettings(carry.settings):withDevDefaults(hostSettings),mode:MODES.some(m=>m.id===carry?.mode)?carry.mode:hostMode,room:carry?.code||null,carry,via:carry?.via==='p2p'?'p2p':'server'});}
  };
  document.querySelectorAll('.menu-back').forEach(b=>b.onclick=back);
  // The page title says which weapon list this is: a tutorial course or a match.

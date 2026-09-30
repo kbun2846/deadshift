@@ -169,7 +169,8 @@ export class Arena {
  // --- Host controls (lobby) -------------------------------------------------
 
  setSetting(key, value) {
-  if (!SETTINGS[key] || !SETTINGS[key].values.includes(value)) return false;
+  // (Own keys only: a message naming 'constructor' or '__proto__' must not reach .values.)
+  if (!Object.hasOwn(SETTINGS, key) || !SETTINGS[key].values.includes(value)) return false;
   this.settings[key] = value;
   if (key === 'spawnMode') this.togetherRoom = null;
   // Robot skill: every robot's (like APPLY TO ALL for the skill alone).
@@ -206,6 +207,20 @@ export class Arena {
  // fixed number of seats refuses to start with too many players, or too few
  // with robots off (`startError` says which). Sides are dealt round-robin,
  // players first (host, then as they joined), then robots.
+ // Why START would be refused, without changing anything (null: it would
+ // start). The map vote (host-session.js) asks before voting, so a round that
+ // cannot start is refused at once, not after the vote. (The same first checks
+ // as startRound.)
+ startProblem(mode = this.mode) {
+  const entry = modeById(mode);
+  if (!entry?.ready) return 'Cannot start.';
+  const humans = [...this.seats.values()].filter(s => !s.robot).length, kept = [...this.seats.values()].filter(s => !s.robot?.auto).length;
+  if (entry.size && humans > entry.size) return entry.name + ' is for ' + entry.size + ' players';
+  const fill = this.settings.robots === 'fill' && entry.fillTo ? Math.max(0, Math.min(MAX_SEATS, entry.fillTo) - kept) : 0;
+  if (entry.size && Math.min(kept, entry.size) + fill < entry.size) return entry.name + ' needs ' + entry.size + ' players: add robots, or set robots to fill';
+  return null;
+ }
+
  startRound(mode = this.mode) {
   const entry = modeById(mode);
   if (!entry?.ready) return false;

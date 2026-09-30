@@ -7,17 +7,26 @@
 // everyone else, the world and the match clock, and sends snapshots.
 //
 // Nothing in here touches the DOM, three.js or the wire directly, so it runs
-// the same in tests (with the loopback transport) and, later, on a dedicated
-// server (with a WebSocket transport and no local player).
+// the same in tests (with the loopback transport) and on the dedicated server
+// (server/, with a WebSocket transport and no local player: `local` null).
+// With no local player there is no host seat: every player is a joiner, the
+// seats start at slot 0, and `step()` is the whole tick.
 import { NETWORK } from '../config/network.js';
 import { PROTOCOL_VERSION, playerInput, playerState, readMessage, loadout, packEvent } from './protocol.js';
 import { Arena, SPAWN_MODES, SETTINGS } from './arena.js';
 import { pack } from './projectiles.js';
-import { mapHash } from '../maps.js';
+import { mapHash, multiplayerMaps } from '../maps.js';
+import { modeById } from '../config/match.js';
 import { hpRound } from '../config/gameplay.js';
 
 // Seconds between our own ticks that count as us being frozen, not them.
 const STALL = 1;
+// The map vote (owner, 2026-09-30: "make it so that the map is vote for ...
+// like before weapon select ... if theyre tied it should be a 50/50"): when
+// the host presses START (every mode but practice, where the host picks the
+// map), everyone gets this long to click a map; once every player has voted
+// it closes after `settle` more (to see the last vote land).
+export const VOTE = Object.freeze({ time: 12, settle: 1.2 });
 
 const IDLE = Object.freeze(playerInput({}));
 // Events that other screens need to see. Everything else stays with its sim.
@@ -57,11 +66,16 @@ export class HostSession {
   Object.assign(this, { transport, map, local, createSim, config, now });
   this.tick = 0; this.remotes = new Map(); this.ended = null; this.notices = []; this.removed = new Set();
   this.arena = new Arena({ map, createSim, random, settings });
-  this.hostSeat = this.arena.addSeat('host', name || 'Host', local);
-  this.hostSeat.slot = 0;
+  // (Dedicated server: no local player, no host seat.)
+  this.hostSeat = local ? this.arena.addSeat('host', name || 'Host', local) : null;
+  if (this.hostSeat) this.hostSeat.slot = 0;
   // The mode picked on the host setup page (the lobby can change it).
   if (mode) this.arena.setMode(mode);
   this.log = []; this.eventSeq = 0; this.localEvents = []; this.newFeed = []; this.folds = new Map(); this.sentTick = -1;
+  // The map vote under way (startVoting), and where it sent the room: a map
+  // other than this one waits in `pendingMove` for whoever runs the room (the
+  // host's page, online-play.js; the game server, server/room.js) to move it.
+  this.ballot = null; this.pendingMove = null; this.voteError = null; this.random = random;
   transport.onMessage = (from, data) => this.receive(from, data);
   transport.onLeave = id => this.remove(id, 'left');
   transport.onJoin = () => {};
@@ -69,8 +83,10 @@ export class HostSession {
 
  get role() { return 'host'; }
  // The host's own screen shape (main.js, every frame), for the robots.
- setAspect(aspect) { this.hostSeat.aspect = aspect; }
- get playerCount() { return 1 + this.remotes.size; }
+ setAspect(aspect) { if (this.hostSeat) this.hostSeat.aspect = aspect; }
+ get playerCount() { return (this.hostSeat ? 1 : 0) + this.remotes.size; }
+ // A dedicated server's room: no player hosts it.
+ get dedicated() { return !this.hostSeat; }
  get id() { return 'host'; }
  get me() { return this.hostSeat; }
 
@@ -105,6 +121,65 @@ export class HostSession {
   if (message.t === 'team') this.arena.chooseTeam(from, message.team);
   if (message.t === 'forfeit') this.arena.forfeit(from, message.on);
   if (message.t === 'ready') this.arena.setReady(from, message.on);
+  if (message.t === 'vote') this.castVote(from, message.map);
+ }
+
+ // --- The map vote ----------------------------------------------------------
+ // START in the lobby. Practice (or a single map) starts at once on this map;
+ // any other mode opens the vote, after the same checks START makes (a mode
+ // that cannot start is refused now, with `startError`, not after the vote).
+ startVoting(mode = this.arena.mode) {
+  if (this.arena.phase !== 'lobby' || this.ballot) return false;
+  const entry = modeById(mode), maps = multiplayerMaps(this.map).map(m => m.id);
+  if (!entry?.ready) return false;
+  if (mode === 'practice' || maps.length < 2) return this.startRound(mode);
+  const problem = this.arena.startProblem(mode);
+  if (problem) { this.arena.startError = problem; return false; }
+  this.arena.startError = null;
+  this.arena.setMode(mode);
+  this.ballot = { mode, maps, votes: new Map(), left: VOTE.time };
+  this.lobbyDirty = true;
+  return true;
+ }
+ // Who can vote: the people in the room (never robots).
+ voters() { return [...(this.hostSeat ? ['host'] : []), ...this.remotes.keys()]; }
+ castVote(id, map) {
+  const b = this.ballot;
+  if (!b || !b.maps.includes(map) || !this.voters().includes(id)) return false;
+  b.votes.set(id, map); return true;
+ }
+ vote(map) { return this.castVote('host', map); }
+ // The vote as every screen draws it: each map's votes and who cast them.
+ voteNow() {
+  const b = this.ballot;
+  if (!b) return null;
+  const name = id => (id === 'host' ? this.hostSeat?.name : this.remotes.get(id)?.name) || '';
+  return { mode: b.mode, left: Math.max(0, Math.round(b.left * 10) / 10), total: VOTE.time,
+   maps: b.maps.map(id => { const who = [...b.votes].filter(([, m]) => m === id).map(([v]) => name(v)); return { id, votes: who.length, names: who }; }) };
+ }
+ // Once a tick: the clock, closing early once everyone has voted, the result.
+ stepVote(dt) {
+  const b = this.ballot;
+  if (!b) return;
+  if (this.arena.phase !== 'lobby') { this.ballot = null; return; }
+  const voters = this.voters().filter(id => this.remotes.get(id)?.loaded !== false);
+  for (const id of [...b.votes.keys()]) if (!this.voters().includes(id)) b.votes.delete(id);
+  if (voters.length && voters.every(id => b.votes.has(id))) b.left = Math.min(b.left, VOTE.settle);
+  b.left -= dt;
+  if (b.left <= 0) this.closeVote();
+ }
+ // The most votes wins; a tie (or nobody voting: every map tied at none) is
+ // settled at random among the tied maps. This map: the round starts now;
+ // another: `pendingMove`, and the room moves and starts there.
+ closeVote() {
+  const b = this.ballot; this.ballot = null; this.lobbyDirty = true;
+  const counts = b.maps.map(id => [...b.votes.values()].filter(m => m === id).length), best = Math.max(...counts);
+  const tied = b.maps.filter((_, i) => counts[i] === best), map = tied[Math.min(tied.length - 1, Math.floor(this.random() * tied.length))];
+  this.lastVote = { map, mode: b.mode, tied: tied.length > 1 };
+  // (`voteError`: the game server tells its leader; a host page shows the notice.)
+  if (map === this.map.id) { if (!this.startRound(b.mode)) { this.voteError = this.startError || 'Cannot start'; this.notices.push(this.voteError); } }
+  else this.pendingMove = { map, mode: b.mode };
+  return map;
  }
 
  admit(id, hello) {
@@ -115,10 +190,10 @@ export class HostSession {
   if (this.playerCount >= this.config.maxPlayers) return this.transport.send(id, { t: 'full', reason: 'That game is full.' });
   // Robots make room for a player (one filling a seat first).
   if (this.arena.seats.size >= this.config.maxPlayers) { const bot = this.robotSeats().find(s => s.robot.auto) || this.robotSeats()[0]; if (bot) this.removeRobot(bot.id); }
-  const used = new Set([0, ...[...this.remotes.values()].map(r => r.slot)]);
-  let slot = 1; while (used.has(slot)) slot++;
+  const used = new Set([...(this.hostSeat ? [0] : []), ...[...this.remotes.values()].map(r => r.slot)]);
+  let slot = this.hostSeat ? 1 : 0; while (used.has(slot)) slot++;
   // Names are unique in a room: a second "Sam" plays as "Sam 2".
-  const taken = new Set([this.hostSeat.name, ...[...this.remotes.values()].map(r => r.seat.name)].map(n => n.toLowerCase()));
+  const taken = new Set([...(this.hostSeat ? [this.hostSeat.name] : []), ...[...this.remotes.values()].map(r => r.seat.name)].map(n => n.toLowerCase()));
   let name = hello.name || 'Player ' + (slot + 1), suffix = 2;
   while (taken.has(name.toLowerCase())) name = (hello.name || 'Player') + ' ' + suffix++;
   const seat = this.arena.addSeat(id, name);
@@ -166,8 +241,11 @@ export class HostSession {
  lobby() {
   const ping = r => (r.ping === null ? null : Math.round(r.ping));
   return {
-   players: [{ id: 'host', name: this.hostSeat.name, slot: 0, ping: 0, host: true, present: this.hostSeat.present, team: this.shownTeam(this.hostSeat) },
-    ...[...this.remotes.values()].map(r => ({ id: r.id, name: r.name, slot: r.slot, ping: ping(r), host: false, present: r.seat.present, team: this.shownTeam(r.seat) })),
+   // (The game server's word on the room: `listed`, `startsIn`: server/room.js.)
+   ...this.lobbyExtra,
+   // (Dedicated server: the room's leader, `leader`, wears the host tag.)
+   players: [...(this.hostSeat ? [{ id: 'host', name: this.hostSeat.name, slot: 0, ping: 0, host: true, present: this.hostSeat.present, team: this.shownTeam(this.hostSeat) }] : []),
+    ...[...this.remotes.values()].map(r => ({ id: r.id, name: r.name, slot: r.slot, ping: ping(r), host: r.id === this.leader, present: r.seat.present, team: this.shownTeam(r.seat) })),
     ...this.robotSeats().map(s => ({ id: s.id, name: s.name, slot: s.slot, ping: null, host: false, robot: true, auto: !!s.robot.auto, setup: { ...s.robot.setup }, present: s.present, team: this.arena.phase === 'lobby' ? null : s.team }))],
    spawnMode: this.arena.settings.spawnMode, settings: { ...this.arena.settings }, robotSetup: { ...this.arena.robotSetup }, mode: this.arena.mode, map: this.arena.mapId, phase: this.arena.phase,
   };
@@ -177,7 +255,7 @@ export class HostSession {
  setSpawnMode(mode) { return SPAWN_MODES.includes(mode) && this.arena.setSpawnMode(mode); }
  // Robots unticked in the lobby (v147): the robots already added go too.
  setSetting(key, value) {
-  const ok = !!SETTINGS[key] && this.arena.setSetting(key, value);
+  const ok = Object.hasOwn(SETTINGS, key) && this.arena.setSetting(key, value);
   if (ok && key === 'robots' && value === 'off' && this.arena.phase === 'lobby') for (const seat of this.robotSeats()) this.removeRobot(seat.id);
   return ok;
  }
@@ -220,14 +298,14 @@ export class HostSession {
  // One 60 Hz tick, run right after the host's own player has stepped.
  step() {
   this.tick++;
+  this.stepVote(1 / 60);
   // A stall on our side (the page busy loading, a hidden window) is not the
   // others going quiet: their messages are waiting in the queue. Forgive it.
   const t = this.now(), gap = this.lastStep === undefined ? 0 : t - this.lastStep; this.lastStep = t;
   if (gap > STALL) for (const remote of this.remotes.values()) remote.heard += Math.min(gap, Math.max(0, t - remote.heard));
   // The host's own sim keeps its dev settings: dev tools are host-only online.
-  this.arena.after(this.hostSeat);
-  const hostMark = this.hostSeat.mark;
-  this.arena.robots.hear('host', this.local.events.slice(hostMark));
+  const host = this.hostSeat, hostMark = host ? host.mark : 0;
+  if (host) { this.arena.after(host); this.arena.robots.hear('host', this.local.events.slice(hostMark)); }
   for (const remote of [...this.remotes.values()]) {
    remote.previous = { ...remote.sim.player };
    // Normally one input per tick. A backlog (a burst after a network hiccup)
@@ -270,7 +348,7 @@ export class HostSession {
   }
   // The host's own events, including damage the others did to it just now
   // (main.js drains the sim after this).
-  this.record('host', this.local.events.slice(hostMark));
+  if (host) this.record('host', this.local.events.slice(hostMark));
   this.newFeed.push(...this.arena.endTick());
   // Seats the rules took out (a robot stepping aside, spare robots): everyone is told.
   for (const id of this.arena.leaves.splice(0)) this.transport.broadcast({ t: 'leave', id });
@@ -287,7 +365,8 @@ export class HostSession {
   for (const e of events) {
    if (!SHARED_EVENTS.has(e.type)) continue;
    const s = ++this.eventSeq;
-   if (by !== 'host') this.localEvents.push({ s, by, tick: this.tick, e });
+   // (Only a host with a screen shows them; a dedicated server has none.)
+   if (by !== 'host' && !this.dedicated) this.localEvents.push({ s, by, tick: this.tick, e });
    const key = foldKey(by, e), waiting = key && this.folds.get(key);
    if (waiting && waiting.tick > this.sentTick) {
     if (e.type === 'sprayArc') waiting.e = packEvent(e);
@@ -308,16 +387,19 @@ export class HostSession {
   const slow = this.tick % (this.config.snapshotEvery * 10) === 0;
   const players = this.states(slow), proj = this.projectiles();
   const feed = this.arena.feed.slice(-8), board = slow ? this.scoreboard() : null, world = slow ? this.worldState() : undefined;
-  const match = this.match(), lobby = slow ? this.lobby() : undefined;
+  // (`lobbyDirty`: a change the lobby should show at once, not in half a second.)
+  const match = this.match(), lobby = slow || this.lobbyDirty ? this.lobby() : undefined; this.lobbyDirty = false;
   // Practice targets move and break: every snapshot, compact.
   const targets = this.arena.targets.length ? this.arena.targets.map(t => [t.id, Math.round(t.x * 100) / 100, Math.round(t.z * 100) / 100, hpRound(t.hp), Math.round((t.flash || 0) * 100) / 100]) : null;
   // The world's animals (critters.js): where each stands, and whether it is dead.
   const critters = this.arena.critters?.state() || null;
+  // The map vote (null when there is none), every snapshot: it moves fast.
+  const vote = this.voteNow();
   this.sentTick = this.tick; this.folds.clear();
   for (const remote of this.remotes.values()) {
    const snapshot = { t: 'snapshot', tick: this.tick, players, you: { ...loadout(remote.sim), life: remote.seat.life, present: remote.seat.present, dead: remote.seat.dead, respawnIn: remote.seat.respawnIn,
      weapon: remote.seat.weapon, picking: pickState(remote.seat.picking) },
-    proj, ev: [], feed, board, world, match, lobby, targets, ...(critters ? { critters } : null) };
+    proj, ev: [], feed, board, world, match, lobby, targets, vote, ...(critters ? { critters } : null) };
    // As many waiting events, oldest first, as fit the message (WIRE_BUDGET).
    // (One too big for any message is skipped, not left to block the rest.)
    const space = WIRE_BUDGET - JSON.stringify(snapshot).length;
@@ -359,7 +441,7 @@ export class HostSession {
  }
 
  states(named = true) {
-  return [this.seatState(this.hostSeat, 0, named), ...[...this.remotes.values()].map(r => this.seatState(r.seat, r.lastSeq, named)), ...this.robotSeats().map(s => this.seatState(s, 0, named))];
+  return [...(this.hostSeat ? [this.seatState(this.hostSeat, 0, named)] : []), ...[...this.remotes.values()].map(r => this.seatState(r.seat, r.lastSeq, named)), ...this.robotSeats().map(s => this.seatState(s, 0, named))];
  }
 
  // A joiner as drawn on the host (v0.999a, hotspot): their inputs arrive in

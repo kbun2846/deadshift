@@ -14,6 +14,9 @@ importers:
       three:
         specifier: 0.180.0
         version: 0.180.0
+      ws:
+        specifier: 8.18.3
+        version: 8.18.3
     devDependencies:
       vite:
         specifier: 7.1.7
@@ -438,6 +441,18 @@ packages:
     resolution: {integrity: sha512-CHbl2ZQbxx164IgWRgzJno4hWtM4tFbRam1QfI3Yxhs3w/DvqluVxVWeXs3oL5/fbGkSNLKo0Ty5MgUWceNhog==}
     engines: {node: '>=6.0.0', npm: '>=3.10.0'}
 
+  ws@8.18.3:
+    resolution: {integrity: sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
 snapshots:
 
   '@esbuild/aix-ppc64@0.25.12':
@@ -716,3 +731,5 @@ snapshots:
   webrtc-adapter@9.0.6:
     dependencies:
       sdp: 3.2.2
+
+  ws@8.18.3: {}

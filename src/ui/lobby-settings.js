@@ -43,8 +43,8 @@ export const withDevDefaults = (settings, unlocked = devUnlocked()) => {
 // The rows' markup: the plain rows, then the developer group.
 export function settingsRowsHTML() {
   const choices = (key, s) => `<div class="round-setting" data-key="${key}"><span class="round-setting-label">${s.label}</span><div class="round-choices" role="group" aria-label="${s.label}">${s.values.map((value, i) => `<button type="button" class="choice-button" data-value="${i}" aria-pressed="false"${choiceName(s.names[i])}>${choiceLabel(s.names[i])}</button>`).join('')}</div></div>`;
-  const toggle = () => '<label class="round-setting round-toggle" data-key="robots"><span class="round-setting-label">robots</span><input type="checkbox" aria-label="Robots: fill empty seats and allow + ROBOT"></label>';
-  const row = key => (key === 'robots' ? toggle() : choices(key, SETTINGS[key]));
+  // (ROBOTS FILL SEATS is an ON | OFF row like the rest since 2026-09-30.)
+  const row = key => choices(key, SETTINGS[key]);
   return PLAIN_SETTINGS.map(row).join('')
     + `<details class="dev-only round-dev"><summary>developer</summary><div class="round-settings round-dev-rows">${DEV_SETTINGS.map(row).join('')}</div></details>`;
 }
@@ -60,15 +60,12 @@ export function createSettingsRows(container, { onChange } = {}) {
       onChange?.(key, value);
     };
   }
-  const box = container.querySelector('[data-key="robots"] input');
-  box.onchange = () => { if (editable) onChange?.('robots', box.checked ? 'fill' : 'off'); };
   return {
     // Returns how many plain rows show (0 in practice: the caller can hide its heading).
     render({ settings, mode, editable: canEdit }) {
       editable = !!canEdit;
       container.classList.toggle('round-settings-readonly', !editable);
       const robots = settings.robots !== 'off';
-      box.checked = robots; box.disabled = !editable;
       let plain = 0;
       for (const row of container.querySelectorAll('.round-setting')) {
         const key = row.dataset.key, s = SETTINGS[key];

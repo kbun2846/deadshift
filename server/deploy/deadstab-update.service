@@ -1,0 +1,9 @@
+# Pulls a new version of the game from GitHub and restarts the server
+# (update.sh). Run every 2 minutes by deadstab-update.timer.
+[Unit]
+Description=Deadstab game server update check
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/deadstab/server/deploy/update.sh

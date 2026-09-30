@@ -7,8 +7,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "server": "node server/index.js"
   },
-  "dependencies": { "peerjs": "1.5.5", "three": "0.180.0" },
+  "dependencies": { "peerjs": "1.5.5", "three": "0.180.0", "ws": "8.18.3" },
   "devDependencies": { "vite": "7.1.7" }
 }

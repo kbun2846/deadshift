@@ -89,10 +89,10 @@ test('a joiner receives the hit and curse bearings from the host for its damage 
 test('room codes are short, readable and forgiving to type', () => {
  const code = makeRoomCode();
  assert.equal(code.length, NETWORK.codeLength);
- assert.ok(!/[01IO]/.test(code));
- assert.equal(cleanRoomCode(' ab-cde '), 'ABCDE');
- assert.equal(cleanRoomCode('ABC'), null);
- assert.equal(cleanRoomCode('ABCD0'), null);
+ assert.match(code, /^[0-9]{5}$/, 'five digits (owner, 2026-09-30)');
+ assert.equal(cleanRoomCode(' 12-345 '), '12345');
+ assert.equal(cleanRoomCode('123'), null);
+ assert.equal(cleanRoomCode('1234A'), null);
 });
 
 test('multiplayer is switched on: JOIN and HOST in the game modes', async () => {

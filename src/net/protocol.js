@@ -49,7 +49,10 @@ import { weaponOrDefault } from '../items.js';
 // 22: the storm (storm.js): `storm` (its plan) and `stormT` in the match state.
 // 23: the world's animals (critters.js): `critters` in the snapshot, [x, z,
 // heading, dead] each (Hollow Wick's goat, which can be killed).
-export const PROTOCOL_VERSION = 23;
+// 24 (game server + map vote, 2026-09-30): 'vote' from joiners ({ map }),
+// `vote` in every snapshot (the map vote: its mode, seconds left and each
+// map's votes and voters, or null), `listed` / `startsIn` in the lobby.
+export const PROTOCOL_VERSION = 24;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);
@@ -194,6 +197,8 @@ export function readMessage(data) {
  if (data.t === 'forfeit' || data.t === 'ready') return { t: data.t, on: data.on !== false };
  if (data.t === 'ping' || data.t === 'pong') return Number.isFinite(data.s) ? { t: data.t, s: data.s } : null;
  if (data.t === 'hello') return { t: 'hello', version: data.version, name: cleanName(data.name) };
+ // A map vote (host-session.js startVoting): a map id, checked by the host.
+ if (data.t === 'vote') return typeof data.map === 'string' && data.map.length <= 40 ? { t: 'vote', map: data.map } : null;
  // The host moving the room to another map (v0.990a): its id (the client
  // checks it against its own maps before it goes).
  if (data.t === 'moveMap') return typeof data.map === 'string' && data.map.length <= 40 ? { t: 'moveMap', map: data.map } : null;

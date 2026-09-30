@@ -54,7 +54,8 @@ export class ClientSession {
   this.mine = { life: 0, present: false, dead: false, respawnIn: 0, picking: null, weapon: null };
   this.projectiles = new ProjectileMirror();
   transport.onMessage = (_from, data) => this.receive(data);
-  transport.onLeave = () => { if (!this.ended) this.ended = 'The host left the game.'; };
+  // (The game server's socket says it lost the server, not the host: `lostText`.)
+  transport.onLeave = () => { if (!this.ended) this.ended = transport.lostText || 'The host left the game.'; };
   transport.send('host', { t: 'hello', version: PROTOCOL_VERSION, name });
  }
 
@@ -116,6 +117,8 @@ export class ClientSession {
   for (const line of snapshot.feed || []) if (line.serial > this.feedSeen) { this.feedLines.push(line); this.feedSeen = line.serial; }
   if (snapshot.board) this.board = snapshot.board;
   if (snapshot.lobby) this.lobbyState = snapshot.lobby;
+  // The map vote (host-session.js voteNow), or null.
+  if ('vote' in snapshot) this.voteState = snapshot.vote || null;
   if (snapshot.match) {
    this.matchState = snapshot.match; this.local.boundary = this.scratch.boundary = snapshot.match.circle || null;
    // The storm (storm.js): the host's plan and its clock; the circle is read off it.
@@ -207,7 +210,7 @@ export class ClientSession {
   // going quiet: its snapshots are waiting in the queue. Forgive it.
   const t = this.now(), gap = this.lastInput === undefined ? 0 : t - this.lastInput; this.lastInput = t;
   if (gap > STALL) this.heard += Math.min(gap, Math.max(0, t - this.heard));
-  if (this.welcomed && !this.ended && this.now() - this.heard > this.config.timeout) this.ended = 'Lost connection to the host.';
+  if (this.welcomed && !this.ended && this.now() - this.heard > this.config.timeout) this.ended = this.transport.lostText || 'Lost connection to the host.';
   if (!this.welcomed || this.ended) return movementInput({});
   this.local.dev = { speed: 1 };
   // Between matches (the results) everyone stands still, as on the host.
@@ -232,6 +235,9 @@ export class ClientSession {
  respawnNow() { this.transport.send('host', { t: 'respawn' }); }
  forfeit(on = true) { this.transport.send('host', { t: 'forfeit', on }); }
  setReady(on = true) { this.transport.send('host', { t: 'ready', on }); }
+ // The map vote: the map clicked (again: changes it).
+ vote(map) { this.transport.send('host', { t: 'vote', map }); }
+ voteNow() { return this.voteState || null; }
 
  // Events that arrived since the last call: [{ s, by, e }].
  drainEvents() { return this.inbox.splice(0); }

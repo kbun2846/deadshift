@@ -85,7 +85,10 @@ export const SETTINGS = Object.freeze({
  // Robots (net/arena-robots.js): fill the empty seats a mode needs (FFA: up
  // to four), and how well they play. + ROBOT in the lobby adds one any time.
  // Shown as one ROBOTS box (v147); unticked, no robots and no robot settings.
- robots: { label: 'robots', values: ['fill', 'off'], names: ['fill empty seats', 'none'], default: 'fill', modes: MODES.map(m => m.id), dev: true },
+ // (Owner, 2026-09-30: "robots have a on and off switch for filling up
+ // server": a plain row for the host, ROBOTS FILL SEATS  ON | OFF. The
+ // listed rooms on the game server always fill: server/room.js.)
+ robots: { label: 'robots fill seats', values: ['fill', 'off'], names: ['ON', 'OFF'], default: 'fill', modes: COUNTED },
  robotSkill: { label: 'robot difficulty', values: ['easy', 'normal', 'hard'], names: ['easy', 'normal', 'hard'], default: 'normal', modes: MODES.map(m => m.id), dev: true },
 });
 // The rows everyone sees (the rest are the developer tools').
