@@ -22,6 +22,7 @@ import { ProjectileMirror, hexShieldsFrom } from './projectiles.js';
 import { mapColliders, mapHash, maps, supportsMode } from '../maps.js';
 import { HP_STEP } from '../config/gameplay.js';
 import { readStormState, stormAt } from '../storm.js';
+import { jetStart } from '../world/lumen-breakables.js'; // Lumen stage 4: a broken hydrant's jet
 // A map the room can move to: one of ours, played online.
 const roomMap = id => typeof id === 'string' && Object.hasOwn(maps, id) && supportsMode(maps[id], 'multiplayer') ? id : null;
 
@@ -108,7 +109,7 @@ export class ClientSession {
   for (const entry of (snapshot.ev || []).sort((a, b) => a.s - b.s)) if (entry.s > this.ack) {
    entry.e = unpackEvent(entry.e); this.inbox.push(entry); this.ack = entry.s;
    // Broken and rebuilt props change what you can walk through: applied at once.
-   if (entry.e.type === 'propBreak' || entry.e.type === 'propRestore') this.setProp(entry.e.id, entry.e.type === 'propRestore');
+   if (entry.e.type === 'propBreak' || entry.e.type === 'propRestore') this.setProp(entry.e.id, entry.e.type === 'propRestore', entry.tick);
   }
   if (snapshot.world) this.applyWorld(snapshot.world);
   if ('targets' in snapshot) this.applyTargets(snapshot.targets);
@@ -162,9 +163,16 @@ export class ClientSession {
   for (const [id, x, z, hp, flash] of list) { const t = byId.get(id); if (t) Object.assign(t, { x, z, baseX: x, hp, flash }); }
  }
 
- setProp(id, standing) {
+ // `tick`: the host's tick the event was recorded on (HostSession.record).
+ setProp(id, standing, tick) {
   const prop = this.local.props.find(p => p.id === id); if (!prop || prop.hp === null) return;
   prop.hp = standing ? prop.health : 0;
+  // A broken hydrant's jet blocks sight here as on the host, on the host's
+  // clock: stamped when it broke there, not when the news arrived (that ran
+  // the jet 50-150 ms late, the link's delay and the snapshot's wait). The
+  // host records an event on the tick after the one its sim broke the prop
+  // in (HostSession.step counts the tick first), whose clock was (tick - 1) / 60.
+  if (!standing) jetStart(this.local, prop, Number.isFinite(tick) ? (tick - 1) / 60 : undefined);
   this.local.colliders = this.local.colliders.filter(c => c.propId !== id);
   if (standing) this.local.colliders.push(...mapColliders(this.map).filter(c => c.propId === id));
  }
@@ -244,6 +252,13 @@ export class ClientSession {
  // The map vote: the map clicked (again: changes it).
  vote(map) { this.transport.send('host', { t: 'vote', map }); }
  voteNow() { return this.voteState || null; }
+
+ // The host's match clock (HostSession.worldClock: its tick in seconds) as it
+ // stands now, from the tick-to-clock mapping the snapshots keep (accept()):
+ // the least-delayed packet's offset, so it runs a few milliseconds behind
+ // the host at most, and smoothly (it is read every frame, not per packet).
+ // Null until the first snapshot.
+ worldClock() { return this.clockOffset === null ? null : Math.max(0, this.now() - this.clockOffset); }
 
  // Events that arrived since the last call: [{ s, by, e }].
  drainEvents() { return this.inbox.splice(0); }

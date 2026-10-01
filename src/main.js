@@ -72,6 +72,7 @@ import { Simulation, RULES } from './simulation.js';
 import { WorldView } from './render/renderer.js';
 import { Soundscape, hearingLevel, HEARING } from './audio.js';
 import { hollowAmbience } from './hollow-ambience.js'; // s3-sound: Hollow Wick's crows and soundscape
+import { lumenAmbience } from './lumen-ambience.js'; // Lumen stage 3: the city's beds, placed sounds, thunder (registers the 'sound' city system)
 import { createFireIndicator } from './ui/fire-indicator.js';
 import { createDamageIndicator } from './ui/damage-indicator.js';
 import { validateSettings, RenderBudget, AdaptiveResolution } from './settings.js';
@@ -93,6 +94,7 @@ import { viewWidth, viewHeight } from './viewport.js';
 import { installTitle } from './ui/title-screen.js';
 import { createSheathScreen } from './ui/sheath-screen.js';
 import { Critters } from './critters.js';
+import { sameRoomGroup } from './world/city-rooms.js'; // Lumen: rooms of one building
 
 const $ = id => document.getElementById(id);
 try{migrateGameStorage(localStorage);}catch{}
@@ -141,7 +143,10 @@ const sim = new Simulation(map), sound = new Soundscape(), budget = new RenderBu
 // (SOLO); online the host's arena does and a joiner draws the host's.
 {const critters=map.training?null:new Critters(map);if(critters?.any)sim.critters=critters;}
 // Robots (bots/): spawned from the developer tools in a solo game.
-const bots = new BotMatch(map, { createSim: m => new Simulation(m) });
+// Every other sim on this page (SOLO robots, the host's seats) runs on this
+// sim's match clock (Simulation.worldTime: Lumen's weather and steam vents).
+const linkedSim = m => Object.assign(new Simulation(m), { clockSource: sim });
+const bots = new BotMatch(map, { createSim: linkedSim });
 // The robot lab (dev tools > Robots): placed robots fighting round after round (bots/robot-lab.js).
 const robotLab = new RobotLab({ bots });
 // 1V1 against a robot (duel.js): set up by start() from the URL.
@@ -220,6 +225,7 @@ catch (error) {
 // s3-sound: Hollow Wick's crows and soundscape (null on other maps); made
 // before the warm-up so the crows' meshes are compiled with the rest.
 const hollow = hollowAmbience(map, view, sound);
+lumenAmbience(map, view, sound); // (null on a map without `city`)
 // Shaders compile while the loading screen shows (renderer.js warmSteps);
 // bootstrap.js waits for this before revealing the game.
 export const ready = view.warmProgramsParallel().then(() => { view.programsWarmed = true; });
@@ -667,7 +673,7 @@ function describeLockTarget(t){
  const offscreen=at.x<m||at.y<m||at.x>w-m||at.y>h-m;
  const out={id:t.id,x:t.x,z:t.z,sx:at.x,sy:at.y,mover:!!t.mover,vx:t.vx||0,vz:t.vz||0,dodging:(t.dodgeRemaining||0)>0,offscreen};
  if(t.mover){
-  const inside=sim.buildingAt(t.x,t.z);out.inside=!!inside&&inside!==sim.interior;
+  const inside=sim.buildingAt(t.x,t.z);out.inside=!!inside&&!sameRoomGroup(inside,sim.interior);
   out.blocked=sim.obstacleBetween(p.x,p.z,t.x,t.z);
  }
  return out;
@@ -790,7 +796,7 @@ function thumbnail(){
 }
 // Online play (see AGENTS.md > Networking). Practice overrides never go online:
 // the sessions reset sim.dev every tick and P / O / map teleport are refused.
-const online=createOnlinePlay({$,map,sim,createSim:m=>new Simulation(m),start,toast:text=>toast(text,2600),leave:()=>$('main-menu').click(),
+const online=createOnlinePlay({$,map,sim,createSim:linkedSim,start,toast:text=>toast(text,2600),leave:()=>$('main-menu').click(),
  server:import.meta.env.DEV?params.get('peerhost'):null,gameServer:import.meta.env.DEV?params.get('server'):null,pickWeapon:()=>enterOnline(),adminCard:m=>adminMessages.show(m)});
 const menuFlow=installMenu({$,map,thumbnail,start,openSettings,closeSettings,returnToMenu,tutorialComplete:readTutorialComplete(),online:(request,status)=>online.request(request,status),onlineRooms:()=>online.rooms()});
 // Multiplayer flow (see AGENTS.md > Multiplayer): pick a weapon over the
@@ -1560,6 +1566,12 @@ function frame(time) {
   { const on = fpsOn(); fpsInput.sync(on, running && !deathActive); if (on) seedFpsLook(fpsLook, sim.player); view.fpsLook = on ? fpsLook : null; }
   // The shape of this screen, for the robots' off-screen rule (a phone turns).
   const aspect = view.camera.aspect; bots.viewAspect = aspect; sim.viewAspect = aspect; online.session?.setAspect?.(aspect);
+  // The match clock (Simulation.worldTime): online, the session's, the same
+  // on the host and every joiner (Lumen's rain and steam vents agree on
+  // every screen); offline the sim's own time.
+  { const clock = online.session?.worldClock?.();
+    if (clock !== null && clock !== undefined) { sim.worldClock = clock; sim.worldClockOnline = true; }
+    else if (sim.worldClockOnline) { sim.worldClock = undefined; sim.worldClockOnline = false; } }
   if (stepping) {
     // Dev game speed stretches or squeezes time; online sim.dev is reset so it is always 1 there.
     // (Game speed is a solo tool: online it would change everyone's clock.)
@@ -1570,6 +1582,7 @@ function frame(time) {
         bots.before(sim); sim.step({ moveX: 0, moveZ: 0, aimX: sim.player.aimX, aimZ: sim.player.aimZ }); bots.after(sim); bots.step(sim); robotLab.step(sim, RULES.step);
         tappedKeys.clear(); accumulator -= RULES.step;
         for (const e of sim.drainEvents()) event(e);
+        view.cityStep(sim); // (Lumen: your rounds' paths this step, for the signs)
         continue;
       }
       previousPlayer = { ...sim.player };
@@ -1652,6 +1665,7 @@ function frame(time) {
       if(tutorial){tutorial.update(sim,RULES.step);updateTutorial();}
       tappedKeys.clear(); pendingQuickShot=false; pendingLaunch = pendingSeed = false; pendingAimPoint = null; accumulator -= RULES.step;
       for (const e of sim.drainEvents()) event(e);
+      view.cityStep(sim); // (Lumen: your rounds' paths this step, for the signs)
     }
     if(online.active)netEvents();
     else if(bots.active)for(const {e,shooter,slot} of bots.drain()){view.netEvent(e,shooter,slot);otherEvent(e,shooter,slot);}

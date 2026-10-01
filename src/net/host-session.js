@@ -288,6 +288,12 @@ export class HostSession {
  setReady(on = true) { return this.arena.setReady('host', on); }
  toMenu() { this.arena.leaveWorld('host'); }
 
+ // The match clock every screen shares (Lumen's weather and steam vents,
+ // Simulation.worldTime): the host's tick count in seconds. Joiners already
+ // map the snapshots' ticks onto their own clock (ClientSession.worldClock),
+ // so no new field travels: the protocol is unchanged.
+ worldClock() { return this.tick / 60; }
+
  // Called by main.js right before it steps the host's own sim this tick,
  // with the host's raw input; returns what that sim should run.
  beforeLocal(raw) {

@@ -40,7 +40,7 @@ test('every map says where it can be played, and the menus read that', () => {
  }
  assert.ok(maps[DEFAULT_MAP]);
  assert.equal(mapById('nowhere'), maps[DEFAULT_MAP]);
- assert.deepEqual(menuMaps().map(m => m.id), ['deadwater', 'hollow-wick']); // (v0.990a: Hollow Wick released)
+ assert.deepEqual(menuMaps().map(m => m.id), ['deadwater', 'hollow-wick', 'lumen']); // (v0.990a: Hollow Wick released; 2026-10-01: Lumen)
  assert.ok(multiplayerMaps().length >= 1 && multiplayerMaps().every(m => supportsMode(m, 'multiplayer')));
  assert.ok(!supportsMode(maps['dry-creek'], 'multiplayer'));
 });

@@ -30,6 +30,7 @@ import { ElectricEffects } from '../effects/electric-effects.js';
 import { makeQualityDetails } from '../world/world-details.js';
 import { SurfaceMarks } from '../effects/surface-marks.js';
 import { HollowBreakFX, handlesBreak } from '../effects/breakable-effects.js'; // s2-breakables
+import { makeBreakFX, handlesLumenBreak } from '../effects/lumen-breaks.js'; // stage 4 D
 import { DustTrail, FOOTFALL_PARTICLES, IMPACT_PARTICLES, kickedDust, debrisDust, CLUTTER_BURST, throwsDust } from '../effects/dust-trail.js';
 import { Birds } from '../effects/birds.js';
 import { CropView } from '../world/crop-view.js';
@@ -41,7 +42,10 @@ import { ShadowCache, shadowTick } from './shadow-cache.js';
 import { ChunkCull } from './chunk-cull.js';
 import { placeFpsCamera } from '../fps-mode.js';
 import { castersOnlyInShadow } from './bake-colors.js';
-import { ditherFade, roofFade, prepareFades, shownInside, WALL_FADE } from '../world/roof-fade.js';
+import { ditherFade, roofFade, prepareFades, shownInside, WALL_FADE, CANOPY_FADE } from '../world/roof-fade.js';
+import { CityFeatures, GROUND_LAYER } from './city-systems.js'; // Lumen: shells and the cut, rain, the wet mirror, signs, the light pool
+import { CityCamera } from '../world/city-camera.js';
+import { cityLook } from './city-features.js';
 
 import { mergeTransformed } from './merge-transformed.js';
 
@@ -122,6 +126,7 @@ import { roomShowsEntity } from './vision-polygons.js';
 import { graveBreak } from '../world/graveyard.js'; // s2-graveyard
 import { installUploadUsed } from './upload-used.js';
 import { setPlayerSkin, skinOfDev } from './player-skin.js';
+import { makeLumenStreetPieces } from '../world/lumen-vehicles.js'; // Lumen stage 4
 
 const UP = new THREE.Vector3(0, 1, 0);
 // A flat marker lying down (layFlat): a quarter turn about x.
@@ -148,6 +153,31 @@ const STREAM_GLOW = new THREE.Color('#9edcff');
 // Instances per particle colour. Sized for Extreme; lower presets never fill it.
 const PARTICLE_POOL = 400;
 const BOX_TEMPLATES = new Map();
+
+// A city map's footprints (city-features.js CITY_LOOK.footprint): dark wet
+// marks, a sole and a heel, no pressed relief (asphalt takes no print; water
+// does). Each print's strength (how wet the ground was where it fell) rides
+// in its fade. `relief` and `pressed` are kept so setQuality can set them.
+function cityFootMaterial(look) {
+  const c = new THREE.Color(look.colour); // display colour: decoded in the shader, like the sand prints'
+  return new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false,
+    uniforms: { relief: { value: 0 }, pressed: { value: 0 }, colour: { value: new THREE.Vector3(c.r, c.g, c.b) }, opacity: { value: look.opacity } },
+    vertexShader: 'attribute float fade; varying float vFade; varying vec2 vFoot; void main(){ vFade=fade; vFoot=uv*2.0-1.0; gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.0); }',
+    fragmentShader: `uniform vec3 colour; uniform float opacity; varying float vFade; varying vec2 vFoot;
+      void main(){
+        vec2 p=vFoot*vec2(1.0,-1.18);
+        float d=min(length(vec2(p.x/.92,(p.y-.28)/.72))-1.0,length(vec2(p.x/.78,(p.y+.62)/.36))-1.0);
+        float a=(1.0-smoothstep(-.18,.04,d))*opacity*vFade;
+        if(a<.002)discard;
+        gl_FragColor=linearToOutputTexel(sRGBTransferEOTF(vec4(colour,a)));
+      }`,
+  });
+}
+// The city's round tracking (cityRounds): the lists a view draws and the
+// height each kind of round flies at; one map of tracks per list.
+const CITY_ROUNDS = Object.freeze([['rifleBullets', .76], ['shotgunPellets', .76], ['sightlineRounds', 1.28], ['sidekickRounds', .9], ['omenBolts', .75], ['scatterShells', .76], ['shots', .72]]);
+const newRoundTracks = () => new Map(CITY_ROUNDS.map(([list]) => [list, new Map()]));
 
 export class WorldView {
   constructor(canvas, map, qualityName='balanced') {
@@ -248,8 +278,14 @@ export class WorldView {
     makeRailways(this);
     for (const b of map.buildings) this.makeBuilding(b);
     for (const p of mapProps(map)) this.makeProp(p);
+    if (map.id === 'lumen') makeLumenStreetPieces(this); // Lumen stage 4: the bus's outside and the downed cable (before the static batch)
     for (const f of map.fences) this.makeFence(f);
     this.makePlayableEdge();
+    // Lumen's city (render/city-features.js): only a map with a `city` block.
+    if (map.city) { this.city = new CityFeatures(this, map); this.camera.layers.enable(GROUND_LAYER); }
+    // A city map's dust, prints and readability (city-features.js CITY_LOOK;
+    // null on every other map, whose effects stay exactly as they were).
+    this.cityFx = cityLook(map); this.readable = this.cityFx?.readable || null;
     // (Quality and Extreme's extra street dressing is only built for them: on
     // the lighter presets it was a few hundred hidden meshes made at every load,
     // and more shaders to warm. setQuality builds it on the first change up.)
@@ -300,6 +336,8 @@ export class WorldView {
     this.shotMaterial = new THREE.MeshBasicMaterial({ color: '#d6fff0' });
     this.seedMaterial = new THREE.MeshStandardMaterial({ color: '#b8e4ff', emissive: '#548eb7', emissiveIntensity: .7, roughness: .38 });
     this.enemySeedMaterial = new THREE.MeshStandardMaterial({ color: '#2d4f9e', emissive: '#1a3a8f', emissiveIntensity: .8, roughness: .38 });
+    // Lumen's readability: an enemy's orbs glow brighter, your ring a touch emissive.
+    if (this.readable) { this.enemySeedMaterial.emissiveIntensity *= this.readable.orbGlow; const ring = this.player.userData.ring; if (ring) this.ringGlow(ring.material); }
     this.trailGeo = new THREE.CylinderGeometry(.032, .07, 1, 5); this.trailGeo.rotateX(Math.PI / 2);
     this.trailMaterial = new THREE.MeshBasicMaterial({ color: '#a1ffe0', transparent: true, opacity: .75 });
     this.orbElectricMaterial = new THREE.LineBasicMaterial({ color: '#e0fff5', transparent: true, opacity: .8, depthWrite: false, toneMapped: false });
@@ -332,7 +370,7 @@ export class WorldView {
     this.lastFootPosition = { ...map.spawn };
     const footGeometry = new THREE.CircleGeometry(1, 10); footGeometry.rotateX(-Math.PI / 2);
     footGeometry.setAttribute('fade', new THREE.InstancedBufferAttribute(new Float32Array(FOOT_CAP), 1));
-    this.footMesh = new THREE.InstancedMesh(footGeometry, new THREE.ShaderMaterial({
+    this.footMesh = new THREE.InstancedMesh(footGeometry, this.cityFx ? cityFootMaterial(this.cityFx.footprint) : new THREE.ShaderMaterial({
       transparent: true, depthWrite: false,
       uniforms: { relief: { value: 0 }, pressed: { value: 0 } },
       vertexShader: 'attribute float fade; uniform float pressed; varying float vFade; varying vec2 vFoot; varying vec2 vSun; void main(){ vFade=fade; vFoot=uv*2.0-1.0;'
@@ -512,6 +550,18 @@ export class WorldView {
     const ring = this.player?.userData.ring; if (!ring || this.teamRing === colour) return;
     this.teamRing = colour; ring.material.color.set(colour || '#4b7065'); ring.material.opacity = colour ? .95 : .35;
     ring.userData.own ??= ring.geometry; ring.geometry = colour ? (ring.userData.wide ??= new THREE.RingGeometry(.45, .56, 40)) : ring.userData.own;
+    if (this.readable) this.ringGlow(ring.material);
+  }
+
+  // Lumen's readability (design 12; city-features.js CITY_LOOK.readable): a
+  // base ring a touch emissive (brighter than its colour, a little more
+  // opaque), and an enemy Static orb's rim brighter. Uniform values only:
+  // no program changes.
+  ringGlow(material) { const r = this.readable; material.color.multiplyScalar(r.ring); material.opacity = Math.min(1, material.opacity * r.ringOpacity); }
+  orbRim(material, enemy) { if (!enemy) return; material.color.set(this.readable.orbRim); material.opacity = this.readable.orbRimOpacity; }
+  // Everyone else's rings: again whenever remote-players.js sets one's colour.
+  readableRings() {
+    for (const a of this.remote?.avatars?.values() || []) if (a.ring && a.cityRing !== (a.shownRing ?? a.ringColour)) { a.cityRing = a.shownRing ?? a.ringColour; this.ringGlow(a.ring.material); }
   }
   box(x, y, z, w, h, d, color, parent) {
     const key = w + ',' + h + ',' + d;
@@ -735,6 +785,7 @@ export class WorldView {
     for (const beam of this.beams.values()) beam.halo.visible = q.glow;
     this.particles.length = Math.min(this.particles.length, q.particleCap);
     this.electric.setQuality(name);
+    this.city?.setQuality(name); // Lumen: rain counts, the mirror's pass, halos, the light pool's size
     this.dustTrail?.setQuality(name);
     this.birds?.setQuality(name);
     if (this.visionOverlay) this.visionOverlay.dataset.quality = name;
@@ -833,6 +884,9 @@ export class WorldView {
     // material opens round anyone standing behind it: world/roof-fade.js
     // WALL_FADE. One more draw per cell with buildings in it.)
     if (o.userData.wallFade) return 'wall';
+    // (A city's market canopy, `canopyFade`: opens over anyone under it,
+    // world/roof-fade.js CANOPY_FADE. Only Lumen's tarps carry it.)
+    if (o.userData.canopyFade) return 'canopy';
     return this.timberColors().has(color) ? 'timber' : 'plain';
   }
   bakedMaterial(kind) {
@@ -841,6 +895,7 @@ export class WorldView {
       const material = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, metalness: 0, vertexColors: true });
       // (The walls' see-through patch: cut from the batch, drawn by its blended copy.)
       if (kind === 'wall' || kind === 'wall-overlay') ditherFade(this, material, { key: 'colonial-wall-fade', ...WALL_FADE, overlay: kind === 'wall-overlay' });
+      if (kind === 'canopy') ditherFade(this, material, { key: 'city-canopy-fade', ...CANOPY_FADE });
       this.bakedMaterials.set(kind, material);
     }
     return this.bakedMaterials.get(kind);
@@ -912,7 +967,7 @@ export class WorldView {
       if (meshes[0].userData.roofSection !== undefined) m.userData.roofSection = meshes[0].userData.roofSection;
       // (The walls' hole list is brought up to date before they are drawn, as the roofs': roof-fade.js.)
       // (Its blended copies are each building's own: colonial-buildings.js shellOverlay.)
-      if (material === this.bakedMaterials?.get('wall')) m.onBeforeRender = roofFade(this).update;
+      if (material === this.bakedMaterials?.get('wall') || material === this.bakedMaterials?.get('canopy')) m.onBeforeRender = roofFade(this).update;
       for (const original of meshes) { merged.add(original); if (original.parent) parents.add(original.parent); if (!original.geometry.userData.shared) original.geometry.dispose(); }
       group.add(m);
     }
@@ -1172,7 +1227,16 @@ export class WorldView {
     return new THREE.Color(onRoad ? this.map.palette.road : this.map.palette.ground);
   }
 
-  kickedDustColor(x, z) { const c = kickedDust(this.walkingDustColor(x, z)), d = this.look?.dust; return d ? c.lerp(this.dustTint ||= new THREE.Color(d.tint), d.mix) : c; }
+  kickedDustColor(x, z) {
+    // A city map (city-features.js CITY_LOOK.dust, or the map's look.dust with
+    // a colour): grey grit on dry asphalt, a pale spray where it is wet.
+    const city = this.cityFx?.dust;
+    if (city) { const u = this.cityDustScratch ||= { dry: new THREE.Color(city.colour), wet: new THREE.Color(city.wet) }; return u.dry.clone().lerp(u.wet, this.cityWetAt(x, z)); }
+    const c = kickedDust(this.walkingDustColor(x, z)), d = this.look?.dust; return d ? c.lerp(this.dustTint ||= new THREE.Color(d.tint), d.mix) : c;
+  }
+  // How wet the ground is at (x, z) on a city map (0 elsewhere): the rain's
+  // wetness, never under a roof, puddles between showers (city-features.js).
+  cityWetAt(x, z) { return this.city ? this.city.wetAt(x, z) : 0; }
 
   // Tier multipliers for one-off effects, so the top two presets read richer
   // without changing what the low tiers were tuned to afford.
@@ -1202,10 +1266,14 @@ export class WorldView {
   }
 
   burst(x, z, count, type = 'dust', tint = null) {
+    // (A city map's dust on wet ground: a finer, shorter-lived spray, CITY_LOOK.dust.)
+    const wet = type === 'dust' && this.cityFx ? this.cityWetAt(x, z) : 0, spray = this.cityFx?.dust;
+    if (wet) count *= 1 - (1 - spray.wetCount) * wet;
     count = Math.max(1, Math.round(count * this.quality.effects));
     for (let i = 0; i < count && this.particles.length < this.quality.particleCap; i++) {
       const angle = Math.random() * Math.PI * 2, speed = type === 'kill' ? 2 + Math.random() * 6 : type === 'hit' ? 1 + Math.random() * 4 : .4 + Math.random();
-      const life = type === 'dust' ? .45 + Math.random() * .35 : .35 + Math.random() * .45;
+      let life = type === 'dust' ? .45 + Math.random() * .35 : .35 + Math.random() * .45;
+      if (wet) life *= 1 - (1 - spray.wetLife) * wet;
       this.particles.push({ x, y: type === 'dust' ? .1 : .8, z, vx: Math.cos(angle) * speed, vz: Math.sin(angle) * speed, vy: type === 'dust' ? .5 : 1.4 + Math.random() * 3,
         life, maxLife: life, size: type === 'kill' ? .07 + Math.random() * .15 : .04 + Math.random() * .09, material: tint ? 7 : type === 'dust' ? 0 : type === 'kill' ? (i % 4) + 1 : i % 3,
         tint: tint?.clone().multiplyScalar(1.05 + Math.random() * .25), angle });
@@ -1269,7 +1337,7 @@ export class WorldView {
     if (e.type === 'playerDeath') this.surgeView?.end(slot);
     if (e.type === 'playerDeath' && isRobotSlot(slot)) {
       // A robot goes down in a shower of sparks and topples (robot-model.js).
-      this.robotHit({ ...e, type: 'kill' }); this.shake = Math.max(this.shake, .12);
+      this.robotHit({ ...e, type: 'kill' }); this.shake = Math.max(this.shake, .12); this.city?.fall(e.x, e.z);
       this.remote ||= new RemotePlayers(this);
       // What armour it had already shed alive is on the ground; the rest bursts off.
       const live = [...this.remote.avatars.values()].find(a => a.slot === slot), lost = live?.glow?.armour ? new Set(live.glow.armour.lost) : null;
@@ -1278,7 +1346,7 @@ export class WorldView {
       return;
     }
     if (e.type === 'playerDeath') {
-      this.blood.add(e.x, e.z, e.directionX, e.directionZ, 'slot' + slot); this.burst(e.x, e.z, 34, 'kill'); this.fx.impact?.(e.x, e.z, this.kickedDustColor(e.x, e.z));
+      this.blood.add(e.x, e.z, e.directionX, e.directionZ, 'slot' + slot); this.cityDeath(e); this.burst(e.x, e.z, 34, 'kill'); this.fx.impact?.(e.x, e.z, this.kickedDustColor(e.x, e.z));
       this.waterFX?.death(e.x, e.z, e.directionX || 0, e.directionZ || 0); // (a body in the stream bleeds into it)
       // Their body, like yours: one per player (remote-corpses.js).
       this.remote ||= new RemotePlayers(this); (this.remoteCorpses ||= new RemoteCorpses(this)).add(e, slot, e.weapon);
@@ -1309,7 +1377,25 @@ export class WorldView {
     try { this.event(e); } finally { this.lastSim = savedSim; this.eventMuzzle = null; }
   }
 
+  // Lumen: what the game's events mean for the city's systems (city-features.js
+  // world events): rounds and blasts meeting the ground, push-offs. Blood,
+  // falls, strides, casings and the rounds' paths are sent where they happen.
+  cityEvent(e) {
+    const city = this.city, t = e.type;
+    // Where a round stopped: its last stretch is traced to here (cityRounds).
+    if (t === 'rifleImpact' || t === 'pointImpact' || t === 'impactMark' || t === 'wall' || t === 'sightlineImpact' || t === 'sidekickImpact' || t === 'omenImpact' || t === 'scatterHit') {
+      const ends = this.roundEnds ||= { list: [], count: 0 };
+      if (ends.count < 64) { const at = ends.list[ends.count] ||= { x: 0, z: 0 }; at.x = e.x; at.z = e.z; ends.count++; }
+    }
+    if (t === 'rifleImpact') city.impact(e.x, e.z, e.ground ? 'round' : 'wall');
+    else if (t === 'pointImpact' || t === 'sightlineImpact' || t === 'sidekickImpact' || t === 'omenImpact' || t === 'scatterHit') city.impact(e.x, e.z, 'round');
+    else if (t === 'wall') city.impact(e.x, e.z, 'wall');
+    else if (t === 'scatterBurst') city.impact(e.x, e.z, 'blast');
+    else if (t === 'dodge') city.step(e.x, e.z, 1, true);
+  }
+
   event(e) {
+    if (this.city) this.cityEvent(e);
     if(e.type.startsWith('ichor')){this.ichorView.event(e);return;}
     if(e.type.startsWith('sheath')){this.sheathView.event(e);return;}
     if(e.type.startsWith('sidekick')){this.sidekickView.event(e);return;}
@@ -1329,7 +1415,7 @@ export class WorldView {
     if(e.type==='surgeStart'){this.surgeView.activate('you',this.player.userData.body,e.x,e.z);return;}
     if(e.type==='surgeEnd'){this.surgeView.end('you');return;}
     if(e.type==='playerDeath')this.surgeView.end('you');
-    if(e.type==='playerDeath'){this.blood.add(e.x,e.z,e.directionX,e.directionZ,'you');this.deathView??=new DeathView(this);this.deathView.start(e);return;}
+    if(e.type==='playerDeath'){this.blood.add(e.x,e.z,e.directionX,e.directionZ,'you');this.cityDeath(e);this.deathView??=new DeathView(this);this.deathView.start(e);return;}
     if(e.type==='grenadeExplosion'){this.explosion(e);return;}
     if(e.type==='grenadeThrow'){this.grenadeView?.thrown(e);}
     // Your Ballast shakes the view, much more when charged.
@@ -1420,6 +1506,7 @@ export class WorldView {
     // lingering effects go (props come back through their own propRestore).
     if (e.type === 'mapReset') this.clearDebris();
     if (e.type === 'propRestore') {
+      this.hollowBreaks?.restore?.(e); // stage 4 D: a rebuilt hydrant stops its jet
       const g = this.props.get(e.id);
       if (g) { g.userData.baseScale ??= g.scale.clone(); g.userData.popIn = PROP_POP; g.visible = true; this.propInstances?.sync(e.id, g); }
       if (!e.quiet) this.burst(e.x, e.z, 5 * this.impactDetail, 'dust', this.kickedDustColor(e.x, e.z));
@@ -1527,6 +1614,39 @@ export class WorldView {
     }
     (this.drops ||= new BloodDrops(this)).splash(e.x, e.z, dx, dz, amount, this.lastSim?.colliders, this.map);
     this.waterFX?.blood(e.x, e.z, dx, dz, amount);
+    // Lumen: where the spray reaches the ground, a little along the hit.
+    this.city?.blood(e.x + dx / length * .5, e.z + dz / length * .5, Math.min(1, amount / BLEED.max));
+  }
+
+  // A body goes down on a city map: its blood pool and its fall (the hub's
+  // world events), and the stain's wet rim (readability).
+  cityDeath(e) {
+    if (!this.city) return;
+    this.city.blood(e.x, e.z, 1); this.city.fall(e.x, e.z);
+    if (this.readable) this.bloodRim();
+  }
+
+  // Lumen's readability (design 12): the blood stains keep their colour with
+  // a thin brighter wet rim, painted once into the shared stain textures
+  // (blood-splatter.js draws them on first use, and again when a preset
+  // crosses its fine line; a texture is marked once it has its rim).
+  bloodRim() {
+    for (const texture of this.blood?.textures || []) {
+      if (texture.userData.cityRim || !texture.image?.getContext) continue;
+      // The rim is the stain less the stain shrunk (the shape eroded by
+      // drawing it shifted eight ways, kept where all eight agree), so it
+      // follows every lobe and drop, then laid over the stain in the rim colour.
+      const canvas = texture.image, w = canvas.width, h = canvas.height, r = Math.max(1, Math.round(w / 256 * 1.6));
+      const make = () => Object.assign(document.createElement('canvas'), { width: w, height: h });
+      const inner = make(), ic = inner.getContext('2d'), rim = make(), rc = rim.getContext('2d');
+      ic.drawImage(canvas, 0, 0); ic.globalCompositeOperation = 'destination-in';
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [.7, .7], [-.7, .7], [.7, -.7], [-.7, -.7]]) ic.drawImage(canvas, dx * r, dz * r);
+      rc.fillStyle = this.readable.bloodRim; rc.fillRect(0, 0, w, h);
+      rc.globalCompositeOperation = 'destination-in'; rc.drawImage(canvas, 0, 0);
+      rc.globalCompositeOperation = 'destination-out'; rc.drawImage(inner, 0, 0);
+      const ctx = canvas.getContext('2d'); ctx.save(); ctx.globalAlpha = .8; ctx.globalCompositeOperation = 'source-atop'; ctx.drawImage(rim, 0, 0); ctx.restore();
+      texture.userData.cityRim = true; texture.needsUpdate = true;
+    }
   }
 
   addBeam(path, width) {
@@ -1558,7 +1678,7 @@ export class WorldView {
   }
 
   breakProp(e) {
-    if (handlesBreak(e.propType)) { (this.hollowBreaks ||= new HollowBreakFX(this)).break(e); return; } // s2-breakables
+    if (handlesBreak(e.propType) || handlesLumenBreak(e.propType)) { (this.hollowBreaks ||= makeBreakFX(this)).break(e); return; } // s2-breakables, Lumen stage 4
     if (graveBreak(this, e)) return; // s2-graveyard: slate shards
     const plant = e.propType === 'cactus', barrel = e.propType === 'barrel';
     // Small floor clutter throws a handful of pieces, not a barrel's worth, and
@@ -1589,6 +1709,7 @@ export class WorldView {
   }
 
   explosion(e) {
+    this.city?.impact(e.x, e.z, 'blast');
     if(e.damageType==='sightlineBlast')this.sightlineView.breachBurst(e);
     this.surfaceMarks.enqueue('explosion',e);
     this.leafFX?.blast(e); // s3-leaves: a burst of leaves out of the woods' litter
@@ -1878,10 +1999,20 @@ export class WorldView {
     const wideView = this.camera.aspect > 1 && (typeof innerWidth !== 'number' || innerWidth > 700);
     // (The robot lab's follow camera keeps its robot in the middle: `spectateCentre`.)
     const aside = this.spectating && !this.spectateCentre, asideX = aside && wideView ? this.cameraHeight * .3 : 0, asideZ = aside && !wideView ? this.cameraHeight * .22 : 0;
-    this.focus.x = deathCamera?deathCamera.x:lerp(this.focus.x, (cameraRoom && !cameraRoom.followCamera ? cameraRoom.x : renderX+(scoped?scopeAim.x*scopeFrame.lead:0)) + asideX, blend);
-    this.focus.z = deathCamera?deathCamera.z:lerp(this.focus.z, (cameraRoom && !cameraRoom.followCamera ? cameraRoom.z : renderZ+(scoped?scopeAim.z*scopeFrame.lead:0)) + asideZ, blend);
-    this.cameraHeight = deathCamera?deathCamera.height:lerp(this.cameraHeight, cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT*(scoped?scopeFrame.scale:1), cut ? 1 : 1 - Math.exp(-5.7 * dt));
+    // Lumen, outdoors: the camera slides along a tall wall beside you instead
+    // of running into it (world/city-camera.js; only x, only a city map).
+    if (this.cityCamera === undefined) this.cityCamera = this.map.city ? new CityCamera(this.map) : null;
+    const followX = this.cityCamera && !cameraRoom && !scoped && !this.spectating ? this.cityCamera.focusX(renderX, renderZ) : renderX;
+    const goalX = deathCamera ? deathCamera.x : (cameraRoom && !cameraRoom.followCamera ? cameraRoom.x : followX+(scoped?scopeAim.x*scopeFrame.lead:0)) + asideX;
+    const goalZ = deathCamera ? deathCamera.z : (cameraRoom && !cameraRoom.followCamera ? cameraRoom.z : renderZ+(scoped?scopeAim.z*scopeFrame.lead:0)) + asideZ;
+    const goalH = deathCamera ? deathCamera.height : cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT*(scoped?scopeFrame.scale:1);
+    this.focus.x = deathCamera?goalX:lerp(this.focus.x, goalX, blend);
+    this.focus.z = deathCamera?goalZ:lerp(this.focus.z, goalZ, blend);
+    this.cameraHeight = deathCamera?goalH:lerp(this.cameraHeight, goalH, cut ? 1 : 1 - Math.exp(-5.7 * dt));
+    // (Lumen: where the camera is settling, for the cut's lines, world/city-cut.js.)
+    if (this.map.city) { const g = this.cameraGoal ||= { x: 0, y: 0, z: 0 }; g.x = goalX; g.y = goalH + (this.focus.y || 0); g.z = goalZ + goalH * CAMERA_TILT; }
     }
+    if (pick && this.cameraGoal) { this.cameraGoal.x = pick.x; this.cameraGoal.y = pick.height + (this.focus.y || 0); this.cameraGoal.z = pick.z + pick.height * CAMERA_TILT; }
     // Zoom height must not count as travel through the map's ground haze.
     // Preserve horizontal fog while removing the extra vertical camera distance.
     const scopeFogLift=sim.weapon==='sightline'?Math.max(0,this.cameraHeight-OUTDOOR_CAMERA_HEIGHT)*Math.hypot(1,CAMERA_TILT):0;
@@ -1930,6 +2061,10 @@ export class WorldView {
     }
     const fy = this.focus.y, snapped = snapCameraFocus(fx, fz, this.cameraHeight, this.camera.fov, this.crisp ? this.crisp.height : this.renderer.getDrawingBufferSize(this.bufferSize).y, fy);
     this.camera.position.set(snapped.x, fy + this.cameraHeight, snapped.z + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(snapped.x, fy, snapped.z); this.camera.updateMatrixWorld();
+    // Lumen: the rounds' paths and landed casings for the city's systems,
+    // then the cut, the weather and the lights for this camera.
+    if (this.city) { this.cityRounds(sim, this.roundTracks ||= newRoundTracks(), this.ownRounds); this.cityCasings(sim); }
+    this.city?.update(sim, dt, elapsed);
     for (const roof of this.roofs) {
       // Inside, the roof fades right out and is then not drawn at all. It used
       // to stay at 9.5% (a faint roof overhead), but on some GPUs that faint
@@ -2045,7 +2180,7 @@ export class WorldView {
       if (!g && (g = this.shotPool?.pop())) {
         const u = g.userData;
         u.orb.material = s.enemy ? this.enemySeedMaterial : this.seedMaterial;
-        u.aura.material.color.set(s.enemy ? '#2f5fd0' : '#91d9ff'); u.aura.scale.setScalar(1.7);
+        u.aura.material.color.set(s.enemy ? '#2f5fd0' : '#91d9ff'); u.aura.scale.setScalar(1.7); if (this.readable) this.orbRim(u.aura.material, s.enemy);
         u.under = this.underNear(s.x, s.z); u.electricTick = u.arcCount = undefined;
         g.rotation.set(0, 0, 0); this.shots.set(s.id, g); this.scene.add(g);
       }
@@ -2054,6 +2189,7 @@ export class WorldView {
         // An enemy's orbs are a deeper, darker blue (owner, v0.9b); yours and a teammate's as always.
         const orb = new THREE.Mesh(this.shotGeo, s.enemy ? this.enemySeedMaterial : this.seedMaterial); g.add(orb);
         const aura = new THREE.Mesh(this.shotGeo, new THREE.MeshBasicMaterial({color:s.enemy?'#2f5fd0':'#91d9ff',transparent:true,opacity:.12,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false})); aura.scale.setScalar(1.7); g.add(aura);
+        if (this.readable) this.orbRim(aura.material, s.enemy);
         const trail = new THREE.Mesh(this.trailGeo, this.trailMaterial); g.add(trail);
         const electricGeometry = new THREE.BufferGeometry(); electricGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(7 * 6 * 2 * 3), 3));
         const electricity = new THREE.LineSegments(electricGeometry, this.orbElectricMaterial); g.add(electricity);
@@ -2107,20 +2243,24 @@ export class WorldView {
     }
     this.updateBeams(sim, fdt); this.fxLightLevel *= Math.exp(-12 * dt);
     const dashing = p.dodgeRemaining > 0;
+    // (A city map: no dust haze off wet ground, only the fine spray of the bursts.)
+    const haze = !this.cityFx || this.cityWetAt(p.x, p.z) < this.cityFx.dust.haze;
     if (active && speed > 1 && !this.playerWet) {
       this.stepClock += dt;
       if (this.stepClock > .085) {
         const heading = speed > 1e-6 ? [p.vx / speed, p.vz / speed] : [0, 0];
         this.burst(p.x, p.z, 2 * (FOOTFALL_PARTICLES[this.qualityName] ?? 1), 'dust', this.kickedDustColor(p.x, p.z));
         // The haze marks the ground just left behind, not the foot in the air.
-        if (!dashing) this.dustTrail.step(renderX, renderZ, this.kickedDustColor(p.x, p.z), heading[0], heading[1]);
+        if (!dashing && haze) this.dustTrail.step(renderX, renderZ, this.kickedDustColor(p.x, p.z), heading[0], heading[1]);
         this.stepClock = 0;
       }
     }
     // Sampled every frame of the dodge, so the streak follows the path actually
     // taken and ends where the player ended, wall slide included.
-    if (active && dashing && !this.playerWet) this.dustTrail.dash(renderX, renderZ, this.kickedDustColor(p.x, p.z), dt, p.dodgeX, p.dodgeZ);
-    if (active && this.wasDashing && !dashing && !this.playerWet) this.dustTrail.land(renderX, renderZ, this.kickedDustColor(p.x, p.z), p.dodgeX, p.dodgeZ);
+    if (active && dashing && !this.playerWet && haze) this.dustTrail.dash(renderX, renderZ, this.kickedDustColor(p.x, p.z), dt, p.dodgeX, p.dodgeZ);
+    if (active && this.wasDashing && !dashing && !this.playerWet && haze) this.dustTrail.land(renderX, renderZ, this.kickedDustColor(p.x, p.z), p.dodgeX, p.dodgeZ);
+    // Lumen: a dash's landing is a strong footfall (the hub's world events).
+    if (this.city && active && this.wasDashing && !dashing) this.city.step(renderX, renderZ, Math.hypot(p.vx, p.vz), true);
     this.wasDashing = dashing;
     this.dustTrail.update(dt);
     if (active) { this.fx.clearZone.value.set(renderX, renderZ); this.updateDetailFX(sim, fdt); this.fx.update(fdt); }
@@ -2151,6 +2291,7 @@ export class WorldView {
     const crops=sim.crops?.length?sim.crops:null,ally=other=>other.ally||(this.teamRing&&other.ring===this.teamRing);
     const scopedVision=scopeActive(sim),sees=other=>roomShowsEntity(sim,other)&&(!worldSees||worldSees(other))&&(!scopedVision||inSightCone(sim.player,other.x,other.z))&&(!crops||ally(other)||cropEntityVisible(crops,sim.player,other));
     if (this.remotePlayers?.length || this.remote) (this.remote ||= new RemotePlayers(this)).update(this.remotePlayers || [], elapsed, fdt, this.bloodSources || [], sees);
+    if (this.readable) this.readableRings();
     if (this.blobShadows?.enabled) {
       const movers = [];
       if (this.player.visible) movers.push({ x: renderX, z: renderZ, size: .95 });
@@ -2253,6 +2394,9 @@ export class WorldView {
       const seen = this.fxLightLevel > .01 && this.lastSim.canAimAt(this.fxLight.position.x, this.fxLight.position.z);
       this.fxLight.intensity = seen ? this.fxLightLevel : 0;
     }
+    // Lumen: the wet mirror's pass (before the chunk cull: what is off the
+    // bottom of the screen still shows in the mirror).
+    this.city?.beforeRender();
     // Chunks of scenery out of view are hidden for this frame's draw only.
     this.chunkCull?.cull(this.camera);
     try {
@@ -2302,6 +2446,8 @@ export class WorldView {
     // nearly opaque roof, so leaving a house showed the room's outline on the
     // roof until it had finished closing.
     for (const roof of this.roofs) if (roof.opacity < .5) list.push(roof.group);
+    // Lumen: the storeys that are cut (render/city-shells.js), never in the AO's depth.
+    if (this.city?.shells?.upper) list.push(this.city.shells.upper);
     for (const flight of this.birds?.flights || []) { list.push(flight.group); if (flight.shadow) list.push(flight.shadow); }
     // Ground cover (tufts, pebbles, twigs) is thousands of tiny triangles that
     // cast no occlusion worth the cost of drawing them a second time.
@@ -2329,17 +2475,79 @@ export class WorldView {
     if (!ok || distance >= 1 || Math.hypot(vx, vz) <= .6) return;
     w.d += distance; if (w.d < .55) return;
     w.d %= .55; w.side *= -1;
-    const angle = Math.atan2(vx, vz), offset = .15 * w.side;
-    this.footprints.push({ x: x + Math.cos(angle) * offset, z: z - Math.sin(angle) * offset, angle, age: 0 });
+    const angle = Math.atan2(vx, vz), offset = .15 * w.side, fx = x + Math.cos(angle) * offset, fz = z - Math.sin(angle) * offset;
+    this.footprints.push(this.cityFx ? { x: fx, z: fz, angle, age: 0, strength: this.cityPrint(fx, fz) } : { x: fx, z: fz, angle, age: 0 });
     if (this.footprints.length > FOOT_CAP) this.footprints.shift();
+    this.city?.step(fx, fz, Math.hypot(vx, vz), false);
   }
+
+  // Lumen: each round's path (the hub's `shot`: what it can break, the
+  // signs). Your own rounds step by step (main.js calls cityStep after each
+  // simulation step, so a fast round's every metre is traced, its last step
+  // to where it stopped included), everyone else's frame by frame from the
+  // lists the view draws (`skip`: yours, already traced). A round is
+  // followed by its own object, or its id where the draw list makes a fresh
+  // object each frame; a new one is traced from its muzzle (its travel so
+  // far). Tracks of rounds gone are dropped. Nothing allocated for a round
+  // already tracked.
+  cityStep(sim) { if (this.city) this.cityRounds(sim, this.ownRounds ||= newRoundTracks()); }
+  cityRounds(sim, tracks, skip = null) {
+    const frame = tracks.frame = (tracks.frame || 0) + 1;
+    for (const [list, height] of CITY_ROUNDS) {
+      const seen = tracks.get(list), mine = skip?.get(list);
+      for (const b of sim[list] || []) {
+        if (list === 'shots' && !b.launched) continue;
+        const key = b.id ?? b, x = b.x, z = b.z;
+        if (mine?.has(key)) continue;
+        let t = seen.get(key);
+        if (!t) {
+          const back = Math.min(b.travel ?? 0, 60);
+          t = { x: list === 'shots' ? b.launchX ?? x : x - (b.dx || 0) * back, z: list === 'shots' ? b.launchZ ?? z : z - (b.dz || 0) * back, frame };
+          seen.set(key, t);
+        }
+        if (t.x !== x || t.z !== z) this.city.shot(t.x, t.z, x, z, b.y ?? height);
+        const dx = b.dx ?? b.vx ?? 0, dz = b.dz ?? b.vz ?? 0, l = Math.hypot(dx, dz) || 1;
+        t.x = x; t.z = z; t.dx = dx / l; t.dz = dz / l; t.h = b.y ?? height; t.frame = frame;
+      }
+      for (const [key, t] of seen) if (t.frame !== frame) { this.roundEnd(t); seen.delete(key); }
+    }
+    if (this.roundEnds) this.roundEnds.count = 0;
+  }
+  // A round gone since the last look: its last stretch, from where it was
+  // seen to the impact ahead of it on its line (the step's impact events).
+  roundEnd(t) {
+    const ends = this.roundEnds; if (!ends) return;
+    for (let i = 0; i < ends.count; i++) {
+      const p = ends.list[i], along = (p.x - t.x) * t.dx + (p.z - t.z) * t.dz, across = Math.abs((p.x - t.x) * t.dz - (p.z - t.z) * t.dx);
+      if (along > 0 && along < 12 && across < .35) { this.city.shot(t.x, t.z, p.x, p.z, t.h); return; }
+    }
+  }
+
+  // Lumen: a spent casing reaching the ground (the hub's `casing`): the
+  // rifle's (their landing time is known the moment they fly: casingPose's
+  // flight) and the shotgun's shells (their first bounce). Marked on the
+  // casing's own record so each lands once.
+  cityCasings(sim) {
+    const now = sim.time;
+    for (const c of this.rifleView?.effects || []) {
+      if (c.cityLanded) continue;
+      c.cityLand ??= c.born + (c.vy + Math.sqrt(c.vy * c.vy + 19.6 * Math.max(0, c.y - .022))) / 9.8;
+      if (now >= c.cityLand) { c.cityLanded = true; const t = c.cityLand - c.born; this.city.casing(c.x + c.vx * t, c.z + c.vz * t); }
+    }
+    for (const c of this.shotgunView?.shells || []) if (c.bounced && !c.cityLanded) { c.cityLanded = true; this.city.casing(c.x, c.z); }
+  }
+
+  // A city print's strength: full where the ground is wet, a trace on dry
+  // asphalt (CITY_LOOK.footprint.dry).
+  cityPrint(x, z) { const f = this.cityFx.footprint; return f.dry + (1 - f.dry) * this.cityWetAt(x, z); }
 
   updateFootprints(sim, dt, active, x, z) {
     const distance = Math.hypot(x - this.lastFootPosition.x, z - this.lastFootPosition.z);
     this.lastFootPosition = { x, z };
     for (const foot of this.footprints) foot.age += dt;
-    // Extreme keeps a longer trail of pressed prints.
-    const footLife = this.qualityName === 'extreme' ? 7 : 3;
+    // Extreme keeps a longer trail of pressed prints. (A city map: wet marks
+    // that fade over CITY_LOOK.footprint.life on every preset.)
+    const footLife = this.cityFx ? this.cityFx.footprint.life : this.qualityName === 'extreme' ? 7 : 3;
     this.footprints = this.footprints.filter(foot => foot.age < footLife);
     if (active && distance < 1 && Math.hypot(sim.player.vx, sim.player.vz) > .6) {
       this.footDistance += distance;
@@ -2348,7 +2556,9 @@ export class WorldView {
         const angle = Math.atan2(sim.player.vx, sim.player.vz), offset = .15 * this.footSide, fx = x + Math.cos(angle) * offset, fz = z - Math.sin(angle) * offset;
         // Prints in the dirt outdoors; a bloody boot prints anywhere, on the
         // very same step, the same size and shape (blood-wading.js).
-        if (!sim.roofId && !this.playerWet) { this.footprints.push({ x: fx, z: fz, angle, age: 0 }); if (this.footprints.length > FOOT_CAP) this.footprints.shift(); }
+        if (!sim.roofId && !this.playerWet) { this.footprints.push(this.cityFx ? { x: fx, z: fz, angle, age: 0, strength: this.cityPrint(fx, fz) } : { x: fx, z: fz, angle, age: 0 }); if (this.footprints.length > FOOT_CAP) this.footprints.shift(); }
+        // Lumen: every stride is a footfall for the city's systems (splashes, ripples).
+        if (this.city && !this.playerWet) this.city.step(fx, fz, Math.hypot(sim.player.vx, sim.player.vz), false);
         const wet = this.wading?.takePrint() || 0;
         if (wet&&!this.playerWet) { (this.drops ||= new BloodDrops(this)).print(fx, fz, angle, wet, this.map, sim.player.below);if(this.wading.drench>.85)for(let k=0;k<2;k++){const bx=fx+(Math.random()-.5)*.27,bz=fz+(Math.random()-.5)*.27;this.drops.stain(bx,floorY(this,bx,bz,sim.player.below)+.013,bz,.07+Math.random()*.08);} }
       }
@@ -2358,7 +2568,7 @@ export class WorldView {
       this.dummy.position.set(foot.x, .041 + this.gy(foot.x, foot.z), foot.z);
       if (!hilly(this)) this.dummy.rotation.set(0, foot.angle, 0); else this.tiltToGround(this.dummy, foot.x, foot.z, foot.angle);
       this.dummy.scale.set(.095, 1, .18); this.dummy.updateMatrix();
-      this.footMesh.setMatrixAt(i, this.dummy.matrix); fade.setX(i, Math.max(0, 1 - foot.age / footLife) * Math.min(1, foot.age / .08 + .4));
+      this.footMesh.setMatrixAt(i, this.dummy.matrix); fade.setX(i, Math.max(0, 1 - foot.age / footLife) * Math.min(1, foot.age / .08 + .4) * (foot.strength ?? 1));
     }
     this.footMesh.count = this.footprints.length; this.footMesh.instanceMatrix.needsUpdate = true; fade.needsUpdate = true;
   }

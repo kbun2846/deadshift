@@ -4,6 +4,9 @@ import {recordBallastDamage} from './weapons/ballast-damage.js';
 import {isPlayable,confinePlayableMovement} from './playable-area.js';
 import {resetShotgun,stepShotgun,SHOTGUN} from './weapons/shotgun.js';
 import { mapColliders, mapProps, buildingContains, buildingWalls, groundFor } from './maps.js';
+import { cityCanAim, sameRoomGroup } from './world/city-rooms.js';
+import { ventsBlockSight } from './maps/lumen-vents.js';
+import { jetStart, jetsBlockSight } from './world/lumen-breakables.js'; // Lumen stage 4: a broken hydrant's jet
 import { cropSegments, cropPoint, affectCrop, cropCircle, stepCrops } from './crops.js';
 import { nearColliders, collidersAlong } from './world/collider-grid.js';
 import { RIFLE, resetRifle, stepRifle } from './weapons/rifle.js';
@@ -181,6 +184,12 @@ export class Simulation {
     this.worldAuthority = true;
     this.reset();
   }
+  // The match clock the world runs on (Lumen's weather and steam vents): the
+  // shared match time when the session sets `worldClock` (online: the host's
+  // tick clock, the same on every screen), else the clock of the sim this one
+  // was made for (`clockSource`: a SOLO robot or a host's seat reads the
+  // page's own sim), else this sim's own time (SOLO, practice, tests).
+  worldTime() { return this.worldClock ?? this.clockSource?.worldTime?.() ?? this.time; }
   // The map's practice targets, fresh (none when `noTargets`: a 1V1).
   practiceTargets() {
     if (this.noTargets) return [];
@@ -352,6 +361,8 @@ export class Simulation {
   canAimAt(x, z) {
     const room = this.interior;
     if (!room || buildingContains(room, { x, z })) return true;
+    // Lumen: a room of a building with several (world/city-rooms.js).
+    if (room.group) return cityCanAim(this.map, room, this.player.x, this.player.z, x, z);
     return !buildingWalls(room).some(b => !b.playerOnly && segmentBox(this.player.x, this.player.z, x, z, b, .09) !== null);
   }
 
@@ -370,7 +381,7 @@ export class Simulation {
   // passes this.
   canSeeTarget(x, z, radius = .2) {
     const room = this.map.buildings.find(b => buildingContains(b, { x, z }));
-    if (room && room !== this.interior) return false;
+    if (room && !sameRoomGroup(room, this.interior)) return false;
     return this.sees(x, z, radius);
   }
 
@@ -398,6 +409,12 @@ export class Simulation {
   // bounds (w, d are the axis-aligned extents, rotated or not) before the slab
   // test. Target lock and aim assist ask this three rays per target per step.
   sightBlocked(ax, az, bx, bz) {
+    // A city map's steam vents (maps/lumen-vents.js): while one vents, its
+    // cloud blocks sight for everyone, robots included (never rounds or
+    // movement). A pure function of the match clock, so every screen agrees.
+    const vents = this.map.city?.vents;
+    if (vents?.length && ventsBlockSight(vents, this.worldTime(), ax, az, bx, bz)) return true;
+    if (this.jets?.length && jetsBlockSight(this, ax, az, bx, bz)) return true; // (and a broken hydrant's jet)
     let cache = this.sightBlockers;
     if (!cache || cache.colliders !== this.colliders || cache.length !== this.colliders.length)
       cache = this.sightBlockers = { colliders: this.colliders, length: this.colliders.length, list: this.colliders.filter(c => c.blocksSight) };
@@ -696,12 +713,19 @@ export class Simulation {
   // crushed, because a pot that a running body passes straight through and
   // leaves standing reads as scenery painted on the floor. Solid scenery is
   // only broken by a dash, which is the deliberate act.
+  //
+  // City maps (Lumen) add the light things a body would knock over: a prop
+  // type flagged `walkBreak` (crates, stools, chairs, bags, bikes, scooters,
+  // litter bins) comes apart when walked into, dash or not, and never stops
+  // the walker. Heavy furniture (vending machines, hydrants, parcel lockers)
+  // has no flag and still stops a body until it is dashed or shot. Every other
+  // map skips the check, so their replays are unchanged.
   crushDodged(underfoot = false) {
-    const p = this.player, r = RULES.radius;
+    const p = this.player, r = RULES.radius, city = !!this.map.city;
     let hit = null;
     for (const b of nearColliders(this.colliders, p.x - r - .1, p.z - r - .1, p.x + r + .1, p.z + r + .1)) {
       if (!b.destructible) continue;
-      if (underfoot && !b.walkOver) continue;
+      if (underfoot && !b.walkOver && !city) continue;
       if (Math.abs(p.x - b.x) > b.w / 2 + r || Math.abs(p.z - b.z) > b.d / 2 + r) continue;
       const angle = b.localW !== undefined ? (b.angle || 0) : 0, c = Math.cos(angle), s = Math.sin(angle);
       const px = (p.x - b.x) * c - (p.z - b.z) * s, pz = (p.x - b.x) * s + (p.z - b.z) * c;
@@ -709,6 +733,7 @@ export class Simulation {
       const cx = Math.max(left, Math.min(-left, px)), cz = Math.max(top, Math.min(-top, pz));
       if (Math.hypot(px - cx, pz - cz) >= r - 1e-8) continue;
       const prop = this.props.find(v => v.id === b.propId);
+      if (underfoot && !b.walkOver && !prop?.walkBreak) continue;
       if (prop && prop.hp !== null && prop.hp > 0) { hit = prop; break; }
     }
     if (!hit) return;
@@ -1533,6 +1558,7 @@ export class Simulation {
     if (prop.hp === 0) {
       this.colliders = this.colliders.filter(c => c.propId !== prop.id);
       this.stats.propsDestroyed++;
+      jetStart(this, prop); // (a hydrant sprays for 6 s and blocks sight; nothing for other props)
     }
     this.events.push({ type: prop.hp === 0 ? 'propBreak' : 'propHit', id: prop.id,
       electric:!!shot.electric, dashed:!!shot.dashed, propType: prop.type, x: prop.hp === 0 ? prop.x : shot.x, z: prop.hp === 0 ? prop.z : shot.z,

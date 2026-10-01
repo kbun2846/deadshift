@@ -3,6 +3,7 @@ import { collidersAlong } from '../world/collider-grid.js';
 import * as THREE from 'three';
 import {makeShotgun} from './shotgun-model.js';
 import {SHOTGUN} from './shotgun.js';
+import {flatRoundPasses} from './rifle.js';
 import {segmentBox} from '../simulation.js';
 import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { NO_FX } from '../effects/effects-detail.js';
@@ -99,7 +100,7 @@ export class ShotgunView{
   let ghostCount=0;
   this.ghosts=this.ghosts.filter(g=>{
    const travel=Math.min(85*step,g.left),ex=g.x+g.dx*travel,ez=g.z+g.dz*travel;let first=1;
-   for(const c of collidersAlong(sim.colliders,g.x,g.z,ex,ez,.1)){if(c.playerOnly)continue;const t=segmentBox(g.x,g.z,ex,ez,c,.025);if(t!==null&&t<first)first=t;}
+   for(const c of collidersAlong(sim.colliders,g.x,g.z,ex,ez,.1)){if(c.playerOnly||flatRoundPasses(sim,c))continue;const t=segmentBox(g.x,g.z,ex,ez,c,.025);if(t!==null&&t<first)first=t;} // (a city's knee-high pieces: the pellets fly over, rifle.js roundMeets)
    const fromX=g.x,fromZ=g.z;g.x+=(ex-g.x)*first;g.z+=(ez-g.z)*first;g.left-=travel*first;
    if(fx.on)fx.streak({x:g.x,z:g.z,fromX,fromZ,y:.77,life:.07,width:.018,color:PELLET_TRAIL,glow:.6});
    if(first<1){if(fx.on)fx.impact(g.x,g.z,this.view.kickedDustColor(g.x,g.z),{dx:g.dx,dz:g.dz});return false;}

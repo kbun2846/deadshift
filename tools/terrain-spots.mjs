@@ -35,6 +35,23 @@ export const SPOTS = {
   // view (the goat turns to stare: a player is within 14 m).
   's5-life': { x: -38.5, z: 36, look: { x: -43, z: 32 } },
  },
+ // Lumen (src/maps/lumen.js): the Crossroads is the widest view; the Stacks
+ // courtyard, the club and the Night Market the densest (stage 2 on).
+ lumen: {
+  start: { x: 6, z: 12 },
+  // The Boulevard's west half: the walk's square and diagonal stay on the
+  // open road (no props until stage 2).
+  walk: { x: -40, z: 2 },
+  crossroads: { x: 6, z: 4 },
+  'boulevard-east': { x: 40, z: 2, look: { x: 60, z: 0 } },
+  'stacks-courtyard': { x: -42, z: -26 },
+  'back-alley': { x: -13, z: -22.7 },
+  'night-market': { x: -13, z: -44 },
+  'velvet-row': { x: -42, z: 44 },
+  'metro-plaza': { x: 26, z: 40 },
+  'uptown-plaza': { x: 46, z: -24 },
+  'charging-lot': { x: -14, z: 44 },
+ },
 };
 
 // "plateau" or "12,-4" (or "12 -4") to { x, z, look? }; null for no spot.

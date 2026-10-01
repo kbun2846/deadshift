@@ -13,7 +13,9 @@
 //    collider, or a building's wall: from above you see over it, but it
 //    stops every round, so it guards a spawn just the same) or
 //    the real 16:9 screen ends (render/camera-framing.js onScreenOf, with the
-//    height difference: higher ground leaves the top sooner). The longest
+//    height difference: higher ground leaves the top sooner). Solid cover that
+//    stops every round (a car, a hoarding, a dumpster: 1.3 m or more, not
+//    knee-high, not breakable) ends a line too (Lumen's streets, stage 2). The longest
 //    line that leaves the base polygon is reported; over 18 m is flagged
 //    (design notes: no sightline out of a base longer than 18 m). East-west
 //    the screen reaches 19 m, so an open flank shows up here until a screen
@@ -29,7 +31,10 @@ import { insidePoly } from '../src/world/heightfield.js';
 const id = process.argv[2] || 'hollow-wick', map = maps[id];
 if (!map) { console.error('no map ' + id); process.exit(2); }
 if (!map.bases?.length && !map.ffaSpawns?.length) { console.log(id + ': no authored spawns (building interiors are its spawns)'); process.exit(0); }
-const ground = groundFor(map), colliders = mapColliders(map), blockers = colliders.filter(c => c.blocksSight || (c.buildingId && !c.playerOnly));
+const ground = groundFor(map), colliders = mapColliders(map), blockers = colliders.filter(c => c.blocksSight || (c.buildingId && !c.playerOnly) || c.solid || stopsFire(c));
+// Solid cover that stops every round (a car, a hoarding, a dumpster: 1.3 m or
+// more, not knee-high, not breakable) guards a spawn like a wall.
+function stopsFire(c) { return !c.walkOver && !c.lowTop && !c.playerOnly && !c.destructible && (c.height ?? 0) >= 1.3 && c.propId !== undefined; }
 const d = (a, b) => Math.hypot(a.x - b.x, a.z - b.z), f1 = v => v.toFixed(1), g = { x: 0, z: 0 };
 // Sight or fire stopped between two points: the ground, a sight blocker, a building's wall.
 const blocked = (a, b) => !ground.sightClear(a.x, a.z, b.x, b.z) || blockers.some(c => segmentBox(a.x, a.z, b.x, b.z, c, 0) !== null);

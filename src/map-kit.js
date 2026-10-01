@@ -10,6 +10,11 @@ import { GRAVE_TYPES } from './world/graveyard.js'; // s2-graveyard
 import { HOLLOW_TYPES } from './world/hollow-props.js'; // (s2-props: Hollow Wick's open-ground pieces)
 import { LIFE_TYPES } from './world/hollow-life.js'; // s5-life: the goat's pen, the washing line, the stick effigies
 import { DRESSING_TYPES } from './world/hollow-dressing.js'; // s5-props: Hollow Wick's static dressing
+import { LUMEN_PROP_TYPES } from './world/lumen-props.js'; // Lumen stage 2: placeholder cars and street furniture (a leaf module: no cycle)
+import { LUMEN_BREAKABLES } from './world/lumen-breakables.js'; // Lumen stage 4: the city's breakables (a leaf module)
+import { LUMEN_DETAIL_TYPES } from './world/lumen-detail.js'; // Lumen stage 5 (leaf modules)
+import { LUMEN_BODY_TYPES } from './world/lumen-bodies.js';
+import { LUMEN_SETPIECE_TYPES } from './world/lumen-setpieces.js';
 import { solidFurniture } from './world/room-furniture.js'; // dw-furniture: all furniture solid
 import { FLAT, groundFromBaked, edgeCollider } from './world/heightfield.js';
 import { BAKED_TERRAIN } from './maps/terrain/index.js';
@@ -43,6 +48,9 @@ export const PROP_TYPES = Object.freeze({
   ...HOLLOW_TYPES, // (s2-props)
   ...DRESSING_TYPES, // s5-props: stocks, pillory, hitching rails, the bier, the rowboat... (world/hollow-dressing.js)
   ...HOLLOW_BREAKABLES, // s2-breakables: Hollow Wick's breakables
+  ...LUMEN_PROP_TYPES, // Lumen: `city*` cars and street furniture (world/lumen-props.js)
+  ...LUMEN_BREAKABLES, // Lumen stage 4: `city*` breakables (world/lumen-breakables.js)
+  ...LUMEN_DETAIL_TYPES, ...LUMEN_BODY_TYPES, ...LUMEN_SETPIECE_TYPES, // Lumen stage 5: street detail, the dead, the set pieces
   // Breakable scenery shares one low health (1; 5 when players had 500) so a single orb clears it on the way
   // through. They are dressing and light cover, never a damage sponge that eats
   // a volley meant for something behind them.
@@ -103,6 +111,7 @@ function propAngle(p,i) {
 }
 
 export function buildingWalls(b) {
+  if (b.quad) return quadWalls(b); // Lumen: a four-sided room (the flatiron's wedge; world/city-rooms.js)
   const walls = [];
   const c = Math.cos(b.angle || 0), s = Math.sin(b.angle || 0);
   for (const side of ['front', 'back', 'left', 'right']) {
@@ -124,13 +133,17 @@ export function buildingWalls(b) {
       walls.push({ x: b.x + x * c + z * s, z: b.z - x * s + z * c,
         w: Math.abs(w * c) + Math.abs(d * s), d: Math.abs(w * s) + Math.abs(d * c),
         angle:b.angle||0,localW:w,localD:d,
-        height: piece.playerOnly ? .5 : b.height, playerOnly: !!piece.playerOnly, buildingId: b.id, ...(piece.playerOnly ? {} : { wall: true }) });
+        height: piece.playerOnly ? .5 : b.wallHeight ?? b.height, playerOnly: !!piece.playerOnly, buildingId: b.id, ...(piece.playerOnly ? {} : { wall: true }),
+        // Lumen: a wall two rooms share is drawn and collides once (the
+        // neighbour's copy); sight tests still see it from both rooms.
+        ...(b.sharedSides?.includes(side) && { shared: true }) });
     }
   }
   return walls;
 }
 
 export function localOpenings(b) {
+  if (b.quad) return (b.openings || []).map(o => ({ offset: 0, width: b.doorWidth, ...o, type: 'door' }));
   return [...(b.doors || ['front']).map(side => ({ side, offset: 0, width: b.doorWidth, type: 'door' })),
     // s2-buildings: extra doorways anywhere on a side ({ side, offset, width }).
     ...(b.openings || []).map(o => ({ offset: 0, width: b.doorWidth, ...o, type: 'door' })),
@@ -143,11 +156,13 @@ export function buildingPoint(b, x, z) {
 }
 
 export function buildingContains(b, point) {
+  if (b.quad) return quadContains(b.quad, point.x, point.z);
   const c = Math.cos(b.angle || 0), s = Math.sin(b.angle || 0), x = point.x - b.x, z = point.z - b.z;
   return Math.abs(x * c - z * s) < b.w / 2 && Math.abs(x * s + z * c) < b.d / 2;
 }
 
 export function buildingOpenings(b) {
+  if (b.quad) return localOpenings(b).map(o => { const e = quadEdge(b.quad, o.edge); return { ...o, a: e.at(o.offset - o.width / 2 + .1), b: e.at(o.offset + o.width / 2 - .1) }; });
   return localOpenings(b).map(o => {
     const horizontal = o.side === 'front' || o.side === 'back', sign = o.side === 'back' || o.side === 'left' ? -1 : 1;
     const across = sign * (horizontal ? b.d : b.w) / 2;
@@ -157,14 +172,15 @@ export function buildingOpenings(b) {
 }
 
 export function mapColliders(map) {
-  const colliders = map.buildings.flatMap(buildingWalls);
+  const colliders = map.buildings.flatMap(buildingWalls).filter(w => !w.shared);
   // Furniture (world/room-furniture.js, the list the renderer draws it from):
   // one box per piece at its drawn height. Styled rooms' cover keeps
   // `interiorCover`; low pieces (not `cover`) stop bodies and robots but not
   // rounds (playerOnly, as a window's sill). (dw-furniture)
   for(const b of map.buildings)for(const p of solidFurniture(b)) {
-    const point=buildingPoint(b,p.x,p.z),c=Math.abs(Math.cos(b.angle||0)),s=Math.abs(Math.sin(b.angle||0));
-    colliders.push({x:point.x,z:point.z,w:p.w*c+p.d*s,d:p.w*s+p.d*c,angle:b.angle||0,localW:p.w,localD:p.d,height:p.h,
+    // (A city room's piece may stand turned in its room: p.angle, its own local size localW/localD; Lumen stage 4.)
+    const point=buildingPoint(b,p.x,p.z),a=(b.angle||0)+(p.angle||0),lw=p.localW??p.w,ld=p.localD??p.d,c=Math.abs(Math.cos(a)),s=Math.abs(Math.sin(a));
+    colliders.push({x:point.x,z:point.z,w:lw*c+ld*s,d:lw*s+ld*c,angle:a,localW:lw,localD:ld,height:p.h,
       ...(p.styled?{interiorCover:true}:{furniture:p.kind}),...(p.cover?{}:{playerOnly:true}),buildingId:b.id});
   }
   for (const p of mapProps(map)) {
@@ -180,6 +196,12 @@ export function mapColliders(map) {
   // s2-trees: trunks, stumps and fallen logs (world/tree-kinds.js).
   colliders.push(...treeColliders(map.trees));
   for (const f of map.fences) colliders.push({ x: f.x, z: f.z, w: f.axis === 'x' ? f.length : .24, d: f.axis === 'z' ? f.length : .24, height: 1.1 });
+  // Lumen: solid masses nothing enters (the sealed edge towers, a building's
+  // blocked stairwell), walls to everything.
+  for (const s of map.solids || []) {
+    const a = s.angle || 0, c = Math.abs(Math.cos(a)), n = Math.abs(Math.sin(a));
+    colliders.push({ x: s.x, z: s.z, w: s.w * c + s.d * n, d: s.w * n + s.d * c, angle: a, localW: s.w, localD: s.d, height: s.height ?? 60, wall: true, solid: s.id ?? true, ...(s.barricade && { barricade: true }) });
+  }
   // Hills: what stands in the stream and is solid (Hollow Wick's mill wheel
   // and sluice): the one exception to wading anywhere.
   for (const box of map.crossings?.solid || []) colliders.push({ x: box.x, z: box.z, w: box.w, d: box.d, angle: 0, localW: box.w, localD: box.d, height: box.height, streamWorks: true });
@@ -187,4 +209,41 @@ export function mapColliders(map) {
   // (playerOnly: shots, sight and blasts go by the ground, not by the box).
   if (map.terrain) for (const edge of groundFor(map).edges) colliders.push(edgeCollider(edge));
   return colliders;
+}
+
+// Lumen's four-sided rooms (world/city-rooms.js): `quad` is four world
+// points in order round the room (either way round), edge i runs from point
+// i to point i + 1. Doors sit on an edge: { edge, offset (from its middle,
+// along it), width }; `sharedEdges` as `sharedSides` in buildingWalls.
+export function quadEdge(quad, i) {
+  const [ax, az] = quad[i], [bx, bz] = quad[(i + 1) % quad.length], length = Math.hypot(bx - ax, bz - az) || 1;
+  const ux = (bx - ax) / length, uz = (bz - az) / length, mx = (ax + bx) / 2, mz = (az + bz) / 2;
+  return { ax, az, bx, bz, ux, uz, length, mx, mz, at: t => ({ x: mx + ux * t, z: mz + uz * t }) };
+}
+export function quadContains(quad, x, z) {
+  let sign = 0;
+  for (let i = 0; i < quad.length; i++) {
+    const a = quad[i], b = quad[(i + 1) % quad.length], cross = (b[0] - a[0]) * (z - a[1]) - (b[1] - a[1]) * (x - a[0]);
+    if (Math.abs(cross) < 1e-12) return false;
+    if (!sign) sign = Math.sign(cross); else if (Math.sign(cross) !== sign) return false;
+  }
+  return true;
+}
+function quadWalls(b) {
+  const walls = [];
+  for (let i = 0; i < b.quad.length; i++) {
+    const e = quadEdge(b.quad, i), angle = Math.atan2(-e.uz, e.ux);
+    const openings = localOpenings(b).filter(o => o.edge === i).sort((p, q) => p.offset - q.offset);
+    const pieces = []; let cursor = -e.length / 2;
+    for (const o of openings) { const left = o.offset - o.width / 2, right = o.offset + o.width / 2; if (left > cursor) pieces.push([cursor, left]); cursor = right; }
+    if (cursor < e.length / 2) pieces.push([cursor, e.length / 2]);
+    // Rotated boxes turn by -angle about y (buildingWalls' convention: x' = x cos - z sin).
+    const c = Math.cos(angle), s = Math.sin(angle);
+    for (const [from, to] of pieces) {
+      const p = e.at((from + to) / 2), w = to - from, d = .38;
+      walls.push({ x: p.x, z: p.z, w: Math.abs(w * c) + Math.abs(d * s), d: Math.abs(w * s) + Math.abs(d * c), angle, localW: w, localD: d,
+        height: b.wallHeight ?? b.height, playerOnly: false, buildingId: b.id, wall: true, ...(b.sharedEdges?.includes(i) && { shared: true }) });
+    }
+  }
+  return walls;
 }

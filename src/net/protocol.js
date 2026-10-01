@@ -60,7 +60,12 @@ import { weaponOrDefault } from '../items.js';
 // NO_RESPAWN_LEFT), and a joiner now predicts its own body kept out of enemy
 // hexes with the new size (RULES.hexRange 10, hexSpeed 3, hexBody): an older
 // build would disagree with the server on all three, so the builds do not mix.
-export const PROTOCOL_VERSION = 26;
+// 27 (v0.1.6, 2026-10-01: the Lumen map merged): nothing new on the wire
+// (Lumen's hydrant jets ride the existing propBreak events, the shared match
+// clock comes from the snapshots' ticks), but a page without Lumen can't join
+// a Lumen room and would be refused with a confusing map error; the bump tells
+// it to reload instead.
+export const PROTOCOL_VERSION = 27;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);

@@ -58,6 +58,12 @@ export const ROOF_FADE = Object.freeze({ slots: 8, head: 1.6, inner: .5, outer: 
 // standing in front of it stays whole). Renderer 'wall' batches. A little
 // bigger than the old roof patch (s6-roofs: inner .5, outer 1.05 before).
 export const WALL_FADE = Object.freeze({ above: .9, ahead: true, inner: .65, outer: 1.3 });
+// A city's market canopy (Lumen's night-market tarps, stage 5 review: a 3.6 x
+// 2.6 m sheet at 2.3-2.7 m hid whoever stood under it): the batch's canopy kind
+// (renderer.js bakeKind, `canopyFade`) leaves out a patch round the line from
+// anyone under or behind it to the camera, above a body's shoulders, wide
+// enough to show the whole body from its feet up (the cut only: no blended copy).
+export const CANOPY_FADE = Object.freeze({ above: 1.4, ahead: false, inner: 1, outer: 1.6 });
 // A colonial building's ceiling (v0.990a, owner: running against a wall let
 // him see inside): the patch it opens, only on the line to someone behind the
 // building (on the camera's side of them, over their waist), tighter than the

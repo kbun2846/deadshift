@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { isColonial, colonialCover, makeColonialInterior } from './colonial-interiors.js'; // s2-interiors: Hollow Wick's rooms
+import { cityRoomCover } from './city-interiors.js'; // Lumen stage 4
 
 // Local coordinates shared by visible furniture and collision, including rotated buildings.
 export function interiorCover(b) {
+  if (b.style === 'city-room') return cityRoomCover(b); // Lumen stage 4: a city room's furniture (world/city-interiors.js)
   if (!b.interiorStyle) return [];
   if (isColonial(b)) return colonialCover(b); // s2-interiors
   if (b.interiorStyle==='cargo') return [{kind:['open-car-a','open-car-c'].includes(b.id)?'coal':'lumber',x:-.6,z:b.doors?.includes('back')?b.d/2-1.5:-b.d/2+1.5,w:1.8,d:1.7,h:1}];

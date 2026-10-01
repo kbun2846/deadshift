@@ -11,11 +11,14 @@ import { deadwater } from './maps/deadwater.js';
 import { dryCreek } from './maps/dry-creek.js';
 import { hillTest } from './maps/hill-test.js';
 import { hollowWick } from './maps/hollow-wick.js';
+import { cityTest } from './maps/city-test.js'; // Lumen stage 0: the city systems' proving ground
+import { lumen } from './maps/lumen.js'; // Lumen (AGENTS.md > Lumen)
+import { LUMEN_CARD } from './maps/lumen-card.js';
 import { groundFor } from './map-kit.js';
 import { HOLLOW_WICK_CARD } from './maps/hollow-wick-card.js'; // s3-look: its menu card
 
 export * from './map-kit.js';
-export { deadwater, dryCreek, hillTest, hollowWick };
+export { deadwater, dryCreek, hillTest, hollowWick, cityTest, lumen };
 
 // modes: where the map can be played ('practice', 'multiplayer').
 // menu:  listed on the Gamemodes > Practice map page (false = dev only, ?map=id).
@@ -29,6 +32,13 @@ const MAP_LIST = [
   // Every mode (bases, FFA points, robots). Released to the menus in v0.990a
   // (owner): the Practice map page, SOLO and the lobby's map list.
   { map: hollowWick, modes: ['practice', 'multiplayer'], menu: true, card: HOLLOW_WICK_CARD /* s3-look */ },
+  // Lumen's stage 0 (AGENTS.md > Lumen): tall shells and the cut, rooms of
+  // several rooms and wedges, rain, the wet mirror, signs and the light pool.
+  { map: cityTest, modes: ['practice'], menu: false },
+  // Lumen, the night city (owner, 2026-10-01: its card picture made and the map
+  // released "to everything"): the Practice map page, SOLO and the lobby, in
+  // every mode (three bases, FFA points, robots). Card: maps/lumen-card.js.
+  { map: lumen, modes: ['practice', 'multiplayer'], menu: true, card: LUMEN_CARD },
 ];
 
 for (const entry of MAP_LIST) Object.assign(entry.map, { modes: entry.modes, menu: entry.menu }, entry.card ? { card: entry.card } : {}); // (s3-look: card)

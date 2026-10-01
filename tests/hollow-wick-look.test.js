@@ -50,7 +50,7 @@ test('Hollow Wick is lit as an overcast dusk from the palette, Deadwater as befo
  assert.equal(look.exposure, BASE_LOOK.exposure);
  assert.ok(look.grade && look.grade.saturation < 1, "Extreme's grade: duller");
  // Deadwater and the other maps: exactly as before stage 3.
- for (const map of Object.values(maps).filter(m => m !== hw)) {
+ for (const map of Object.values(maps).filter(m => m !== hw && !m.city)) { // (Lumen's night has its own look: AGENTS.md > Lumen)
   const l = mapLook(map);
   assert.deepEqual([l.exposure, l.fogNear, l.fogFar, l.glow, l.grade], [.98, 70, 130, null, null], map.id);
  }

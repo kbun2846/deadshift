@@ -7,6 +7,7 @@ import { charMaterial } from '../effects/gore.js';
 import { isDemanding } from '../settings.js';
 import { BloodDrops } from '../effects/blood-drops.js';
 import { HollowBreakFX, handlesBreak } from '../effects/breakable-effects.js';
+import { makeBreakFX, handlesLumenBreak } from '../effects/lumen-breaks.js';
 import { gunStandIns, RemotePlayers } from '../remote-players.js';
 import { ROBOT_SLOT } from '../bots/robot-model.js';
 import { WEAPONS } from '../items.js';
@@ -113,7 +114,7 @@ export const WarmUp = {
     // Hollow Wick's breakables' leavings (an instanced pool) were made on the
     // first break, and built their shader then (v0.990a: program-check,
     // Static on Hollow Wick, Performance): made now where the map has any.
-    if (this.map?.props?.some(p => handlesBreak(p.type))) this.hollowBreaks ||= new HollowBreakFX(this);
+    if (this.map?.props?.some(p => handlesBreak(p.type) || handlesLumenBreak(p.type))) this.hollowBreaks ||= makeBreakFX(this);
     // Blood drops are made on a first bleed; made now, so that bleed (a robot
     // or another player shooting you) builds no shader mid-fight.
     (this.drops ||= new BloodDrops(this)).ensure();
@@ -149,6 +150,9 @@ export const WarmUp = {
       try {
         this.renderer.setRenderTarget(target);
         yield 'compile';
+        // Lumen: every rain streak and ring shown, and the mirror's pass drawn once.
+        this.city?.warm(this.renderer);
+        this.renderer.setRenderTarget(target);
         this.renderer.compile(this.scene, this.camera);
         this.renderer.setScissorTest(true); this.renderer.setScissor(0, 0, 1, 1);
         this.drawEmpty = true; this.renderer.render(this.scene, this.camera);

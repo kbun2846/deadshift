@@ -1,4 +1,5 @@
-// Draw calls per frame (split into shadow-pass and blended draws) and
+// Draw calls per frame (split into shadow-pass, other off-screen and blended
+// draws; Lumen's wet mirror is an off-screen pass: `offscreen`) and
 // getBoundingClientRect calls per frame, per preset, over three seconds of
 // Practice. Serve a build first (e.g. `npx vite preview --port 4173`), then:
 //   node tools/draw-count.mjs 4173 balanced,quality
@@ -11,18 +12,22 @@ for(const q of (process.argv[3]||'balanced').split(',')){
  const errors=[];p.on('pageerror',e=>errors.push(e.message));
  await p.addInitScript(()=>{
   const proto=WebGL2RenderingContext.prototype;
-  window.__d=0;window.__f=0;window.__rect=0;window.__shadow=0;window.__blend=0;
+  window.__d=0;window.__f=0;window.__rect=0;window.__shadow=0;window.__blend=0;window.__off=0;
   // Which framebuffer is bound tells shadow-pass draws from camera-pass draws,
   // and the BLEND capability tells how many draws are paying for blending.
-  let offscreen=false,blending=false;
+  // A shadow map is square; an off-screen pass the screen's shape (Lumen's
+  // mirror, the crisp and post targets) is told apart by its viewport.
+  let offscreen=false,blending=false,square=false;
   const bind=proto.bindFramebuffer;
   proto.bindFramebuffer=function(target,fb){offscreen=!!fb;return bind.call(this,target,fb);};
+  const viewport=proto.viewport;
+  proto.viewport=function(x,y,w,h){square=w===h;return viewport.call(this,x,y,w,h);};
   const en=proto.enable,dis=proto.disable;
   proto.enable=function(cap){if(cap===this.BLEND)blending=true;return en.call(this,cap);};
   proto.disable=function(cap){if(cap===this.BLEND)blending=false;return dis.call(this,cap);};
   for(const k of ['drawElements','drawArrays','drawElementsInstanced','drawArraysInstanced']){
    const f=proto[k];proto[k]=function(...a){
-    window.__d++;if(offscreen)window.__shadow++;if(blending)window.__blend++;
+    window.__d++;if(offscreen&&square)window.__shadow++;else if(offscreen)window.__off++;if(blending)window.__blend++;
     return f.apply(this,a);};}
   const g=Element.prototype.getBoundingClientRect;
   Element.prototype.getBoundingClientRect=function(){window.__rect++;return g.call(this);};
@@ -38,12 +43,12 @@ for(const q of (process.argv[3]||'balanced').split(',')){
  await p.click('#start');await p.waitForTimeout(200);
  const w=await p.$('.weapon-choice');if(w)await w.click();
  await p.waitForTimeout(2500);
- const read=()=>p.evaluate(()=>[window.__d,window.__f,window.__rect,window.__shadow,window.__blend]);
+ const read=()=>p.evaluate(()=>[window.__d,window.__f,window.__rect,window.__shadow,window.__blend,window.__off]);
  const a=await read();
  await p.waitForTimeout(3000);
  const c=await read();
  const f=c[1]-a[1],per=i=>f?((c[i]-a[i])/f).toFixed(0):'n/a';
- console.log(`${q.padEnd(11)} draws ${per(0).padStart(4)}  shadow ${per(3).padStart(4)}  blended ${per(4).padStart(3)}  rects ${f?((c[2]-a[2])/f).toFixed(2):'?'}  errors ${errors.length}${errors.length?': '+errors[0]:''}`);
+ console.log(`${q.padEnd(11)} draws ${per(0).padStart(4)}  shadow ${per(3).padStart(4)}  offscreen ${per(5).padStart(4)}  blended ${per(4).padStart(3)}  rects ${f?((c[2]-a[2])/f).toFixed(2):'?'}  errors ${errors.length}${errors.length?': '+errors[0]:''}`);
  await p.close();
 }
 await b.close();

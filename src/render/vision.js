@@ -113,6 +113,8 @@ export const Vision = {
     // The room's own box is never shrouded (vision-polygons.js roomBox); the
     // openings' cones are laid at .7 m over its floor.
     const polygons = roomBox(room).concat(interiorPolygons(room, sim.player));
+    // Lumen: other buildings' outsides are never greyed (render/city-shells.js exteriorFaces).
+    this.city?.shells?.exteriorFaces?.(this.focus, polygons);
     this.paintVision(polygons.map(points => projectVisionPolygon(points, this.camera, viewWidth(), viewHeight(), .7 + (room.baseY || 0))));
   },
 

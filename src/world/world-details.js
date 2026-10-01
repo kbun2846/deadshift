@@ -3,8 +3,9 @@ import { isPlayable } from '../playable-area.js';
 
 export function makeQualityDetails(view) {
   const all = new THREE.Group(); view.scene.add(all);
-  // (Deadwater's street and desert dressing; a hills map brings its own.)
-  if(view.map.training||view.map.terrain)return all;
+  // (Deadwater's street and desert dressing; a hills map brings its own, and
+  // so does a city: no sand ripples, ruts or wood chips on Lumen's asphalt.)
+  if(view.map.training||view.map.terrain||view.map.city)return all;
   // s2-buildings: Hollow Wick's colonial buildings draw their own wear (none of Deadwater's sand drifts or door paths).
   const buildings = view.map.buildings.filter(b => b.style !== 'colonial');
   for (const b of buildings) {

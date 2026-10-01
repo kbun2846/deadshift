@@ -104,7 +104,19 @@ export class ShadowCache {
     const renderer = view.renderer, shadowMap = renderer.shadowMap, base = shadowMap.render;
     this.base = (lights, scene, camera) => base.call(shadowMap, lights, scene, camera);
     shadowMap.render = (lights, scene, camera) => {
-      if (!this.active || !this.region || lights.length !== 1 || lights[0] !== view.sun || shadowMap.enabled === false) return this.base(lights, scene, camera);
+      // (Lumen's mirror pass holds the shadow map still and draws none: three's
+      // own rule, kept for that pass only (`drawing` while it renders), so the
+      // warm-up's draw still runs the cache and builds its copy program.)
+      if (view.city?.mirror?.drawing && shadowMap.autoUpdate === false && shadowMap.needsUpdate === false) return;
+      const own = this.active && lights.length === 1 && lights[0] === view.sun && shadowMap.enabled !== false;
+      // The warm-up's draw (view.drawEmpty) always builds the copy program
+      // (the restorer's depth material): with a region, a forced update runs
+      // restore(warm); without one (the warm-up ran before the first frame's
+      // follow() placed it), one empty draw of the restorer through three's
+      // pass. Before, the warm-up built it only when a region already
+      // existed, so on some loads it was built in play, at the first blast.
+      if (own && view.drawEmpty) { if (this.region) view.sun.shadow.needsUpdate = true; else this.warmCopy(); }
+      if (!own || !this.region) return this.base(lights, scene, camera);
       const shadow = view.sun.shadow;
       if (!shadow.needsUpdate && !shadow.autoUpdate) return;
       // Between ticks with nothing drawn as moving changed: the map already
@@ -152,6 +164,17 @@ void main() {
       this.pristine?.dispose(); this.pristine = null;
       this.view.sun.shadow.getViewport(0).set(0, 0, 1, 1);
     }
+  }
+
+  // One draw of the restorer (no quads: only its program matters) into the
+  // sun's map through three's shadow pass, as restore() draws it, so its
+  // program is the one play uses. The map is drawn again at the next update.
+  warmCopy() {
+    const shadow = this.view.sun.shadow, geometry = this.restorer.geometry;
+    geometry.setDrawRange(0, 0);
+    shadow.needsUpdate = true;
+    this.base([this.view.sun], this.restoreRoot, this.view.camera);
+    shadow.needsUpdate = true; this.rebuild = true;
   }
 
   // Everything drawn again at the next update (a preset change, a lost

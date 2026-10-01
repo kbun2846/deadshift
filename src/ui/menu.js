@@ -212,7 +212,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  function loadThumbnail(){
   // Maps with a shipped picture have it already; a render of the loaded map
   // is only the fallback for one without (a new map before its capture).
-  if(CARD_IMAGES[map.id])return;
+  if(CARD_IMAGES[map.id]||map.card?.placeholder)return; // (a placeholder card stays a plain slate picture area: maps.js Lumen)
   if(!thumbnail||thumbnailScheduled)return;thumbnailScheduled=true;
   // Let navigation paint before the one-time GPU readback.
   requestAnimationFrame(()=>requestAnimationFrame(()=>{

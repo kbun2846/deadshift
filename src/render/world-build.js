@@ -22,6 +22,14 @@ import { HOLLOW_TYPES, makeHollowProp } from '../world/hollow-props.js'; // (s2-
 import { GRAVE_TYPES, makeGrave } from '../world/graveyard.js'; // s2-graveyard
 import { LIFE_TYPES, makeLifeProp } from '../world/hollow-life.js'; // s5-life: the goat's pen, the washing line, the stick effigies
 import { DRESSING_TYPES, makeDressing } from '../world/hollow-dressing.js'; // s5-props
+import { LUMEN_PROP_TYPES, makeLumenPlaceholder } from '../world/lumen-props.js'; // Lumen stage 2: grey placeholder props
+import '../world/lumen-vehicles.js'; // Lumen stage 4: the cars' models (register with lumen-props.js)
+import '../world/lumen-furniture.js'; // Lumen stage 4: the street furniture's models
+import { makeCityTarget } from '../world/lumen-targets.js'; // Lumen stage 4: the city's practice targets
+import { LUMEN_BREAKABLES } from '../world/lumen-breakables.js'; // Lumen stage 4: the city's breakables (models register with lumen-props.js)
+import { LUMEN_DETAIL_TYPES } from '../world/lumen-detail.js'; // Lumen stage 5 (models register with lumen-props.js)
+import { LUMEN_BODY_TYPES } from '../world/lumen-bodies.js';
+import { LUMEN_SETPIECE_TYPES } from '../world/lumen-setpieces.js';
 import { freezeTransforms } from './frozen-transforms.js';
 import { DustDevils } from '../effects/dust-devils.js';
 import { ROOF_PREPASS_ORDER, CLUTTER_CLAY, CLUTTER_DARK, CLUTTER_SEAT, lerp, randomGenerator } from './renderer.js';
@@ -44,6 +52,7 @@ const TERRAIN_ERROR = { potato: .04, performance: .035, balanced: .02, quality: 
 export const WorldBuild = {
   makePlayableEdge(){
     const outline=this.map.playableArea;if(!outline)return;
+    if(this.map.city)return; // (Lumen: the ring of towers and the barricades are its edge)
     if(this.map.terrain)return this.makeHillFence(outline);
     // A low continuous ranch fence makes the collision edge readable. Scenery
     // outside it stays rendered; it is not deleted or clipped by the perimeter.
@@ -127,6 +136,14 @@ export const WorldBuild = {
   makeTerrain() {
     const { map } = this;
     if (map.terrain) return this.makeHillTerrain();
+    // Lumen: the city's ground is built by its hub (world/city-ground.js);
+    // Deadwater's street, sand and scrub are not, and empty stand-ins take
+    // their place for what the rest of the view reads.
+    if (map.city) {
+      this.roadProfile = [{ z: -1e4, left: 1e5, right: 1e5 }, { z: 1e4, left: 1e5, right: 1e5 }]; this.sandMarks = [];
+      for (const key of ['groundDetails', 'extraGroundDetails', 'performanceDetails']) { this[key] = new THREE.Group(); this.scene.add(this[key]); }
+      return;
+    }
     // The ground casts onto nothing, and its bounding sphere covers the map, so
     // it can never be culled out of a shadow update.
     this.terrainUV(this.noShadows(this.box(0, -.28, 0, map.width + 60, .5, map.depth + 60, map.palette.ground)));
@@ -421,6 +438,7 @@ export const WorldBuild = {
 
   makeBuilding(b) {
     if (b.style === 'colonial') return makeColonialBuilding(this, b); // s2-buildings: Hollow Wick's buildings
+    if (b.style === 'city-room') return; // Lumen: drawn by render/city-shells.js with its building
     // Hills: a building stands on its pad at baseY (heightfield.js pads);
     // everything below is built at 0 and lifted with it at the end.
     const angle = b.angle || 0, baseY = b.baseY || 0, oldStatic = new Set(this.static.children);
@@ -630,6 +648,7 @@ export const WorldBuild = {
     else if (LIFE_TYPES[p.type]) makeLifeProp(this, p, g); // s5-life (their moving parts join world/hollow-life.js's meshes)
     else if (HOLLOW_BREAKABLES[p.type]) makeHollowBreakable(this, p, g); // s2-breakables
     else if (DRESSING_TYPES[p.type]) makeDressing(this, p, g); // s5-props: Hollow Wick's static dressing
+    else if (LUMEN_PROP_TYPES[p.type] || LUMEN_BREAKABLES[p.type] || LUMEN_DETAIL_TYPES[p.type] || LUMEN_BODY_TYPES[p.type] || LUMEN_SETPIECE_TYPES[p.type]) makeLumenPlaceholder(this, p, g); // Lumen stage 2 (stage 4 replaces the grey models)
     else if (p.type === 'barrel') {
       this.cylinder(0, .5, 0, .46, 1, '#9c7d58', g, 10, .41);
       for (const y of [.2, .77]) this.cylinder(0, y, 0, .465, .09, '#696c58', g, 10);
@@ -785,6 +804,7 @@ export const WorldBuild = {
   },
 
   makeTarget(moving, kind) {
+    if (this.map.city) return makeCityTarget(this, moving, kind); // Lumen stage 4: a steel pop-up board, a padded mannequin
     const g = new THREE.Group(); const board = new THREE.Group(); g.add(board); g.userData.board = board;
     if (kind === 'dummy') {
       this.box(0, .65, 0, .12, 1.3, .12, '#78634a', board);
@@ -834,7 +854,8 @@ export const WorldBuild = {
     this.dustWisps = this.fogSheets.meshes; this.wispClear = this.fogSheets.clear;
     // (Tumbleweeds and dust devils are Deadwater's desert; a map with hills
     // brings its own ambient life.)
-    if (!this.map.terrain) for (const [x, z] of [[-4, -9], [20, 18], [-22, 12]]) this.spawnTumbleweed(x, z);
+    if (!this.map.terrain && !this.map.city) for (const [x, z] of [[-4, -9], [20, 18], [-22, 12]]) this.spawnTumbleweed(x, z);
+    if (this.map.city) this.motes.visible = false; // (Lumen: no desert dust in the air; the rain is its own)
   },
 
   spawnTumbleweed(x, z) {
@@ -873,7 +894,7 @@ export const WorldBuild = {
     this.gustClock = (this.gustClock ?? 5) - dt;
     if (this.gustClock <= 0) {
       this.gustClock = 6 + Math.random() * 7;
-      if (!sim.interior) {
+      if (!sim.interior && !this.map.city) {
         const heading = .9 + (Math.random() - .5) * .7;
         const across = Math.random() * Math.PI * 2, reach = 9 + Math.random() * 11;
         this.dustTrail.gust(this.focus.x + Math.cos(across) * reach, this.focus.z + Math.sin(across) * reach,
@@ -882,7 +903,7 @@ export const WorldBuild = {
     }
     // Extreme: a dust devil now and then, crossing the open ground downwind.
     this.dustDevils ||= new DustDevils(this.fx);
-    this.dustDevils.update(dt, this.qualityName === 'extreme' && !sim.interior && !this.map.terrain,
+    this.dustDevils.update(dt, this.qualityName === 'extreme' && !sim.interior && !this.map.terrain && !this.map.city,
       { x: this.focus.x, z: this.focus.z, halfWidth, halfDepth: halfHeight },
       (x, z) => sim.colliders.some(b => inside({ x, z }, b, .8)), (x, z) => this.kickedDustColor(x, z));
     // Purely cosmetic overflights, hidden while a roof is between them and the
@@ -892,7 +913,7 @@ export const WorldBuild = {
     const cap = this.qualityName === 'performance' ? 4 : 7;
     if (this.ambientClock <= 0) {
       this.ambientClock = 4 + Math.random() * 5;
-      if (this.tumbleweeds.length < cap && !this.map.terrain) {
+      if (this.tumbleweeds.length < cap && !this.map.terrain && !this.map.city) {
         const width = Math.tan(this.camera.fov * Math.PI / 360) * 35 * this.camera.aspect;
         const x = this.focus.x - width - 2, z = this.focus.z + (Math.random() - .5) * 25;
         const at = { x, z }; if (!nearColliders(sim.colliders, x - 1, z - 1, x + 1, z + 1).some(b => inside(at, b, .6))) this.spawnTumbleweed(x, z);

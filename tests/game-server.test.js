@@ -8,7 +8,7 @@ import { ClientSession } from '../src/net/client-session.js';
 import { createLoopback } from '../src/net/transport.js';
 import { PROTOCOL_VERSION } from '../src/net/protocol.js';
 import { Simulation } from '../src/simulation.js';
-import { maps } from '../src/maps.js';
+import { maps, multiplayerMaps } from '../src/maps.js';
 import { playerId } from '../src/net/player-id.js';
 import { Room, AUTO_START, MOVE_GAP } from '../server/room.js';
 import { VOTE } from '../src/net/host-session.js';
@@ -87,7 +87,7 @@ test('START opens the map vote; this map winning starts the round, with robots f
  room.receive(a, { t: 'lead', op: 'start' });
  assert.equal(room.session.arena.phase, 'lobby', 'not yet: the vote first');
  steps(room, 3); // snapshots go out every 3rd tick
- assert.deepEqual(b.last('snapshot').vote.maps.map(m => m.id), ['deadwater', 'hollow-wick']);
+ assert.deepEqual(b.last('snapshot').vote.maps.map(m => m.id), multiplayerMaps().map(m => m.id)); // every multiplayer map is on the ballot
  room.receive(a, { t: 'vote', map: 'deadwater' });
  room.receive(b, { t: 'vote', map: 'nowhere' });
  steps(room, 3);
@@ -210,7 +210,7 @@ test('the list: every map in every listed mode; another room opens when one fill
  const now = clock();
  const rooms = new Rooms({ config, now });
  const list = rooms.list();
- assert.equal(list.length, 2 * config.listedModes.length);
+ assert.equal(list.length, multiplayerMaps().length * config.listedModes.length);
  for (const mode of config.listedModes) for (const mapId of ['deadwater', 'hollow-wick']) assert.ok(list.some(r => r.map === mapId && r.mode === mode), mapId + ' ' + mode);
  assert.ok(list.every(r => /^[0-9]{5}$/.test(r.code) && r.players === 0));
  const duel = [...rooms.rooms.values()].find(r => r.isPublic && r.home.mode === '1v1' && r.mapId === 'deadwater');

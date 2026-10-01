@@ -26,7 +26,8 @@ const p = await b.newPage({ viewport: { width: +(process.env.W || 400), height: 
 const errs = []; p.on('pageerror', e => errs.push(e.message));
 await p.addInitScript(q => localStorage.setItem('deadstab-settings', JSON.stringify({ quality: q, qualityAuto: false })), q);
 await p.goto(`http://127.0.0.1:${port}/?play=1&weapon=${w}&map=${mapId}&capture=thumbnail${extra}`);
-await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: 90000 });
+// (A loaded machine loads slowly: PERF_TIMEOUT seconds, default 90.)
+await p.waitForFunction(() => document.body.classList.contains('playing') && window.__capture, null, { timeout: (+process.env.PERF_TIMEOUT || 90) * 1000 });
 // Teleport: the dev-only window.__capture handle (sim + view), then a camera cut.
 if (spot) await p.evaluate(s => {
  const { sim, view } = window.__capture, pl = sim.player;
@@ -44,7 +45,9 @@ await p.evaluate(() => {
   // the scene, Extreme's post passes), not just the last render() call.
   const df = view.drawFrame; view.drawFrame = (...a) => {
    const info = view.renderer.info, keep = info.autoReset; info.reset(); info.autoReset = false;
-   try { return df(...a); } finally { rec.cur.calls = info.render.calls; rec.cur.tris = info.render.triangles; info.autoReset = keep; }
+   // (Lumen: the wet mirror's own pass, counted in the frame and apart.)
+   const mirror = view.city?.mirror?.stats; if (mirror) mirror.calls = mirror.triangles = 0;
+   try { return df(...a); } finally { rec.cur.calls = info.render.calls; rec.cur.tris = info.render.triangles; if (mirror) { rec.cur.mirrorCalls = mirror.calls; rec.cur.mirrorTris = mirror.triangles; } info.autoReset = keep; }
   };
   const raf = window.requestAnimationFrame.bind(window);
   window.requestAnimationFrame = cb => raf(t => { rec.cur = {}; const s = performance.now(); cb(t); rec.rows.push({ phase: rec.phase, total: performance.now() - s, ...rec.cur }); });
@@ -85,7 +88,10 @@ const med = a => { a = a.filter(Number.isFinite).sort((x, y) => x - y); return a
 // numbers come from the idle phase, or every drawn frame when it had none
 // (Extreme under SwiftShader can take seconds per frame).
 const drawn = rows.filter(x => x.calls !== undefined), atSpot = drawn.filter(x => x.phase === 'idle'), idle = atSpot.length ? atSpot : drawn, all = drawn.map(x => x.total);
-const one = { map: mapId, spot: spot?.name ?? 'spawn', preset: q, weapon: w, drawCalls: med(idle.map(x => x.calls)), triangles: med(idle.map(x => x.tris)), frameMs: +(med(all) ?? 0).toFixed(1), idleFrameMs: +(med(idle.map(x => x.total)) ?? 0).toFixed(1), programs, frames: drawn.length, spotFrames: atSpot.length, errors: errs.slice(0, 5) };
+// drawCalls and triangles are the whole frame (shadow maps, Lumen's mirror
+// pass, Extreme's post passes); mirrorCalls / mirrorTriangles the mirror's share.
+const one = { map: mapId, spot: spot?.name ?? 'spawn', preset: q, weapon: w, drawCalls: med(idle.map(x => x.calls)), triangles: med(idle.map(x => x.tris)),
+ ...(idle.some(x => x.mirrorCalls !== undefined) ? { mirrorCalls: med(idle.map(x => x.mirrorCalls ?? 0)), mirrorTriangles: med(idle.map(x => x.mirrorTris ?? 0)) } : {}), frameMs: +(med(all) ?? 0).toFixed(1), idleFrameMs: +(med(idle.map(x => x.total)) ?? 0).toFixed(1), programs, frames: drawn.length, spotFrames: atSpot.length, errors: errs.slice(0, 5) };
 console.log(JSON.stringify(one)); summary.push(one);
 await p.close();
 }

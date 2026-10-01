@@ -68,8 +68,14 @@ export function roundSees(sim,round,t,s=round.flight&&along(round,t.x,t.z)){
 }
 // Walls and buildings always meet it; low cover only at its own height (a
 // round coming down off a ledge flies over a crate below it).
+// A city's flat streets (Lumen, `map.city`): a round with no flight still
+// flies `roundHeight` up, so a knee-high piece (lowTop, under it) is no cover,
+// as robots already judge it (bots/robot-brain.js shotClear). Other flat maps
+// keep every collider meeting every round.
+export const flatRoundPasses=(sim,box)=>!!(box.lowTop&&sim.map.city&&(box.height??2)<TERRAIN.roundHeight);
 export function roundMeets(sim,round,box,x,z,s=round.flight&&along(round,x,z)){
- if(round.flight===undefined||(box.height??2)>1.5)return true;
+ if(round.flight===undefined)return !flatRoundPasses(sim,box);
+ if((box.height??2)>1.5)return true;
  const y=roundY(sim,round,s),base=sim.ground.heightAt(x,z);
  // s2-trees: a stump or fallen log (lowTop) meets it only below its own top.
  return y>=base-.2&&y<=base+(box.lowTop?box.height:Math.max(box.height??2,TERRAIN.roundHeight+.2));

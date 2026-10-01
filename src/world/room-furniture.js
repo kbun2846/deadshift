@@ -263,6 +263,6 @@ export function onCounter(b, x, margin = .25) {
 // cover, as before) and the placed furniture, without the walk-over clutter.
 // map-kit.js mapColliders builds one collider from each.
 export function solidFurniture(b) {
-  return [...interiorCover(b).map(p => ({ ...p, cover: true, styled: true })),
+  return [...interiorCover(b).map(p => ({ ...p, cover: p.cover ?? true, styled: true })), // (a city room's low pieces say cover: false: rounds fly over)
     ...roomFurniture(b).filter(p => !p.walkOver)];
 }

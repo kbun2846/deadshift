@@ -2,6 +2,11 @@
 
 Deadstab, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## v0.1.6-alpha (2026-10-01)
+
+- **New map: Lumen**, a deserted cyberpunk city at night. Rain on wet streets, neon signs and holograms still running, steam from the vents, abandoned cars and buses, and every building can be entered. Lots of new breakables (a broken hydrant sprays water you can't see through), new city sounds, and its own look on every graphics preset. Play it in practice, against bots, and online: it's in the map vote and the JOIN list.
+- Online: everyone needs this version (reload if the game says it was just updated).
+
 ## v0.1.5-alpha (2026-10-01)
 
 - **New settings:** redesigned to match the rest of the menus, and it works properly on phones (upright and sideways). Quality, frame limit, audio, key bindings, the controls reference and the touch layout editor are all still there, with less clutter. Resetting keys or the touch layout now asks for a second press.

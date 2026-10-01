@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
+import { offsetPolygon } from '../src/render/vision-polygons.js';
 import {deadwater,buildingPoint,maps} from '../src/maps.js';
 import {interiorPolygons,projectVisionPolygon,roomBox} from '../src/render/vision-polygons.js';
 import {interiorCameraHeight,CAMERA_TILT} from '../src/render/camera-framing.js';
@@ -45,9 +46,12 @@ test('the shroud never greys the room you are in: its box, floor to eaves, walls
     const faces=roomBox(room).map(p=>projectVisionPolygon(p,camera,1000,1000));
     const onScreen=(x,y,z)=>{const v=new THREE.Vector3(x,y,z).project(camera);return {x:(v.x*.5+.5)*1000,y:(.5-v.y*.5)*1000,in:Math.abs(v.x)<1&&Math.abs(v.y)<1&&v.z<1};};
     const out=.19+.08; // a wall's outer face and its trim
+    // (Lumen's wedge rooms: along each edge of the quad, pushed out from its middle.)
+    const around=k=>room.quad?offsetPolygon(room.quad,out).map((a,i,o)=>{const b=o[(i+1)%4],t=k+.5;return {x:a[0]+(b[0]-a[0])*t,z:a[1]+(b[1]-a[1])*t};})
+      :[[k*room.w,room.d/2+out],[k*room.w,-room.d/2-out],[room.w/2+out,k*room.d],[-room.w/2-out,k*room.d]].map(([lx,lz])=>buildingPoint(room,lx,lz));
     for(const y of [0,.7,top/2,top-.05])for(let k=-.5;k<=.5;k+=.125){
-      for(const [lx,lz] of [[k*room.w,room.d/2+out],[k*room.w,-room.d/2-out],[room.w/2+out,k*room.d],[-room.w/2-out,k*room.d]]){
-        const w=buildingPoint(room,lx,lz),p=onScreen(w.x,base+y,w.z);
+      for(const w of around(k)){
+        const lx=w.x,lz=w.z,p=onScreen(w.x,base+y,w.z);
         if(p.in)assert.ok(faces.some(f=>contains(f,p)),`${room.id} ${lx.toFixed(2)},${lz.toFixed(2)} at ${y}`);
       }
     }

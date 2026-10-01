@@ -2,10 +2,12 @@ import { buildingPoint } from '../maps.js';
 import { BUILDING_FINISHES } from '../world/building-finishes.js';
 import {playableOutline} from '../playable-area.js';
 import { hillsOverheadMapSVG, duelCircleSVG } from './overhead-hills.js'; // s3-look: maps with hills
+import { cityOverheadMapSVG } from './overhead-city.js'; // Lumen stage 4: the night city
 
 // Read the rendered road profile and current layout, never a hand-maintained image.
 export function overheadMapSVG(map, view, player) {
   if (map.terrain) return hillsOverheadMapSVG(map, view, player); // s3-look: Hollow Wick's own drawing
+  if (map.city) return cityOverheadMapSVG(map, view, player); // Lumen stage 4: a city map's own drawing
   const points=items=>items.map(p=>`${p.x},${p.z}`).join(' ');
   const perimeter=playableOutline(map).map(p=>p.join(',')).join(' ');
   const road=[...view.roadProfile.map(p=>({x:p.left,z:p.z})),...view.roadProfile.slice().reverse().map(p=>({x:p.right,z:p.z}))];

@@ -33,7 +33,7 @@ test('the map picker names the map; the map is in the menus (v0.990a)', () => {
  // Released (owner, v0.990a): the Practice map page, SOLO and the lobby,
  // from any map; no longer under Developer tools > World > Map in progress.
  assert.equal(hw.menu, true);
- assert.deepEqual(menuMaps().map(m => m.id), ['deadwater', 'hollow-wick']);
+ assert.deepEqual(menuMaps().map(m => m.id), ['deadwater', 'hollow-wick', 'lumen']); // (Lumen released 2026-10-01)
  assert.ok(!workMaps().includes(hw));
  assert.ok(soloMaps().includes(hw) && soloMaps(maps.deadwater).includes(hw), 'offered from any map');
  assert.ok(multiplayerMaps().includes(hw) && multiplayerMaps()[0] === maps.deadwater, 'in the lobby list; Deadwater still the default');

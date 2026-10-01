@@ -42,6 +42,17 @@ if (water) {
   await p.evaluate(s => { const { sim, view } = window.__capture; Object.assign(sim.player, { x: s.x, z: s.z, vx: 0, vz: 0 }); view.cameraCut = true; view.event?.({ type: 'rifleImpact', x: s.x + 1, z: s.z, stopped: true }); }, water);
   await p.keyboard.down('KeyW'); await p.waitForTimeout(2500); await p.keyboard.up('KeyW'); await p.waitForTimeout(2500);
 }
+// Lumen (a city map): every room of every building entered, the rain in and
+// the ground wet (the weather clock), the power sag, signs shot out and back.
+const city = await p.evaluate(() => { const { map } = window.__capture; return map.city ? map.buildings.map(b => ({ x: b.x, z: b.z })) : null; });
+if (city) {
+  await p.evaluate(() => { window.__capture.sim.worldClock = 100; });
+  for (const room of city) { await p.evaluate(s => { const { sim, view } = window.__capture; Object.assign(sim.player, { x: s.x, z: s.z, vx: 0, vz: 0 }); view.cameraCut = true; }, room); await p.waitForTimeout(900); }
+  await p.evaluate(() => { const { view, sim } = window.__capture; const s = view.city?.signs; for (let i = 1; i < 32; i++) s?.breakSign?.(i, view.effectTime); sim.worldClock = 95 + 170 * 2; });
+  await p.waitForTimeout(2500);
+  await p.evaluate(() => { const { view } = window.__capture; const s = view.city?.signs; for (let i = 1; i < 32; i++) s?.restoreSign?.(i, view.effectTime); window.__capture.sim.worldClock = 200; });
+  await p.waitForTimeout(1500);
+}
 await p.evaluate(() => { const { sim } = window.__capture; let n = 0; for (const prop of sim.props || []) if (prop.hp > 0 && n < 12 && Math.hypot(prop.x - sim.player.x, prop.z - sim.player.z) < 60) { sim.hitProp(prop, { damage: 99, x: prop.x, z: prop.z, vx: 1, vz: 0 }); n++; } });
 await p.waitForTimeout(2000);
 const linked = await p.evaluate(() => window.__linked);

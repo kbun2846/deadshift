@@ -50,6 +50,7 @@ import { respondToLaser,sniperLineClear } from './laser-response.js';
 import { hexAware, hexTargetCost } from './hex-aware.js';
 import { newEngagement, newSituation, judge, THREAT, MELEE } from './engagement.js';
 import { peelBonus } from './squad.js';
+import { sameRoomGroup } from '../world/city-rooms.js'; // Lumen: rooms of one building
 
 const TAU = Math.PI * 2;
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -218,7 +219,7 @@ export class RobotBrain {
    const d = Math.hypot(e.x - p.x, e.z - p.z);
    const facing = this.aimAngle ?? Math.atan2(p.aimZ, p.aimX);
    const inView = sniperSees(this.sim,e) ?? (d < SIGHT_NEAR || (d < SIGHT && Math.abs(wrap(Math.atan2(e.z - p.z, e.x - p.x) - facing)) < SIGHT_CONE));
-   const room=this.sim.buildingAt(e.x,e.z),sameRoom=!room||room===this.sim.interior;
+   const room=this.sim.buildingAt(e.x,e.z),sameRoom=!room||sameRoomGroup(room,this.sim.interior);
    // (v0.990a, owner: nobody sees someone in a crop field from outside it;
    // in the same field, only close by: crops.js cropEntityVisible.)
    const visible = e.hp > 0 && inView && sameRoom && this.sim.sees(e.x, e.z, .3) && cropEntityVisible(this.sim.crops || [], p, e);
@@ -251,7 +252,7 @@ export class RobotBrain {
    for (const e of world.enemies) {
     const c = world.intel.get(e.id), m = this.memory.get(e.id);
     if (!c || !m || m.visible || e.hp <= 0) continue;
-    const room=this.sim.buildingAt(c.x,c.z);if(room&&room!==this.sim.interior)continue;
+    const room=this.sim.buildingAt(c.x,c.z);if(room&&!sameRoomGroup(room,this.sim.interior))continue;
     if (this.time - m.seen > .3) { m.x = c.x; m.z = c.z; m.vx = c.vx; m.vz = c.vz; m.seen = this.time - .3; m.hp = c.hp??m.hp; m.maxHp = c.maxHp??m.maxHp; m.told = true; m.room=room?.id||null;delete m.shelter; }
    }
   }

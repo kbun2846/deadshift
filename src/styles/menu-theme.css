@@ -165,6 +165,8 @@ input,textarea,[contenteditable=true]{-webkit-user-select:text;user-select:text}
 #game .map-options{display:grid;grid-template-columns:repeat(2,minmax(0,230px));gap:14px;max-height:calc(100dvh - 200px);overflow-y:auto;overscroll-behavior:contain;padding:3px 3px 12px;align-items:start}
 #game .menu-shell .map-options .map-choice{width:100%;min-width:0;container-type:inline-size}
 #game .map-options .map-choice .map-thumbnail{height:auto;aspect-ratio:230/285}
+/* A Practice card with no picture (a map still in progress) keeps its size and the plain slate the map tiles use, never the page's brown. */
+#game .map-options .map-choice .map-thumbnail:empty{background:#1c2120}
 #game .map-options .map-choice .map-caption,#game .map-options .map-choice .map-caption strong{height:calc(100cqw * 108 / 230)}
 #game .map-options .map-choice .map-mode{bottom:calc(100cqw * 108 / 230);width:calc(100cqw * 104 / 230);height:calc(100cqw * 30 / 230)}
 @media(max-width:480px){#game .map-options{gap:8px;max-height:calc(100dvh - 170px)}}

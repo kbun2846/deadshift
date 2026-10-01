@@ -1,5 +1,6 @@
 import { SURGE } from './config/gameplay.js';
 import { hasBreakSound, playBreakSound } from './effects/breakable-sounds.js'; // s2-breakables
+import { hasLumenBreakSound, playLumenBreakSound } from './effects/lumen-break-sounds.js'; // Lumen stage 4
 import { graveThud } from './world/graveyard.js'; // s2-graveyard
 // Small synthesized sounds: no downloads, sample assets, or audio before a gesture.
 // How far sound carries. Full volume out to `near` metres (about half the
@@ -68,6 +69,7 @@ export class Soundscape {
       const lfo = ctx.createOscillator(); lfo.frequency.value = .11;
       const depth = ctx.createGain(); depth.gain.value = .03; lfo.connect(depth); depth.connect(this.wind.gain); lfo.start();
       this.hollow?.start(this); // s3-sound: Hollow Wick's own wind and beds in place of the desert wind (audio-hollow.js)
+      this.lumen?.start(this); // s3-sound: Lumen's own beds in place of the desert wind (audio-lumen.js)
     }
     await this.context.resume();
   }
@@ -283,6 +285,7 @@ export class Soundscape {
   // `level`: how loud from where you are (hearingLevel), 1 close by.
   event(e, level = 1) {
     this.hollow?.event(e, level); // s3-sound: gunfire ducks Hollow Wick's ambience
+    this.lumen?.event(e, level); // s3-sound: gunfire ducks Lumen's ambience and echoes off the towers
     if (!(level > HEARING.silent)) return;
     this.currentBus = Soundscape.WEAPON_EVENTS.has(e.type) ? 'weapons' : 'effects';
     if (level < .999 && this.context) {
@@ -478,6 +481,7 @@ export class Soundscape {
       const now = this.context?.currentTime ?? 0;
       if (now - (this.lastBreak ?? -1) < .028) return;
       this.lastBreak = now;
+      if (hasLumenBreakSound(e.propType)) { playLumenBreakSound(this, e); return; } // Lumen stage 4
       if (hasBreakSound(e.propType)) { playBreakSound(this, e); return; } // s2-breakables: Hollow Wick's breakables
       if (graveThud(this, e)) return; // s2-graveyard
       if (e.propType === 'pot' || e.propType === 'pottedPlant') { this.pottery(e.dashed, e.propType === 'pottedPlant'); return; }
