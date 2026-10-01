@@ -119,6 +119,45 @@ export function cleanSettings(input = {}) {
 export const PICK = Object.freeze({ time: 10 });
 export const RESULTS = 10;
 
+// No respawns near the end (owner, 2026-09-30: "players won't respawn again
+// when 45 sec is left in game ... for 3v3 modes and 4v4 modes it should be 1
+// min left"; not 1V1, not practice). Seconds of the match clock left at which
+// respawns close for the rest of the match: nobody comes back after that,
+// those already counting down included, and nobody new enters the world.
+//
+// It only does anything where a mode respawns players against a finite
+// match clock: today FFA (online and BOTS). The round modes (2V2, 2V2V2,
+// 3V3, 4V4) have no match clock (arena.js `clock` Infinity; BOTS rounds have
+// none either) and nobody respawns alone in them anyway (elimination), so
+// their entries are inert: kept so the rule is ready if they ever get a clock.
+export const NO_RESPAWN_LEFT = Object.freeze({ ffa: 45, '2v2': 45, '2v2v2': 45, '3v3': 60, '4v4': 60 });
+// The cutoff for a mode, in seconds left (0: none).
+export const respawnCutoff = mode => NO_RESPAWN_LEFT[mode] || 0;
+// Whether respawns are closed in `mode` with `timeLeft` seconds on the match
+// clock. Pure: the host (net/arena.js), a joiner's screen (from the match
+// state's `left`) and BOTS (duel.js) all ask this, so everyone agrees.
+// A clock that is not finite (the round modes') never closes them.
+export function respawnsClosed(mode, timeLeft) {
+ const cutoff = respawnCutoff(mode);
+ return cutoff > 0 && Number.isFinite(timeLeft) && timeLeft <= cutoff;
+}
+// The popup's second line as respawns close: "45 seconds left", "1 minute left".
+export function cutoffText(mode) {
+ const s = respawnCutoff(mode);
+ return !s ? '' : s % 60 === 0 ? (s === 60 ? '1 minute left' : s / 60 + ' minutes left') : s + ' seconds left';
+}
+// What the death card says about your respawn: 'closed' (respawns are over),
+// 'late' (your countdown ends after the cutoff: you will not come back),
+// 'open' (you will), or 'none' (no cutoff in this mode, or no clock).
+// `respawnIn`: seconds of your own wait left.
+export function respawnFate(mode, timeLeft, respawnIn = 0) {
+ if (!respawnCutoff(mode) || !Number.isFinite(timeLeft)) return 'none';
+ if (respawnsClosed(mode, timeLeft)) return 'closed';
+ // (A wait that never ends is a respawn that never comes.)
+ if (!Number.isFinite(respawnIn)) return 'late';
+ return respawnsClosed(mode, timeLeft - Math.max(0, respawnIn)) ? 'late' : 'open';
+}
+
 // Syphon (owner, 2026-09-29: FFA "should have siphon, it should have 50
 // siphon off each kill ... other gamemodes with siphon should do 25"): the
 // health a kill gives its killer, up to their full health. FFA online and

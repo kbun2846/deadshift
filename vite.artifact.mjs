@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { BUILD_TARGET, viewportUnitFallback } from './css-fallbacks.mjs';
 import { fileURLToPath } from 'node:url';
 
 // The artifact host serves one self-contained page with no network, so the
@@ -8,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)), // (this repo, wherever it is checked out)
   base: './',
+  css: { postcss: { plugins: [viewportUnitFallback] } },
   build: {
+    target: BUILD_TARGET, // older Safari: css-fallbacks.mjs
     outDir: '/tmp/claude-0/art/dist',
     emptyOutDir: true,
     assetsInlineLimit: 100000000,

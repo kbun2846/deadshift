@@ -38,7 +38,7 @@ import {ichorGuardFor} from '../weapons/ichor-deflect.js';
 // player's do (WorldView.netEvent), their projectiles are drawn with yours
 // (net/projectiles.js), and their bodies are drawn by remote-players.js as
 // robots (slots from ROBOT_SLOT up). No DOM, no three.js here.
-import { RULES } from '../config/gameplay.js';
+import { RULES, SCATTER, SURGE, OMEN, SIGHTLINE, SIDEKICK, ICHOR, SHEATH } from '../config/gameplay.js';
 import { WEAPONS } from '../items.js';
 import { playableOr, randomPlayableWeapon } from '../weapon-maintenance.js';
 import { pack, ProjectileMirror } from '../net/projectiles.js';
@@ -60,6 +60,18 @@ const YOU_TEAM = 'blue';
 const STAT_CREDIT = 10;   // seconds a hit still counts as the kill (stats)
 // What anyone can see of a gun: being reloaded, or empty.
 export const reloading = sim => sim.weapon==='sidekick'?!sim.sidekick.active&&(sim.sidekick.reload>0||sim.sidekick.ammo<=0):sim.weapon==='sightline'?sim.sightline.crouched?sim.sightline.rifleReload>0||!sim.sightline.rifleAmmo:sim.sightline.pistolReload>0||!sim.sightline.pistolAmmo: sim.weapon==='omen'?sim.omen.reload>0||sim.omen.ammo<=0: sim.weapon === 'rifle' ? sim.rifle.reload > 0 || sim.rifle.ammo <= 0 : sim.weapon === 'shotgun' ? sim.shotgun.reload > 0 || sim.shotgun.ammo <= 0 : sim.ammo + sim.seeds.length < 2;
+// What anyone watching can tell of someone's big (X) ability (robot behaviour
+// pass 2026-09-30, robot-brain.js / engagement.js): `abilityBig`, it is going
+// off or charged right now (a readied Scatter, Surge, Frenzy, a draw-cut or
+// Gold Rush, Sidekick's partner, Omen's covenant): dodge it; `abilitySpent`,
+// it went off in the last few seconds: the moment to press. (Static's hex is
+// left out: tests/hex.test.js territory.)
+const SPENT_FOR = 6;
+const X_LEFT = { shotgun: s => s.scatter?.cooldown ?? 0, rifle: s => s.surge?.cooldown ?? 0, omen: s => s.omen.volleyCooldown, sightline: s => s.sightline.xCooldown, sidekick: s => s.sidekick.xCooldown, ichor: s => s.ichor.xCooldown, sheath: s => s.sheath.xCooldown };
+const X_FULL = { shotgun: SCATTER.cooldown, rifle: SURGE.cooldown, omen: OMEN.volleyCooldown, sightline: SIGHTLINE.xCooldown, sidekick: SIDEKICK.xCooldown, ichor: ICHOR.xCooldown, sheath: SHEATH.xCooldown };
+export const abilityBig = sim => sim.weapon === 'shotgun' ? !!sim.scatter?.armed : sim.weapon === 'rifle' ? !!sim.surge?.active : sim.weapon === 'ichor' ? sim.ichor.frenzy > 0
+ : sim.weapon === 'sheath' ? !!sim.sheath.x || sim.sheath.rush > 0 : sim.weapon === 'sidekick' ? sim.sidekick.active > 0 : sim.weapon === 'omen' ? sim.omen.volleyLeft > 0 : false;
+export const abilitySpent = sim => { const f = X_LEFT[sim.weapon]; return !!f && f(sim) > X_FULL[sim.weapon] - SPENT_FOR; };
 export const LOUD = new Set(['sidekickShot','sidekickRush','sightlineShot','omenShot','omenVolley','omenBurst','rifleShot', 'shotgunShot', 'launch', 'explosion', 'grenadeExplosion', 'sprayStart', 'hexPulse', 'scatterFire', 'scatterBurst']);
 
 export class BotMatch {
@@ -252,6 +264,14 @@ export class BotMatch {
    ...this.bots.map(b => ({ id: b.id, name: b.name, slot: b.slot, team: b.team === 'ffa' ? null : b.team, robot: !b.human, kills: b.stats.kills, deaths: b.stats.deaths, dealt: Math.round(b.stats.dealt), taken: Math.round(b.stats.taken), weapon: b.sim.weapon, present: true }))];
  }
 
+ // Every living hex (yours and the robots'), into one list kept from tick to tick.
+ gatherShields(main) {
+  const list = this.shields ||= []; list.length = 0;
+  const own = main.hexShield(); if (own) list.push(own);
+  for (const b of this.bots) if (b.alive && b.sim.player.hp > 0) { const sh = b.sim.hexShield(); if (sh) list.push(sh); }
+  return list;
+ }
+
  hand(sim, main) { sim.props = main.props; sim.colliders = main.colliders; sim.crops = main.crops; }
 
  living() { return this.bots.filter(b => b.alive && b.sim.player.hp > 0); }
@@ -260,11 +280,10 @@ export class BotMatch {
 
  // --- around your sim's step ---------------------------------------------------------
  before(main) {
-  // Every hex in the game, for every sim (Simulation.hexShield / shieldedFrom).
-  this.shields = [main, ...this.living().map(b => b.sim)].map(s => s.hexShield()).filter(Boolean);
-  main.shields = this.shields;
   // With allies about, you are on their side (your hex lets them in).
   main.player.team = this.bots.some(b => b.team === YOU_TEAM) ? YOU_TEAM : undefined;
+  // Every hex in the game, for every sim (Simulation.hexShield / shieldedFrom).
+  main.shields = this.gatherShields(main);
   this.youId = main.player.id;
   this.proxies = null; if (!this.active || this.youOut) return;
   this.proxies = new Map();
@@ -323,6 +342,9 @@ export class BotMatch {
   this.loud = this.loudNext || new Set(); this.loudNext = new Set();
   // The tick's allowance for costly searches, shared by every robot.
   if (this.nav) this.nav.budget = { search: 2, path: 3 };
+  // (Hex fix, 2026-09-30: again after your step, so a hex you just threw
+  // already keeps the robots out on this tick.)
+  this.gatherShields(main);
   const you = main.player, youHere = you.hp > 0 && !you.dead && !main.dev.ghost && !this.youOut;
   // (Stats: your death, once, to whoever hurt you in the last few seconds.)
   this.youId = you.id;
@@ -359,7 +381,7 @@ export class BotMatch {
     if (hostile(bot.team, YOU_TEAM) && !passive) {
      const proxy = { ...ichorGuardFor(main), id: you.id, kind: 'player', team: main.player.team, x: you.x, z: you.z, baseX: you.x, spawnX: you.x, spawnZ: you.z, hp: you.hp, maxHp: you.maxHp, respawn: 0, flash: 0, moving: false, ...(you.below ? { below: true } : {}) };
      proxies.set(you.id, { proxy, before: you.hp, you: true });
-     enemies.push({ id: you.id, human: true, aspect: this.viewAspect || 0, x: you.x, z: you.z, vx: you.vx, vz: you.vz, hp: you.hp, maxHp: you.maxHp, weapon: main.weapon, ...(you.sightline?{sightline:you.sightline,below:!!you.below}:{}), aimX: you.aimX, aimZ: you.aimZ, loud: this.loud.has(you.id), reloading: reloading(main) });
+     enemies.push({ id: you.id, human: true, aspect: this.viewAspect || 0, x: you.x, z: you.z, vx: you.vx, vz: you.vz, hp: you.hp, maxHp: you.maxHp, weapon: main.weapon, ...(you.sightline?{sightline:you.sightline,below:!!you.below}:{}), aimX: you.aimX, aimZ: you.aimZ, loud: this.loud.has(you.id), reloading: reloading(main), spent: abilitySpent(main), big: abilityBig(main) });
     } else if (!hostile(bot.team, YOU_TEAM)) {
      friends.push({ id: you.id, leader: lead === 'human', busy: (this.youHurtBy && this.clock - this.youHurtBy.at < 3) || this.loud.has(you.id), x: you.x, z: you.z, vx: you.vx, vz: you.vz, aimX: you.aimX, aimZ: you.aimZ, hp: you.hp, maxHp: you.maxHp, hurtBy: this.youHurtBy });
      if (this.friendlyFire) proxies.set(you.id, { proxy: { ...ichorGuardFor(main), id: you.id, kind: 'player', team: YOU_TEAM, friendly: true, share: this.friendlyFire, x: you.x, z: you.z, baseX: you.x, spawnX: you.x, spawnZ: you.z, hp: you.hp, maxHp: you.maxHp, respawn: 0, flash: 0, moving: false, ...(you.below ? { below: true } : {}) }, before: you.hp, you: true, scale: 1 });
@@ -376,7 +398,7 @@ export class BotMatch {
     }
     const proxy = { ...ichorGuardFor(other.sim), id: other.id, kind: other.human?'player':'robot', team: other.team, x: o.x, z: o.z, baseX: o.x, spawnX: o.x, spawnZ: o.z, hp: o.hp, maxHp: o.maxHp, respawn: 0, flash: 0, moving: false, ...(o.below ? { below: true } : {}) };
     proxies.set(other.id, { proxy, before: o.hp, bot: other });
-    enemies.push({ id: other.id, x: o.x, z: o.z, vx: o.vx, vz: o.vz, hp: o.hp, maxHp: o.maxHp, weapon: other.sim.weapon, ...(o.sightline?{sightline:o.sightline,below:!!o.below}:{}), aimX: o.aimX, aimZ: o.aimZ, loud: this.loud.has(other.id), reloading: reloading(other.sim) });
+    enemies.push({ id: other.id, x: o.x, z: o.z, vx: o.vx, vz: o.vz, hp: o.hp, maxHp: o.maxHp, weapon: other.sim.weapon, ...(o.sightline?{sightline:o.sightline,below:!!o.below}:{}), aimX: o.aimX, aimZ: o.aimZ, loud: this.loud.has(other.id), reloading: reloading(other.sim), spent: abilitySpent(other.sim), big: abilityBig(other.sim) });
    }
    for (const t of main.targets) {
     if (t.hp <= 0) continue;

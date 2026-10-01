@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Tutorial,tutorialMap,tutorialMapFor,COURSES,TUTORIAL_ZONES,TUTORIAL_CRATES,LESSON_PAUSE,lessonMarkup} from '../src/tutorial.js';
-import {RIFLE} from '../src/config/gameplay.js';
+import {RIFLE,OMEN} from '../src/config/gameplay.js';
+// Omen burst powers (rupture / late rupture): an early one and one halfway through the last second (balance pass 2026-09-30: 20/28, was EARLY).
+const EARLY=OMEN.blastDamage/OMEN.lateDamage,LATE=(OMEN.blastDamage+OMEN.lateDamage)/2/OMEN.lateDamage;
 import {Simulation} from '../src/simulation.js';
 
 const STEP=1/60;
@@ -148,12 +150,12 @@ test('Omen teaches six lessons without aim-in and credits late timing rather tha
  const t=new Tutorial('omen'),sim={omen:{aiming:true}};
  assert.deepEqual(t.lessons.map(l=>l.id),['ofire','oreload','ocurse','orupture','olate','ocovenant']);
  const events=[{type:'omenShot',kind:'base'},{type:'omenReloaded'},
-  {type:'omenMark',kind:'e'},{type:'omenBurst',kind:'e',power:27/34.2},
-  {type:'omenBurst',kind:'e',power:30.6/34.2},{type:'omenBurst',kind:'x',power:27/34.2}];
+  {type:'omenMark',kind:'e'},{type:'omenBurst',kind:'e',power:EARLY},
+  {type:'omenBurst',kind:'e',power:LATE},{type:'omenBurst',kind:'x',power:EARLY}];
  for(const e of events){
   t.event({type:'rifleShot'},sim);assert.equal(t.count,0);
   if(t.lesson.id==='olate'){
-   t.event({type:'omenBurst',kind:'e',power:27/34.2},sim);
+   t.event({type:'omenBurst',kind:'e',power:EARLY},sim);
    t.event({type:'omenBurst',kind:'x',power:1},sim);assert.equal(t.count,0,'early or X bursts cannot pass the E timing lesson');
   }
   for(let n=0;n<t.goal;n++)t.event(e,sim);

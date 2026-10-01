@@ -13,6 +13,9 @@ import { OmenView, sigilTendrilPoint } from '../src/weapons/omen-view.js';
 import { DeathView } from '../src/effects/death-view.js';
 import { omenReadouts } from '../src/ui/omen-state.js';
 import { WorldView } from '../src/render/renderer.js';
+// Balance pass 2026-09-30 (owner): Omen's numbers changed (OMEN in
+// config/gameplay.js); assertions that spelled out the old figures now read
+// them from OMEN, so they still pin the same rules.
 // Mechanics tests use the middle damage roll; the bounds test exercises both
 // extremes explicitly, independent of random visual particle choices.
 beforeEach(t=>t.mock.method(Math,'random',()=>.5));
@@ -61,19 +64,19 @@ test('curse sound stops on detonation, target death and caster death',()=>{
   if(end==='caster')s.damagePlayer(9999,'enemy');
   s.drainEvents();tick(s,{},180);assert.equal(s.events.filter(e=>e.type==='omenCurseBeat').length,0,end);
  }
- const lethal=make([target('a')]);curse(lethal);lethal.targets[0].hp=4;tick(lethal,{},60);
+ const lethal=make([target('a')]);curse(lethal);lethal.targets[0].hp=2*OMEN.tickDamage-.2;tick(lethal,{},60);
  assert.equal(lethal.targets[0].hp,0);assert.ok(!lethal.events.some(e=>e.type==='omenCurseBeat'),'a lethal tick does not start another click');
 });
 test('Omen fires straight travelling diamonds at its cadence, reloads and never invokes other weapons',()=>{
  const s=make([target('a')]);assert.equal(s.omen.ammo,4);tick(s,{fire:true,omenPrime:true});assert.equal(s.omen.ammo,3);assert.equal(s.grenades.length,0);assert.equal(s.hexOrbs.length,0);
- assert.equal(s.omenBolts[0].kind,'e');assert.equal(s.targets[0].hp,200);tick(s,{},12);close(s.targets[0].hp,190.1);assert.equal(s.omen.marks.length,1);
+ assert.equal(s.omenBolts[0].kind,'e');assert.equal(s.targets[0].hp,200);tick(s,{},12);close(s.targets[0].hp,200-OMEN.primeDamage);assert.equal(s.omen.marks.length,1);
  const cadence=make();tick(cadence,{fire:true});tick(cadence,{fire:true},25);assert.equal(cadence.stats.launched,1,'no second shot before 0.42 seconds');
  tick(cadence,{fire:true});assert.equal(cadence.stats.launched,2,'fires on the first fixed step after 0.42 seconds');
  const a=make();tick(a,{fire:true},60);assert.equal(a.stats.launched,3);assert.equal(a.omen.ammo,1);
- tick(a,{reload:true});tick(a,{},107);assert.ok(a.omen.reload>0);tick(a);assert.equal(a.omen.ammo,4);assert.equal(a.omen.reload,0);
- close(omenDamage(0),7.2);close(omenDamage(22),4.5);close(omenDamage(90),4.5);
+ tick(a,{reload:true});tick(a,{},Math.round(OMEN.reload*60)-1);assert.ok(a.omen.reload>0);tick(a);assert.equal(a.omen.ammo,4);assert.equal(a.omen.reload,0);
+ close(omenDamage(0),OMEN.damage);close(omenDamage(22),OMEN.minDamage);close(omenDamage(90),OMEN.minDamage);
  const magazine=make([target('a')]);tick(magazine,{fire:true},120);
- assert.equal(magazine.stats.launched,4);assert.equal(magazine.omen.ammo,0);close(magazine.targets[0].hp,171.2);
+ assert.equal(magazine.stats.launched,4);assert.equal(magazine.omen.ammo,0);close(magazine.targets[0].hp,200-4*OMEN.damage);
  assert.ok(magazine.omen.reload>0,'an empty four-round magazine starts the normal reload');
 });
 test('E cooldown starts when the primed shot fires, including a miss',()=>{
@@ -92,34 +95,34 @@ test('E primes then ruptures only after impact; early presses and C cannot deton
  tick(s,{omenPrime:true});assert.equal(s.events.filter(e=>e.type==='omenBurst').length,1);
  assert.equal(playerInput({omenDetonate:true}).omenDetonate,undefined,'the removed action is not sent online');
 });
-test('E rolls 1.8–2.52 per tick and ±2.7 per direct blast, with all damage reduced by ten percent',t=>{
+test('E rolls 1.44–2.16 per tick and ±2.7 per direct blast',t=>{
  for(const [roll,delta] of [[0,-1],[.5,0],[1-Number.EPSILON,1]]){
   t.mock.method(Math,'random',()=>roll);
   const s=make([target('a')]);curse(s);tick(s,{},30);
-  close(200-s.targets[0].hp,(2.4+.4*delta)*.9);
+  close(200-s.targets[0].hp,OMEN.tickDamage+OMEN.curseTickVariance*delta);
   for(const left of [3,.5]){
    const blast=make([target('a'),target('near',6.5,.27)]);curse(blast,'e',left);tick(blast,{omenPrime:true});
    close(200-blast.targets[0].hp,omenBlastDamage(left-1/60)+2.7*delta);
    const splash=blast.events.find(e=>e.id==='near'&&e.type==='hit').damage;
-   assert.ok(splash<13.5&&splash>3.6);
+   assert.ok(splash<OMEN.splash&&splash>OMEN.splashEdge);
    const x=make([target('a'),target('near',6.5,.27)]);curse(x,'x',left);tick(x,{omenVolley:true});
    assert.ok(Math.abs((200-x.targets[0].hp)-omenBlastDamage(left-1/60))<1e-8);
    assert.equal(x.events.find(e=>e.id==='near'&&e.type==='hit').damage,splash);
   }
-  const x=make([target('a')]);curse(x,'x');tick(x,{},30);close(x.targets[0].hp,197.84);
+  const x=make([target('a')]);curse(x,'x');tick(x,{},30);close(x.targets[0].hp,200-OMEN.tickDamage);
  }
 });
 test('the curse ticks seven times, expires at 3.5 s and cannot detonate at the endpoint',()=>{
- const s=make([target('a')]);curse(s);tick(s,{},209);close(s.targets[0].hp,187.04);assert.ok(s.omen.marks.length);
- tick(s,{omenPrime:true});close(s.targets[0].hp,184.88);assert.equal(s.omen.marks.length,0);assert.equal(s.events.filter(e=>e.type==='omenBurst').length,0);
- tick(s,{omenPrime:true},30);close(s.targets[0].hp,184.88);assert.ok(s.events.some(e=>e.type==='omenFade'));
+ const s=make([target('a')]);curse(s);tick(s,{},209);close(s.targets[0].hp,200-6*OMEN.tickDamage);assert.ok(s.omen.marks.length);
+ tick(s,{omenPrime:true});close(s.targets[0].hp,200-7*OMEN.tickDamage);assert.equal(s.omen.marks.length,0);assert.equal(s.events.filter(e=>e.type==='omenBurst').length,0);
+ tick(s,{omenPrime:true},30);close(s.targets[0].hp,200-7*OMEN.tickDamage);assert.ok(s.events.some(e=>e.type==='omenFade'));
 });
 test('rupture increases only in the last second, direct damage has no own splash',()=>{
- close(omenBlastDamage(3),27);close(omenBlastDamage(1),27);close(omenBlastDamage(.5),30.6);close(omenBlastDamage(0),34.2);
+ close(omenBlastDamage(3),OMEN.blastDamage);close(omenBlastDamage(1),OMEN.blastDamage);close(omenBlastDamage(.5),(OMEN.blastDamage+OMEN.lateDamage)/2);close(omenBlastDamage(0),OMEN.lateDamage);
  const s=make([target('a'),target('near',6.5,.27),target('far',12,.27)]);curse(s);tick(s,{omenPrime:true});
- close(s.targets[0].hp,173);assert.ok(s.targets[1].hp<200&&s.targets[1].hp>186.5);assert.equal(s.targets[2].hp,200);assert.equal(s.omen.marks.length,0);
- tick(s,{omenPrime:true});close(s.targets[0].hp,173);
- const late=make([target('a')]);curse(late,'e',.1);tick(late,{omenPrime:true});close(late.targets[0].hp,166.4);
+ close(s.targets[0].hp,200-OMEN.blastDamage);assert.ok(s.targets[1].hp<200&&s.targets[1].hp>200-OMEN.splash);assert.equal(s.targets[2].hp,200);assert.equal(s.omen.marks.length,0);
+ tick(s,{omenPrime:true});close(s.targets[0].hp,200-OMEN.blastDamage);
+ const late=make([target('a')]);curse(late,'e',.1);tick(late,{omenPrime:true});close(late.targets[0].hp,200-omenBlastDamage(.1-1/60));
 });
 test('a wall blocks diamonds and shelters bystanders from rupture',()=>{
  const s=make([target('a',5),target('b',7)]);s.colliders=[{x:6,z:0,w:.3,d:6}];curse(s);tick(s,{omenPrime:true});assert.equal(s.targets[1].hp,200);
@@ -134,8 +137,8 @@ test('X sends exactly three, distributes 2 + 1 and excludes allies and off-scree
 });
 test('three X impacts on one enemy do not stack or refresh tick damage',()=>{
  const s=make([target('a',7,0)]);tick(s,{omenVolley:true});tick(s,{},50);assert.equal(s.omen.marks.length,1);
- const m=s.omen.marks[0];assert.ok(m.left<3.3);assert.ok(s.targets[0].hp>=170.84-1e-8&&s.targets[0].hp<=173+1e-8);
- tick(s,{},190);assert.equal(s.omen.marks.length,0);assert.equal(s.omen.volleyLeft,0);close(s.targets[0].hp,200-27-7*2.16);
+ const m=s.omen.marks[0];assert.ok(m.left<3.3);assert.ok(s.targets[0].hp>=200-3*OMEN.volleyDamage-OMEN.tickDamage-1e-8&&s.targets[0].hp<=200-3*OMEN.volleyDamage+1e-8);
+ tick(s,{},190);assert.equal(s.omen.marks.length,0);assert.equal(s.omen.volleyLeft,0);close(s.targets[0].hp,200-3*OMEN.volleyDamage-7*OMEN.tickDamage);
 });
 test('moving across a homing diamond can evade every impact; it cannot loop back',()=>{
  const s=make([target('a',8,0)]);tick(s,{omenVolley:true});tick(s,{},14);
@@ -143,7 +146,7 @@ test('moving across a homing diamond can evade every impact; it cannot loop back
  s.targets[0].z=4;tick(s,{},100);assert.equal(s.targets[0].hp,200);assert.equal(s.omen.marks.length,0);assert.equal(s.omenBolts.length,0);
 });
 test('X overlap is capped and all X effects end at four seconds or caster death',()=>{
- const s=make([target('a',5,0),target('b',5.7,0)]);curse(s,'x',.2,'a');curse(s,'x',.2,'b');tick(s,{omenVolley:true});close(s.targets[0].hp,160.4);close(s.targets[1].hp,160.4);
+ const s=make([target('a',5,0),target('b',5.7,0)]);curse(s,'x',.2,'a');curse(s,'x',.2,'b');tick(s,{omenVolley:true});close(s.targets[0].hp,200-OMEN.blastCap);close(s.targets[1].hp,200-OMEN.blastCap);
  const a=make([target('a')]);curse(a,'x',1/60);tick(a,{omenVolley:true});assert.equal(a.events.filter(e=>e.type==='omenBurst').length,0);
  const b=make([target('a')]);curse(b);tick(b,{omenVolley:true});b.damagePlayer(9999,'enemy');assert.equal(b.omen.marks.length,0);assert.equal(b.omenBolts.length,0);assert.equal(b.omen.volleyLeft,0);assert.ok(b.events.some(e=>e.type==='omenFade'));
  b.respawn({x:0,z:0});assert.equal(b.omen.ammo,4);assert.equal(b.omen.marks.length,0);
@@ -154,7 +157,7 @@ test('shielded hits cannot curse and dead targets cannot keep or pass on marks',
 });
 test('new damage types survive hits, ticks and lethal ruptures',()=>{
  for(const [type,action] of [['omenShot',s=>{tick(s,{fire:true});tick(s,{},20);}],['omenCurse',s=>{curse(s);tick(s,{},30);}],['omenBlast',s=>{curse(s);tick(s,{omenPrime:true});}]]){
-  const s=make([target('a',5,.27,2)]);action(s);assert.equal(s.events.find(e=>e.type==='kill').damageType,type);
+  const s=make([target('a',5,.27,OMEN.tickDamage-.2)]);action(s);assert.equal(s.events.find(e=>e.type==='kill').damageType,type);
  }
 });
 test('network inputs, loadout and projectile mirrors preserve Omen and expire stale marks',()=>{
@@ -170,7 +173,7 @@ test('arena proxy replacement retains the curse and delivers typed lethal damage
  const a=arena.addSeat('a','A'),b=arena.addSeat('b','B');
  for(const seat of [a,b]){seat.present=true;seat.sim.respawn({x:seat===a?0:5,z:seat===a?0:.27});seat.sim.weapon='omen';seat.sim.dev.noSpread=true;}
  for(let i=0;i<14;i++){arena.before(a);tick(a.sim,i===0?{omenPrime:true,fire:true}:{});arena.after(a);}
- assert.ok(a.sim.omen.marks.length);close(b.sim.player.hp,90.1);
+ assert.ok(a.sim.omen.marks.length);close(b.sim.player.hp,100-OMEN.primeDamage);
  b.sim.player.hp=20;arena.before(a);tick(a.sim,{omenPrime:true});arena.after(a);assert.ok(b.sim.player.dead);assert.equal(b.sim.events.find(e=>e.type==='playerDeath').damageType,'omenBlast');
 });
 test('on hills diamonds carry finite flight heights and a curse keeps the below-deck stance',()=>{
@@ -346,7 +349,7 @@ test('the detonation cue marks only the final second of a landed, still-active E
 });
 test('curse ticks are explicitly cursed damage and never request an electric aftershock',()=>{
  const s=make([target('a')]);curse(s);tick(s,{},30);const hit=s.events.find(e=>e.type==='hit');
- assert.equal(hit.damageType,'omenCurse');assert.equal(hit.electric,false);close(hit.damage,2.16);
+ assert.equal(hit.damageType,'omenCurse');assert.equal(hit.electric,false);close(hit.damage,OMEN.tickDamage);
  const {fx,s:draw}=visualFixture('performance');fx.event({...hit,type:'omenTick'});fx.update(draw,.05);assert.ok(fx.lines.count>30);
  fx.update(draw,1);assert.ok(fx.meshes.every(m=>m.count===0));
  const calls=[],view={omenView:{event:e=>calls.push(e)},electric:{aftershock:()=>assert.fail('curse must never enter Static aftershock')},fx:{electric:()=>assert.fail('curse must never enter robot electricity')}};

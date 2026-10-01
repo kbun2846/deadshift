@@ -33,9 +33,16 @@ const clock = seconds => { const s = Math.max(0, Math.round(seconds)); return Ma
 const num = n => (Number.isFinite(n) ? Math.round(n) : null);
 
 // Most kills first, then fewer deaths, then more damage dealt, then name.
-export function sortStatsRows(rows) {
- return [...(rows || [])].sort((a, b) => (b.kills || 0) - (a.kills || 0) || (a.deaths || 0) - (b.deaths || 0) || (b.dealt || 0) - (a.dealt || 0)
+// `first`: the id of an FFA match's last one standing when it ended early
+// (respawns closed, config/match.js NO_RESPAWN_LEFT): a tie on kills goes to
+// them (net/arena.js results.survivor, duel.js outcome.survivor), so they
+// head the list among those tied for the most kills.
+export function sortStatsRows(rows, first = null) {
+ const list = [...(rows || [])].sort((a, b) => (b.kills || 0) - (a.kills || 0) || (a.deaths || 0) - (b.deaths || 0) || (b.dealt || 0) - (a.dealt || 0)
   || String(a.name ?? '').toLowerCase().localeCompare(String(b.name ?? '').toLowerCase()));
+ const i = first == null ? -1 : list.findIndex(r => r.id === first);
+ if (i > 0 && (list[i].kills || 0) > 0 && (list[i].kills || 0) === (list[0].kills || 0)) list.unshift(...list.splice(i, 1));
+ return list;
 }
 
 // A stat under the name: the number bright, its word dim.
@@ -44,8 +51,8 @@ const stat = (n, word) => `<span class="stats-stat"><i>${n}</i>${word ? ' ' + wo
 // The list alone (also embedded in the end-of-match card). `mode` 'ffa' with
 // `final` marks first and second place; a list with no sides and no mode
 // counts as FFA too. Rows are ranked here, so callers may pass any order.
-export function statsTableHTML(rows, { myId = null, mode = null, final = false } = {}) {
- const list = sortStatsRows(rows);
+export function statsTableHTML(rows, { myId = null, mode = null, final = false, first = null } = {}) {
+ const list = sortStatsRows(rows, first);
  const medals = !!final && mode !== 'practice' && (mode === 'ffa' || (!mode && !list.some(r => r.team)));
  return '<ol class="stats-list">' + list.map((r, i) => {
   const side = teamById(r.team), classes = ['stats-row'];

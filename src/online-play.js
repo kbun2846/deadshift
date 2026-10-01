@@ -314,7 +314,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   close() {
    if (!session) return;
    try { session.close(); } catch {}
-   session = null; code = null; badge.hidden = true; sim.otherPlayers = []; sim.worldAuthority = true; sim.critters = ownCritters;
+   session = null; code = null; badge.hidden = true; sim.otherPlayers = []; sim.shields = []; sim.worldAuthority = true; sim.critters = ownCritters;
    document.querySelector('.mode').textContent = 'PRACTICE';
   },
  };

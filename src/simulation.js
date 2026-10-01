@@ -141,6 +141,10 @@ export function shieldEntry(sh, ax, az, bx, bz) {
   }
   return t0 > 0 ? t0 : null;
 }
+// A shield's circle (the corners' distance: the spinning sides sweep it).
+export const shieldRadius = sh => sh.radius ?? sh.limit / Math.cos(Math.PI / 6);
+// Is `p` (a player) on the shield's side: its caster, or a teammate in a team game?
+export const shieldFriend = (sh, p) => sh.owner === p.id || (!!sh.team && sh.team !== 'ffa' && sh.team === p.team);
 export function insideShield(sh, x, z) {
   const dx = x - sh.x, dz = z - sh.z;
   if (sh.round) return Math.hypot(dx, dz) <= sh.limit / Math.cos(Math.PI / 6);
@@ -756,6 +760,8 @@ export class Simulation {
         const phasing=this.phasing||(this.weapon==='sheath'&&this.sheath?.x?.phase==='dash');
         if(!phasing)for(const target of this.targets) if(target.hp>0)this.pushOutOfCircle(target.x,target.z,r+targetRadius(target),previousX,previousZ);
         if(!phasing)for(const other of this.otherPlayers) if(!(other.hp<=0))this.pushOutOfCircle(other.x,other.z,r*2,previousX,previousZ);
+        // An enemy's hex: never through its wall (phasing or not).
+        if(this.shields?.length)this.keepOutOfHexes(previousX,previousZ);
         for (const b of near) {
         // Floor clutter is stepped over, not walked into.
         if(b.walkOver)continue;
@@ -793,7 +799,8 @@ export class Simulation {
         }
       }
       // A wall correction must not push the caster through the electric boundary.
-      if (!this.withinHex(p.x, p.z)||!isPlayable(this.map,p.x,p.z,r)) { p.x = previousX; p.z = previousZ; p.vx = p.vz = 0; }
+      // (And a wall's push must not put the body inside an enemy's hex.)
+      if (!this.withinHex(p.x, p.z)||!isPlayable(this.map,p.x,p.z,r)||(this.shields?.length&&this.inEnemyHex(previousX,previousZ))) { p.x = previousX; p.z = previousZ; p.vx = p.vz = 0; }
       // Hills: on a deck or under it, judged where this substep really ended
       // (after every push and correction).
       this.updateStance(p, previousX, previousZ);
@@ -814,33 +821,95 @@ export class Simulation {
   // damage from anything that comes from outside it. `shields` is every
   // hex in the game (the arena / BotMatch / main.js hand it to each sim);
   // hexShield() is this sim's own, for that list.
+  //
+  // (Hex fix, owner 2026-09-30: "a bot was chasing me and i did the static x
+  // ability and the bot was able to get through and start attacking me".)
+  // The shield is the hex's circle for its whole life (spreading, holding,
+  // spinning after the pulse): its sides turn once a second, so a hexagon
+  // shield flickered in and out over anyone between its flat sides and its
+  // corners. `radius` is that circle (the corners' distance), `team` the
+  // caster's side. One object per sim, filled in place (no allocation).
   hexShield() {
-    const b = this.hexBoundary();
-    if (b) return { ...b, limit: b.limit + RULES.radius, owner: this.player.id };
-    const spin = this.hexSpin; if (!spin) return null;
-    const r = Math.max(...spin.nodes.map(n => Math.hypot(n.x - spin.originX, n.z - spin.originZ)));
-    return { x: spin.originX, z: spin.originZ, rotation: 0, limit: r * Math.cos(Math.PI / 6), owner: this.player.id, round: true };
+    const orb = this.hexOrbs[0], spin = orb ? null : this.hexSpin;
+    if (!orb && !spin) return null;
+    let r = 0;
+    if (orb) r = Math.min(orb.age * RULES.hexSpeed, RULES.hexRange);
+    else for (const n of spin.nodes) r = Math.max(r, Math.hypot(n.x - spin.originX, n.z - spin.originZ));
+    const sh = this.shieldView ||= { x: 0, z: 0, rotation: 0, limit: 0, radius: 0, grow: 0, owner: null, team: null, round: true };
+    sh.x = orb ? orb.originX : spin.originX; sh.z = orb ? orb.originZ : spin.originZ;
+    sh.radius = r; sh.limit = r * Math.cos(Math.PI / 6); sh.owner = this.player.id; sh.team = this.player.team ?? null;
+    // (How fast it is still spreading, m/s: robots keep ahead of it, hex-aware.js.)
+    sh.grow = orb && r < RULES.hexRange ? RULES.hexSpeed : 0;
+    return sh;
   }
   // A round of this sim's (its shooter outside the hex) crossing into
   // someone's hex stops at its wall (owner, v0.990a: "being inside the hex
   // should prevent bullets and stuff from entering the hex"; the damage was
   // already refused, but the rounds flew on in to the people inside): the
   // fraction of a..b where it first enters one, or null.
+  // (Hex fix, 2026-09-30: a round that starts past the wall with its shooter
+  // outside, a muzzle reaching in from someone standing at it, stops at once.)
   shieldStop(ax, az, bx, bz) {
     const list = this.shields; if (!list?.length) return null;
     let best = null;
     for (const sh of list) {
-      if (insideShield(sh, this.player.x, this.player.z) || insideShield(sh, ax, az)) continue;
-      const t = shieldEntry(sh, ax, az, bx, bz); if (t !== null && (best === null || t < best)) best = t;
+      if (insideShield(sh, this.player.x, this.player.z)) continue;
+      const t = insideShield(sh, ax, az) ? 0 : shieldEntry(sh, ax, az, bx, bz); if (t !== null && (best === null || t < best)) best = t;
     }
     return best;
   }
+  // The shield that refuses this sim's damage at (x, z), or null. Refused:
+  // anything from outside it, and (hex fix, 2026-09-30) anything from the
+  // other side even from inside it (an enemy still being pushed out, or
+  // pinned against a wall by it), melee, blasts, curses and mines included:
+  // they all land through hit(), which asks this with the attacker's place.
   shieldedFrom(x, z) {
+    const p = this.player;
     for (const sh of this.shields || []) {
       if (!insideShield(sh, x, z)) continue;
-      if (!insideShield(sh, this.player.x, this.player.z)) return sh;
+      if (!shieldFriend(sh, p) || !insideShield(sh, p.x, p.z)) return sh;
     }
     return null;
+  }
+  // Movement (movePlayer, every substep): an enemy's hex keeps this body out.
+  // Outside it, the body stays `hexBody` clear of its circle; caught inside
+  // (it grew over them, or they were there when it was thrown), no step
+  // takes it further in (its push, pushHexVictims, takes it out). Dodges,
+  // dashes, Gold Rush, the Draw-cut, knockback: all substeps of movePlayer.
+  keepOutOfHexes(previousX, previousZ) {
+    const p = this.player;
+    for (const sh of this.shields) {
+      if (shieldFriend(sh, p)) continue;
+      const keep = shieldRadius(sh) + RULES.hexBody, before = Math.hypot(previousX - sh.x, previousZ - sh.z);
+      this.pushOutOfCircle(sh.x, sh.z, before >= keep ? keep : before, previousX, previousZ);
+    }
+  }
+  // Knockback this sim gives someone else (a Ballast shell's shove on its
+  // proxy, weapons/shotgun.js): the share (0-1) of the push from where the
+  // victim stands to (x, z) allowed before it would put them inside a hex of a
+  // side not theirs (keepOutOfHexes's rule, for a body this sim does not move
+  // itself). Review 2026-09-30: a shove from outside pushed a third player a
+  // metre into someone else's hex.
+  hexKnockLimit(victim, x, z) {
+    let share = 1;
+    for (const sh of this.shields || []) {
+      if (shieldFriend(sh, victim)) continue;
+      const keep = shieldRadius(sh) + RULES.hexBody, before = Math.hypot(victim.x - sh.x, victim.z - sh.z);
+      if (Math.hypot(x - sh.x, z - sh.z) >= Math.min(keep, before)) continue;
+      const t = segmentCircle(victim.x, victim.z, x, z, sh.x, sh.z, Math.min(keep, before) - 1e-6);
+      share = Math.min(share, t === null ? 0 : Math.max(0, t - .001));
+    }
+    return share;
+  }
+  // Did the last substep end in an enemy's hex (keepOutOfHexes's rule)?
+  inEnemyHex(previousX, previousZ) {
+    const p = this.player;
+    for (const sh of this.shields) {
+      if (shieldFriend(sh, p)) continue;
+      const keep = shieldRadius(sh) + RULES.hexBody, before = Math.hypot(previousX - sh.x, previousZ - sh.z);
+      if (Math.hypot(p.x - sh.x, p.z - sh.z) < Math.min(keep, before) - 1e-6) return true;
+    }
+    return false;
   }
 
   withinHex(x, z) {
@@ -1102,7 +1171,7 @@ export class Simulation {
       const dot = distance > 1e-6 ? (dx * p.aimX + dz * p.aimZ) / distance : 1;
       if (dot < Math.cos(RULES.sprayOuterAngle)) return 0;
       const dps = dot >= Math.cos(RULES.sprayInnerAngle) ? RULES.sprayInnerDPS : RULES.sprayOuterDPS;
-      return dps * (1 - .25 * distance / RULES.sprayRange) * firing;
+      return dps * (1 - RULES.sprayFalloff * distance / RULES.sprayRange) * firing;
     };
     const sustainedDamage=(victim,base)=>{
       if(!base){contacts.delete(victim);return 0;}
@@ -1290,25 +1359,27 @@ export class Simulation {
     this.pushHexVictims(this.targets, dt);
   }
 
-  // Shared entity operation: practice targets now, opposing player bodies later.
+  // Shared entity operation: practice targets, and the other side's bodies
+  // (proxies: the arena and BotMatch move the real body after). Out to the
+  // hex's circle plus `hexBody` (hex fix, 2026-09-30: it was the turning
+  // hexagon, and a victim walking in faster than the push was never out;
+  // their own movement now cannot take them in, Simulation.keepOutOfHexes).
+  // Scenery does not shelter them from it (the hex passes through walls),
+  // but the push stops at a wall, as before.
   pushHexVictims(victims, dt) {
     const orb = this.hexOrbs[0]; if (!orb) return;
-    const radius = Math.hypot(orb.x - orb.originX, orb.z - orb.originZ);
+    const radius = Math.hypot(orb.x - orb.originX, orb.z - orb.originZ), most = RULES.hexSpeed * 1.8 * dt;
     for (const victim of victims) {
       if (victim.hp <= 0 || victim.id === this.player.id || (victim.team && victim.team !== 'ffa' && victim.team === this.player.team)) continue;
       let dx = victim.x - orb.originX, dz = victim.z - orb.originZ;
-      const distance = Math.hypot(dx, dz);
-      if (distance > 1e-6) { dx /= distance; dz /= distance; } else { dx = 1; dz = 0; }
-      let normalDot = 0;
-      for (let i = 0; i < 6; i++) {const angle=(i+.5)*Math.PI/3-orb.age*Math.PI*2;normalDot = Math.max(normalDot, dx * Math.cos(angle) + dz * Math.sin(angle));}
-      const bodyRadius = victim.radius ?? .66;
-      const edgeDistance = radius * Math.cos(Math.PI / 6) / normalDot;
-      const push = Math.min(edgeDistance + bodyRadius - distance, RULES.hexSpeed * 1.8 * dt);
+      const distance = Math.hypot(dx, dz), bodyRadius = victim.radius ?? RULES.hexBody;
+      const push = Math.min(radius + bodyRadius - distance, most);
       if (push <= 0) continue;
-      if (this.colliders.some(c => !c.playerOnly && segmentBox(orb.originX, orb.originZ, victim.x, victim.z, c) !== null)) continue;
+      if (distance > 1e-6) { dx /= distance; dz /= distance; } else { dx = 1; dz = 0; }
+      const ex = victim.x + dx * push, ez = victim.z + dz * push;
       let fraction = 1;
-      for (const c of this.colliders) {
-        const contact = segmentBox(victim.x, victim.z, victim.x + dx * push, victim.z + dz * push, c, bodyRadius);
+      for (const c of collidersAlong(this.colliders, victim.x, victim.z, ex, ez, bodyRadius)) {
+        const contact = segmentBox(victim.x, victim.z, ex, ez, c, bodyRadius);
         if (contact !== null) fraction = Math.min(fraction, Math.max(0, contact - .001));
       }
       const x = Math.max(-this.map.width / 2 + bodyRadius, Math.min(this.map.width / 2 - bodyRadius, victim.x + dx * push * fraction));

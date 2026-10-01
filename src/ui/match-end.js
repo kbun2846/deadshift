@@ -67,13 +67,14 @@ export function createMatchEnd(parent, { act } = {}) {
  const api = {
   root,
   get open() { return !root.classList.contains('hidden'); },
-  // { title, detail (HTML), rows, myId, mode, buttons: [{ id, label, pressed }] }.
+  // { title, detail (HTML), rows, myId, mode, buttons: [{ id, label, pressed }],
+  // first (the last one standing of an FFA ended early: stats-panel.js sortStatsRows) }.
   // Called again while open, only what changed is redrawn.
-  show({ title, detail = '', rows = [], myId = null, mode = null, buttons = [] }) {
+  show({ title, detail = '', rows = [], myId = null, mode = null, buttons = [], first = null }) {
    const opening = !api.open;
    put('title', '#match-end-title', title);
    put('detail', '.match-end-detail', detail);
-   put('table', '.match-end-table', statsTableHTML(rows, { myId, mode, final: true }));
+   put('table', '.match-end-table', statsTableHTML(rows, { myId, mode, final: true, first }));
    const html = buttons.map(b => `<button type="button" data-act="${esc(b.id)}"${b.pressed !== undefined ? ` aria-pressed="${!!b.pressed}"` : ''} class="${b.primary ? 'primary' : 'secondary'}">${esc(b.label)}</button>`).join('');
    const redrawn = put('buttons', '.match-end-actions', html);
    root.classList.remove('hidden'); document.body.classList.add('match-end-open');

@@ -17,6 +17,20 @@
 export const ROLES = Object.freeze({ withPlayer: { escort: .3, support: .4, roam: .3 }, robotsOnly: { support: .5, roam: .5 } });
 export const GROUP_CHANCE = .3;
 
+// Peel (robot behaviour pass 2026-09-30): an enemy right on top of a
+// teammate who is nearly dead is the one to go for, the nearer the more
+// (RobotBrain.think takes it off that enemy's target score). `friends`:
+// [{ x, z, hp, maxHp }].
+export function peelBonus(enemy, friends) {
+ let bonus = 0;
+ for (const f of friends) {
+  if (!(f.hp > 0) || f.hp / (f.maxHp || 100) >= .35) continue;
+  const d = Math.hypot(enemy.x - f.x, enemy.z - f.z);
+  if (d < 9) bonus = Math.max(bonus, 7 * (1 - d / 12));
+ }
+ return bonus;
+}
+
 const pick = (weights, r) => { let t = 0; for (const [k, w] of Object.entries(weights)) { t += w; if (r < t) return k; } return Object.keys(weights).at(-1); };
 
 export class Squads {

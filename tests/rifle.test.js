@@ -12,7 +12,7 @@ test('rifle fires once on tap, repeats at cadence, and stops at empty magazine',
  tick(s,{fire:true},Math.ceil(M*RIFLE.interval*60)+20);assert.equal(s.rifle.ammo,0);assert.equal(s.stats.launched,M);
  assert.equal(s.events.filter(e=>e.type==='rifleShot').length,M);
  // Held fire: one shot now, then one every RIFLE.interval.
- const a=make();tick(a,{fire:true},60);assert.equal(a.stats.launched,Math.ceil(1/RIFLE.interval));
+ const a=make();tick(a,{fire:true},60);assert.equal(a.stats.launched,Math.floor(1/RIFLE.interval+1e-9)+1);
 });
 test('manual reload blocks firing for the reload time and magazines expire at 30 seconds',()=>{
  const s=make();tick(s,{reload:true});assert.equal(s.magazines.length,0);
@@ -24,7 +24,7 @@ test('manual reload blocks firing for the reload time and magazines expire at 30
 test('rifle damage and accuracy improve predictably with range, stance and aim',()=>{
  assert.equal(rifleDamage(5),RIFLE.damage);assert.equal(rifleDamage(22),RIFLE.minDamage);assert.equal(rifleDamage(50),RIFLE.minDamage);
  assert.equal(rifleSpread(20),rifleSpread(.2));assert.ok(rifleSpread(10,7.2)>rifleSpread(10));
- assert.equal(rifleSpread(10,0,true),.054);assert.equal(rifleSpread(10),.105);
+ assert.equal(rifleSpread(10,0,true),RIFLE.aimSpread);assert.equal(rifleSpread(10),RIFLE.hipSpread);
  const s=make({targets:[{id:'a',x:5,z:0}]});tick(s,{fire:true,aiming:true});assert.equal(s.targets[0].hp,FULL);tick(s,{},5);assert.equal(s.targets[0].hp,FULL-RIFLE.damage);
 });
 test('a clean shot passes through what the crosshair is over, from the muzzle',()=>{
@@ -88,7 +88,7 @@ test('side-weighted shots keep a straight heading and the same spread at any cur
   // The roll lands the same angular error on the barrel either way.
   for(const [s,distance] of [[near,.1],[far,30]]){
    const b=s.rifleBullets[0];
-   assert.ok(Math.abs(Math.atan2(b.dz,b.dx)-rifleAim(s.player,distance).angle-.105*.5)<1e-8);
+   assert.ok(Math.abs(Math.atan2(b.dz,b.dx)-rifleAim(s.player,distance).angle-RIFLE.hipSpread*.5)<1e-8);
   }
   // Once fired a bullet flies straight, and both carry the same speed: the
   // headings differ only because the barrels were laid on different points.

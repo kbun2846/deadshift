@@ -41,7 +41,7 @@ import { createLobbyScreen } from './ui/lobby-screen.js';
 import { createWeaponPick } from './ui/weapon-pick.js';
 import { createMapVote } from './ui/map-vote.js';
 import { pickView, lobbyView } from './render/pick-view.js';
-import { PICK, MODES, SETTINGS as MATCH_SETTINGS, SIDE_COLOURS, TEAMS, teamById, roundsDecided } from './config/match.js';
+import { PICK, MODES, SETTINGS as MATCH_SETTINGS, SIDE_COLOURS, TEAMS, teamById, roundsDecided, respawnsClosed, respawnCutoff, respawnFate, cutoffText } from './config/match.js';
 const modeLabel=document.querySelector('.brand .mode');
 import { GAME_KEYS } from './config/controls.js';
 import { gameCode, displayKeys } from './config/keybinds.js';
@@ -440,7 +440,7 @@ function returnToMenu(){
   endAftermath();matchEnd.hide();closeStats();clockRoll=null;view.deathAside=true;
   // (Owner, 2026-09-29: leaving right after a game starts, ROUND 1 and other
   // game pop-ups showed over the menu for a moment.) Every in-game pop-up goes now.
-  roundPopup.classList.remove('show');roundShown='';scoreFlash.hide();stopSpectate();damageFeedback.clear();outgoingFeedback.clear();damageIndicator.clear();
+  roundPopup.classList.remove('show');roundShown='';cutoffPopup.classList.remove('show');cutoffSeenOpen=cutoffShown='';scoreFlash.hide();stopSpectate();damageFeedback.clear();outgoingFeedback.clear();damageIndicator.clear();
   running=false;started=false;paused=false;mapOpen=false;mapWasPaused=false;settingsOpen=false;
   releaseInput();reset();sound.suspend(true);
   document.body.classList.remove('playing','paused');
@@ -478,6 +478,8 @@ function reset() {
   if(deathPick){deathPick=false;weaponPick.hide();}
   if(nextWeapon){sim.weapon=weaponOrDefault(nextWeapon);nextWeapon=null;applyInputPreference();}
   deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');
+  // (A restart as respawns close: the NO RESPAWNS popup does not carry over.)
+  cutoffPopup.classList.remove('show');
   if(tutorial){tutorial=new Tutorial(courseFor(sim.weapon));tutorialSaved=false;tutorialCard.invalidate();updateTutorial();}
   releaseInput(); sound.clearFlights(); sim.reset(); if(started)randomPracticeSpawn(); view.reset(sim); hollow?.reset(); /* s3-sound */ accumulator = 0; sound.lastStep = 0;
   // Restart keeps the robots (enemies sent back out away from you, allies by
@@ -1024,7 +1026,7 @@ const matchEnd=createMatchEnd($('game'),{act:id=>{
 function showSoloEnd(outcome){
  closeStats();
  const {title,detail}=soloOutcome(outcome);
- matchEnd.show({title,detail,rows:statsRows(),myId:'you',mode:outcome.mode,buttons:[{id:'start',label:'PLAY',primary:true},{id:'settings',label:'CHANGE SETTINGS'},{id:'quit',label:'QUIT'}]});
+ matchEnd.show({title,detail,rows:statsRows(),myId:'you',mode:outcome.mode,first:outcome.survivor,buttons:[{id:'start',label:'PLAY',primary:true},{id:'settings',label:'CHANGE SETTINGS'},{id:'quit',label:'QUIT'}]});
 }
 // Online: the card while the host's round is on 'results' (READY n/m, the
 // host's LOBBY, LEAVE); it goes by itself when the round moves on.
@@ -1038,7 +1040,7 @@ function syncMatchEnd(m){
  }
  const myId=online.myId,ready=m.ready||[],people=online.lobby().players.filter(p=>!p.robot).length||1;
  const {title,detail}=onlineOutcome(m.results,{myId,myTeam:online.myTeam});
- matchEnd.show({title,detail,rows:m.results.board||[],myId,mode:m.mode,buttons:[{id:'ready',label:readyLabel(Math.min(ready.length,people),people),pressed:ready.includes(myId),primary:true},...(online.leads?[{id:'lobby',label:'LOBBY'}]:[]),{id:'leave',label:'LEAVE'}]});
+ matchEnd.show({title,detail,rows:m.results.board||[],myId,mode:m.mode,first:m.results.survivor,buttons:[{id:'ready',label:readyLabel(Math.min(ready.length,people),people),pressed:ready.includes(myId),primary:true},...(online.leads?[{id:'lobby',label:'LOBBY'}]:[]),{id:'leave',label:'LEAVE'}]});
 }
 const spectate=createSpectate($('game'));
 let spectatePrev=null;
@@ -1046,6 +1048,56 @@ let spectatePrev=null;
 function spectateMates(){
  if(online.active){const mine=online.myTeam;if(!mine)return [];return (online.others(1)||[]).filter(o=>o.team===mine&&!(o.hp<=0)).map(o=>({id:o.id,name:o.name||'teammate',x:o.x,z:o.z,colour:teamById(o.team)?.colour}));}
  return bots.bots.filter(b=>b.team==='blue'&&b.alive&&!b.sim.player.dead).map(b=>({id:b.id,name:b.name,x:b.sim.player.x,z:b.sim.player.z,colour:TEAMS[1].colour}));
+}
+// FFA, out for the rest of the match (respawns closed, NO_RESPAWN_LEFT):
+// anyone still standing, online every other player, BOTS every robot.
+function spectateAnyone(){
+ const pink='var(--mp-enemy,#e8afb9)';
+ if(online.active)return (online.others(1)||[]).filter(o=>!(o.hp<=0)).map(o=>({id:o.id,name:o.name||'player',x:o.x,z:o.z,colour:pink}));
+ return bots.bots.filter(b=>b.alive&&!b.sim.player.dead).map(b=>({id:b.id,name:b.name,x:b.sim.player.x,z:b.sim.player.z,colour:pink}));
+}
+// The match clock where respawns can close (config/match.js NO_RESPAWN_LEFT):
+// online a timed match (FFA), BOTS FFA; { mode, left } or null.
+// (`ended`: BOTS keeps it through the moment between the end and its card,
+// duel.js DUEL_RESULT_DELAY, so the death card does not go back to a respawn
+// countdown then.)
+function respawnClock(ended=false){
+ if(!started)return null;
+ if(online.active){const m=online.match();return m?.phase==='playing'&&m.timed?{mode:m.mode,left:m.left}:null;}
+ return duel.active&&duel.ffa&&(ended||!duel.over)?{mode:'ffa',left:duel.left}:null;
+}
+// Your respawn against that clock: 'open', 'late' (yours would come after the
+// cutoff), 'closed' or 'none' (config/match.js respawnFate). Online the host's
+// wait (a joiner reads a closed one as 0: the clock says closed anyway);
+// BOTS your own count.
+function myRespawnFate(c=respawnClock()){
+ if(!c||!deathActive)return 'none';
+ const wait=online.active?online.me?.respawnIn??0:Math.max(0,FFA_RESPAWN-deathElapsed);
+ return respawnFate(c.mode,c.left,wait);
+}
+// The death card's TIME LEFT and NO RESPAWN(S) (death-screen.js setClock).
+function syncDeathClock(){
+ if(!deathActive||deathScreen.mode!=='ffa')return;
+ const c=respawnClock(true);
+ deathScreen.setClock(c?c.left:null,c?myRespawnFate(c):'none',c?respawnCutoff(c.mode):0);
+}
+// "NO RESPAWNS" in the middle, once a match, as respawns close (owner: "a
+// notification should come up saying no respawns at 45 sec left"): the ROUND
+// popup's look and timing, the storm's heartbeat under it. Everyone sees it,
+// up or down. Only for a match seen open on this screen: a reconnect or a
+// join after the cutoff does not replay it (the mark by the clock and the
+// death card say it instead).
+const cutoffPopup=document.createElement('div');cutoffPopup.className='round-popup cutoff-popup';cutoffPopup.setAttribute('role','status');cutoffPopup.setAttribute('aria-live','polite');$('game').append(cutoffPopup);
+let cutoffSeenOpen='',cutoffShown='';
+function stepRespawnCutoff(){
+ const c=respawnClock();if(!c)return;
+ const key=online.active?'o'+online.match()?.number:'d'+duel.matchId;
+ if(!respawnsClosed(c.mode,c.left)){cutoffSeenOpen=key;return;}
+ if(cutoffSeenOpen!==key||cutoffShown===key)return;
+ cutoffShown=key;
+ cutoffPopup.innerHTML=`no respawns<small>${cutoffText(c.mode)}</small>`;
+ cutoffPopup.classList.remove('show');void cutoffPopup.offsetWidth;cutoffPopup.classList.add('show');
+ sound.pulse(1);
 }
 const scoreFlash=createScoreFlash($('game'));
 // A click or tap on the world while spectating (it shows behind the death
@@ -1070,6 +1122,7 @@ function showRound(key,n){
 function updateSpectate(dt=0){
  const elim=started&&eliminationNow();
  stepAftermath();refreshStats(dt);syncDeathCard(false,dt);
+ stepRespawnCutoff();syncDeathClock();
  // Up and playing: the round's popup once per round.
  if(elim&&!deathActive&&!sim.player.dead&&sim.player.hp>0&&!choosing){
   if(online.active){const m=online.match();if(m?.phase==='playing'&&online.me?.present)showRound('o'+m.number+':'+(m.round||1),m.round||1);}
@@ -1077,8 +1130,10 @@ function updateSpectate(dt=0){
  }
  if(!elim)roundShown='';
  // (Team modes only: in 1V1 there is nobody on your side to watch.)
- const watching=elim&&deathActive&&deathMenuOpen&&deathScreen.mode==='team'&&deathElapsed>=DEATH_MENU_DELAY+SPECTATE_AFTER&&!duel.resultOpen&&!choosing;
- const mates=watching?spectateMates():[];
+ // FFA once you are out for the rest of the match (respawns closed): anyone standing.
+ const out=deathActive&&deathMenuOpen&&deathScreen.mode==='ffa'&&['late','closed'].includes(myRespawnFate());
+ const watching=(elim&&deathScreen.mode==='team'||out)&&deathActive&&deathMenuOpen&&deathElapsed>=DEATH_MENU_DELAY+SPECTATE_AFTER&&!duel.resultOpen&&!choosing;
+ const mates=watching?(out?spectateAnyone():spectateMates()):[];
  if(mates.length)spectate.update(mates);
  else if(spectate.open)stopSpectate();
  // Down in an elimination round: the world and the game's HUD go dull until you are back.
@@ -1115,7 +1170,8 @@ function newDuelRound(){
 }
 // Practice: back on your feet at the start, the world as you left it.
 function respawnPractice(){
- if(online.active||!deathActive)return;
+ // (BOTS FFA's last NO_RESPAWN_LEFT seconds: nobody comes back, you included.)
+ if(online.active||!deathActive||(duel.active&&duel.noRespawns))return;
  // The grid still open when the count runs out: what is picked there comes along.
  if(deathPick){nextWeapon=weaponPick.selected||nextWeapon;deathPick=false;weaponPick.hide();}
  clearDeath();
@@ -1180,7 +1236,7 @@ function multiplayerFrame(){
  if(lines.length)mpHud.addFeed(lines,myId,elapsed);else mpHud.renderFeed(elapsed);
  if(mpHud.boardOpen)mpHud.setBoard(online.scoreboard(),myId);
  const me=online.me;
- if(deathActive&&me&&!online.match()?.elimination)deathScreen.setTimer(me.respawnIn,online.lobby().settings?.respawn||MATCH_SETTINGS.respawn.default);
+ if(deathActive&&me&&!online.match()?.elimination&&Number.isFinite(me.respawnIn))deathScreen.setTimer(me.respawnIn,online.lobby().settings?.respawn||MATCH_SETTINGS.respawn.default);
  const m=online.match();
  mpHud.setMatch(m,myId);syncClockRoll(m);
  // 1V1: you took the round (the other one down): the aftermath.
@@ -1674,8 +1730,10 @@ function frame(time) {
     // The tutorial keeps its course's weapon (the pause menu hides it too).
     // (It used to un-hide the button in every other mode, online FFA's too.)
     if(map.training)$('death-change-weapon').hidden=true;
-    deathScreen.setKiller(online.active?lastKiller:undefined,lastOneShot);
-    syncDeathCard(true);
+    // (Online, a seat that joined after respawns closed was never in the
+    // world: no "you took yourself out".)
+    deathScreen.setKiller(online.active&&online.me?.life?lastKiller:undefined,lastOneShot);
+    syncDeathCard(true);syncDeathClock();
     if(!online.active)sound.suspend(true);
    }
    // Practice counts its own respawn; online the host's countdown is shown

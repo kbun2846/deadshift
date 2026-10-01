@@ -22,7 +22,7 @@ import { SKILL_LEVELS, TEMPERS } from './bots/robot-profile.js';
 import { rollHTML } from './ui/score-flash.js';
 import { pickDuelCircle } from './duel-circle.js';
 import { stormMode, stormPlan as stormPlan_, stormAt, stormSafe, stormSafeSpot } from './storm.js';
-import { SPAWN_APART, TEAMS, roundsDecided, syphonAmount } from './config/match.js';
+import { SPAWN_APART, TEAMS, roundsDecided, syphonAmount, respawnsClosed } from './config/match.js';
 
 export const DUEL_MODES = Object.freeze({
  '1v1': { name: '1V1', allies: 0, enemies: 1 },
@@ -127,9 +127,18 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
  // `held`: the score the top shows during a 1V1 break (the old one); `roll`:
  // the number turning over as the round starts ({ side, from, to }).
  let ffaLeft = 0; // (FFA: seconds of the match left)
+ // Which match this is (one more each begin/restart): the NO RESPAWNS popup
+ // shows once per match (main.js).
+ let matchId = 0;
+ // FFA ended early with one left standing (respawns closed): who ('you' or
+ // a robot's id), for the end card's table (outcome.survivor).
+ let survivor = null;
  let circle = null, cfg = null, tally = new DuelScore(), robots = [], alive = new Map(), overIn = -1, shownKey = '', breakIn = -1, lastPoint = null, round = 1, forfeited = false, ended = false, held = null, roll = null;
  const team = () => DUEL_MODES[cfg?.mode]?.allies > 0;
  const ffa = () => !!DUEL_MODES[cfg?.mode]?.ffa;
+ // FFA's last NO_RESPAWN_LEFT seconds (config/match.js, the same rule as
+ // online): nobody comes back, you or a robot.
+ const closed = () => !!cfg && ffa() && respawnsClosed('ffa', ffaLeft);
  const names = () => (team() ? ['YOUR TEAM', 'ENEMIES'] : ffa() ? ['YOU', 'TOP BOT'] : ['YOU', 'BOT']);
  const clockText = t => { const n = Math.max(0, Math.ceil(t)); return Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0'); };
  // FFA's syphon (owner: "50 siphon off each kill"): the killer (a robot, or
@@ -168,7 +177,7 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
 
  const render = () => {
   const you = held ? held.you : tally.you, robot = held ? held.robot : tally.robot;
-  const key = you + ':' + robot + ':' + tally.firstTo + ':' + cfg?.mode + ':' + round + ':' + (roll ? roll.side + roll.to : '') + (ffa() ? ':' + clockText(ffaLeft) : '');
+  const key = you + ':' + robot + ':' + tally.firstTo + ':' + cfg?.mode + ':' + round + ':' + (roll ? roll.side + roll.to : '') + (ffa() ? ':' + clockText(ffaLeft) + (closed() ? ':closed' : '') : '');
   if (key === shownKey) return; shownKey = key;
   const num = side => (roll?.side === side ? rollHTML(roll.from, roll.to) : side === 'you' ? you : robot);
   const [mine, theirs] = names(), tint = i => (team() ? ` style="color:${TEAMS[i].colour}"` : '');
@@ -179,7 +188,9 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
   const need = tally.rounds ? Math.floor(tally.rounds / 2) + 1 : 0;
   const pips = (n, i, side) => need ? `<span class="duel-track duel-${side}"${tint(i)}>${Array.from({ length: Math.min(need, 10) }, (_, k) => `<i${k < Math.min(n, 10) ? ' class="won"' : ''}></i>`).join('')}</span>` : '';
   score.classList.toggle('endless', !tally.firstTo);
-  score.innerHTML = `<span class="duel-side duel-you"${tint(1)}><em>${mine}</em><b>${num('you')}</b></span><span class="duel-dash" aria-hidden="true"></span><span class="duel-side duel-robot"${tint(0)}><b>${num('robot')}</b><em>${theirs}</em></span>${pips(you, 1, 'you')}${tally.firstTo ? '<span></span>' : ''}${pips(robot, 0, 'robot')}<small>${DUEL_MODES[cfg?.mode]?.name || ''} · ${ffa() ? clockText(ffaLeft) + ' LEFT' : (tally.rounds ? tally.rounds + ' ROUNDS' : 'ENDLESS') + ' · ROUND ' + round}</small>`;
+  // (Respawns closed, NO_RESPAWN_LEFT: a NO RESPAWNS marker after the clock.)
+  const closedNote = ffa() && closed() ? ' · <span class="duel-no-respawn">NO RESPAWNS</span>' : '';
+  score.innerHTML = `<span class="duel-side duel-you"${tint(1)}><em>${mine}</em><b>${num('you')}</b></span><span class="duel-dash" aria-hidden="true"></span><span class="duel-side duel-robot"${tint(0)}><b>${num('robot')}</b><em>${theirs}</em></span>${pips(you, 1, 'you')}${tally.firstTo ? '<span></span>' : ''}${pips(robot, 0, 'robot')}<small>${DUEL_MODES[cfg?.mode]?.name || ''} · ${ffa() ? clockText(ffaLeft) + ' LEFT' + closedNote : (tally.rounds ? tally.rounds + ' ROUNDS' : 'ENDLESS') + ' · ROUND ' + round}</small>`;
  };
  const api = {
   get active() { return !!cfg; },
@@ -196,6 +207,10 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
   get ffa() { return ffa(); },
   // FFA: seconds of the match left.
   get left() { return ffa() ? ffaLeft : null; },
+  // FFA: respawns closed for the rest of the match (NO_RESPAWN_LEFT).
+  get noRespawns() { return closed(); },
+  // Which match (the NO RESPAWNS popup's key, main.js).
+  get matchId() { return matchId; },
   // FFA: where you come back instead of `at` when `at` is out in the storm
   // (or soon will be); null when `at` is fine.
   safeSpawn(at) { return ffa() && closing() && !stormSafe(stormPlan, stormClock, at) ? safeSpot(sim.player) : null; },
@@ -245,7 +260,8 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
    cfg.weapon = api.bot?.sim.weapon;
    newStorm(true);
    ffaLeft = cfg.length;
-   tally = new DuelScore(isFfa ? 0 : cfg.firstTo); alive = new Map(robots.map(b => [b, true])); overIn = -1; shownKey = ''; breakIn = -1; lastPoint = null; round = 1; forfeited = false; ended = false; held = null; roll = null;
+   matchId++;
+   tally = new DuelScore(isFfa ? 0 : cfg.firstTo); alive = new Map(robots.map(b => [b, true])); overIn = -1; shownKey = ''; breakIn = -1; lastPoint = null; round = 1; forfeited = false; ended = false; held = null; roll = null; survivor = null;
    score.hidden = false; render();
    globalThis.document?.body?.classList.add('duel-on');
    return api.bot;
@@ -268,7 +284,18 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
     ffaLeft = Math.max(0, ffaLeft - dt);
     const mine = bots.youStats?.kills || 0, top = robots.reduce((m, b) => Math.max(m, b.stats?.kills || 0), 0);
     tally.you = mine; tally.robot = top;
-    if (ffaLeft <= 0) { tally.winner = mine > top ? 'you' : mine < top ? 'robot' : 'draw'; overIn = DUEL_RESULT_DELAY; }
+    // Respawns closed: the robots down stay down (you: main.js), and with
+    // one (or nobody) left standing the match ends now.
+    const shut = closed();
+    if (shut) bots.holdRespawns = true;
+    const standing = shut ? (youStanding ? 1 : 0) + robots.filter(b => b.alive).length : Infinity;
+    if (ffaLeft <= 0 || standing <= 1) {
+     tally.winner = mine > top ? 'you' : mine < top ? 'robot' : 'draw';
+     // (Ended early, one left standing: a tie on kills goes to them.)
+     survivor = ffaLeft > 0 && standing === 1 ? (youStanding ? 'you' : robots.find(b => b.alive)?.id ?? null) : null;
+     if (ffaLeft > 0 && standing === 1 && mine === top && mine > 0) tally.winner = youStanding ? 'you' : robots.some(b => b.alive && (b.stats?.kills || 0) === top) ? 'robot' : 'draw';
+     overIn = DUEL_RESULT_DELAY;
+    }
     render(); return;
    }
    if (breakIn > 0) {
@@ -316,9 +343,9 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
    hooks.over?.(api.outcome);
   },
   // How it ended, for the end card (ui/match-end.js soloOutcome).
-  get outcome() { return { winner: tally.winner, you: tally.you, robot: tally.robot, forfeited, team: team(), ffa: ffa(), mode: cfg?.mode || null }; },
+  get outcome() { return { winner: tally.winner, you: tally.you, robot: tally.robot, forfeited, team: team(), ffa: ffa(), mode: cfg?.mode || null, survivor }; },
   // A restart (pause menu or START on the end card): the score back to nothing.
-  reset() { if (!cfg) return; tally.reset(); ffaLeft = cfg.length; alive = new Map(robots.map(b => [b, true])); overIn = -1; breakIn = -1; lastPoint = null; round = 1; shownKey = ''; forfeited = false; ended = false; held = roll = null; newStorm(); render(); },
+  reset() { if (!cfg) return; matchId++; survivor = null; bots.holdRespawns = !ffa(); tally.reset(); ffaLeft = cfg.length; alive = new Map(robots.map(b => [b, true])); overIn = -1; breakIn = -1; lastPoint = null; round = 1; shownKey = ''; forfeited = false; ended = false; held = roll = null; newStorm(); render(); },
   // The match is over and its end card is up (until a restart or leaving).
   get resultOpen() { return ended; },
   // Leaving: targets come back with the next reset. (The score goes too: a

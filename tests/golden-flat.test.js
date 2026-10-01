@@ -56,6 +56,32 @@
 //     syphon ("50 siphon off each kill" in FFA, 25 in the other modes, instead
 //     of half the lost health; config/match.js syphonAmount). Checked: with the
 //     old syphon formula put back the hosted replay gives 1587197d again.)
+// (balance pass 2026-09-30, owner-requested ("rebalance every weapon's numbers
+//     ... so balance is fair AND satisfying"): rifle, shotgun, robots and hosted
+//     re-recorded, c2ba93c4 -> 6d1a877a, b1676071 -> 632d6dc5, 8a9fa015 ->
+//     e57de5bc, 603debcc -> 9567daad: Nominal's and Ballast's numbers (and the
+//     robots' weapons') changed, see BALANCE_PASS.md. static unchanged (its
+//     replay never streams at range, and the orbs, volleys and hex are as
+//     before).)
+// (balance pass review, 2026-09-30: rifle and robots re-recorded again,
+//     6d1a877a -> e851e5a3 and e57de5bc -> b044c4ab, for Nominal's aimed-in
+//     cone .075 -> .06 (and Omen's late rupture / Ichor's Frenzy in the robot
+//     fight). static, shotgun and hosted unchanged.)
+// (robot behaviour pass 2026-09-30, owner-requested ("make bots a bit more
+//     dynamic ... kept chasing me without backing off or initiating"): robots
+//     and hosted re-recorded, b044c4ab -> 6ab720f6 and 9567daad -> de1d6b0, for
+//     the robots' engagement loop (bots/engagement.js: approach, engage, press,
+//     disengage, reset), new bands, Static volleys, blade dash-ins
+//     (robot-brain.js). static, rifle and shotgun unchanged (no robots).)
+// (review of the hex fix + robot pass, 2026-09-30: robots re-recorded,
+//     6ab720f6 -> 1ed10911, for engagement.js: a press starts its own chase
+//     clock (it inherited the last approach's and turned straight back into a
+//     disengage), and Static waiting for its orbs does not come back in or
+//     counter-press until they are back. Everything else unchanged.)
+// (review follow-up, 2026-09-30: robots re-recorded, 1ed10911 -> 100c42d8:
+//     chases judged by closing speed, jinks only when aimed at, blades dash in
+//     at someone backing away, Static saves for its hex and waits nearer it,
+//     its robots' aim no longer eased (WEAPON_AIM static 1). Hosted unchanged.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation } from '../src/simulation.js';
@@ -67,7 +93,7 @@ import { ClientSession } from '../src/net/client-session.js';
 
 // Recorded with Node 22.22 (V8 12.4.254). Math is deterministic within one engine build;
 // a different Node major may need a re-record on untouched code, never on new code.
-export const GOLDEN = { static: '17d0bb9e', rifle: 'c2ba93c4', shotgun: 'b1676071', robots: '8a9fa015', hosted: '603debcc' };
+export const GOLDEN = { static: '17d0bb9e', rifle: 'e851e5a3', shotgun: '632d6dc5', robots: '100c42d8', hosted: 'de1d6b0' };
 
 const map = maps.deadwater;
 function seeded(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }

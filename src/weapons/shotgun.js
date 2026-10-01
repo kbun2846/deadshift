@@ -16,15 +16,16 @@ export function shotgunPelletContact(b,target){
  return contact*(offCenter<=radius*.55?1:.55);
 }
 // Pellet power by how far it has flown (owner, v140): in the red part of
-// the cone (SHOTGUN.range) full up close, a fifth at its edge (EDGE);
-// past it, fading with the drawn red to END (about 10 on a hit) at
-// range + fade, and nothing beyond.
-export const SHOTGUN_EDGE=.2,SHOTGUN_END=.14;
+// the cone (SHOTGUN.range) full up to `full` of it, then falling to `edge`
+// at its end; past it, fading with the drawn red to `end` at range + fade,
+// and nothing beyond (numbers in SHOTGUN, config/gameplay.js; balance pass
+// 2026-09-30: full .25 -> .55, edge .2 -> .65).
+export const SHOTGUN_EDGE=SHOTGUN.edge,SHOTGUN_END=SHOTGUN.end;
 export const shotgunReach=()=>SHOTGUN.range+SHOTGUN.fade;
 export function shotgunFalloff(distance,range=SHOTGUN.range,fade=SHOTGUN.fade){
  const depth=Math.max(0,distance/range);
- if(depth<=.25)return 1;
- if(depth<=1)return 1-(depth-.25)/.75*(1-SHOTGUN_EDGE);
+ if(depth<=SHOTGUN.full)return 1;
+ if(depth<=1)return 1-(depth-SHOTGUN.full)/(1-SHOTGUN.full)*(1-SHOTGUN_EDGE);
  const t=(distance-range)/fade;
  return t>=1?0:SHOTGUN_EDGE+(SHOTGUN_END-SHOTGUN_EDGE)*t;
 }
@@ -64,6 +65,8 @@ export function stepShotgun(sim,input,dt,{segmentBox,segmentCircle}){
   const push=1*Math.min(1,h.damage/shotgunDamage());
   let fraction=1;
   for(const c of sim.colliders){const f=segmentBox(h.target.x,h.target.z,h.target.x+h.vx*push,h.target.z+h.vz*push,c,.5);if(f!==null)fraction=Math.min(fraction,Math.max(0,f-.01));}
+  // (Never shoved into a hex of a side not theirs: Simulation.hexKnockLimit.)
+  if(sim.shields?.length&&fraction>0)fraction*=sim.hexKnockLimit(h.target,h.target.x+h.vx*push*fraction,h.target.z+h.vz*push*fraction);
   const x=Math.max(-sim.map.width/2+.6,Math.min(sim.map.width/2-.6,h.target.x+h.vx*push*fraction)),z=Math.max(-sim.map.depth/2+.6,Math.min(sim.map.depth/2-.6,h.target.z+h.vz*push*fraction));
   h.target.baseX+=x-h.target.x;h.target.x=x;h.target.z=z;
  }

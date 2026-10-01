@@ -1,8 +1,10 @@
+import './polyfills.js'; // FIRST: fills in .at() / Object.hasOwn on older Safari before any game code runs
 import { installButtonTypography } from './ui/button-typography.js';
 import { fitSvgWords, watchSvgWords } from './ui/svg-fit.js';
 import { rememberWheel } from './ui/busy-screen.js';
 import { migrateGameStorage } from './storage-migration.js';
 
+window.__deadstabStarted=true; // index.html's watchdog: the game's code did load and run
 const game=document.getElementById('game');
 const loading=document.getElementById('loading-screen');
 const paint=()=>new Promise(resolve=>requestAnimationFrame(resolve));
@@ -50,9 +52,9 @@ async function boot(){
   await reveal();
  }catch(error){
   console.error('Deadstab startup failed:',error);
-  const message=document.getElementById('error-message');
-  if(!message.textContent)message.textContent='The game could not finish loading. Reload the page to try again.';
-  document.getElementById('error').classList.remove('hidden');
+  // (2026-09-30, owner: on an older MacBook this used to fail silently and
+  // leave a dead menu on screen. Now it always says so, on top of everything.)
+  window.__deadstabStartupFailed?.(error);
   void reveal();
  }
 }

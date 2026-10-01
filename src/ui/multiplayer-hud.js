@@ -7,7 +7,7 @@
 // else and blue for you, in the feed and on the board, next to the player's
 // colour (remote-players.js).
 import { weapon as weaponById } from '../items.js';
-import { teamById } from '../config/match.js';
+import { teamById, respawnsClosed } from '../config/match.js';
 import { playerColour } from '../remote-players.js';
 import { createStatsPanel } from './stats-panel.js';
 
@@ -34,6 +34,29 @@ export const swatch = slot => `<i class="player-swatch" style="--swatch:${player
 export const teamChip = id => { const t = teamById(id); return t ? `<span class="board-team" style="--team:${t.colour}">${t.name.toLowerCase()}</span>` : ''; };
 export function scoreboardRows(rows, myId) {
  return rows.map((r, i) => `<tr class="${r.id === myId ? 'board-you' : ''}${r.present ? '' : ' board-away'}"><td>${i + 1}</td><th scope="row">${swatch(r.slot)}${esc(r.name)}${teamChip(r.team)}${r.robot ? '<span class="board-robot">bot</span>' : ''}</th><td>${r.kills}</td><td>${r.deaths}</td><td>${r.dealt}</td><td>${r.taken}</td><td>${formatTime(r.time)}</td><td>${esc(weaponName(r.weapon))}</td><td class="board-ping">${r.robot ? '—' : pingText(r.ping)}</td></tr>`).join('');
+}
+
+// What the match clock shows for the host's match state (pure: tested).
+// The clock only means something in a timed match (FFA): hidden in the lobby
+// and in practice; "results" between the match and the lobby. The round
+// modes have no clock (their `left` is 0: it used to read a red "0:00"):
+// the round being played instead, as the BOTS score line has it, then each
+// side's points. Respawns closed (config/match.js NO_RESPAWN_LEFT): a NO
+// RESPAWNS mark beside the clock for the rest of the match, worked out from
+// the clock and the mode the host already sends (nothing new on the wire).
+// -> { html, shown, low (the last 30 s, red), closed }
+export function clockView(match) {
+ const timed = match.timed ?? (match.mode !== 'practice' && !match.elimination);
+ const playing = match.phase === 'playing';
+ const text = playing && timed ? formatTime(Math.ceil(match.left)) : playing && match.elimination ? 'round ' + (match.round || 1) : match.phase === 'results' ? 'results' : '';
+ const closed = playing && timed && respawnsClosed(match.mode, match.left);
+ // Team modes: each side's kills beside the clock ("RED 5 · 3 BLUE").
+ // Elimination modes (v0.999a): each side's points, 1v1 each player's.
+ const teams = playing && match.elimination && match.sides ? match.sides.map(t => `<span class="clock-team" data-side="${esc(t.id)}"${t.colour ? ` style="--team:${t.colour}"` : ''}>${esc(String(t.name).toLowerCase())} <b>${t.points}</b></span>`).join('<i>·</i>')
+  : playing && match.teams ? match.teams.map(t => `<span class="clock-team" style="--team:${t.colour}">${esc(t.name.toLowerCase())} <b>${t.kills}</b></span>`).join('<i>·</i>') : '';
+ const head = playing && match.elimination ? `<span class="clock-round">${esc(text)}</span>` : esc(text);
+ const html = head + (closed ? '<span class="clock-note">no respawns</span>' : '') + (teams ? `<span class="clock-teams">${teams}</span>` : '');
+ return { html, shown: !!text, low: playing && timed && match.left <= 30, closed };
 }
 
 export function createMultiplayerHud(root) {
@@ -70,17 +93,9 @@ export function createMultiplayerHud(root) {
     boardRound = match.phase === 'playing' && match.elimination ? match.round || 1 : 0;
     paint();
    }
-   // The clock only means something in a timed round (ffa): hidden in the
-   // lobby and in practice; "results" between the round and the lobby.
-   const timed = match.mode !== 'practice';
-   const text = match.phase === 'playing' && timed ? formatTime(Math.ceil(match.left)) : match.phase === 'results' ? 'results' : '';
-   // Team modes: each side's kills beside the clock ("RED 5 · 3 BLUE").
-   // Elimination modes (v0.999a): each side's points, 1v1 each player's.
-   const teams = match.phase === 'playing' && match.elimination && match.sides ? match.sides.map(t => `<span class="clock-team" data-side="${esc(t.id)}"${t.colour ? ` style="--team:${t.colour}"` : ''}>${esc(String(t.name).toLowerCase())} <b>${t.points}</b></span>`).join('<i>·</i>')
-    : match.phase === 'playing' && match.teams ? match.teams.map(t => `<span class="clock-team" style="--team:${t.colour}">${esc(t.name.toLowerCase())} <b>${t.kills}</b></span>`).join('<i>·</i>') : '';
-   const html = esc(text) + (teams ? `<span class="clock-teams">${teams}</span>` : '');
-   if (html !== clockText) { clockText = html; clock.innerHTML = html; clock.classList.toggle('match-clock-low', match.phase === 'playing' && match.left <= 30); }
-   clock.style.visibility = text ? '' : 'hidden';
+   const view = clockView(match);
+   if (view.html !== clockText) { clockText = view.html; clock.innerHTML = view.html; clock.classList.toggle('match-clock-low', view.low); clock.classList.toggle('match-clock-closed', view.closed); }
+   clock.style.visibility = view.shown ? '' : 'hidden';
    // (The end-of-match card is ui/match-end.js since 2026-09-29.)
   },
   addFeed(entries, me, now) {

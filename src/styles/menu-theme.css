@@ -1641,3 +1641,53 @@ body.dev-unlocked #game .online-p2p.dev-only{display:flex!important}
 #game .join-filter[data-filter=map] .round-choices>button.choice-button:first-child{grid-column:span 2}
 #game .join-filter[data-filter=sort] .round-choices>button.choice-button{grid-column:span 6}
 #game .join-rooms{max-height:min(34dvh,300px)}
+/* No respawns near the end (2026-09-30, owner: "players won't respawn again
+   when 45 sec is left ... When player is in death menu, they should be able
+   to see time left in game ... a notification should come up saying no
+   respawns"). config/match.js NO_RESPAWN_LEFT; main.js, death-screen.js,
+   multiplayer-hud.js, duel.js. Nothing new in look: the ROUND popup's
+   lettering and timing, the clock's own face with a pink word beside it, the
+   death card's ink and its stretched DEAD lettering. */
+/* The popup as respawns close: ROUND n's look, the big word over the small line. */
+#game .round-popup.cutoff-popup{top:36%;font-size:clamp(34px,7.4vw,84px)}
+#game .round-popup.cutoff-popup small{margin:12px 0 0}
+#game .round-popup.cutoff-popup.show{animation-duration:3s}
+@media(max-width:700px),(max-aspect-ratio:1/1){#game .round-popup.cutoff-popup{top:30%}}
+/* Down on a wide screen: in the clear part beside the death card (as the score flash). */
+@media(min-width:701px) and (min-aspect-ratio:1/1){body.dead-menu #game .round-popup.cutoff-popup{left:31%;top:34%;font-size:clamp(30px,4.6vw,64px)}}
+/* (Down on a phone upright: under the spectating bar, over the card.) */
+@media(max-width:700px),(max-aspect-ratio:1/1){body.dead-menu #game .round-popup.cutoff-popup{top:41%}}
+/* A phone on its side, down: the card fills the right half, so the popup and
+   the spectating bar (FFA's, and the team modes' too: it sat over DEAD) keep
+   to the clear left part, the bar on top, the popup under it. */
+/* (Up on a phone on its side: the health bar and the storm readout fill the
+   top, so the popup goes smaller, between you and the weapon panel.) */
+@media(max-height:520px) and (orientation:landscape) and (min-aspect-ratio:1/1){#game .round-popup.cutoff-popup{top:67%;font-size:clamp(28px,5vw,46px)}#game .round-popup.cutoff-popup small{margin-top:8px}}
+@media(max-height:520px) and (orientation:landscape) and (min-aspect-ratio:1/1){body.dead-menu #game .round-popup.cutoff-popup{left:29%;top:60%}body.dead-menu #game .spectate-bar{right:42%}}
+/* Beside the match clock for the rest of the match (and the BOTS FFA score line). */
+#game .match-clock .clock-note{margin-left:12px;font:900 11px/1 'Arial Black',Arial,sans-serif;letter-spacing:.2em;color:var(--ui-accent);vertical-align:2px;text-transform:uppercase!important}
+#game .duel-score small .duel-no-respawn{color:var(--ui-accent)}
+/* Round modes: no clock, the round in the clock's small caps, then the sides. */
+#game .match-clock .clock-round{font:800 12px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.18em;text-transform:uppercase!important;opacity:.85}
+#game .match-clock .clock-round+.clock-teams{margin-left:10px}
+/* The death card (FFA): TIME LEFT under the respawn; NO RESPAWN(S) in place
+   of the countdown, in the card's ink and DEAD's stretched lettering. */
+#game #death-screen .death-respawn.no-respawn :is(.death-respawn-label,.death-respawn-count,.death-respawn-bar){display:none}
+#game #death-screen .death-respawn-none{grid-column:1/-1;display:block;height:clamp(36px,4.4vw,54px);color:#090d0c}
+#game #death-screen .death-respawn-none svg{display:block;width:100%;height:100%;overflow:visible;fill:currentColor}
+#game #death-screen .death-respawn-none text{font-family:'Arial Black',Arial,sans-serif!important;font-weight:900;text-transform:uppercase!important}
+#game #death-screen .death-respawn-note{grid-column:1/-1;margin-top:6px;font:800 13px/1.2 var(--hud-font,Arial),sans-serif;color:#090d0c;text-transform:none!important}
+/* TIME LEFT: one row, the label and the time on one baseline (the time
+   only a little larger than the label, so the pair reads as a line of the
+   card rather than a second countdown beside the respawn's big number). */
+#game #death-screen .death-left{grid-column:1/-1;display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-top:12px;line-height:1}
+#game #death-screen .death-left-label{font:900 13px/1 Arial Black,Arial,sans-serif;letter-spacing:.18em;text-transform:uppercase}
+#game #death-screen .death-left-count{font:900 19px/1 Arial Black,Arial,sans-serif;letter-spacing:.04em;font-variant-numeric:tabular-nums}
+@media(max-width:700px),(max-aspect-ratio:1/1){#game #death-screen .death-respawn-none{height:34px}#game #death-screen .death-left{margin-top:8px}}
+@media(max-height:520px) and (orientation:landscape) and (min-aspect-ratio:1/1){#game #death-screen .death-respawn-none{height:30px}#game #death-screen .death-left{margin-top:6px}#game #death-screen .death-left-count{font-size:17px}}
+/* A narrow screen with touch controls (phones upright; a narrow desktop
+   window keeps it centred, clear of the brand there): the clock keeps to
+   the top left, as the BOTS score does, clear of SCORES / map / sound / menu; its sides go on a
+   line of their own. (Its NO RESPAWNS mark made it wide enough to run under
+   SCORES in the middle.) */
+@media(max-width:560px){body[data-controls=touch] #game .match-clock:not(.score-flash){left:max(16px,env(safe-area-inset-left));transform:none}body[data-controls=touch] #game .match-clock:not(.score-flash) .clock-teams{display:flex;margin:5px 0 0}}

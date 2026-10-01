@@ -34,11 +34,11 @@ test('damage: shellDamage + bonus point blank on the first shell, shellDamage on
  t.mock.method(Math,'random',()=>.5);
  const dealt=(x,input={tapFire:true},ammo=2)=>{const s=make();s.shotgun.ammo=ammo;s.targets.push({id:'t',kind:'target',x,z:.2,baseX:x,hp:200,maxHp:200,flash:0,respawn:0});s.step(input);ticks(s,30,{aiming:!!input.aiming});return 200-s.targets[0].hp;};
  assert.ok(Math.abs(dealt(1.4)-(SHOTGUN.shellDamage+SHOTGUN.firstShellBonus))<1e-6);assert.ok(Math.abs(dealt(1.4,{tapFire:true},1)-SHOTGUN.shellDamage)<1e-6);
- const mid=dealt(4.5,{tapFire:true,aiming:true});assert.ok(mid>=22&&mid<=58,'aimed mid-range '+mid);
+ const mid=dealt(4.5,{tapFire:true,aiming:true});assert.ok(mid>=40&&mid<=SHOTGUN.shellDamage+SHOTGUN.firstShellBonus,'aimed mid-range '+mid);/* balance pass 2026-09-30: 22-58 before */
  assert.ok(dealt(SHOTGUN.range+SHOTGUN.fade+1.5)===0,'out of reach');
  const edge=dealt(SHOTGUN.range+.3),faded=dealt(SHOTGUN.range+SHOTGUN.fade*.7);
  assert.ok(edge>0&&faded>0&&faded<edge,'the fade still hurts, less and less: '+edge+' > '+faded);
- assert.ok(shotgunFalloff(3.4)>.7,'decent through the red');assert.ok(Math.abs(shotgunFalloff(SHOTGUN.range)-.2)<1e-9,'a fifth at the end of the red');assert.ok(shotgunFalloff(SHOTGUN.range+SHOTGUN.fade-.01)<.15,'a scratch at max range');assert.equal(shotgunFalloff(SHOTGUN.range+SHOTGUN.fade),0,'nothing past it');assert.ok(shotgunFalloff(1)===1);
+ assert.ok(shotgunFalloff(3.4)>.7,'decent through the red');assert.ok(Math.abs(shotgunFalloff(SHOTGUN.range)-SHOTGUN.edge)<1e-9,'SHOTGUN.edge at the end of the red (a fifth until the 2026-09-30 balance pass)');assert.ok(shotgunFalloff(SHOTGUN.range+SHOTGUN.fade-.01)<.15,'a scratch at max range');assert.equal(shotgunFalloff(SHOTGUN.range+SHOTGUN.fade),0,'nothing past it');assert.ok(shotgunFalloff(1)===1);
 });
 test('E aimed in, point blank, can still one-shot a full-health player',t=>{
  t.mock.method(Math,'random',()=>.5);

@@ -1,4 +1,4 @@
-deadstab v0.1.2-alpha is a minimalist top down arena shooter with distinct weapons, explosive combat and gore, playable in the browser on mobile or pc
+deadstab v0.1.3-alpha is a minimalist top down arena shooter with distinct weapons, explosive combat and gore, playable in the browser on mobile or pc
 
 - eight distinct weapons, each with its own E and X abilities: static, nominal, ballast, omen, sightline, sidekick, ichor (a blood-fed katana) and sheath (a broadsword)
 - two maps: deadwater outpost, a desert town with enterable buildings, destructible props and a crop field that burns, and hollow wick, a foggy autumn village with hills, a stream and a graveyard
@@ -9,6 +9,14 @@ deadstab v0.1.2-alpha is a minimalist top down arena shooter with distinct weapo
   - the host picks the map and settings, with pings, kill feed and scoreboard
 - matches against bots (1v1, 2v2, 3v3, 4v4 and free-for-all; easy, normal or hard), solo practice and a tutorial for every weapon
 - touch controls with an editable layout, keyboard and mouse with rebindable keys, and graphics presets from potato to extreme (auto picks one for your device)
+
+## what's new in v0.1.3-alpha
+
+- a balance pass on every weapon: fights end sooner and come down to aim, dodging and timing
+- bots fight like players: they back off, pick their moment, and each has its own style and range
+- no respawns in the last 45 seconds of free-for-all, with the time left on the death screen
+- static's hex is a little smaller and nobody can get inside it any more
+- the game starts on older macs (safari before 15.4)
 
 ## what's new in v0.1.2-alpha
 

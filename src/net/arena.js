@@ -29,7 +29,10 @@ import { clearOmen } from '../weapons/omen.js';
 //    in with what they picked, or a random weapon). They pick again only after
 //    dying (CHANGE WEAPON on the death screen).
 //      ffa:      kills count; the round ends when the clock runs out or someone
-//                reaches the kill limit. Respawn after the respawn setting.
+//                reaches the kill limit. Respawn after the respawn setting,
+//                until the last NO_RESPAWN_LEFT seconds (config/match.js):
+//                from then on nobody comes back or comes in (`noRespawns`),
+//                and one player left standing ends the match at once.
 //      1v1, 2v2, 2v2v2, 3v3 (v0.999a, owner: "after two players on a team
 //                die, everyone respawns ... until last team or last man
 //                standing, and whoever the last man's team is gets the
@@ -59,7 +62,7 @@ import { mapColliders } from '../maps.js';
 import { pickArea, inPickArea } from '../render/pick-view.js';
 import { pickDuelCircle, circleState } from '../duel-circle.js';
 
-import { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS, TEAMS, modeById, SPAWN_APART, MAX_SEATS, roundsDecided, syphonAmount } from '../config/match.js';
+import { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS, TEAMS, modeById, SPAWN_APART, MAX_SEATS, roundsDecided, syphonAmount, respawnsClosed } from '../config/match.js';
 import { ArenaRobots, ROBOT_SETUP } from './arena-robots.js';
 export { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS, TEAMS };
 // Kept for older callers and tests: the defaults.
@@ -128,6 +131,7 @@ export class Arena {
     const stand = [...this.seats.values()].find(s => s.robot?.auto) || [...this.seats.values()].find(s => s.robot);
     if (stand) { seat.team = stand.team; this.dropSeat(stand.id); } else seat.bench = true;
    } else if (entry?.teams) seat.team = this.smallestTeam(entry);
+   // (Respawns closed: no pick, they watch the rest of the match: startPick.)
    if (!seat.bench) this.startPick(seat);
   }
   return seat;
@@ -159,6 +163,12 @@ export class Arena {
  get counting() { return this.mode !== 'practice'; }
  get elimination() { return eliminationMode(this.mode); }
  get teamMode() { return !!modeById(this.mode)?.teams; }
+ // No respawns for the rest of the match (config/match.js NO_RESPAWN_LEFT):
+ // the clock is down to the mode's cutoff. Only a finite clock can get there,
+ // so it is only ever true in FFA today (the round modes' clock is Infinity).
+ // (Asked of the clock as the match state sends it, to a tenth of a second,
+ // so the host and every joiner's screen close them on the same tick.)
+ get noRespawns() { return this.phase === 'playing' && respawnsClosed(this.mode, Math.max(0, Math.round(this.clock * 10) / 10)); }
  // Whether a can hurt b: not themselves, and not a teammate.
  hostile(a, b) { return a !== b && (!a.team || a.team !== b.team); }
  smallestTeam(entry) {
@@ -253,9 +263,12 @@ export class Arena {
   // 1V1: the duel circle, a new place each round (duel-circle.js); none otherwise.
   this.duelCircle = mode === '1v1' ? this.newDuelCircle() : null;
   this.stormPlan = null; this.stormPlan = this.newStorm(); this.setStormClock(0);
+  // (Round modes have no match clock: ROUNDS ends them. FFA: the length.
+  // Set before the picks, so a restart late in a match is not taken for
+  // one past its no-respawn cutoff.)
+  this.clock = eliminationMode(mode) ? Infinity : this.settings.roundLength;
   for (const seat of this.seats.values()) { seat.stats = newStats(); this.out(seat); this.startPick(seat); }
-  // (Round modes have no match clock: ROUNDS ends them. FFA: the length.)
-  this.phase = 'playing'; this.clock = eliminationMode(mode) ? Infinity : this.settings.roundLength; this.resultsLeft = 0; this.results = null; this.matchNumber++;
+  this.phase = 'playing'; this.resultsLeft = 0; this.results = null; this.matchNumber++;
   this.pendingEvents.push({ type: 'matchStart', number: this.matchNumber, mode });
   return true;
  }
@@ -291,6 +304,8 @@ export class Arena {
 
  startPick(seat, keep = null) {
   if (seat.bench) return;
+  // Respawns closed: nobody comes (back) in, robots included; they watch.
+  if (this.noRespawns) return this.sitOut(seat);
   // A robot picks at once: its setup's weapon, or one at random.
   if (seat.robot) { seat.picking = { left: 0, weapon: playableOr(seat.robot.setup?.weapon, null) || randomPlayableWeapon(this.random), go: true }; return; }
   seat.picking = { left: PICK.time, weapon: keep, go: false };
@@ -304,6 +319,8 @@ export class Arena {
    // time (the pause menu's CHANGE WEAPON), out of the world while picking.
    if (seat.present && !seat.dead) { if (this.mode !== 'practice') return false; this.out(seat); }
    this.startPick(seat);
+   // (Respawns closed: no pick opens, so nothing to choose: sitOut.)
+   if (!seat.picking) return false;
   }
   // (A weapon under maintenance is refused: a random one instead.)
   seat.picking.weapon = playableOr(weaponOrDefault(weapon), null);
@@ -321,7 +338,8 @@ export class Arena {
   if (alive && this.mode !== 'practice') return false;
   if (alive) this.out(seat);
   if (!seat.picking) this.startPick(seat, seat.weapon);
-  return true;
+  // (None opens once respawns are closed.)
+  return !!seat.picking;
  }
 
  // Practice: back in at once with the same weapon.
@@ -370,6 +388,7 @@ export class Arena {
  // In the world once the pick is done and any respawn wait is over.
  tryEnter(seat) {
   const pick = seat.picking; if (!pick) return;
+  if (this.noRespawns) return this.sitOut(seat);
   const done = pick.go || pick.left <= 0;
   // (Elimination: a pick made while down is kept for when everyone comes
   // back; its time running out closes it like GO, back to spectating.)
@@ -387,6 +406,16 @@ export class Arena {
   seat.present = false; seat.dead = false; seat.respawnIn = 0;
   seat.sim.respawn({ x: this.map.spawn.x, z: this.map.spawn.z }, seat.id);
   seat.sim.player.hp = 0; seat.sim.player.dead = true;
+ }
+
+ // Out for the rest of the match (respawns closed): no pick, no countdown,
+ // dead as far as every screen is concerned (their death card, spectating).
+ // A seat that was never in the world (a late joiner, a robot added late)
+ // gets no body: it is only marked down.
+ sitOut(seat) {
+  seat.picking = null;
+  if (!(seat.present && seat.dead)) { if (seat.present) this.out(seat); seat.present = true; seat.dead = true; }
+  seat.respawnIn = Infinity;
  }
 
  // A spot inside the safe circle as it will be in a few seconds (STORM.spawnAhead),
@@ -590,7 +619,8 @@ export class Arena {
   victim.dead = true;
   // Practice: no wait, nothing counted; RESPAWN on the death screen.
   // (Elimination: never on their own; everyone comes back together, newPoint.)
-  victim.respawnIn = this.elimination ? Infinity : this.counting ? this.settings.respawn : 0;
+  // (Respawns closed near the end of an FFA match: never, NO_RESPAWN_LEFT.)
+  victim.respawnIn = this.elimination || this.noRespawns ? Infinity : this.counting ? this.settings.respawn : 0;
   if (!this.counting) return;
   victim.stats.deaths++;
   if (killer && killer !== victim) {
@@ -665,19 +695,24 @@ export class Arena {
    if (t.moving && t.hp > 0) t.x = t.baseX + Math.sin(this.time * .72) * t.travel;
   }
   this.worldEvents = [...world.events.splice(0), ...this.pendingEvents.splice(0)];
+  // Respawns closed (NO_RESPAWN_LEFT): whoever is down stays down, their
+  // countdown included, and a pick in progress closes (tryEnter, sitOut).
+  const closed = this.noRespawns;
   for (const seat of this.seats.values()) {
    if (seat.picking && this.phase === 'playing') { seat.picking.left -= dt; }
    if (!seat.present && !seat.picking) continue;
-   // Time in game: in the world, not while picking a weapon.
-   if (seat.present && !seat.picking) {
+   // Time in game: in the world, not while picking a weapon. (Not a seat
+   // that joined after respawns closed and was never in the world: sitOut.)
+   if (seat.present && !seat.picking && seat.life > 0) {
     seat.stats.time += dt;
     seat.stats.weaponTime[seat.weapon] = (seat.stats.weaponTime[seat.weapon] || 0) + dt;
    }
+   if (closed && seat.dead) seat.respawnIn = Infinity;
    if (seat.dead && seat.respawnIn > 0) seat.respawnIn = Math.max(0, seat.respawnIn - dt);
    if (this.phase !== 'playing') continue;
    if (seat.picking) this.tryEnter(seat);
    // FFA: back in after the wait with the same weapon (unless picking again).
-   else if (seat.dead && this.counting && seat.respawnIn <= 0) this.spawn(seat);
+   else if (seat.dead && this.counting && seat.respawnIn <= 0 && !closed) this.spawn(seat);
   }
   if (this.phase === 'playing' && this.elimination) this.stepElimination(dt);
   // The storm's clock: a team round's own (still between rounds), FFA the
@@ -694,8 +729,17 @@ export class Arena {
    const teams = this.teamScores();
    const sides = this.elimination ? this.sideScores() : null;
    const leader = sides ? Math.max(0, ...sides.map(t => t.points)) : teams ? Math.max(0, ...teams.map(t => t.kills)) : Math.max(0, ...[...this.seats.values()].map(s => s.stats.kills));
-   if (this.clock <= 0 || this.matchOver || (!this.elimination && this.settings.killLimit && leader >= this.settings.killLimit)) {
+   const lastStanding = this.clock > 0 && this.lastStanding;
+   if (this.clock <= 0 || this.matchOver || lastStanding || (!this.elimination && this.settings.killLimit && leader >= this.settings.killLimit)) {
     const board = this.scoreboard();
+    // Ended early with one left standing (respawns closed): a tie on kills
+    // goes to them, not to fewer deaths or the name (a clock end keeps those).
+    if (lastStanding) {
+     const up = this.living(null)[0], i = up ? board.findIndex(r => r.id === up.id) : -1;
+     if (i > 0 && board[i].kills > 0 && board[i].kills === board[0].kills) board.unshift(...board.splice(i, 1));
+    }
+    // (Who that was, for the end card's table: stats-panel.js sortStatsRows.)
+    const survivor = lastStanding ? this.living(null)[0]?.id ?? null : null;
     this.phase = 'results'; this.resultsLeft = READY_WAIT; this.ready = new Set();
     const topTeam = teams && teams[0].kills > 0 && (teams.length < 2 || teams[0].kills > teams[1].kills) ? teams[0] : null;
     // (A side that forfeited is last whatever its points: FORFEIT.)
@@ -705,7 +749,7 @@ export class Arena {
      ? { winner: topSide ? (topSide.team ? { team: topSide.id, name: topSide.name + ' TEAM', points: topSide.points } : { id: topSide.id, name: topSide.name, points: topSide.points }) : null, board, teams, sides, points: true, draw: !!sides[0]?.points && !topSide, ...(this.forfeited ? { forfeit: this.forfeited } : {}) }
      : teams
      ? { winner: topTeam ? { team: topTeam.id, name: topTeam.name + ' TEAM', kills: topTeam.kills } : null, board, teams, draw: !!teams[0]?.kills && !topTeam }
-     : { winner: board[0] && board[0].kills > 0 ? { id: board[0].id, name: board[0].name, kills: board[0].kills } : null, board };
+     : { winner: board[0] && board[0].kills > 0 ? { id: board[0].id, name: board[0].name, kills: board[0].kills } : null, board, ...(survivor ? { survivor } : {}) };
     this.worldEvents.push({ type: 'matchEnd', number: this.matchNumber });
    }
   } else if (this.phase === 'results') {
@@ -744,6 +788,14 @@ export class Arena {
   this.decided = roundsDecided(this.sideScores().map(s => s.points), this.played, this.settings.rounds);
   this.roundWinner = winner; this.roundBreak = this.mode === '1v1' ? DUEL_BREAK : ROUND_BREAK;
   this.pendingEvents.push({ type: 'pointWon', side: winner, number: this.matchNumber });
+ }
+ // Respawns closed and one player (or nobody) left standing: nobody can come
+ // back, so the match ends now (the results as usual: most kills wins).
+ // Only with two or more in the match: a host alone keeps the clock.
+ get lastStanding() {
+  if (this.elimination || !this.noRespawns) return false;
+  const inMatch = [...this.seats.values()].filter(s => !s.bench).length;
+  return inMatch >= 2 && this.living(null).length <= 1;
  }
  // After the last point's break the match is over (endTick puts up the card).
  get matchOver() { return this.decided && !(this.roundBreak > 0); }

@@ -24,7 +24,7 @@ import { RobotBrain } from '../bots/robot-brain.js';
 import { makeProfile, SKILL_LEVELS, TEMPERS } from '../bots/robot-profile.js';
 import { WEAPONS } from '../items.js';
 import { ROBOT_SLOT, ROBOT_SKINS } from '../bots/robot-model.js';
-import { reloading, LOUD } from '../bots/bot-match.js';
+import { reloading, LOUD, abilitySpent, abilityBig } from '../bots/bot-match.js';
 import { modeById } from '../config/match.js';
 import { Squads } from '../bots/squad.js';
 
@@ -126,7 +126,7 @@ export class ArenaRobots {
   for (const other of living) {
    const o = other.sim.player; bodies.push(o);
    if (!arena.hostile(seat, other)) { friends.push({ id: other.id, leader: other === leader, busy: this.loud.has(other.id) || (other.robot && other.robot.brain.mode === 'engage') || (other.sim.player.hp < (this.hpSeen.get(other.id) ?? o.hp)), x: o.x, z: o.z, vx: o.vx, vz: o.vz, aimX: o.aimX, aimZ: o.aimZ, hp: o.hp, maxHp: o.maxHp }); continue; }
-   enemies.push({ id: other.id, human: !other.robot, aspect: other.aspect || 0, x: o.x, z: o.z, vx: o.vx, vz: o.vz, hp: o.hp, maxHp: o.maxHp, weapon: other.sim.weapon, ...(o.sightline?{sightline:o.sightline,below:!!o.below}:{}), aimX: o.aimX, aimZ: o.aimZ, loud: this.loud.has(other.id), reloading: reloading(other.sim) });
+   enemies.push({ id: other.id, human: !other.robot, aspect: other.aspect || 0, x: o.x, z: o.z, vx: o.vx, vz: o.vz, hp: o.hp, maxHp: o.maxHp, weapon: other.sim.weapon, ...(o.sightline?{sightline:o.sightline,below:!!o.below}:{}), aimX: o.aimX, aimZ: o.aimZ, loud: this.loud.has(other.id), reloading: reloading(other.sim), spent: abilitySpent(other.sim), big: abilityBig(other.sim) });
   }
   // Who is already after whom: a target others are on is less tempting.
   const targeting = new Map();

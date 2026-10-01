@@ -27,7 +27,9 @@ test('a mouse volley is drawn onto a target near the cursor; others land where p
 });
 
 test('the hex ring spreads faster, and Nominal holds 20 (owner, 2026-09-29: "reduce nominals ammo in a clip down to 20")', () => {
- assert.equal(RULES.hexSpeed, 3.6);
+ // (Hex fix + smaller hex, 2026-09-30: 3.6 -> 3.0 with hexRange 12 -> 10,
+ // the same 3.33 s to full size: tests/hex-breach.test.js.)
+ assert.equal(RULES.hexSpeed, 3);
  assert.equal(RIFLE.magazine, 20);
 });
 

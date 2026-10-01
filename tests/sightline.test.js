@@ -25,43 +25,47 @@ import {WorldView} from '../src/render/renderer.js';
 import {muzzleBearing,muzzleLateral} from '../src/aim-damping.js';
 beforeEach(t=>t.mock.method(Math,'random',()=>.5));
 const map={id:'sightline-test',width:150,depth:150,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]};
+// Balance pass 2026-09-30 (owner): the rifle rolls 100-104 (98.6-101), reloads
+// in 4.8 s (4.2); the sidearm 7.4 ± .4, 14 rounds, .3 s (5, 10, .28). Figures
+// the tests spelled out now come from S; MID is the rifle's middle roll.
+const MID=(S.damageMin+S.damageMax)/2,RELOAD=Math.round(S.reload*60);
 const near=(actual,expected,msg)=>assert.ok(Math.abs(actual-expected)<1e-9,`${msg??''} ${actual} should equal ${expected}`);
 const target=(id,x=10,z=.22,hp=400)=>({id,x,z,kind:'robot',maxHp:hp});
 const make=(targets=[])=>{const s=new Simulation({...map,targets});s.weapon='sightline';s.dev.noSpread=true;return s;};
 const tick=(s,input={},n=1)=>{for(let i=0;i<n;i++)s.step({aimX:1,aimZ:0,aimPointX:25,aimPointZ:0,...input});};
 const crouch=s=>{tick(s,{sightlineStance:true});tick(s,{},120);};
 const fire=s=>tick(s,{fire:true,aiming:true});
-test('manual Sidekick fires 5 damage at the middle roll once per press, ten rounds, with a 0.28 second cap',()=>{
- const s=make([target('a')]);tick(s,{fire:true},90);assert.equal(s.stats.launched,1);assert.equal(s.sightline.pistolAmmo,9);near(s.targets[0].hp,395);
+test('manual Sidekick fires 7.4 damage at the middle roll once per press, fourteen rounds, with a 0.3 second cap',()=>{
+ const s=make([target('a')]);tick(s,{fire:true},90);assert.equal(s.stats.launched,1);assert.equal(s.sightline.pistolAmmo,S.pistolMagazine-1);near(s.targets[0].hp,400-S.pistolDamage);
  tick(s);tick(s,{fire:true});assert.equal(s.stats.launched,2);tick(s);tick(s,{fire:true});assert.equal(s.stats.launched,2);
- for(let i=0;i<8;i++){tick(s,{},18);tick(s,{fire:true});}assert.equal(s.sightline.pistolAmmo,0);tick(s,{},18);tick(s,{fire:true});assert.equal(s.sightline.pistolReload,2);
- tick(s,{},119);assert.equal(s.sightline.pistolAmmo,0);tick(s);assert.equal(s.sightline.pistolAmmo,10);
+ for(let i=0;i<S.pistolMagazine-2;i++){tick(s,{},19);tick(s,{fire:true});}assert.equal(s.sightline.pistolAmmo,0);tick(s,{},19);tick(s,{fire:true});assert.equal(s.sightline.pistolReload,2);
+ tick(s,{},119);assert.equal(s.sightline.pistolAmmo,0);tick(s);assert.equal(s.sightline.pistolAmmo,S.pistolMagazine);
 });
 test('only E crouches, halts movement, keeps regular camera until ADS, and permits rifle reload',()=>{
  const s=make();tick(s,{moveX:1},12);crouch(s);const x=s.player.x;tick(s,{moveX:1,dodge:true},20);assert.equal(s.player.x,x);assert.equal(s.player.dodgeRemaining,0);assert.equal(scopeActive(s),false);
- tick(s,{aiming:true});assert.equal(scopeActive(s),true);fire(s);tick(s,{},12);assert.ok(s.sightline.rifleReload>4,'the rifle reloads itself once its round is away (v0.992a)');tick(s,{},252);assert.equal(s.sightline.rifleAmmo,1);
+ tick(s,{aiming:true});assert.equal(scopeActive(s),true);fire(s);tick(s,{},12);assert.ok(s.sightline.rifleReload>4,'the rifle reloads itself once its round is away (v0.992a)');tick(s,{},RELOAD);assert.equal(s.sightline.rifleAmmo,1);
  crouch(s);assert.equal(s.sightline.crouched,false);tick(s,{moveX:1},12);assert.ok(s.player.x>x);
 });
 test('standing X loads while moving, then automatically returns to Sidekick with rifle armed',()=>{
  const s=make();tick(s,{sightlineX:true,moveX:1});assert.ok(s.sightline.xLoading);assert.equal(s.sightline.crouched,false);const x=s.player.x;
- tick(s,{moveX:1,fire:true},251);assert.ok(s.sightline.rifleReload>0);assert.equal(s.stats.launched,0);tick(s,{moveX:1});assert.ok(s.player.x>x);assert.equal(s.sightline.xLoading,false);assert.equal(s.sightline.special,true);assert.equal(s.sightline.crouched,false);
+ tick(s,{moveX:1,fire:true},RELOAD-1);assert.ok(s.sightline.rifleReload>0);assert.equal(s.stats.launched,0);tick(s,{moveX:1});assert.ok(s.player.x>x);assert.equal(s.sightline.xLoading,false);assert.equal(s.sightline.special,true);assert.equal(s.sightline.crouched,false);
  tick(s,{sightlineX:true});assert.equal(s.stats.launched,0);tick(s);fire(s);assert.equal(s.stats.launched,1);assert.equal(s.sightline.special,true,'Sidekick cannot spend the rifle round');
 });
 test('crouched X stays crouched, fires with second X or LMB and starts exactly 50 seconds cooldown',()=>{
- for(const fireKey of ['sightlineX','fire']){const s=make();crouch(s);tick(s,{sightlineX:true});tick(s,{},252);assert.equal(s.sightline.crouched,true);assert.ok(s.sightline.special);tick(s,{[fireKey]:true,aiming:true});assert.equal(s.sightline.xCooldown,50);assert.equal(s.sightline.commit,.16);assert.equal(s.sightline.special,false);tick(s,{},10);assert.equal(s.stats.launched,1);assert.ok(s.sightlineRounds[0].special);}
+ for(const fireKey of ['sightlineX','fire']){const s=make();crouch(s);tick(s,{sightlineX:true});tick(s,{},RELOAD);assert.equal(s.sightline.crouched,true);assert.ok(s.sightline.special);tick(s,{[fireKey]:true,aiming:true});assert.equal(s.sightline.xCooldown,50);assert.equal(s.sightline.commit,.16);assert.equal(s.sightline.special,false);tick(s,{},10);assert.equal(s.stats.launched,1);assert.ok(s.sightlineRounds[0].special);}
 });
 test('a committed path stays locked when aim changes and takes time to hit',()=>{
- const s=make([target('a',20)]);crouch(s);fire(s);assert.equal(s.sightlineRounds.length,0);tick(s,{aimX:0,aimZ:1},8);assert.equal(s.sightlineRounds.length,0);tick(s,{aimX:0,aimZ:1},2);assert.equal(s.targets[0].hp,400);assert.ok(s.sightlineRounds[0].dx>.99);tick(s,{},22);near(s.targets[0].hp,300.2);
+ const s=make([target('a',20)]);crouch(s);fire(s);assert.equal(s.sightlineRounds.length,0);tick(s,{aimX:0,aimZ:1},8);assert.equal(s.sightlineRounds.length,0);tick(s,{aimX:0,aimZ:1},2);assert.equal(s.targets[0].hp,400);assert.ok(s.sightlineRounds[0].dx>.99);tick(s,{},22);near(s.targets[0].hp,400-MID);
 });
-test('rifle damage rolls include 98.6 and 101, with explicit lethal reactions',t=>{
- for(const [random,expected] of [[0,98.6],[.9999,101]]){t.mock.method(Math,'random',()=>random);const s=make([target('a',10,.22,100)]);crouch(s);fire(s);tick(s,{},30);near(s.targets[0].hp,Math.max(0,100-expected));const e=s.events.find(e=>e.type==='kill'||e.type==='hit');assert.equal(e.damageType,'sightlineShot');}
+test('rifle damage rolls include 100 and 104, with explicit lethal reactions',t=>{
+ for(const [random,expected] of [[0,S.damageMin],[.9999,S.damageMax]]){t.mock.method(Math,'random',()=>random);const s=make([target('a',10,.22,100)]);crouch(s);fire(s);tick(s,{},30);near(s.targets[0].hp,Math.max(0,100-expected));const e=s.events.find(e=>e.type==='kill'||e.type==='hit');assert.equal(e.damageType,'sightlineShot');}
  assert.equal(deathReaction('sightlineShot').headWound,true);assert.equal(deathReaction('sightlinePistol').headWound,true);assert.equal(deathReaction('sightlineBlast').mode,'scatter');
 });
 test('sniper penetrates multiple props but stops at unbreakable cover',()=>{
- const s=make([target('a',15)]);s.props=[{id:'p1',x:4,z:0,hp:40,maxHp:40,kind:'crate'},{id:'p2',x:7,z:0,hp:40,maxHp:40,kind:'crate'}];s.colliders=[{x:4,z:0,w:1,d:1,propId:'p1'},{x:7,z:0,w:1,d:1,propId:'p2'}];crouch(s);fire(s);tick(s,{},35);assert.equal(s.props[0].hp,0);assert.equal(s.props[1].hp,0);near(s.targets[0].hp,300.2);
+ const s=make([target('a',15)]);s.props=[{id:'p1',x:4,z:0,hp:40,maxHp:40,kind:'crate'},{id:'p2',x:7,z:0,hp:40,maxHp:40,kind:'crate'}];s.colliders=[{x:4,z:0,w:1,d:1,propId:'p1'},{x:7,z:0,w:1,d:1,propId:'p2'}];crouch(s);fire(s);tick(s,{},35);assert.equal(s.props[0].hp,0);assert.equal(s.props[1].hp,0);near(s.targets[0].hp,400-MID);
  const wall=make([target('a',15)]);wall.colliders=[{x:5,z:0,w:.5,d:5,wall:true}];crouch(wall);fire(wall);tick(wall,{},35);assert.equal(wall.targets[0].hp,400);assert.equal(wall.sightlineRounds.length,0);
  // (v0.999a) Trees, fences, fieldstone walls and every other obstacle outside a building: passed.
- const open=make([target('a',15)]);open.colliders=[{x:5,z:0,w:.5,d:5,height:3},{x:8,z:0,w:.24,d:4,height:1.1},{x:11,z:0,w:.6,d:.6,height:6}];crouch(open);fire(open);tick(open,{},35);near(open.targets[0].hp,300.2);
+ const open=make([target('a',15)]);open.colliders=[{x:5,z:0,w:.5,d:5,height:3},{x:8,z:0,w:.24,d:4,height:1.1},{x:11,z:0,w:.6,d:.6,height:6}];crouch(open);fire(open);tick(open,{},35);near(open.targets[0].hp,400-MID);
 });
 test('a target can cross the committed path and evade all rifle damage',()=>{
  const s=make([target('a',20)]);crouch(s);fire(s);tick(s,{},8);s.targets[0].z=4;tick(s,{},50);assert.equal(s.targets[0].hp,400);
@@ -102,10 +106,10 @@ test('solid cover can stop cursor-placed Breach early',()=>{
 });
 test('X combines direct damage and blast once, nearby splash falls off and respects cover',()=>{
  const s=make([target('a'),target('b',10,1.2),target('c',10,3.4),target('hidden',10,-2.5)]);s.colliders=[{x:10,z:-1.2,w:4,d:.2}];crouch(s);s.sightline.special=true;fire(s);tick(s,{},30);
- near(s.targets[0].hp,240.2);assert.ok(s.targets[1].hp<350&&s.targets[1].hp>=340);assert.ok(s.targets[2].hp>s.targets[1].hp);assert.equal(s.targets[3].hp,400);assert.equal(s.events.filter(e=>e.type==='hit'&&e.id==='a').length,1);assert.ok(s.events.some(e=>e.type==='grenadeExplosion'));assert.equal(sightlineSplash(5),0);
+ near(s.targets[0].hp,400-MID-S.blastDamage);assert.ok(s.targets[1].hp<350&&s.targets[1].hp>=340);assert.ok(s.targets[2].hp>s.targets[1].hp);assert.equal(s.targets[3].hp,400);assert.equal(s.events.filter(e=>e.type==='hit'&&e.id==='a').length,1);assert.ok(s.events.some(e=>e.type==='grenadeExplosion'));assert.equal(sightlineSplash(5),0);
 });
 test('death cancels chambering and pending shot but launched rounds keep flying',()=>{
- const s=make([target('a',25)]);crouch(s);fire(s);tick(s,{},10);s.damagePlayer(9999,'enemy');tick(s,{},40);near(s.targets[0].hp,300.2);assert.equal(s.sightline.special,false);assert.equal(s.sightline.crouched,false);
+ const s=make([target('a',25)]);crouch(s);fire(s);tick(s,{},10);s.damagePlayer(9999,'enemy');tick(s,{},40);near(s.targets[0].hp,400-MID);assert.equal(s.sightline.special,false);assert.equal(s.sightline.crouched,false);
  const pending=make();crouch(pending);fire(pending);pending.damagePlayer(9999,'enemy');tick(pending,{},30);assert.equal(pending.stats.launched,0);
 });
 test('45 degree view turns slowly while mouse and keyboard shots aim independently',()=>{
@@ -138,20 +142,20 @@ test('all three death reactions keep both weapons in the dropped loadout and cle
   const scene=new THREE.Scene();scene.add(player);const death=new DeathView({player,scene,qualityName:'performance'});death.start({damageType,x:0,z:0,aimX:1,aimZ:0,directionX:1,directionZ:0});assert.ok(death.gun.children.length>=3);assert.equal(death.reaction.mode,damageType==='sightlineBlast'?'scatter':'corpse');death.update(2);death.clear();assert.equal(scene.children.length,1);assert.ok(player.visible);
  }
 });
-test('Sidekick rolls 4.6–5.4 per shot and carries the same roll into targets, props and host players',t=>{
- for(const [random,damage] of [[.01,4.6],[.21,4.8],[.41,5],[.61,5.2],[.81,5.4]]){
+test('Sidekick rolls 7–7.8 per shot and carries the same roll into targets, props and host players',t=>{
+ for(const [random,damage] of [[.01,-.4],[.21,-.2],[.41,0],[.61,.2],[.81,.4]].map(([r,d])=>[r,S.pistolDamage+d])){
   t.mock.method(Math,'random',()=>random);const rolled=make([target('roll')]);fire(rolled);near(rolled.sightlineRounds[0].damage,damage);
   t.mock.method(Math,'random',()=>.5);tick(rolled,{},30);near(rolled.targets[0].hp,400-damage,'impact keeps the original shot roll');
  }
  for(const distance of [3,20]){
-  const s=make([target('a',distance)]);fire(s);tick(s,{},30);near(s.targets[0].hp,395);
+  const s=make([target('a',distance)]);fire(s);tick(s,{},30);near(s.targets[0].hp,400-S.pistolDamage);
  }
- const propSim=make();propSim.props=[{id:'crate',x:4,z:0,hp:40,maxHp:40,kind:'crate'}];propSim.colliders=[{x:4,z:0,w:1,d:1,propId:'crate'}];fire(propSim);tick(propSim,{},15);near(propSim.props[0].hp,35);
+ const propSim=make();propSim.props=[{id:'crate',x:4,z:0,hp:40,maxHp:40,kind:'crate'}];propSim.colliders=[{x:4,z:0,w:1,d:1,propId:'crate'}];fire(propSim);tick(propSim,{},15);near(propSim.props[0].hp,40-S.pistolDamage);
  const arena=new Arena({map,createSim:m=>new Simulation(m),settings:{robots:'off'}}),a=arena.addSeat('a','A'),b=arena.addSeat('b','B');
  for(const seat of [a,b]){seat.present=true;seat.sim.respawn({x:seat===a?0:10,z:seat===a?0:.22});seat.sim.weapon='sightline';seat.sim.dev.noSpread=true;}
  const hp=b.sim.player.hp;
  for(let i=0;i<30;i++){arena.before(a);tick(a.sim,i===0?{fire:true,aiming:true}:{});arena.after(a);}
- near(b.sim.player.hp,hp-5);
+ near(b.sim.player.hp,hp-S.pistolDamage);
 });
 test('host resolves a direct special round once and preserves its typed lethal hit',()=>{
  const arena=new Arena({map,createSim:m=>new Simulation(m),settings:{robots:'off'}}),a=arena.addSeat('a','A'),b=arena.addSeat('b','B');
@@ -172,7 +176,7 @@ test('robots notice a visible aimed rifle but do not infer its laser through a w
 });
 test('a sniper bot completes its rifle reload even if it wants cover',()=>{
  const sim=make();sim.sightline.crouched=true;sim.sightline.rifleAmmo=0;const brain={sim,mode:'cover',xAllowed:()=>false};
- for(let i=0;i<255;i++){const input={};RobotBrain.prototype.sightline.call(brain,input,{},15,false,true);tick(sim,input);}
+ for(let i=0;i<RELOAD+3;i++){const input={};RobotBrain.prototype.sightline.call(brain,input,{},15,false,true);tick(sim,input);}
  assert.equal(sim.sightline.rifleAmmo,1);assert.equal(sim.sightline.rifleReload,0);
 });
 test('setup is 1.5 times faster, still blocks fire, and E cancels immediately',()=>{
@@ -188,7 +192,7 @@ test('a reload takes the scope down while it runs and gives it back by itself',(
  const s=make();crouch(s);tick(s,{aiming:true});assert.ok(scopeActive(s));
  tick(s,{reload:true,aiming:true});assert.ok(scopeActive(s),'R with a round in: nothing to reload, the scope stays');
  fire(s);tick(s,{aiming:true},12);assert.equal(s.sightline.rifleAmmo,0);assert.ok(s.sightline.rifleReload>4);assert.equal(scopeActive(s),false);
- tick(s,{aiming:true},260);assert.equal(s.sightline.rifleAmmo,1);assert.ok(scopeActive(s),'back by itself, aim still held');
+ tick(s,{aiming:true},RELOAD+8);assert.equal(s.sightline.rifleAmmo,1);assert.ok(scopeActive(s),'back by itself, aim still held');
  s.sightline.pistolReload=1.5;tick(s,{aiming:true});assert.ok(scopeActive(s),"the Sidekick's reload does not take the rifle's scope");
  tick(s,{aiming:true},100);tick(s,{aiming:true,sightlineX:true});assert.equal(scopeActive(s),false);assert.ok(s.sightline.xLoading);
 });
@@ -262,9 +266,9 @@ test('Sightline and Sidekick share two dashes with a five percent shorter rechar
 });
 
 test('X replaces an unfinished ordinary Sightline reload with a full Breach reload when ready',()=>{
- const s=make();crouch(s);s.sightline.rifleAmmo=0;tick(s,{reload:true});tick(s,{},100);assert.ok(s.sightline.rifleReload<3);
- tick(s,{sightlineX:true,aiming:true});assert.equal(s.sightline.rifleReload,4.2);assert.equal(s.sightline.xLoading,true);assert.equal(scopeActive(s),false);assert.equal(s.sightline.crouched,true);
- tick(s,{},60);const remaining=s.sightline.rifleReload;tick(s,{sightlineX:true});assert.ok(s.sightline.rifleReload<remaining,'X cannot restart Breach loading');tick(s,{},191);assert.equal(s.sightline.special,true);assert.equal(s.sightline.rifleAmmo,1);
+ const s=make();crouch(s);s.sightline.rifleAmmo=0;tick(s,{reload:true});tick(s,{},100);assert.ok(s.sightline.rifleReload<S.reload-1.5);
+ tick(s,{sightlineX:true,aiming:true});assert.equal(s.sightline.rifleReload,S.reload);assert.equal(s.sightline.xLoading,true);assert.equal(scopeActive(s),false);assert.equal(s.sightline.crouched,true);
+ tick(s,{},60);const remaining=s.sightline.rifleReload;tick(s,{sightlineX:true});assert.ok(s.sightline.rifleReload<remaining,'X cannot restart Breach loading');tick(s,{},RELOAD-61);assert.equal(s.sightline.special,true);assert.equal(s.sightline.rifleAmmo,1);
  const cooling=make();crouch(cooling);cooling.sightline.rifleAmmo=0;cooling.sightline.xCooldown=20;tick(cooling,{reload:true});tick(cooling,{},50);const before=cooling.sightline.rifleReload;tick(cooling,{sightlineX:true});assert.equal(cooling.sightline.xLoading,false);assert.ok(cooling.sightline.rifleReload<before);
 });
 
@@ -275,7 +279,7 @@ test('scope and precise laser aim are disabled inside buildings and standing cro
 });
 
 test('Sightline clears low rocks and debris while Sidekick and tall cover retain their stops',()=>{
- for(const height of [.5,.8,1.1,1.2]){const s=make([target('a')]);s.colliders=[{x:5,z:0,w:1,d:3,height}];crouch(s);fire(s);tick(s,{},30);near(s.targets[0].hp,300.2);const side=make([target('a')]);side.colliders=s.colliders;fire(side);tick(side,{},30);assert.equal(side.targets[0].hp,400);}
+ for(const height of [.5,.8,1.1,1.2]){const s=make([target('a')]);s.colliders=[{x:5,z:0,w:1,d:3,height}];crouch(s);fire(s);tick(s,{},30);near(s.targets[0].hp,400-MID);const side=make([target('a')]);side.colliders=s.colliders;fire(side);tick(side,{},30);assert.equal(side.targets[0].hp,400);}
  const s=make([target('a')]);s.colliders=[{x:5,z:0,w:1,d:3,height:1.5,wall:true}];crouch(s);fire(s);tick(s,{},30);assert.equal(s.targets[0].hp,400);
 });
 

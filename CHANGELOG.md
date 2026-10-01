@@ -2,6 +2,65 @@
 
 Deadstab, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## v0.1.3-alpha (2026-09-30)
+
+Online: everyone needs this version (the page and the server update together; reload if the game says it was just updated).
+
+### No respawns near the end of FFA
+
+- **FFA: no respawns in the last 45 seconds** (online and against bots). When the clock reaches 0:45, "NO RESPAWNS" comes up in the middle of the screen for everyone; from then on nobody comes back, bots included, and a NO RESPAWNS mark stays beside the clock.
+- If only one player is left standing after that, the match ends right away (most kills still wins; a tie on kills goes to the one still standing).
+- Online: players on an older version can no longer join (reload the page on both devices).
+- The round modes (2V2, 2V2V2, 3V3, 4V4) already have no respawns inside a round and no match clock, so nothing changes there. (Their cutoff is set for when they get one: 45 seconds for 2V2 and 2V2V2, a minute for 3V3 and 4V4.) 1V1 has none.
+- **The death screen shows the time left in the match**, counting down under your respawn. If your respawn would come after the cutoff it tells you straight away ("NO RESPAWN — respawns end at 0:45") instead of counting down to nothing, and after the cutoff it reads NO RESPAWNS.
+- Out for the rest of an FFA match, you can watch anyone still standing (arrows, A / D, or click or tap to switch).
+- Joining an FFA match after the cutoff, you watch until it ends.
+- Fixed: in the round modes online, the top of the screen showed a red "0:00". It now shows the round and each side's points.
+- Fixed: online, a weapon pick sent by a player waiting on the bench raised an error on the host. It is now ignored.
+- On a phone held sideways, the spectating bar no longer sits over the death card. On an upright phone, the online match clock sits top left, clear of the SCORES button.
+
+### Balance pass
+
+Every weapon's numbers were retuned (2026-09-30) so fights end sooner and are decided by hitting your shots, dodging and timing your abilities. Nothing new was added: same weapons, same abilities, new numbers. Time to kill below is from full health (100) with every shot landing.
+
+- **Nominal**: 6.8 a bullet (was 4.4), one every 0.2 s (0.165). 15 hits kill: about 2.9 s up close, 4 s at 22 m (was 5.5 / 6.8 s). A 20-round magazine now holds a kill with a third to spare. Aiming in is a touch less pin-point at range (still tighter than the Sidekick). Grenade core 42 (58). Nova lasts 4 s (5) and cuts damage taken by 15% (30%).
+- **Ballast**: a tighter cone (hip and aimed) and pellets that keep their power much further: one hip shell at 5 m does about 41 (about 14 before), 6-8 m is a real fight, 12 m still isn't. Up to 70 a shell (60). Reload 2.2 s (2.5). The double shot kills out to about 4 m.
+- **Omen**: diamonds 9.4 (7.2), full damage to 13 m, reload 1.35 s (1.8): about 6.3 s alone (9.8). The curse is still the payoff but lighter: primed shot 12, curse ticks 1.4-2.2, rupture 20 rising to 28 in the last second (27 to 34), so timing it late still pays; covenant diamonds 6 (9). Best curse + covenant combo about 3.2 s.
+- **Sightline**: the stance rifle now always kills from full health (100-104; it was a coin flip at 98.6-101), paid for with a 4.8 s reload (4.2; Breach loads as long). Breach 158 direct (about 160). The sidekick sidearm: 7-7.8 a shot (4.6-5.4), 14 rounds (10), about 4 s to kill (8), a quarter slower than the Sidekick.
+- **Sidekick**: 8.2-9 a shot (5.6-6.4), 12 rounds (10): 12 hits, about 3.2 s (6.3). Mines 24-36 (34-46) and refill in 25 s (30). Rush 6 s (8) at 1.6x fire rate (1.75x).
+- **Sheath**: slashes 15-17 (12-14): 7 hits, about 2.9 s (3.4). Draw-cut and three slashes always kill now (it averaged 99). Gold Rush 45% faster (35%), every 10 s (12).
+- **Ichor**: Frenzy now out-damages plain slashing: every strike 6.5-18 by blood (3-9; a slash is 6-17) and they come faster, 78-216 in all (36-108). It kills on its own from half blood (about 1.7 s); at full blood on its 6th strike, about 1.1 s (it needed all 12). Blood slash 16-20 (12-16) and still costs you about 7 health. The guard soaks 14-18 (8-12). Slashes unchanged.
+- **Static**: the lightning stream back to full strength and fading less with distance, so a full orb bar kills at its whole 8 m reach. Orbs, volleys and the hex unchanged.
+- Settings > Controls, the Sidekick's description and the tutorials now read the numbers this pass changed from the game, so those can't go out of date again (Ichor's slash range, Ballast's fall-off and the blood slash's health cost were wrong before).
+
+### Bots fight like players
+
+Bots fight like players now instead of walking after you forever.
+
+- **They back off and come again.** A bot that is hurt and just got hit, reloading with you close, losing the trade (taking more than it deals), outnumbered, or chasing someone it can't catch now gives up the chase: it backs off to cover (still shooting), catches its breath or reloads, and comes back from a different side a few seconds later.
+- **They pick their moment.** When you are low, reloading, just used your big ability or are alone, a bot presses in hard and uses its own ability. If it has held its range a while it takes the initiative too: it pushes in, or goes round to flank you. No more bot sitting at the edge of your screen waiting.
+- **Every bot has a personality.** Aggressive bots press early and chase longer, cautious ones back off sooner, flankers come round the side, snipers hold their distance. Two bots of the same kind don't switch on the same beat.
+- **They move better in a fight.** Varied strafes and quick side switches (hard bots), a little in-and-out peeking, and they walk in at an angle instead of straight at you. Closing on a longer gun that's aiming at them they jink side to side (otherwise they come straight in), and a chase that isn't really gaining on you is given up. They dodge a big ability they see coming (a charged Scatter, a Frenzy, a draw-cut, Surge) and dodge away to break a chase.
+- **Each weapon fights at its own range.** Nominal holds 8-15 m, Ballast gets inside 5 m, Omen and Sidekick at mid range, Sightline far back. A gun bot kites a blade just out of its slash and dash now, not out past its blood wave (it couldn't be caught before).
+- **Static bots actually throw volleys.** They used to keep their orb bar for a hex that rarely came, so they placed two orbs and only ever streamed. Now they fight at mid range, build 4-7 orbs and launch them, stream only when someone is on top of them (or is a blade or a Ballast), and step back while their orbs refill. Normal Static bots also save up for their hex and throw it from mid range.
+- **Ichor and Sheath bots can close in.** They dash in from a dash or two away (saving a dash for it), at a good moment: you reloading, your aim off them, you backing away, or when they press. Ichor uses Frenzy once it is trading blows, and its cut is judged by its wide arc (it used to hold its swing right after dashing in). Sheath uses Gold Rush to close from 6-15 m, not to wander. Coming back from a reset, a blade hides a dash away from you to spring from.
+- **Teams:** bots peel for a teammate who is nearly dead (they go for whoever is on top of them) and still spread out rather than all chasing one target.
+- **Difficulty:** easy bots are more passive (press later, over-chase, back off late); normal is about as deadly as before and hard only a little more (under 10%), even though Static bots now actually fight. In hard bot-vs-bot duels Static bots went from winning about 1 in 9 to about 1 in 6 and Ichor bots to 1 in 4.
+- Bots still never shoot you from off your screen, still keep out of the storm (their dodges too), and the FFA no-respawn cutoff is unchanged.
+
+### Static's hex
+
+- **Fixed: enemies could get into Static's hex and hit you inside it.** Anyone running, dodging or dashing at it (bots especially: Ichor, Sheath, Ballast up close) got through its wall, and once inside their hits landed. Now nobody on the other side can get in for the hex's whole life (spreading, full, holding, and spinning after the pulse): walking, dodges, dashes, Gold Rush, the Draw-cut and knockback all stop at its wall. Someone already inside when it grows over them is pushed out as before and can't go deeper, and nothing they do hurts you while you're inside. Slashes, blasts, curses and mines from outside don't reach in either.
+- **The hex is a bit smaller:** at full size its corners reach 10 m from its centre (was 12), and it still takes the same time to spread out.
+- **Bots understand the hex:** they stop firing into it, back off out of reach of its spinning sides and wait it out (or go after someone else), instead of running at its wall. They never back off into the storm to do it. Easy and normal bots wait close enough that its spinning sides still catch them now and then; hard ones keep clear.
+- Someone else's knockback (a Ballast shell's shove) can't push you into another team's hex either.
+- Online: right after a hex is pulsed, joiners no longer get pulled back out of it while it spins.
+
+### Older browsers
+
+- **Fixed: the game now starts on older Macs.** On Safari before 15.4 the title showed a giant, cut-off "deadsta" with no blood and the buttons did nothing. The game now fills in the missing browser features and is built for older browsers.
+- If the game ever can't start, it now says so (with your browser version and a RELOAD button) instead of leaving a dead menu on screen.
+
 ## v0.1.2-alpha (2026-09-30)
 
 - **HOST** no longer asks for a map: CREATE GAME opens the room on the map you're on, and everyone votes on the map when the round starts (PRACTICE still picks it in the lobby).

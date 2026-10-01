@@ -33,7 +33,7 @@ test('each ammo provides exactly RULES.sprayAmmoTime of stream (12 of them at fu
   for (let i = 0; i < 320; i++) sim.stepSpray(.01);
   assert.equal(sim.ammo, 0); assert.equal(sim.spray.active, false);
   const duration=12*RULES.sprayAmmoTime;
-  const expected = RULES.sprayInnerDPS * (1 - .25 * (3 - .65) / RULES.sprayRange) * (duration+(RULES.sprayMaxMultiplier-1)*(duration-RULES.sprayRampTime/2));
+  const expected = RULES.sprayInnerDPS * (1 - RULES.sprayFalloff * (3 - .65) / RULES.sprayRange) * (duration+(RULES.sprayMaxMultiplier-1)*(duration-RULES.sprayRampTime/2));
   assert.ok(Math.abs(startHP - sim.targets[0].hp - expected) < 1e-6);
   for (let i = 0; i < 300; i++) step(sim);
   assert.equal(sim.spray.active, false, 'holding C after exhaustion cannot auto-restart');

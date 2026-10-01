@@ -8,6 +8,7 @@ import { HostSession } from '../src/net/host-session.js';
 import { ClientSession } from '../src/net/client-session.js';
 import { movementInput, playerInput, readMessage, cleanName, PROTOCOL_VERSION } from '../src/net/protocol.js';
 import { MATCH, READY_WAIT } from '../src/net/arena.js';
+import { OMEN } from '../src/config/gameplay.js';
 import { SPAWN_APART, SYPHON, syphonAmount } from '../src/config/match.js';
 import { interiorSpawns } from '../src/net/spawn-points.js';
 import { mapColliders } from '../src/maps.js';
@@ -66,11 +67,11 @@ test('a joiner primes, marks and ruptures with Omen through host authority',t=>{
  r.tick([{omenPrime:true,fire:true,aimX:0,aimZ:1}]);
  for(let i=0;i<30;i++)r.tick([{aimX:0,aimZ:1}]);
  const caster=[...r.host.remotes.values()][0].sim;
- assert.equal(caster.omen.marks.length,1);assert.ok(r.hostSim.player.hp<=90.1+1e-9);
+ assert.equal(caster.omen.marks.length,1);assert.ok(r.hostSim.player.hp<=100-OMEN.primeDamage+1e-9);
  assert.equal(r.joined[0].sim.omen.marks.length,1,'own timer arrives in host snapshots');
  const before=r.hostSim.player.hp;r.tick([{omenPrime:true}]);
  for(let i=0;i<8;i++)r.tick();
- assert.ok(r.hostSim.player.hp<=before-24.3+1e-9);assert.equal(caster.omen.marks.length,0);
+ assert.ok(r.hostSim.player.hp<=before-(OMEN.blastDamage-OMEN.curseBlastVariance)+1e-9);assert.equal(caster.omen.marks.length,0);
  assert.equal(r.joined[0].sim.omen.marks.length,0);assert.ok(r.joined[0].sim.omen.primeCooldown>0);
 });
 
@@ -594,4 +595,42 @@ test('syphon (on by default): a kill gives the killer 50 health in FFA, 25 in th
  other.dead = false; host.sim.player.hp = 40;
  arena.setSetting('syphon', 'off'); other.dead = false; host.sim.player.hp = 40;
  arena.died(other, host); assert.equal(host.sim.player.hp, 40);
+});
+
+// No respawns near the end (config/match.js NO_RESPAWN_LEFT): nothing new on
+// the wire; a joiner works it out from the clock and mode the host sends.
+test('respawns close at 45 s left in FFA: joiners see it from the clock, the fallen stay down, a late joiner watches', async () => {
+ const { respawnsClosed } = await import('../src/config/match.js');
+ // (The storm off: its final zone would take the idle players out first.)
+ const r = room({ clients: 2, weapons: ['static', 'static', 'static'], settings: { robots: 'off', storm: 'off' } });
+ const [a, b] = r.joined, arena = r.host.arena;
+ for (let i = 0; i < 30; i++) r.tick();
+ arena.clock = 47;
+ for (let i = 0; i < 6; i++) r.tick();
+ let m = a.session.match();
+ assert.equal(m.mode, 'ffa'); assert.equal(m.timed, true);
+ assert.equal(respawnsClosed(m.mode, m.left), false, 'open at ' + m.left);
+ // B falls at ~47 left: a 6 s wait would end past the cutoff.
+ const seatB = [...r.host.remotes.values()][1].seat;
+ seatB.sim.player.hp = 0; arena.died(seatB, null);
+ for (let i = 0; i < 60 * 3; i++) r.tick();
+ m = a.session.match();
+ assert.equal(respawnsClosed(m.mode, m.left), true, 'closed at ' + m.left);
+ assert.equal(respawnsClosed(m.mode, m.left), arena.noRespawns, 'the joiner agrees with the host');
+ for (let i = 0; i < 60 * 6; i++) r.tick();
+ assert.ok(b.session.me.dead && b.session.me.present, 'B never came back');
+ assert.equal(arena.phase, 'playing', 'the host and A still standing: the clock runs');
+ // A new player joins now: no weapon pick, down, and a pick sent anyway changes nothing.
+ const sim = createSim(map), late = new ClientSession({ transport: r.net.join('ABCDE'), map, local: sim, createSim, now: () => r.time, name: 'Late' });
+ r.net.flush();
+ for (let i = 0; i < 12; i++) { r.tick(); sim.step(late.input({})); r.net.flush(); }
+ late.choose('rifle'); r.net.flush();
+ for (let i = 0; i < 12; i++) { r.tick(); sim.step(late.input({})); r.net.flush(); }
+ assert.equal(late.me.picking, null); assert.ok(late.me.dead && late.me.present, 'watching');
+ assert.equal(late.me.life, 0, 'never in the world');
+ // The host falls: A alone is left standing, so the match ends now.
+ r.hostSim.player.hp = 0; arena.died(r.host.hostSeat, null);
+ for (let i = 0; i < 6; i++) r.tick();
+ assert.equal(arena.phase, 'results');
+ assert.equal(a.session.match().phase, 'results');
 });

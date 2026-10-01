@@ -11,7 +11,7 @@
 // its velocity between snapshots so fast rounds do not stutter at 20 Hz.
 // Orb ids are made unique per player (slot * 1e6 + id), because each sim
 // counts its own from 1 and the renderer keys orbs by id.
-import { RIFLE, SIGHTLINE } from '../config/gameplay.js';
+import { RIFLE, SIGHTLINE, RULES } from '../config/gameplay.js';
 
 const PELLET_SPEED = 85, STALE = Object.freeze({ stop: undefined, surge: undefined });
 const r2 = v => Math.round(v * 100) / 100;
@@ -129,4 +129,39 @@ export function drawSim(sim, foreign) {
  // Only your own parked orbs drift around you and crackle at your gun.
  Object.defineProperty(view, 'seeds', { value: sim.seeds });
  return view;
+}
+
+// A joiner's own prediction (client-session.js; hex fix, 2026-09-30): the
+// other players' hexes as shields (Simulation.hexShield's shape), from the
+// hex orbs they carry in `proj` (packed by slot) and the players list (id,
+// slot, team, dead), so the predicted body stays out of an enemy's hex as the
+// host keeps the real one out. Nothing new travels. Into `out`.
+// A pulsed hex spins on for RULES.hexSpinDuration with no orbs to send
+// (review 2026-09-30: a joiner walked into it and the host pulled it back):
+// with `memo` (a Map kept by the caller) and `now` (seconds), a hex whose
+// orbs vanish before its fade age, its caster still standing, is kept at its
+// last size for that long from the first snapshot without it.
+const HEX_FADE = RULES.hexRange / RULES.hexSpeed + RULES.hexLinger;
+export function hexShieldsFrom(proj, players, selfId, out = [], memo = null, now = 0) {
+ out.length = 0;
+ if (!proj) return out;
+ for (const pl of players || []) {
+  if (pl.id === selfId || pl.present === false) continue;
+  const hex = proj[pl.slot]?.hex;
+  if (hex?.length) {
+   const o = hex[0], r = Math.min((o.age || 0) * RULES.hexSpeed, RULES.hexRange);
+   out.push({ x: o.originX, z: o.originZ, rotation: 0, radius: r, limit: r * Math.cos(Math.PI / 6), owner: pl.id, team: pl.team ?? null, round: true });
+   if (memo) { const m = memo.get(pl.id) || {}; m.x = o.originX; m.z = o.originZ; m.r = r; m.age = o.age || 0; m.team = pl.team ?? null; m.spunAt = null; memo.set(pl.id, m); }
+   continue;
+  }
+  const m = memo?.get(pl.id); if (!m) continue;
+  // Faded (or never formed enough to pulse), or its caster is down: gone.
+  if (pl.dead || m.age < RULES.hexFormationTime - .05 || m.age >= HEX_FADE - .1) { memo.delete(pl.id); continue; }
+  m.spunAt ??= now;
+  if (now - m.spunAt >= RULES.hexSpinDuration) { memo.delete(pl.id); continue; }
+  out.push({ x: m.x, z: m.z, rotation: 0, radius: m.r, limit: m.r * Math.cos(Math.PI / 6), owner: pl.id, team: m.team, round: true });
+ }
+ // (Anyone gone from the list is forgotten.)
+ if (memo?.size) for (const id of memo.keys()) if (!(players || []).some(pl => pl.id === id)) memo.delete(id);
+ return out;
 }

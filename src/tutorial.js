@@ -1,5 +1,5 @@
 import { WEAPONS, weapon as weaponById } from './items.js';
-import { RIFLE, SURGE, OMEN, TUTORIAL_TARGET_HEALTH } from './config/gameplay.js';
+import { RIFLE, SURGE, OMEN, SHEATH, SIDEKICK, TUTORIAL_TARGET_HEALTH } from './config/gameplay.js';
 import { displayKeys } from './config/keybinds.js';
 // The training range and its courses.
 //
@@ -41,7 +41,7 @@ const lesson = (id, title, goal, keys, touch, extra = {}) => ({ id, title, goal,
 export const COURSES = {
  sheath:[
  lesson('hslash','slash',3,'get close and hold [LMB] / [SPACE] to slash','get close and hold [FIRE] to slash',{note:'the first cut draws the sword · it goes back in the sheath when you stop'}),
- lesson('hrush','gold rush',1,'press [E] for a gold rush','tap [RUSH] for a gold rush',{note:'three seconds of faster movement · keep attacking',highlight:'hex-recharge'}),
+ lesson('hrush','gold rush',1,'press [E] for a gold rush','tap [RUSH] for a gold rush',{note:`${SHEATH.rushDuration} seconds of faster movement · keep attacking`,highlight:'hex-recharge'}),
  lesson('hdraw','draw-cut',1,'face a target a few steps away and press [X]','face a target a few steps away and tap [DRAW]',{note:'a hop back, a moment to aim, then a dash that cuts everything on the line · walls stop it',highlight:'extended-recharge'}),
  ],
  ichor:[
@@ -54,8 +54,8 @@ export const COURSES = {
  sidekick:[
   lesson('kfire','shoot',3,'tap [LMB] / [SPACE] to fire three shots','tap [FIRE] to fire three shots',{note:'one shot per tap',highlight:'seed-pips'}),
   lesson('kreload','reload',1,'press [R] to reload','tap [RELOAD] to reload',{note:'wait for the ammo bar to fill',highlight:'seed-pips'}),
-  lesson('kmine','mine',1,'press [E] to place a mine','tap [MINE] to place a mine',{note:'enemies set it off · place two then wait 30 seconds for two more',highlight:'hex-recharge'}),
-  lesson('krush','rush',5,'press [X] then hold [LMB] / [SPACE] to fire','tap [RUSH] then hold [FIRE]',{note:'eight seconds of unlimited ammo and faster movement',highlight:'extended-recharge'}),
+  lesson('kmine','mine',1,'press [E] to place a mine','tap [MINE] to place a mine',{note:`enemies set it off · place two then wait ${SIDEKICK.mineCooldown} seconds for two more`,highlight:'hex-recharge'}),
+  lesson('krush','rush',5,'press [X] then hold [LMB] / [SPACE] to fire','tap [RUSH] then hold [FIRE]',{note:`${SIDEKICK.duration} seconds of unlimited ammo and faster movement`,highlight:'extended-recharge'}),
  ],
  sightline:[
   lesson('spistol','sidekick',3,'tap [LMB] / [SPACE] to fire three shots','tap [FIRE] to fire three shots',{note:'one shot per tap',highlight:'sightline-ammo'}),
@@ -95,7 +95,7 @@ export const COURSES = {
    { note: 'more orbs deal more damage', highlight: 'seed-pips' }),
   lesson('stream', 'stream', 3, 'get close and hold [C] on a target', 'get close and hold [STREAM] on a target', { note: 'keep hitting the same target to deal more damage', highlight: 'seed-pips' }),
   lesson('pulse', 'hex', 3, 'press [X] to make a hex then [X] again to pulse it', 'tap [HEX] to make a hex then tap it again to pulse it',
-   { note: 'needs ten orbs and blocks shots from outside', highlight: 'hex-recharge' }),
+   { note: 'needs ten orbs · keeps enemies out and blocks their shots', highlight: 'hex-recharge' }),
  ],
  rifle: [
   lesson('single', 'single shots', 5, 'tap [LMB] / [SPACE] once to fire a single shot', 'tap [FIRE] once for a single shot', { note: 'let go between shots', highlight: 'seed-pips' }),

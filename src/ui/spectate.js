@@ -13,8 +13,10 @@
 // (main.js passes the renderer a stand-in of your sim at their place:
 // `spectateView`), and this bar names who you watch, with arrows either side.
 // ← / → (A / D), the arrows, or a click or tap on the world move to the next
-// teammate. Only your own side is ever listed. (The score between points:
-// score-flash.js.)
+// teammate. Only your own side is ever listed, with one exception: in FFA,
+// once you are out for the rest of the match (respawns closed near the end,
+// config/match.js NO_RESPAWN_LEFT), anyone still standing (main.js
+// spectateAnyone). (The score between points: score-flash.js.)
 // Seconds after the death screen comes up before it turns into spectating.
 export const SPECTATE_AFTER = 3.5; // (owner: the death screen shows a little longer first)
 
@@ -39,9 +41,9 @@ export function spectateView(sim, mate) {
 export function createSpectate(parent, { change } = {}) {
   const bar = document.createElement('div');
   bar.id = 'spectate-bar'; bar.className = 'spectate-bar hidden'; bar.setAttribute('role', 'status'); bar.setAttribute('aria-live', 'polite');
-  bar.innerHTML = '<button type="button" class="plain-text spectate-step" data-step="-1" aria-label="Previous teammate"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg></button>'
+  bar.innerHTML = '<button type="button" class="plain-text spectate-step" data-step="-1" aria-label="Previous player"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg></button>'
     + '<div class="spectate-who"><small>spectating</small><strong></strong><span class="spectate-count"></span></div>'
-    + '<button type="button" class="plain-text spectate-step" data-step="1" aria-label="Next teammate"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>';
+    + '<button type="button" class="plain-text spectate-step" data-step="1" aria-label="Next player"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>';
   parent.append(bar);
   let list = [], watched = null, shown = '';
   for (const button of bar.querySelectorAll('.spectate-step')) button.onclick = event => { event.stopPropagation(); api.step(Number(button.dataset.step)); };

@@ -52,7 +52,15 @@ import { weaponOrDefault } from '../items.js';
 // 24 (game server + map vote, 2026-09-30): 'vote' from joiners ({ map }),
 // `vote` in every snapshot (the map vote: its mode, seconds left and each
 // map's votes and voters, or null), `listed` / `startsIn` in the lobby.
-export const PROTOCOL_VERSION = 24;
+// 26 (v0.1.3, 2026-09-30: the balance pass, the end-of-match respawn cutoff and
+// the hex fix, built as 24-26 on v0.1.0 in another chat, merged onto the game
+// server's 24; 26 to stay past the 25 and 26 those builds used): nothing new on the wire, but joiners predict their own
+// movement from config/gameplay.js (Sheath's Gold Rush speed changed), the
+// host's no-respawn rule and a joiner's screen must agree (config/match.js
+// NO_RESPAWN_LEFT), and a joiner now predicts its own body kept out of enemy
+// hexes with the new size (RULES.hexRange 10, hexSpeed 3, hexBody): an older
+// build would disagree with the server on all three, so the builds do not mix.
+export const PROTOCOL_VERSION = 26;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);

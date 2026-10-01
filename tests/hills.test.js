@@ -233,12 +233,13 @@ test('grenades: lobbed off the plateau at someone below, or up onto it, they get
   }
   return { damage: 1000 - t.hp, short: Math.hypot(rest[0] - to[0], rest[1] - to[1]) };
  };
+ // (A core hit: 42 since the 2026-09-30 balance pass, 58 before; > 36 is the old > 50.)
  const down = throwAt([-17, -14], [-11.1, -14]);
- assert.ok(down.short < .6 && down.damage > 50, `down: ${JSON.stringify(down)}`);
+ assert.ok(down.short < .6 && down.damage > 36, `down: ${JSON.stringify(down)}`);
  const south = throwAt([-15, -15], [-15, -8.6]);
- assert.ok(south.short < .6 && south.damage > 50, `over the south wall: ${JSON.stringify(south)}`);
+ assert.ok(south.short < .6 && south.damage > 36, `over the south wall: ${JSON.stringify(south)}`);
  const up = throwAt([-9, -16], [-14.5, -16]);
- assert.ok(up.short < .6 && up.damage > 50, `up: ${JSON.stringify(up)}`);
+ assert.ok(up.short < .6 && up.damage > 36, `up: ${JSON.stringify(up)}`);
 });
 
 test('blood thrown at a retaining wall stains it from below and flies over it from above', () => {

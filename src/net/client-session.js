@@ -18,7 +18,7 @@
 import { NETWORK } from '../config/network.js';
 import { PROTOCOL_VERSION, movementInput, playerInput, applyPlayerState, applyLoadout, readMessage, unpackEvent, packInput } from './protocol.js';
 import { blend } from './host-session.js';
-import { ProjectileMirror } from './projectiles.js';
+import { ProjectileMirror, hexShieldsFrom } from './projectiles.js';
 import { mapColliders, mapHash, maps, supportsMode } from '../maps.js';
 import { HP_STEP } from '../config/gameplay.js';
 import { readStormState, stormAt } from '../storm.js';
@@ -130,6 +130,12 @@ export class ClientSession {
   // replay collide with, so the replay matches what the host ran.
   this.local.otherPlayers = snapshot.players.filter(p => p.id !== this.id && p.present && !p.dead).map(p => ({ x: p.x, z: p.z, hp: p.hp }));
   const me = snapshot.players.find(p => p.id === this.id);
+  // Everyone else's hex keeps your predicted body out, as the host keeps the
+  // real one out (Simulation.keepOutOfHexes; projectiles.js hexShieldsFrom).
+  // (A pulsed hex's second of spin is kept from its last size: hexMemo.)
+  this.local.shields = this.scratch.shields = hexShieldsFrom(snapshot.proj, snapshot.players, this.id, this.hexShields ||= [], this.hexMemo ||= new Map(), this.now());
+  // (Your side, for whose hex lets you in; only written when it has one.)
+  if (me && (me.team || 0) !== (this.local.player.team || 0)) this.local.player.team = this.scratch.player.team = me.team || 0;
   if (snapshot.you) this.own(snapshot.you, me);
   if (me && this.mine.present && !this.mine.dead) this.reconcile(me);
  }

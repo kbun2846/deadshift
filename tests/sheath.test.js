@@ -13,7 +13,7 @@ const target = (id = 'victim', x = 1.8, z = 0, kind = 'player') => ({ id, kind, 
 const run = (s, n, input = {}) => { for (let i = 0; i < n; i++) s.step({ aimX: 1, aimZ: 0, ...input }); };
 const ticks = seconds => Math.round(seconds / RULES.step);
 
-test('a slash lands after its wind-up for 12 to 14, once per swing per body', () => {
+test('a slash lands after its wind-up for 15 to 17, once per swing per body', () => {
  const s = make(), t = target();
  s.targets = [t];
  run(s, 1, { fire: true });
@@ -22,10 +22,10 @@ test('a slash lands after its wind-up for 12 to 14, once per swing per body', ()
  assert.equal(t.hp, 400, 'the draw-slash wind-up');
  run(s, ticks(S.hitWindow) + 4);
  const dealt = 400 - t.hp;
- assert.ok(dealt >= 12 - 1e-9 && dealt <= 14 + 1e-9, 'one hit, rolled: ' + dealt);
+ assert.ok(dealt >= S.damage - S.damageRoll - 1e-9 && dealt <= S.damage + S.damageRoll + 1e-9, 'one hit, rolled: ' + dealt);
  run(s, 10);
  assert.equal(400 - t.hp, dealt, 'the hit window never hits the same body twice');
- for (let i = 0; i < 200; i++) { const d = sheathDamage(); assert.ok(d >= 12 - 1e-9 && d <= 14 + 1e-9 && Math.abs(d * 5 - Math.round(d * 5)) < 1e-9, 'whole fifths of a point: ' + d); }
+ for (let i = 0; i < 200; i++) { const d = sheathDamage(); assert.ok(d >= S.damage - S.damageRoll - 1e-9 && d <= S.damage + S.damageRoll + 1e-9 && Math.abs(d * 5 - Math.round(d * 5)) < 1e-9, 'whole fifths of a point: ' + d); }
 });
 
 test('the swing cycle is clearly slower than Ichor and kills 100 health in about 3 to 3.5 s', () => {
@@ -226,6 +226,7 @@ test('cut force follows the blade across the body', () => {
 
 test('network: protocol bumped, presses cleaned, E/X predicted, state and loadout carried', () => {
  assert.ok(PROTOCOL_VERSION >= 17);
+ assert.ok(PROTOCOL_VERSION >= 24, 'joiners predict Gold Rush from SHEATH.rushSpeed: the 2026-09-30 balance pass changed it, so 24 keeps older builds out');
  const clean = playerInput({ sheathE: 1, sheathX: 'yes', fire: 1 });
  assert.equal(clean.sheathE, true); assert.equal(clean.sheathX, true);
  assert.equal(movementInput({ sheathX: true }, 'sheath').sheathX, true);

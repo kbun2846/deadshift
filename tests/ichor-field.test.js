@@ -80,9 +80,10 @@ test("the wave costs its wielder half of one hit's damage as it leaves the blade
   run(s, 1, { ichorE: true });
   const events = s.drainEvents?.() || s.events, wave = events.find(e => e.type === 'ichorWave'), paid = events.find(e => e.type === 'playerDamage' && e.damageType === 'ichorCost');
   const hitDamage = s.ichorWaves[0].damage;
-  assert.equal(hitDamage, 14, 'the hit itself is its normal damage');
-  assert.equal(wave.cost, 7); assert.equal(paid.damage, 7);
-  assert.equal(s.player.hp, before - 7);
+  // (Balance pass 2026-09-30: an 18 wave (14) at .4 of it (.5): still ~7 health.)
+  assert.equal(hitDamage, 18, 'the hit itself is its normal damage');
+  assert.ok(Math.abs(wave.cost - 7.2) < 1e-9); assert.ok(Math.abs(paid.damage - 7.2) < 1e-9);
+  assert.ok(Math.abs(s.player.hp - (before - 7.2)) < 1e-9);
   const low = make(plain); low.ichor.blood = 100; low.player.hp = 4; run(low, 1, { ichorE: true });
   assert.ok(Math.abs(low.player.hp - .2) < 1e-9, 'down to .2 health, never dead: ' + low.player.hp);
   const dev = make(plain); dev.ichor.blood = 100; dev.dev = { ...dev.dev, invulnerable: true }; const hp = dev.player.hp; run(dev, 1, { ichorE: true });
