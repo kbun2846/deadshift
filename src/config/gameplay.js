@@ -137,9 +137,11 @@ export const OMEN = Object.freeze({
 // magazine holds 136 (a kill and a third). Aimed-in cone .054 -> .06, hip
 // .105 -> .12. (RIFLE.maxStamina 3 was never read and is gone: Nominal has
 // RULES.maxStamina, one dodge.)
-export const RIFLE=Object.freeze({interval:.2,magazine:20,reload:1.95,damage:6.8,minDamage:4.8,effectiveRange:10,falloffEnd:22,maxRange:55,magazineLife:30,bulletSpeed:90,aimMoveMultiplier:.55,stationaryStamina:1.3,
+// Nominal nerf (owner, 2026-09-30): damage about x0.9 everywhere (6.8 -> 6 a bullet, far 4.8 -> 4.3: 6.12 would leave 16 hits at 97.9, one bullet short;
+// 17 hits, ~3.3 s up close) and a looser hip spread (.12 -> .14) so aiming in matters more.
+export const RIFLE=Object.freeze({interval:.2,magazine:20,reload:1.95,damage:6,minDamage:4.3,effectiveRange:10,falloffEnd:22,maxRange:55,magazineLife:30,bulletSpeed:90,aimMoveMultiplier:.55,stationaryStamina:1.3,
  // Shot spread in radians: from the hip, aimed in, and how much running at full speed widens either.
- hipSpread:.12,aimSpread:.06,movingSpread:.7,
+ hipSpread:.14,aimSpread:.06,movingSpread:.7,
  // Hip-fire recoil: each shot knocks the whole cone off line by up to
  // recoilKick radians at random (more once a burst builds: recoilBuild per
  // shot, up to 1), capped at recoilMax, settling back at recoilSettle per
@@ -198,11 +200,14 @@ export const BALLAST_FATAL_FRACTION=.85;
 // damage taken (.85 → .697), and the cone (hip and aimed, and the recoil kick)
 // tighter while it runs (`spread`). Balance pass 2026-09-30: 4 s (5) and
 // .85 damage taken (.697): with 6.8 bullets it still kills in ~1.5 s.
+// Nominal nerf 2026-09-30: Nova keeps its 2x; its bullets are 10% lighter because RIFLE.damage is.
 export const SURGE=Object.freeze({charge:2,duration:4,cooldown:50,damage:2,taken:.85,speed:1.1*1.15,spread:.6,breakRadius:3.2});
 // bonus: added to every grenade hit (v0.83: +10, +50 at 500 health); surgeBonus:
 // instead, for one thrown during Nominal's Surge (+20). Balance pass
 // 2026-09-30: damage 48 -> 32 (a core hit 42), so grenade + fire is ~1.7 s.
-export const GRENADE=Object.freeze({range:12,fuse:1.4,windup:.18,cooldown:25,radius:4,coreRadius:.7,damage:32,edgeDamage:7,bonus:10,surgeBonus:20});
+// Nominal nerf (owner, 2026-09-30: "nerf the damage by 10% all across the
+// board, including Nova and the grenade"): every grenade number x0.9, its bonus 10 -> 8 (core hit 36.8; 37.8 left ten bullets 2.2 short).
+export const GRENADE=Object.freeze({range:12,fuse:1.4,windup:.18,cooldown:25,radius:4,coreRadius:.7,damage:28.8,edgeDamage:6.4,bonus:8,surgeBonus:18});
 
 // ---- Aim assist for direction-only aim (see auto-range.js) ----
 export const AUTO_RANGE = Object.freeze({

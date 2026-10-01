@@ -93,7 +93,10 @@ import { ClientSession } from '../src/net/client-session.js';
 
 // Recorded with Node 22.22 (V8 12.4.254). Math is deterministic within one engine build;
 // a different Node major may need a re-record on untouched code, never on new code.
-export const GOLDEN = { static: '17d0bb9e', rifle: 'e851e5a3', shotgun: '632d6dc5', robots: '100c42d8', hosted: 'de1d6b0' };
+//   - rifle, robots and hosted: re-recorded after the owner-requested Nominal
+//     nerf (2026-09-30: ~10% less damage on bullets, grenade and Nova; looser
+//     hip fire). Static and shotgun unchanged.
+export const GOLDEN = { static: '17d0bb9e', rifle: 'a9f85eb2', shotgun: '632d6dc5', robots: '5427c800', hosted: 'd9076296' };
 
 const map = maps.deadwater;
 function seeded(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }

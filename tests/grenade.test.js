@@ -5,10 +5,10 @@ import {GRENADE,grenadeDamage} from '../src/weapons/grenade.js';
 const make=()=>{const s=new Simulation({id:'test',width:120,depth:120,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});s.weapon='rifle';return s;};
 const tick=(s,input={},n=1)=>{for(let i=0;i<n;i++)s.step({aimX:1,aimZ:0,aimPointX:10,aimPointZ:0,...input});};
 test('grenade has a wide full-damage center and bounded splash falloff',()=>{
- // (Balance pass 2026-09-30: core 48 -> 32; the 2 m figure scales with it.)
- assert.equal(grenadeDamage(0),32);assert.equal(grenadeDamage(.7),32);
- assert.ok(grenadeDamage(2)>18&&grenadeDamage(2)<21);
- assert.equal(grenadeDamage(4),7);assert.equal(grenadeDamage(4.001),0);
+ // (Balance pass 2026-09-30: core 48 -> 32; Nominal nerf 2026-09-30: x0.9 -> 28.8. The 2 m figure scales with it.)
+ assert.equal(grenadeDamage(0),GRENADE.damage);assert.equal(grenadeDamage(.7),GRENADE.damage);
+ assert.ok(grenadeDamage(2)>GRENADE.damage*.56&&grenadeDamage(2)<GRENADE.damage*.66);
+ assert.equal(grenadeDamage(4),GRENADE.edgeDamage);assert.equal(grenadeDamage(4.001),0);
 });
 test('Nominal grenade releases from the free hand, caps range and uses a 1.4-second fuse',()=>{
  const s=make();tick(s,{grenade:true,aimPointX:50});

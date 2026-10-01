@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Simulation,RULES} from '../src/simulation.js';
+import {GRENADE} from '../src/weapons/grenade.js';
 const make=()=>new Simulation({width:50,depth:50,spawn:{x:0,z:0},buildings:[],fences:[],props:[],targets:[]});
 const settle=sim=>{for(let i=0;i<120;i++)sim.step({});return Math.hypot(sim.player.x,sim.player.z);};
 test('small orb blasts do not push; six to twelve orbs progressively increase knockback',()=>{
@@ -14,7 +15,7 @@ test('small orb blasts do not push; six to twelve orbs progressively increase kn
 test('close grenade pushes about 2.8 metres, less than a dash, without costing stamina',()=>{
  const sim=make();sim.weapon='rifle';sim.reset();sim.step({grenade:true,aimX:1,aimZ:0,aimPointX:0,aimPointZ:0});
  const distance=settle(sim);assert.ok(distance>2.6&&distance<RULES.dodgeDistance);assert.equal(sim.player.stamina,1);
- assert.equal(sim.player.hp,58); // 32 at the core (48 before the 2026-09-30 balance pass) plus the +10 every grenade has since v0.83
+ assert.equal(sim.player.hp,100-GRENADE.damage-GRENADE.bonus); // the core hit plus the bonus every grenade has since v0.83 (58 before the 2026-09-30 Nominal nerf, 63.2 after)
 });
 test('blast knockback falls off, is blocked by cover, respects walls and resets with spawn speed',()=>{
  const near=make(),far=make();near.explode({x:-.1,z:0,arrived:12},1);far.explode({x:-2.5,z:0,arrived:12},1);

@@ -2,6 +2,11 @@
 
 Deadstab, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## v0.1.4-alpha (2026-09-30)
+
+- **Nominal does about 10% less damage everywhere**: bullets 6 (6.8), 4.3 at long range (4.8); the grenade 36.8 on a direct hit (42) and 14.4 at its edge; Nova keeps its double damage, so its bullets are 10% lighter too.
+- Nominal's hip fire is a little less accurate (aimed-in is unchanged), so aiming in matters more.
+
 ## v0.1.3-alpha (2026-09-30)
 
 Online: everyone needs this version (the page and the server update together; reload if the game says it was just updated).
