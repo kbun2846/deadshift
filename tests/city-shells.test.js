@@ -108,11 +108,13 @@ test('city shells: nothing moves (the rule is per fragment: world/city-cut.js ci
   // section cap and a gone plug; never a storey or a roof.
   assert.ok(!/cityHeight|cityTopAt|cityScoop/.test(shader.vertexShader));
   assert.match(shader.vertexShader, /vCityWorld = \(modelMatrix \* vec4\(transformed, 1\.0\)\)\.xyz;/);
-  assert.match(shader.fragmentShader, /if \(vCityInfo\.z > -\.5 && cityHidden\(vCityWorld, vCityInfo\.x, vCityInfo\.y, vCityInfo\.w, vCityNear\)\) discard;/);
+  assert.match(shader.fragmentShader, /if \(vCityInfo\.z > -\.5 && \(cityHidden\(vCityWorld, vCityInfo\.x, vCityInfo\.y, vCityInfo\.w, vCityNear\)\s*\|\| \(vCityWall\.w > \.5 && vCityWorld\.y > vCityInfo\.x \+ [\d.]+ && cityBehindWall\(vCityWorld, vCityWall\.xy, vCityWall\.z\)\)\)\) discard;/);
+  // Rule 6: a wall's dressing (role 3) hands its anchor and its building's top to the fragment.
+  assert.match(shader.vertexShader, /vCityWall = vec4\(cityAt, cityRow\.w, 1\.0\)/);
   assert.match(shader.fragmentShader, /totalEmissiveRadiance \+= vCityGlow \* diffuseColor\.rgb;/);
   for (const u of ['cityCutMap', 'cutEye', 'cutTargets', 'cityRoomQuad', 'cityRoomOn', 'cityDoors', 'cityDoorCount', 'cityFootMask', 'cityFootBox']) assert.ok(shader.uniforms[u], u);
-  assert.equal(shells.material.customProgramCacheKey(), 'lumen-city-shell-v9');
-  assert.equal(shells.occluderMaterial.customProgramCacheKey(), 'lumen-city-shell-occluder-v5');
+  assert.equal(shells.material.customProgramCacheKey(), 'lumen-city-shell-v10');
+  assert.equal(shells.occluderMaterial.customProgramCacheKey(), 'lumen-city-shell-occluder-v6');
   const twin = { uniforms: {}, vertexShader: '#include <begin_vertex>', fragmentShader: 'void main() {\n#include <clipping_planes_fragment>\n}' };
   shells.occluderMaterial.onBeforeCompile(twin);
   assert.match(twin.fragmentShader, /cityHidden/, 'the mirror\'s black twin has the same holes');
@@ -258,10 +260,10 @@ test('city shells: bakeLight washes the walls near the lights once, in finer col
   assert.ok(xs.length > 4 && gaps.filter(g => g > WASH.column + 1e-6).length <= 1, xs.join(' '));
 });
 
-// The scoop is read where a storey's wall line is (city-shells.js cityAt),
-// so a lowered wall's top is level across its thickness and meets its cap's
-// edge exactly at every column, however steep the soft edge: no crack, no
-// overlap.
+// A storey's columns break where its cap's grid does, and each vertex's
+// anchor (city-shells.js cityAt, world/city-cut.js rule 6) is on its wall's
+// line moved CUT.wall.back m in: no crack, no overlap, and the shader reads
+// the wall's outward normal from it.
 test('city shells: a storey\'s columns meet its cap\'s edge vertex for vertex; the cap rides over the wall tops, never under the first floor\'s', () => {
   const caps = new Map(), key = (slot, x, z) => `${slot}:${x.toFixed(2)}:${z.toFixed(2)}`;
   let walls = 0, missed = [];
@@ -280,10 +282,15 @@ test('city shells: a storey\'s columns meet its cap\'s edge vertex for vertex; t
     for (let v = 0; v < c.length; v++) {
       const slot = Math.floor(c[v] / CUT_ROLES + .01), role = Math.round(c[v]) - slot * CUT_ROLES;
       if (role !== 1) continue;
+      // Its anchor stands CUT.wall.back m in behind its wall's line (rule 6):
+      // that line's point is CUT.wall.back m back out toward the vertex.
+      const dx = p[v * 3] - at[v * 2], dz = p[v * 3 + 2] - at[v * 2 + 1], d = Math.hypot(dx, dz);
+      assert.ok(Math.abs(d - CUT.wall.back) <= T * 1.5 + 1e-4, `${d}`);
+      const lx = at[v * 2] + dx / d * CUT.wall.back, lz = at[v * 2 + 1] + dz / d * CUT.wall.back;
       // (off its own vertex by at most a wall and a half: on the line, or
       // the party line a tower overlapping others stands its copy back from)
-      assert.ok(Math.hypot(at[v * 2] - p[v * 3], at[v * 2 + 1] - p[v * 3 + 2]) <= T * 1.5 + 1e-4);
-      lineOf.add(key(slot, at[v * 2], at[v * 2 + 1])); lineOf.add(key(slot, at[v * 2] + 4e-3, at[v * 2 + 1] + 4e-3)); lineOf.add(key(slot, at[v * 2] - 4e-3, at[v * 2 + 1] - 4e-3));
+      assert.ok(Math.hypot(lx - p[v * 3], lz - p[v * 3 + 2]) <= T * 1.5 + 1e-4);
+      lineOf.add(key(slot, lx, lz)); lineOf.add(key(slot, lx + 4e-3, lz + 4e-3)); lineOf.add(key(slot, lx - 4e-3, lz - 4e-3));
     }
   }
   // Every column of every storey: its line point is where its vertices read

@@ -139,7 +139,7 @@ bool cityRoomKnee(vec2 a) {
 // CUT.near.radius m of the camera (rule 5).
 const CUT_VERTEX = `#include <begin_vertex>
         float citySlot = floor(cityCut / ${CUT_ROLES_F} + .01), cityRole = cityCut - citySlot * ${CUT_ROLES_F};
-        vCityInfo = vec4(1e5, 1e5, cityCut > -.5 ? 0.0 : -1.0, 0.0); vCityNear = 1e5;
+        vCityInfo = vec4(1e5, 1e5, cityCut > -.5 ? 0.0 : -1.0, 0.0); vCityNear = 1e5; vCityWall = vec4(0.0);
         if (citySlot > .5) {
           ivec2 cityTexel = ivec2(int(citySlot + .5), 0);
           vec4 cityRow = texelFetch(cityCutMap, cityTexel, 0);
@@ -151,14 +151,18 @@ const CUT_VERTEX = `#include <begin_vertex>
           // The lid: at the height the building is drawn up to while that moves (under its roof), else gone.
           if (abs(cityRole - ${ROLE.lid}.0) < .5) transformed.y = (cityRow.x > .001 && cityRow.x < .999) || (cityNear > .001 && cityNear < .999) ? min(min(vCityInfo.y, vCityNear), cityRow.w) - .01 - mod(citySlot, 8.0) * .003 : -50.0;
           vCityInfo.w = cityRow.y > 1.5 ? 1.0 : 0.0;
+          // Rule 6: a storey or a wall's dressing (its anchor behind its wall's line, its building's top).
+          if (abs(cityRole - ${ROLE.dressing}.0) < .5 || abs(cityRole - ${ROLE.upper}.0) < .5) vCityWall = vec4(cityAt, cityRow.w, 1.0);
           if (citySection && abs(cityRow.y - 1.0) < .5) transformed.y = -50.0;
           if (abs(cityRole - ${ROLE.plug}.0) < .5 && texelFetch(cityCutMap, cityTexel + ivec2(0, 1), 0).x < .5) transformed.y = -50.0;
         }
         if (cityCut > -.5 && (cityRole < .5 || abs(cityRole - ${ROLE.lintel}.0) < .5) && cityRoomKnee(cityAt)) transformed.y = cityRole > 4.5 ? -50.0 : min(transformed.y, ${ROOM_VIEW.knee.toFixed(2)});
         vCityWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`;
-const CUT_HEAD = `attribute float cityCut;\nattribute vec2 cityAt;\nuniform sampler2D cityCutMap;\nvarying vec3 vCityWorld;\nvarying vec4 vCityInfo;\nvarying float vCityNear;\n${CUT_GLSL}\n${ROOM_VIEW_GLSL}\n`;
-const CUT_FRAGMENT_HEAD = `varying vec3 vCityWorld;\nvarying vec4 vCityInfo;\nvarying float vCityNear;\n${CUT_GLSL}\n`;
-const CUT_FRAGMENT = `if (vCityInfo.z > -.5 && cityHidden(vCityWorld, vCityInfo.x, vCityInfo.y, vCityInfo.w, vCityNear)) discard;`;
+const CUT_HEAD = `attribute float cityCut;\nattribute vec2 cityAt;\nuniform sampler2D cityCutMap;\nvarying vec3 vCityWorld;\nvarying vec4 vCityInfo;\nvarying float vCityNear;\nvarying vec4 vCityWall;\n${CUT_GLSL}\n${ROOM_VIEW_GLSL}\n`;
+const CUT_FRAGMENT_HEAD = `varying vec3 vCityWorld;\nvarying vec4 vCityInfo;\nvarying float vCityNear;\nvarying vec4 vCityWall;\n${CUT_GLSL}\n`;
+// (vCityWall: a wall's dressing, rule 6: its anchor xz, its building's top, 1; else 0)
+const CUT_FRAGMENT = `if (vCityInfo.z > -.5 && (cityHidden(vCityWorld, vCityInfo.x, vCityInfo.y, vCityInfo.w, vCityNear)
+    || (vCityWall.w > .5 && vCityWorld.y > vCityInfo.x + ${CUT.above.toFixed(3)} && cityBehindWall(vCityWorld, vCityWall.xy, vCityWall.z)))) discard;`;
 // (The detector, render/city-vis-debug.js, draws the shells with these.)
 export const SHELL_GLSL = Object.freeze({ head: CUT_HEAD, vertex: CUT_VERTEX, fragmentHead: CUT_FRAGMENT_HEAD, fragment: CUT_FRAGMENT });
 // The cut's uniforms, for a shader (the table as cityCutMap).
@@ -329,7 +333,11 @@ function buildWall(soup, w, lights) {
   const [sx, sz] = w.shift || [0, 0];
   // A first floor's piece (a box) is anchored at its middle: the knee-wall
   // view (CUT_VERTEX) lowers or keeps it whole.
-  soup.cutAt = w.kind === 'upper' ? { ax: cx + sx, az: cz + sz, ux, uz } : { ax: cx, az: cz, ux: 0, uz: 0 };
+  // A storey's anchor is that line moved CUT.wall.back m in behind it (rule
+  // 6, world/city-cut.js: its end faces, between two rooms' runs of wall,
+  // face along it and go with the wall's outer face from behind it).
+  const back = w.kind === 'upper' ? CUT.wall.back : 0;
+  soup.cutAt = w.kind === 'upper' ? { ax: cx + sx - w.out[0] * back, az: cz + sz - w.out[1] * back, ux, uz } : { ax: cx, az: cz, ux: 0, uz: 0 };
   let cols;
   if (w.kind === 'upper') cols = [0, ...w.stations, L];
   else if (near) { const n = Math.max(1, Math.ceil(L / WASH.column - .01)); cols = Array.from({ length: n + 1 }, (_, i) => L * i / n); }
@@ -665,8 +673,8 @@ export class CityShells {
     // Two meshes a cell: the first floors (never cut; they cast the shadows)
     // and the rest (the storeys above, the caps, the inner walls), apart so
     // Extreme's ambient occlusion, which draws the scene with its own normals
-    // material (no cut in it), leaves the part that is cut out of its depth
-    // (renderer.js aoExcluded: `upper`).
+    // material (no cut in it), leaves both out of that draw (renderer.js
+    // aoExcluded) and draws them with their cut instead (aoScene, below).
     this.upper = new THREE.Group(); this.upper.name = 'city-shells-upper';
     // Quality's mirror draws only the bright layer, on black: with nothing
     // solid in it, a sign behind a tower showed in the wet street through the
@@ -726,7 +734,7 @@ export class CityShells {
     this.occluders = this.occluderMesh(twin);
     if (old) { old.parent?.add(this.occluders); old.parent?.remove(old); old.geometry?.dispose(); }
     this.triangles = this.cellMeshes.reduce((n, m) => n + m.geometry.attributes.position.count / 3, 0);
-    this.assembled = true;
+    this.assembled = true; this.aoStale = true;
   }
   // The facades' detail from Balanced up: one mesh a cell per step (its
   // tiers merged: Balanced 1, Quality 1-2, Extreme 1-3), one step shown.
@@ -742,6 +750,51 @@ export class CityShells {
       this.upper.add(m); this.detailMeshes[tier].push(m);
     }
     this.detailTriangles[tier] = this.detailMeshes[tier].reduce((n, m) => n + m.geometry.attributes.position.count / 3, 0);
+    this.aoStale = true;
+  }
+
+  // Extreme's ambient occlusion (render/extreme-post.js) draws the scene's
+  // depth and normals again with one plain normals material, which has no
+  // cut: the shells drawn that way would stand whole over every hole the cut
+  // makes, so they are left out of that draw (renderer.js aoExcluded). Left
+  // out with nothing in their place, the occlusion was worked out from what
+  // stands under them (a building's first floor, its rooms' walls, the floor)
+  // and laid over its roof and walls on screen: from outside, every roof and
+  // wall showed its first floor's rooms in soft shading (owner, 2026-10-01:
+  // "i can literally see through the ceilings / walls of towers and buildings
+  // ... i should be able to only see exteriors from outside"). So that draw
+  // gets the shells here instead: one stand-in per cell and detail mesh (the
+  // same geometry, never copied) on a normals material with the shells' own
+  // cut (CUT_HEAD / CUT_VERTEX / CUT_FRAGMENT), each shown as its mesh is
+  // this frame. The AO's depth is then the frame's own, hole for hole.
+  aoScene() {
+    if (!this.aoProxies || this.aoStale) {
+      this.aoStale = false;
+      this.aoMaterial ||= this.makeAoMaterial();
+      const scene = this.aoProxies ||= new THREE.Scene();
+      scene.clear();
+      for (const m of [...this.cellMeshes, ...this.detailMeshes.flat()]) {
+        const p = new THREE.Mesh(m.geometry, this.aoMaterial);
+        p.matrixAutoUpdate = false; p.matrix.copy(m.matrixWorld); p.matrixWorld.copy(m.matrixWorld); p.matrixWorldAutoUpdate = false;
+        p.userData.source = m; p.frustumCulled = m.frustumCulled;
+        scene.add(p);
+      }
+      scene.matrixWorldAutoUpdate = false;
+    }
+    // (shown as its mesh is now: the preset's detail step, the chunk cull)
+    for (const p of this.aoProxies.children) { const m = p.userData.source; p.visible = m.visible && m.parent?.visible !== false; }
+    return this.aoProxies;
+  }
+  makeAoMaterial() {
+    const m = new THREE.MeshNormalMaterial();
+    m.blending = THREE.NoBlending;
+    m.onBeforeCompile = shader => {
+      Object.assign(shader.uniforms, cutShaderUniforms(this));
+      shader.vertexShader = CUT_HEAD + shader.vertexShader.replace('#include <begin_vertex>', CUT_VERTEX);
+      shader.fragmentShader = CUT_FRAGMENT_HEAD + shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + CUT_FRAGMENT);
+    };
+    m.customProgramCacheKey = () => 'lumen-city-shell-ao-v1';
+    return m;
   }
   // The preset ladder: the detail meshes of this preset's step shown (none
   // on Potato and Performance), made the first time one is wanted (at load
@@ -844,7 +897,7 @@ export class CityShells {
       shader.vertexShader = CUT_HEAD + shader.vertexShader.replace('#include <begin_vertex>', CUT_VERTEX);
       shader.fragmentShader = CUT_FRAGMENT_HEAD + shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + CUT_FRAGMENT);
     };
-    m.customProgramCacheKey = () => 'lumen-city-shell-occluder-v5';
+    m.customProgramCacheKey = () => 'lumen-city-shell-occluder-v6';
     return m;
   }
 
@@ -861,7 +914,7 @@ export class CityShells {
         .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + CUT_FRAGMENT)
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vCityGlow * diffuseColor.rgb;');
     };
-    m.customProgramCacheKey = () => 'lumen-city-shell-v9';
+    m.customProgramCacheKey = () => 'lumen-city-shell-v10';
     return m;
   }
 

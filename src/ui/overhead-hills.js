@@ -15,6 +15,7 @@
 // woods read as a mass of them), the irregular fence, and you.
 import { buildingPoint, mapProps, groundFor } from '../maps.js';
 import { playableOutline } from '../playable-area.js';
+import { overheadLiveLayer } from './overhead-zones.js';
 
 export const OVERHEAD_HILLS = Object.freeze({
  low: '#2c2a22', high: '#4d4735',   // the ground from its lowest level to its highest
@@ -37,20 +38,6 @@ const mixHex = (a, b, t) => {
 const lift = (hex, t = .25) => mixHex(hex, '#d8ccb0', t);
 
 // A water line's channel: its centre line offset by each point's half width.
-// 1V1's duel circle on the map (duel-circle.js): a red ring, the ground
-// outside it dimmed. Empty in every other mode.
-// (Also the storm's, storm-view.js: the map outside the safe circle washed
-// red, its edge, and the final zone dashed.)
-function stormSVG(view) {
-  const s = view?.stormView, c = s?.circle; if (!c) return '';
-  const f = s.final;
-  return `<path fill="#b3121f" opacity=".32" fill-rule="evenodd" d="M-9999 -9999H9999V9999H-9999Z M${c.x - c.r} ${c.z}a${c.r} ${c.r} 0 1 0 ${c.r * 2} 0a${c.r} ${c.r} 0 1 0 ${-c.r * 2} 0Z"/><circle cx="${c.x}" cy="${c.z}" r="${c.r}" fill="none" stroke="#ff4a3d" stroke-width="1.1"/>${f ? `<circle cx="${f.x}" cy="${f.z}" r="${f.r}" fill="none" stroke="#ffe2d6" stroke-width=".7" stroke-dasharray="2.4 1.6" opacity=".85"/>` : ''}`;
-}
-export function duelCircleSVG(view) {
-  const storm = stormSVG(view);
-  const c = view?.duelCircleView?.circle; if (!c) return storm;
-  return `<path fill="#000" opacity=".28" fill-rule="evenodd" d="M-9999 -9999H9999V9999H-9999Z M${c.x - c.r} ${c.z}a${c.r} ${c.r} 0 1 0 ${c.r * 2} 0a${c.r} ${c.r} 0 1 0 ${-c.r * 2} 0Z"/><circle cx="${c.x}" cy="${c.z}" r="${c.r}" fill="none" stroke="#d0243a" stroke-width="1.1"/>`;
-}
 export function channelOutline(points) {
  const left = [], right = [];
  points.forEach((p, i) => {
@@ -68,7 +55,7 @@ export function overheadFrame(map) {
  return { x: Math.min(...xs) - m, z: Math.min(...zs) - m, w: Math.max(...xs) - Math.min(...xs) + m * 2, d: Math.max(...zs) - Math.min(...zs) + m * 2, outline };
 }
 
-export function hillsOverheadMapSVG(map, view, player) {
+export function hillsOverheadMapSVG(map, view, player, zones) {
  const C = OVERHEAD_HILLS, terrain = map.terrain, { x, z, w, d, outline } = overheadFrame(map);
  const perimeter = pts(outline);
  const levels = (terrain.levels || []).filter(l => !l.overWater).slice().sort((a, b) => a.h - b.h);
@@ -118,6 +105,6 @@ export function hillsOverheadMapSVG(map, view, player) {
     <g stroke-width=".3">${trees.map(t => `<circle cx="${fmt(t.x)}" cy="${fmt(t.z)}" r="${fmt(1.9 * (t.s || 1))}" fill="${t.kind === 'woods' ? C.tree : C.treeOther}" stroke="${t.kind === 'woods' ? C.treeEdge : C.fence}" opacity=".82"/>`).join('')}${treeProps.map(t => t.type === 'hangingTree' ? `<circle cx="${fmt(t.x)}" cy="${fmt(t.z)}" r="2.6" fill="#2a2220" stroke="#5a3a30" opacity=".9"/>` : `<circle cx="${fmt(t.x)}" cy="${fmt(t.z)}" r="1.3" fill="${C.treeOther}" stroke="${C.fence}" opacity=".82"/>`).join('')}</g>
     </g>
     <polygon points="${perimeter}" fill="none" stroke="${C.fenceLine}" stroke-width=".8" stroke-linejoin="round" opacity=".95"/>
-    ${duelCircleSVG(view)}${player ? `<circle cx="${fmt(player.x)}" cy="${fmt(player.z)}" r="3.8" fill="#a8e2ff" opacity=".18"/><circle cx="${fmt(player.x)}" cy="${fmt(player.z)}" r="1.65" fill="#c7efff" stroke="#203844" stroke-width=".65"/>` : ''}
+    ${overheadLiveLayer(zones, player)}
   </svg>`;
 }

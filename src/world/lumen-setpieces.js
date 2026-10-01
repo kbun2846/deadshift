@@ -35,7 +35,9 @@
 // clutter is `walkOver` with no collider (bodies step over it, rounds fly over
 // it); the cable spans and bead curtains have no collider either
 // (`collisionBoxes: []`, as the graveyard's flat graves): they hang above or
-// beside where a body goes. Nothing is a breakable (health null): the
+// beside where a body goes, and nor do the thin masts (`pole`: the stop flag,
+// camera, banner, dish and lantern poles, the bulb strings' and tarps' posts),
+// as the street lamps. Nothing is a breakable (health null): the
 // districts' dressing is the static batch's, merged per cell with the rest.
 // No lettering (price boards are tally marks and pictograms) and no team
 // colours; anything that glows is a lit part (litBox) in the city's pinks,
@@ -55,41 +57,46 @@ const low = (w, d, boxes, extra = {}) => solid(w, d, boxes, { lowTop: true, ...e
 // The model keeps to its footprint w x d and under 0.3 m.)
 const flat = (w, d, extra = {}) => solid(w, d, [], { walkOver: true, ...extra });
 const hung = (w, d, extra = {}) => solid(w, d, [], extra); // (overhead or beside: no collider)
+// A thin upright (a mast, a post, a pole under 0.25 m) with what it carries up over a body's top: no collider,
+// as the street lamps and signal poles (maps/lumen-signs.js). From the top-down camera a mast is a speck players
+// ran into without seeing (owner, 2026-10-01): a body and a round pass it. `pole` marks it for the clutter count
+// (tests/lumen-clutter-lib.js); the model keeps to its footprint like a hung piece.
+const pole = (w, d, extra = {}) => solid(w, d, [], { pole: true, ...extra });
 
 export const LUMEN_SETPIECE_TYPES = Object.freeze({
   // --- Boulevard ---
   cityRoadPit: low(2.6, 1.8, [[0, -.1, 2.5, 1.4, .45], [0, .8, 2.4, .14, .95]]), // a road-work pit and its folding barrier
   cityConeLine: flat(4.8, .7), // cones knocked into a line where a lane was being closed
   cityMedianPlanter: low(3.2, .9, [[0, 0, 3.1, .8, .55]]),
-  cityStopFlag: solid(.7, .7, [[0, 0, .2, .2, 2.85]]), // a bus stop's flag: pole and pictogram disc
+  cityStopFlag: pole(.7, .7), // a bus stop's flag: pole and pictogram disc
   // --- Uptown ---
   cityDryFountain: low(4.4, 4.4, [[0, 0, 4.2, 4.2, .55], [0, 0, .6, .6, 1.6]]),
   citySculptBollard: low(.5, .5, [[0, 0, .36, .36, 1]]),
   cityValetPodium: solid(1, .8, [[0, 0, .8, .6, 1.15]]),
-  cityCameraPole: solid(.9, .9, [[0, 0, .2, .2, 3.4]]), // a security camera on an arm
+  cityCameraPole: pole(.9, .9), // a security camera on an arm
   cityPaverInlay: flat(3.4, 2.2), // light strips let into the paving
-  cityBannerPole: solid(1.6, .5, [[0, 0, .24, .24, 4]]),
+  cityBannerPole: pole(1.6, .5),
   // --- The Stacks ---
   cityDryingRack: solid(1.8, .8, [[0, 0, 1.7, .6, 1.55]]),
   cityCrateTable: low(1.1, 1.1, [[0, 0, .95, .95, .78]]),
   cityCableSpanShort: hung(3.8, .6), // over Back Alley
   cityCableSpanLong: hung(12.4, .6), // over the courtyard and West Street
   cityJunctionBox: solid(.9, .9, [[0, 0, .85, .85, 1.25]]),
-  cityDishPost: solid(1.2, 1.2, [[0, 0, .22, .22, 2.9]]),
+  cityDishPost: pole(1.2, 1.2),
   cityShrineNiche: solid(1.4, .8, [[0, 0, 1.2, .6, 1.3]]),
   cityBagSpill: flat(1.9, 1.2),
   cityScooterFrame: low(1.5, .7, [[0, 0, 1.4, .6, .5]]),
   cityWaterDrum: low(1, 1, [[0, 0, .9, .8, 1]]),
   // --- Night Market ---
-  cityTarpCanopy: solid(3.6, 2.6, [[-1.6, -1.1, .12, .12, 2.8], [1.6, -1.1, .12, .12, 2.8], [-1.6, 1.1, .12, .12, 2.8], [1.6, 1.1, .12, .12, 2.8]]),
+  cityTarpCanopy: pole(3.6, 2.6), // (four slim posts under the sheet)
   cityProduceStack: low(1.3, .8, [[0, 0, 1.2, .7, .75]]),
   cityFishTank: solid(1.8, .8, [[0, 0, 1.7, .7, 1.3]]),
   cityMeatRail: solid(2.4, .8, [[0, 0, 2.3, .6, 2.05]]),
   cityGasBottles: low(1.1, .7, [[0, 0, 1, .6, .7]]),
   cityPriceBoard: solid(1.3, .4, [[0, 0, 1.2, .3, 1.65]]),
   cityMarketScale: low(.8, .6, [[0, 0, .7, .4, 1.1]]),
-  cityLanternPole: solid(1.6, .5, [[0, 0, .2, .2, 2.9]]),
-  cityBulbString: solid(5.2, .4, [[-2.4, 0, .14, .14, 3.2], [2.4, 0, .14, .14, 3.2]]),
+  cityLanternPole: pole(1.6, .5),
+  cityBulbString: pole(5.2, .4), // (a post at each end)
   // --- Velvet Row ---
   cityRopeStanchions: flat(2.9, .9),
   cityDoormanPodium: solid(.9, .7, [[0, 0, .8, .6, 1.15]]),
@@ -502,8 +509,8 @@ function tarpCanopy(view, p, g) {
   // sheet sagging between the posts (2.66 m at them, about 2.5 m in the middle, over a body's top) in four
   // panels, each turned a little (the folds read in the flat shading), a crease across it, a valance along
   // both long edges, ropes to the posts' feet, a patch of another colour sewn on, three warm bulbs under
-  // it. Weathered, dull colours: the market's light, not the tarp, is the colour. The posts are the only
-  // collider. Every part of the sheet is `canopyFade` (the batch's canopy kind, world/roof-fade.js
+  // it. Weathered, dull colours: the market's light, not the tarp, is the colour. Nothing is a
+  // collider (the posts are 9 cm: `pole`, owner 2026-10-01). Every part of the sheet is `canopyFade` (the batch's canopy kind, world/roof-fade.js
   // CANOPY_FADE): it opens over anyone standing under it or behind it, so it never hides a body.
   const fade = m => { m.userData.canopyFade = true; return m; };
   const tarp = K.pick(TARP_COLOURS);

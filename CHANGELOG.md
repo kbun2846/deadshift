@@ -2,6 +2,17 @@
 
 Deadstab, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## v0.1.7-alpha (2026-10-01)
+
+### Lumen
+- **Buildings in front of you fade cleanly:** their window frames, pillars, ledges, fire escapes and signs now go with them, instead of leaving stray bars floating over the street. Some signs that were hidden inside the building next door were moved to real walls, so a few signs are in new places.
+- **No more seeing inside buildings from outside** on Extreme: roofs and walls no longer show a faint print of the rooms underneath.
+- **About 20% less street clutter**, mostly the thin posts you couldn't see from above and kept running into (bollards, meters, poles). Street lights and the remaining decorative poles no longer block you, and there's still cover everywhere.
+
+### Everywhere
+- **Normal bots are less aggressive:** they no longer always chase you down. They sometimes hold a spot in cover and peek out, or hold their ground in the open, and push in when they have the upper hand or you get close. Easy and Hard bots are unchanged.
+- **The storm shows on the map (M)** on every map and in every mode, online and against bots, and it moves while the map is open. It was missing on Lumen and frozen online.
+
 ## v0.1.6-alpha (2026-10-01)
 
 - **New map: Lumen**, a deserted cyberpunk city at night. Rain on wet streets, neon signs and holograms still running, steam from the vents, abandoned cars and buses, and every building can be entered. Lots of new breakables (a broken hydrant sprays water you can't see through), new city sounds, and its own look on every graphics preset. Play it in practice, against bots, and online: it's in the map vote and the JOIN list.

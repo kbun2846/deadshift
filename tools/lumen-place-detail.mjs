@@ -314,29 +314,31 @@ function puddle(rand, puddles) {
 // ---------------------------------------------------------------------------
 // The recipe: how many of each type, by where they go (in order: the
 // fittings first, then walls and backs, the scenes, then the litter; the
-// screen fill last).
+// screen fill last). The owner's clutter cut (2026-10-01: "too much clutter")
+// took about a fifth of the ground litter: the stampede's belongings, the
+// litter drifts (two mates a seed, was three), the shop backs' and the crashes'.
 export const RECIPE = Object.freeze([
   ['cityDManholeRound', 5], ['cityDManholeSquare', 4], ['cityDManholeVent', 4], ['cityDHatch', 4], ['cityDValveLid', 4], ['cityDExhaustVent', 5],
   ['cityDStuds', 4], ['cityDStudsLemon', 3], ['cityDStudsRed', 3], ['cityDDrainKerb', 6],
   ['cityDBikeRailCut', 1], ['cityDBikeRail', 4],
   ['cityDConduit', 7], ['cityDCableTray', 4], ['cityDStandpipe', 4], ['cityDGasMeter', 5], ['cityDMeterBank', 3], ['cityDVentGrille', 4],
   ['cityDPoster', 6], ['cityDPosterRow', 4], ['cityDPosterTorn', 4], ['cityDStickers', 5], ['cityDPasteUp', 4],
-  ['cityDBinBagSplit', 5], ['cityDBinBagFlat', 4], ['cityDBoxesFlat', 4], ['cityDBoxesWet', 3], ['cityDCrateTipped', 3], ['cityDBottleCrate', 3], ['cityDPallet', 3], ['cityDTarpScrap', 2], ['cityDCableCoil', 2],
+  ['cityDBinBagSplit', 4], ['cityDBinBagFlat', 4], ['cityDBoxesFlat', 3], ['cityDBoxesWet', 3], ['cityDCrateTipped', 3], ['cityDBottleCrate', 3], ['cityDPallet', 2], ['cityDTarpScrap', 2], ['cityDCableCoil', 2],
   // (Stage 5 review: the smallest belongings read as 1-3 px specks from the camera: few of them; the
   // bags, cases and umbrellas carry the run.)
-  ['cityDUmbrellaOpen', 8], ['cityDUmbrellaClosed', 9], ['cityDUmbrellaBroken', 5], ['cityDShoe', 3], ['cityDShoeHeel', 2], ['cityDShoeWork', 1], ['cityDPhone', 2], ['cityDPhoneCracked', 1],
-  ['cityDBagBurst', 4], ['cityDBagBoxes', 3], ['cityDBackpack', 3], ['cityDHandbag', 2], ['cityDBriefcase', 2], ['cityDJacket', 3], ['cityDToy', 1], ['cityDGlasses', 1], ['cityDKeys', 1], ['cityDTickets', 2],
-  ['cityDGlassFan', 6], ['cityDGlass', 6], ['cityDMedianDebris', 3],
-  ['cityDPuddleJunk', 6], ['cityDPaperWet', 5], ['cityDFlierDrift', 6], ['cityDCanCrushed', 2],
+  ['cityDUmbrellaOpen', 6], ['cityDUmbrellaClosed', 7], ['cityDUmbrellaBroken', 4], ['cityDShoe', 2], ['cityDShoeHeel', 2], ['cityDShoeWork', 1], ['cityDPhone', 2], ['cityDPhoneCracked', 1],
+  ['cityDBagBurst', 3], ['cityDBagBoxes', 2], ['cityDBackpack', 2], ['cityDHandbag', 2], ['cityDBriefcase', 2], ['cityDJacket', 2], ['cityDToy', 1], ['cityDGlasses', 1], ['cityDKeys', 1], ['cityDTickets', 2],
+  ['cityDGlassFan', 5], ['cityDGlass', 5], ['cityDMedianDebris', 3],
+  ['cityDPuddleJunk', 4], ['cityDPaperWet', 4], ['cityDFlierDrift', 5], ['cityDCanCrushed', 2],
   // Velvet Row's lit touches: a frame round each club door the camera sees, neon strips beside them, wet glints.
   ['cityDDoorGlow', 3], ['cityDNeonSide', 3], ['cityDPuddleGlint', 6],
   // The litter: each piece the seed of a cluster at a kerb or in a gutter (LITTER_CLUSTER), so it reads
   // as a drift of rubbish, not a scatter of specks.
-  ['cityDCupSpill', 3], ['cityDBagTipped', 3], ['cityDPaper', 3], ['cityDFlier', 2], ['cityDCans', 2], ['cityDCup', 2], ['cityDButts', 3], ['cityDWrappers', 2], ['cityDNoodleBox', 2], ['cityDBottle', 2], ['cityDSignFallen', 2], ['cityDPipeStub', 2],
+  ['cityDCupSpill', 2], ['cityDBagTipped', 2], ['cityDPaper', 2], ['cityDFlier', 2], ['cityDCans', 2], ['cityDCup', 2], ['cityDButts', 2], ['cityDWrappers', 2], ['cityDNoodleBox', 2], ['cityDBottle', 2], ['cityDSignFallen', 2], ['cityDPipeStub', 2],
 ]);
 // A litter cluster: round each litter seed, up to `mates` more small pieces
 // `from`-`to` m off it along the kerb (its local x) and a little across.
-export const LITTER_CLUSTER = Object.freeze({ mates: 3, from: .45, to: 1.1, across: .35,
+export const LITTER_CLUSTER = Object.freeze({ mates: 2, from: .45, to: 1.1, across: .35,
   kinds: Object.freeze(['cityDPaper', 'cityDFlier', 'cityDCans', 'cityDCup', 'cityDButts', 'cityDWrappers', 'cityDBottle', 'cityDCanCrushed', 'cityDNoodleBox', 'cityDPaperWet']) });
 // What the screen fill adds where a screen is sparse (small, anywhere open).
 const FILL = Object.freeze(['cityDPaper', 'cityDFlier', 'cityDCans', 'cityDCup', 'cityDButts', 'cityDWrappers', 'cityDBottle', 'cityDPaperWet', 'cityDCanCrushed', 'cityDBagTipped', 'cityDValveLid', 'cityDHatch', 'cityDBinBagFlat', 'cityDBoxesFlat', 'cityDConduit', 'cityDGasMeter', 'cityDPoster', 'cityDStickers', 'cityDVentGrille']);

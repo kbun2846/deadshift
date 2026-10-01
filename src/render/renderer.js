@@ -2413,7 +2413,7 @@ export class WorldView {
     this.postLoading ||= import('./extreme-post.js')
       .then(({ ExtremePost }) => {
         if (this.qualityName !== 'extreme') { this.postLoading = null; return; } // switched away while it loaded
-        this.post = new ExtremePost(this.renderer, this.scene, this.camera, { excluded: () => this.aoExcluded(), grade: this.look.grade }); // s3-look: the map's grade
+        this.post = new ExtremePost(this.renderer, this.scene, this.camera, { excluded: () => this.aoExcluded(), extra: () => this.city?.shells?.aoScene?.() ?? null, grade: this.look.grade }); // s3-look: the map's grade; Lumen: the shells drawn with their cut (city-shells.js aoScene)
         if (this.programsWarmed) this.warmPrograms(); // again, for the composer's target (see warmPrograms)
       })
       .catch(error => { console.warn('Extreme post-processing unavailable:', error); });
@@ -2446,8 +2446,12 @@ export class WorldView {
     // nearly opaque roof, so leaving a house showed the room's outline on the
     // roof until it had finished closing.
     for (const roof of this.roofs) if (roof.opacity < .5) list.push(roof.group);
-    // Lumen: the storeys that are cut (render/city-shells.js), never in the AO's depth.
-    if (this.city?.shells?.upper) list.push(this.city.shells.upper);
+    // Lumen: the shells (render/city-shells.js) are cut per fragment, which
+    // this draw's plain normals material is not: they are drawn into it with
+    // their cut instead (aoScene, ExtremePost `extra`). Left out with nothing
+    // in their place, the occlusion of the first floors and rooms under them
+    // showed through every roof and wall.
+    if (this.city?.shells?.upper) list.push(this.city.shells.upper, ...this.city.shells.cellMeshes);
     for (const flight of this.birds?.flights || []) { list.push(flight.group); if (flight.shadow) list.push(flight.shadow); }
     // Ground cover (tufts, pebbles, twigs) is thousands of tiny triangles that
     // cast no occlusion worth the cost of drawing them a second time.

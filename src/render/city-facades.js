@@ -20,12 +20,11 @@
 // slot, role 0 (a first floor: world/city-cut.js's rule cuts it only where
 // it goes see-through by you). Above it, a flat panel whose two ends are both on
 // the wall's column breaks (the 1.5 m lattice the storeys are built in) is
-// role 1 and reads the scoop on the wall's line exactly as the wall's own
-// vertices there do, so it is squashed with its wall, never above a lowered
-// top or off it. Everything else up there (anything with depth, anything
-// between two breaks) is role 3: it reads the scoop at one point (its middle
-// on the wall's line; a fin at its break) and goes away whole as soon as its
-// wall is lowered or cut, so nothing ever hangs off a lowered or cut wall.
+// role 1, everything else up there (anything with depth, anything between
+// two breaks) role 3; both are cut per fragment as their wall is, and carry
+// their wall's anchor (FaceKit wallOf: rule 6, a part seen from behind its
+// wall goes with the wall's face, which is turned away there). A piece on
+// no wall (roof kit, laundry lines) is anchored at its own xz.
 // Parts stop FACADES.topMargin under a wall's top.
 //
 // Spend where the camera looks: it stands 29 m up, 10 m south of you, and
@@ -34,7 +33,7 @@
 // FACADES.detailTop; a face is dressed only if some camera the game can have
 // sees it (faceSeen: fully if it stands in front of it, the flat pattern and
 // first floor only if just glimpsed).
-import { cutStamp } from '../world/city-cut.js';
+import { CUT, cutStamp } from '../world/city-cut.js';
 import * as THREE from 'three';
 
 export const FACADES = Object.freeze({
@@ -519,7 +518,11 @@ class FaceKit {
   // World point.
   P(s, y, d, out = [0, 0, 0]) { const p = this.p, t = p.from + s, k = FACADES.face + d; out[0] = p.ax + p.ux * t + p.ox * k; out[1] = y; out[2] = p.az + p.uz * t + p.oz * k; return out; }
   line(s) { const p = this.p, t = p.from + s; return [p.ax + p.ux * t, p.az + p.uz * t]; }
-  get lineOf() { const p = this.p; return this.lineRef ||= { line: true, ax: p.ax, az: p.az, ux: p.ux, uz: p.uz }; }
+  // A part's anchor above its first floor (roles 1 and 3; world/city-cut.js
+  // CUT.wall, rule 6): each vertex projected onto its wall's line moved
+  // CUT.wall.back m in behind it, so the fragment shader reads the wall's
+  // outward normal from it (a part on a wall goes with the wall's face).
+  get wallOf() { const p = this.p, b = CUT.wall.back; return this.wallRef ||= { line: true, ax: p.ax - p.ox * b, az: p.az - p.oz * b, ux: p.ux, uz: p.uz }; }
   soup(tier, fixed) { return tier ? this.cell.tiers[tier] : fixed ? this.cell.fixed : this.cell.rest; }
   // Start and end a wash range round what is emitted into a soup.
   mark(soup) { return soup.count; }
@@ -558,8 +561,7 @@ class FaceKit {
     const upper = y0 >= F - 1e-6, tier = o.tier || 0, soup = this.soup(tier, !upper), d = o.d ?? FACADES.proud;
     let stamp = cutStamp(this.slot, 0), at = null;
     if (upper) {
-      if (this.onColumn(s0) && this.onColumn(s1)) { stamp = cutStamp(this.slot, 1); at = this.lineOf; }
-      else { stamp = cutStamp(this.slot, 3); at = this.line((s0 + s1) / 2); }
+      stamp = cutStamp(this.slot, this.onColumn(s0) && this.onColumn(s1) ? 1 : 3); at = this.wallOf;
     }
     const start = soup.count;
     const c = CORNERS;
@@ -575,7 +577,7 @@ class FaceKit {
     const F = this.F;
     if (y0 < F - 1e-6 && y1 > F + 1e-6) { this.box(s0, s1, y0, F, d0, d1, col, { ...o, top: false }); this.box(s0, s1, F, y1, d0, d1, col, { ...o, bottom: false }); return; }
     const upper = y0 >= F - 1e-6, tier = o.tier || 0, soup = this.soup(tier, !upper);
-    const stamp = cutStamp(this.slot, upper ? 3 : 0), at = upper ? (o.at || this.line((s0 + s1) / 2)) : null;
+    const stamp = cutStamp(this.slot, upper ? 3 : 0), at = upper ? this.wallOf : null;
     const p = this.p, n = this.normals;
     const front = o.front ?? col, top = o.top ?? col, bottom = o.bottom ?? false, ends = o.ends ?? col;
     const g = o.glow, start = soup.count;
@@ -596,7 +598,7 @@ class FaceKit {
   pipe(s, r, y0, y1, col, o = {}) {
     const F = this.F; if (this.skip(o)) return;
     if (y0 < F - 1e-6 && y1 > F + 1e-6) { this.pipe(s, r, y0, F, col, o); this.pipe(s, r, F, y1, col, o); return; }
-    const upper = y0 >= F - 1e-6, tier = o.tier || 0, soup = this.soup(tier, !upper), stamp = cutStamp(this.slot, upper ? 3 : 0), at = upper ? this.line(s) : null;
+    const upper = y0 >= F - 1e-6, tier = o.tier || 0, soup = this.soup(tier, !upper), stamp = cutStamp(this.slot, upper ? 3 : 0), at = upper ? this.wallOf : null;
     const dc = r + (o.gap ?? .03), p = this.p, start = soup.count;
     for (let k = 0; k < 6; k++) {
       const a0 = (k - 1.5) * Math.PI / 3, a1 = a0 + Math.PI / 3, am = (a0 + a1) / 2;
@@ -610,7 +612,7 @@ class FaceKit {
   // out, `thick` deep. Role 3 (above the first floor only).
   stair(sa, ya, sb, yb, d0, d1, thick, col, o = {}) {
     if (this.skip(o)) return;
-    const soup = this.soup(o.tier || 0, false), stamp = cutStamp(this.slot, 3), at = o.at || this.line((sa + sb) / 2), start = soup.count;
+    const soup = this.soup(o.tier || 0, false), stamp = cutStamp(this.slot, 3), at = this.wallOf, start = soup.count;
     const A = [this.P(sa, ya, d0), this.P(sb, yb, d0), this.P(sb, yb, d1), this.P(sa, ya, d1)];
     solid(soup, A, A.map(p => [p[0], p[1] - thick, p[2]]), col, stamp, at);
     this.close(soup, start);
@@ -701,7 +703,7 @@ function dressFirstFloor(k) {
     const [cx, , cz] = k.P(end ? L : 0, 0, 0), wrap = p.square?.[end] && !k.nearDoor(cx, cz, .45) ? FACADES.face + .1 : 0;
     const sa = end ? L - .32 : -wrap, sb = end ? L + wrap : .32, d0 = wrap ? -FACADES.face : 0;
     if (k.clear(sa, sb, 0, 2.5)) k.box(sa, sb, 0, F, d0, .1, tone(pil, .9), { frontTop: tone(pil, 1.1), top: p.upper ? false : tone(pil, 1) });
-    if (p.upper) k.box(sa, sb, F, Math.min(p.top - FACADES.topMargin, FACADES.detailTop), d0, .1, tone(look.outer || pil, .8), { tier: 1, top: false, at: k.line(end ? L : 0) });
+    if (p.upper) k.box(sa, sb, F, Math.min(p.top - FACADES.topMargin, FACADES.detailTop), d0, .1, tone(look.outer || pil, .8), { tier: 1, top: false });
   }
   // Pipes up the wall (from the ground; over a doorway's clearance they start above it).
   for (let i = 0; i < (look.pipes || 0); i++) {
@@ -825,7 +827,7 @@ function dressUpper(k) {
     }
     if (look.roof?.parapet && wants(0)) for (let i = 0; i + 1 < cols.length; i++) {
       const s0 = cols[i], s1 = cols[i + 1];
-      k.box(s0, s1, top, top + .45, -FACADES.face * 2, .04, tone(look.roof.parapet, 1), { ends: false, top: tone(look.roof.parapet, 1.15), at: k.line((s0 + s1) / 2) });
+      k.box(s0, s1, top, top + .45, -FACADES.face * 2, .04, tone(look.roof.parapet, 1), { ends: false, top: tone(look.roof.parapet, 1.15) });
     }
     if (win && top - F > 2) windowRows(k, F + .3, Math.min(limit, F + fh), fh, colIndex, r, 0, 0);
     cornerNeon(k, r, limit);
@@ -855,10 +857,10 @@ function dressUpper(k) {
     if (!k.clear(s - .1, s + .1, F, dTop)) continue; // (a fin or a light line through a sign: none there)
     if (look.fins && mod(idx, look.fins.step) === 0) {
       const f = look.fins, top2 = dTop;
-      k.box(s - f.w / 2, s + f.w / 2, F + .1, top2, 0, f.depth, tone(f.colour, .9), { frontTop: tone(f.colour, 1.15), ends: tone(f.colour, .7), at: k.line(s), tier: look.tower || look.recipe === 'uptown' || look.recipe === 'flatiron' ? 0 : 1 });
+      k.box(s - f.w / 2, s + f.w / 2, F + .1, top2, 0, f.depth, tone(f.colour, .9), { frontTop: tone(f.colour, 1.15), ends: tone(f.colour, .7), tier: look.tower || look.recipe === 'uptown' || look.recipe === 'flatiron' ? 0 : 1 });
     } else if (look.strips && mod(idx, look.strips.step) === 0) {
       const hex = FACADE_NEON[look.strips.colour];
-      k.box(s - .04, s + .04, F + .2, dTop, 0, .03, lit(hex, .5), { glow: shine(look.strips.glow * NIGHT.strip), at: k.line(s), top: false });
+      k.box(s - .04, s + .04, F + .2, dTop, 0, .03, lit(hex, .5), { glow: shine(look.strips.glow * NIGHT.strip), top: false });
     }
   }
   // Solid walls: pilasters up the face every few columns (Balanced up), the
@@ -866,7 +868,7 @@ function dressUpper(k) {
   if (look.pilasters && k.L > 4) for (let i = 1; i + 1 < cols.length; i++) {
     const s = cols[i], idx = colIndex(s - .01, s + .01);
     if (mod(idx, look.pilasters) || !k.clear(s - .2, s + .2, F, dTop)) continue;
-    k.box(s - .17, s + .17, F, dTop, 0, .12, tone(look.outer, .88), { frontTop: tone(look.outer, 1.08), ends: tone(look.outer, .7), at: k.line(s), tier: 1 });
+    k.box(s - .17, s + .17, F, dTop, 0, .12, tone(look.outer, .88), { frontTop: tone(look.outer, 1.08), ends: tone(look.outer, .7), tier: 1 });
   }
   // Pilasters at the corners happen with the first floor (dressFirstFloor); corner neon here.
   cornerNeon(k, r, dTop);
@@ -965,14 +967,13 @@ function fireEscape(k, r, dTop, fh) {
   const wide = []; for (let i = 0; i + 2 < cols.length; i++) if (cols[i + 2] - cols[i] > 2.8) wide.push(i);
   if (!wide.length) return;
   const i = pick(r, wide), s0 = cols[i], s1 = cols[i + 2], iron = C('#2b2d31'), rust = C(look.rust || '#5e3d30');
-  const at = k.line((s0 + s1) / 2);
   if (!k.clear(s0, s1, F, dTop)) return;
   for (let y = F + fh, n = 0; y < dTop - .5; y += fh, n++) {
-    k.box(s0, s1, y - .08, y, 0, .9, n % 3 === 1 ? rust : iron, { tier: 1, at, bottom: C('#1d1e22') });
-    k.box(s0, s1, y + .9, y + .95, .86, .9, iron, { tier: 1, at });
-    for (let s = s0; s < s1; s += .5) k.box(s, s + .03, y, y + .9, .86, .89, iron, { tier: 2, at, top: false });
+    k.box(s0, s1, y - .08, y, 0, .9, n % 3 === 1 ? rust : iron, { tier: 1, bottom: C('#1d1e22') });
+    k.box(s0, s1, y + .9, y + .95, .86, .9, iron, { tier: 1 });
+    for (let s = s0; s < s1; s += .5) k.box(s, s + .03, y, y + .9, .86, .89, iron, { tier: 2, top: false });
     // The stair to the next landing, zig-zagging.
-    if (y + fh < dTop - .5) { const flip = n % 2; k.stair(flip ? s1 - .2 : s0 + .2, y + .02, flip ? s0 + 1.3 : s1 - 1.3, y + fh - .1, .15, .75, .08, iron, { tier: 1, at }); }
+    if (y + fh < dTop - .5) { const flip = n % 2; k.stair(flip ? s1 - .2 : s0 + .2, y + .02, flip ? s0 + 1.3 : s1 - 1.3, y + fh - .1, .15, .75, .08, iron, { tier: 1 }); }
   }
 }
 
@@ -1138,7 +1139,7 @@ function dressRoof(roof, cell, owner, input) {
     return null;
   };
   const box = (soup, cx, cz, w, d, ya, yb, col, o = {}) => {
-    const start = soup.count, at = [cx, cz], X0 = cx - w / 2, X1 = cx + w / 2, Z0 = cz - d / 2, Z1 = cz + d / 2;
+    const start = soup.count, at = null, X0 = cx - w / 2, X1 = cx + w / 2, Z0 = cz - d / 2, Z1 = cz + d / 2;
     const top = o.top || col, side = o.side || tone2(col, .8);
     quad(soup, [X0, yb, Z0], [X1, yb, Z0], [X1, yb, Z1], [X0, yb, Z1], [0, 1, 0], top, top, stamp, at, o.glow);
     quad(soup, [X0, ya, Z1], [X1, ya, Z1], [X1, yb, Z1], [X0, yb, Z1], [0, 0, 1], col, o.frontTop || col, stamp, at, o.glow);
@@ -1191,12 +1192,12 @@ function dressRoof(roof, cell, owner, input) {
     const soup = soupFor(1), start = soup.count, rr = .7, ya = y + .5, yb = y + 2.1, c = [at[0], at[1]];
     for (let k = 0; k < 8; k++) {
       const a0 = k * Math.PI / 4, a1 = a0 + Math.PI / 4, am = a0 + Math.PI / 8, n = [Math.cos(am), 0, Math.sin(am)];
-      quad(soup, [c[0] + rr * Math.cos(a0), ya, c[1] + rr * Math.sin(a0)], [c[0] + rr * Math.cos(a1), ya, c[1] + rr * Math.sin(a1)], [c[0] + rr * Math.cos(a1), yb, c[1] + rr * Math.sin(a1)], [c[0] + rr * Math.cos(a0), yb, c[1] + rr * Math.sin(a0)], n, kit('#4a4640', 1), kit('#5a564e', 1), stamp, c, null);
+      quad(soup, [c[0] + rr * Math.cos(a0), ya, c[1] + rr * Math.sin(a0)], [c[0] + rr * Math.cos(a1), ya, c[1] + rr * Math.sin(a1)], [c[0] + rr * Math.cos(a1), yb, c[1] + rr * Math.sin(a1)], [c[0] + rr * Math.cos(a0), yb, c[1] + rr * Math.sin(a0)], n, kit('#4a4640', 1), kit('#5a564e', 1), stamp, null, null);
       // (the lid: a low cone, each slice facing out and up)
       const A = [c[0], yb + .25, c[1]], B = [c[0] + rr * Math.cos(a0), yb, c[1] + rr * Math.sin(a0)], D = [c[0] + rr * Math.cos(a1), yb, c[1] + rr * Math.sin(a1)];
       let nl = norm(cross(sub(B, A), sub(D, A))); if (nl[1] < 0) nl = nl.map(v => -v);
       const cr = cross(sub(B, A), sub(D, A)), order = cr[0] * nl[0] + cr[1] * nl[1] + cr[2] * nl[2] >= 0 ? [A, B, D] : [A, D, B];
-      for (const q of order) soup.vertex(q[0], q[1], q[2], nl, kit('#55514a', 1), stamp, c[0], c[1], null);
+      for (const q of order) soup.vertex(q[0], q[1], q[2], nl, kit('#55514a', 1), stamp, q[0], q[2], null);
     }
     soup.ranges.push([start, soup.count, null]); owner.parts++;
   }
@@ -1220,8 +1221,8 @@ function dressRoof(roof, cell, owner, input) {
         const soup = soupFor(2), start = soup.count, up = .7, lean = [Math.cos(a) * .64, up, Math.sin(a) * .64], n = norm(lean);
         const u = norm(cross([0, 1, 0], n)), v = cross(n, u), c = [at[0], y + .95, at[1]], h = .38;
         const P = (su, sv, k = 0) => [c[0] + u[0] * su * h + v[0] * sv * h + n[0] * k, c[1] + u[1] * su * h + v[1] * sv * h + n[1] * k, c[2] + u[2] * su * h + v[2] * sv * h + n[2] * k];
-        quad(soup, P(-1, -1), P(1, -1), P(1, 1), P(-1, 1), n, kit('#6f737a', 1), kit('#6f737a', 1), stamp, [at[0], at[1]], null);
-        quad(soup, P(-1, -1, -.03), P(1, -1, -.03), P(1, 1, -.03), P(-1, 1, -.03), n.map(q => -q), kit('#4a4e55', 1), kit('#4a4e55', 1), stamp, [at[0], at[1]], null);
+        quad(soup, P(-1, -1), P(1, -1), P(1, 1), P(-1, 1), n, kit('#6f737a', 1), kit('#6f737a', 1), stamp, null, null);
+        quad(soup, P(-1, -1, -.03), P(1, -1, -.03), P(1, 1, -.03), P(-1, 1, -.03), n.map(q => -q), kit('#4a4e55', 1), kit('#4a4e55', 1), stamp, null, null);
         soup.ranges.push([start, soup.count, null]); owner.parts++;
       }
     }
@@ -1277,7 +1278,7 @@ function laundryLines(pieces) {
 // Laundry lines across the Stacks' courtyard, high up (Quality): a thin
 // line and cloths hanging off it; gone when the block is lowered or cut.
 function dressLaundry(l, cell, owner) {
-  const soup = cell.tiers[2], start = soup.count, stamp = cutStamp(l.slot, 3), at = [(l.a[0] + l.b[0]) / 2, (l.a[1] + l.b[1]) / 2];
+  const soup = cell.tiers[2], start = soup.count, stamp = cutStamp(l.slot, 3), at = null; // (on no wall: world/city-cut.js CUT.wall)
   const dx = l.b[0] - l.a[0], dz = l.b[1] - l.a[1], len = Math.hypot(dx, dz), ux = dx / len, uz = dz / len, nx = -uz, nz = ux;
   const r = rng(hash(l.a[0], l.a[1], l.y));
   const seg = (s0, s1, ya, yb, col, depth) => {

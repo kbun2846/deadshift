@@ -70,8 +70,22 @@ const GradeShader = {
   }`,
 };
 
-class SceneAOPass extends GTAOPass {
- constructor(scene, camera, width, height, excluded) { super(scene, camera, width, height); this.excluded = excluded; }
+export class SceneAOPass extends GTAOPass {
+ constructor(scene, camera, width, height, excluded, extra) { super(scene, camera, width, height); this.excluded = excluded; this.extra = extra; }
+ // After the scene's own normals draw, anything that brings its own normals
+ // material for it (`extra`: a scene; Lumen's shells with their cut, which
+ // the plain normals material would draw whole: render/city-shells.js
+ // aoScene), into the same depth and normals.
+ _renderOverride(renderer, overrideMaterial, renderTarget, clearColor, clearAlpha) {
+  super._renderOverride(renderer, overrideMaterial, renderTarget, clearColor, clearAlpha);
+  if (renderTarget === this.normalRenderTarget) this.drawExtra(renderer);
+ }
+ drawExtra(renderer) {
+  const extra = this.extra?.(); if (!extra) return;
+  const autoClear = renderer.autoClear;
+  renderer.setRenderTarget(this.normalRenderTarget); renderer.autoClear = false;
+  try { renderer.render(extra, this.camera); } finally { renderer.autoClear = autoClear; }
+ }
  // The stock version walks the whole scene every frame looking for lines and
  // points; the view already knows what to leave out.
  _overrideVisibility() {
@@ -85,7 +99,7 @@ class SceneAOPass extends GTAOPass {
 }
 
 export class ExtremePost {
- constructor(renderer, scene, camera, { excluded, grade = null }) { // s3-look: `grade`, a map's own (map-look.js look.grade)
+ constructor(renderer, scene, camera, { excluded, extra = null, grade = null }) { // s3-look: `grade`, a map's own (map-look.js look.grade)
   this.renderer = renderer;
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   // Multisampled HDR target: the composer bypasses the canvas's own
@@ -107,7 +121,7 @@ export class ExtremePost {
   this.composer.setPixelRatio(1);
   this.composer.addPass(new RenderPass(scene, camera));
   const s = EXTREME_POST;
-  this.ao = new SceneAOPass(scene, camera, Math.max(1, Math.round(size.x * s.aoScale)), Math.max(1, Math.round(size.y * s.aoScale)), excluded);
+  this.ao = new SceneAOPass(scene, camera, Math.max(1, Math.round(size.x * s.aoScale)), Math.max(1, Math.round(size.y * s.aoScale)), excluded, extra);
   // GTAO's depth texture has no size until its target is first drawn into,
   // but the shader warm-up samples it before that: WebGL then rejected a
   // zero-sized allocation (GL_INVALID_VALUE). Give it the target's size now.

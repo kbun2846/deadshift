@@ -167,6 +167,8 @@ export const WarmUp = {
           ao._overrideVisibility();
           try { this.renderer.render(this.scene, this.camera); }
           finally { this.scene.overrideMaterial = null; ao._restoreVisibility(); }
+          // (and what brings its own normals material: Lumen's cut shells, city-shells.js aoScene)
+          ao.drawExtra?.(this.renderer);
         }
         // And its strained denoise (setLight(true): fewer samples, its own
         // program), drawn once here rather than built mid-game the first time

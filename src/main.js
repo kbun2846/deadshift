@@ -66,7 +66,7 @@ import { targetRadius } from './target-radius.js';
 import { createTargetLock, TARGET_LOCK } from './target-lock.js';
 import { weapon as weaponInfo, weaponOrDefault, usesTrigger, DEFAULT_WEAPON } from './items.js';
 import { playableOr, underMaintenance } from './weapon-maintenance.js';
-import { STORM, stormAt, stormPhase, inStorm } from './storm.js';
+import { STORM, stormPhase, inStorm } from './storm.js';
 import { createStormHud } from './ui/storm-hud.js';
 import { Simulation, RULES } from './simulation.js';
 import { WorldView } from './render/renderer.js';
@@ -80,7 +80,8 @@ import { gpuInfo, detectTier, autoQuality, AutoQualityWatch } from './device-tie
 import { installSettingsPanel } from './ui/settings-panel.js';
 import {keyboardAim} from './keyboard-aim.js';
 import { createFpsLook, seedFpsLook, fpsMove, fpsAim, installFpsInput } from './fps-mode.js'; // dev-only first person
-import { overheadMapSVG } from './ui/overhead-map.js';
+import { overheadMapLive } from './ui/overhead-map.js';
+import { overheadZones, NO_ZONES } from './ui/overhead-zones.js';
 import { installDevWiring } from './ui/dev-wiring.js';
 import { openSpot } from './net/spawn-points.js';
 import { hasAuthoredSpawns } from './net/map-spawns.js'; // s2-spawns
@@ -272,13 +273,18 @@ function beginDeath(){
  for(const id of ['pause-panel','map-panel','settings-panel','tutorial-guide'])$(id).classList.add('hidden');
 }
 let mapOpen = false, mapWasPaused = false;
+// The M map (overhead-map.js): drawn when it opens, its live layer (the storm,
+// the duel circle, you) kept up every frame while open (frame()); `mapZones`
+// is the storm / duel circle the world was last drawn with (stepStormScreen).
+const overheadMap = overheadMapLive($('overhead-image'));
+let mapZones = NO_ZONES;
 function toggleMap() {
   if(!started||deathActive)return;
   if(!mapOpen){
     mapWasPaused=paused;setPaused(true);mapOpen=true;
     $('pause-panel').classList.add('hidden');
     if(tutorial){tutorial.event({type:'mapOpened'},sim);updateTutorial();}
-    $('overhead-image').innerHTML=overheadMapSVG(map,view,sim.player);
+    overheadMap.draw(map,view,sim.player,mapZones);
     $('map-panel').classList.toggle('teleport-enabled',!!sim.dev.teleport);
     $('map-panel').querySelector('footer').lastChild.textContent=sim.dev.teleport?' CLICK MAP TO TELEPORT':' YOUR LOCATION';
     $('map-panel').classList.remove('hidden');$('map-close').focus();
@@ -973,14 +979,16 @@ function startAftermath(key,at){
 // has taken from you this time, `stormDose`) and, near the end, a heartbeat.
 let stormDose=0,stormPulseAt=0;
 const stormHud=createStormHud($('game'),document.querySelector('#game .health-hud')||$('game'));
-function stepStormScreen(dt){
+function stepStormScreen(dt,duelCircle=null){
  const now=started?(online.active?online.stormNow():duel.stormNow()):null;
- const circle=now?stormAt(now.plan,now.t):null,phase=now?stormPhase(now.plan,now.t):null;
+ // One state for the world and the M map (overhead-zones.js).
+ mapZones=overheadZones(now,duelCircle);
+ const circle=mapZones.storm,phase=now?stormPhase(now.plan,now.t):null;
  const m=online.active?online.match():null,ffa=!!now&&now.plan.kind==='ffa';
  const end=ffa?(m?.timed?m.left:online.active?null:duel.left):null;
  // FFA: winds up over its final stretch; team rounds: the final zone a little, sudden death fully.
  const tension=!phase?0:ffa?(phase.phase==='closing'?0:Math.max(.25,Math.min(1,1-(end??STORM.ffaHold)/STORM.ffaHold))):phase.phase==='final'?.3:phase.phase==='sudden'?1:0;
- view.setStorm(circle,tension,now?{x:now.plan.x1,z:now.plan.z1,r:now.plan.r1}:null);
+ view.setStorm(circle,tension,mapZones.final);
  const total=!phase?0:phase.phase==='closing'?now.plan.close:phase.phase==='final'?(ffa?STORM.ffaHold:now.plan.hold):now.plan.sudden;
  stormHud.update(running||deathActive?phase:null,{end,tension,total});
  const me=sim.player,inside=!!circle&&started&&!paused&&!me.dead&&me.hp>0&&inStorm(circle,me.x,me.z);
@@ -1284,7 +1292,7 @@ $('overhead-image').addEventListener('click',e=>{
   sim.player.vx=sim.player.vz=sim.player.dodgeRemaining=0;
   sim.movePlayer(0,0);previousPlayer={...sim.player};accumulator=0;
   view.focus.set(sim.player.x,view.gy(sim.player.x,sim.player.z),sim.player.z);dirty=true;
-  $('overhead-image').innerHTML=overheadMapSVG(map,view,sim.player);
+  overheadMap.draw(map,view,sim.player,mapZones);
 });
 
 bindTouchAction($('pause'),{press:()=>{if(mapOpen)toggleMap();else setPaused(!paused);}});
@@ -1732,10 +1740,13 @@ function frame(time) {
   if(started&&!paused)duel.frame(dt,!sim.player.dead&&sim.player.hp>0);
   updateSpectate(dt);
   // 1V1's duel circle (online: the host's, in the match state; SOLO: duel.js's).
-  view.setDuelCircle(started?(online.active?online.match()?.circle:duel.circle):null);
+  const duelCircle=started?(online.active?online.match()?.circle:duel.circle):null;
+  view.setDuelCircle(duelCircle);
   // The world's animals (critters.js): this page's own (SOLO, the host's arena), or a joiner's copy of the host's.
   view.critters=sim.critters||null;view.critterState=view.critters?null:online.active?online.critterState():null;
-  stepStormScreen(dt);
+  stepStormScreen(dt,duelCircle);
+  // The open map follows the storm, the duel circle and you (online the match runs on under it).
+  if(mapOpen)overheadMap.refresh(sim.player,mapZones);
   {const rp=view.player.position,me=view.screenPoint(rp.x,rp.z);fireIndicator.update(running&&!deathActive?dt:10,me.x,me.y,viewWidth(),viewHeight());
    if(running&&!deathActive)damageIndicator.update(dt,me.x,me.y,viewWidth(),viewHeight());else damageIndicator.clear();}
   if(deathActive){

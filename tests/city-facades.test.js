@@ -2,9 +2,9 @@
 // built without WebGL: every playable building and every ring tower a camera
 // can see is dressed, no two alike; nothing stands in a doorway or out over
 // the sidewalk; no colour near a team's, lit or not; every part carries the
-// cut's stamp for its height (a first floor's never cut; a storey's flat
-// pattern squashed with its wall on the wall's column points, the rest gone
-// whole when it is lowered); faces wound to their normals; the preset
+// cut's stamp for its height (a first floor's never cut; above it, anchored
+// behind its own wall's line, world/city-cut.js rule 6); faces wound to their
+// normals; the preset
 // ladder (Extreme never less than Quality) and the budget at the two
 // densest views.
 import test from 'node:test';
@@ -17,7 +17,7 @@ import { buildingOpenings } from '../src/map-kit.js';
 import { TEAMS } from '../src/config/match.js';
 import { acesFilmic, deltaE2000, hexRgb, lab, toSrgb } from '../src/render/look-contrast.js';
 import { maps } from '../src/maps.js';
-import { CUT_ROLES } from '../src/world/city-cut.js';
+import { CUT, CUT_ROLES, convexDistance } from '../src/world/city-cut.js';
 
 const map = maps.lumen, T = SHELLS.thickness;
 const view = { scene: new THREE.Scene() }, city = { uniforms: { cutTexture: { value: null } }, cutTexture: null };
@@ -148,44 +148,45 @@ test('city facades: no colour within 15 CIEDE2000 of a team colour, plain or lit
   for (const [k, hex] of Object.entries(WINDOW_LIGHT)) for (const t of teams) assert.ok(deltaE2000(lab(hexRgb(hex)), t) >= 15, k);
 });
 
-test('city facades: every part carries the cut for its height; a storey\'s flat pattern reads the scoop on its wall\'s column points', () => {
-  // Where the storeys' own vertices read the scoop (their column points),
-  // bucketed by slot and 10 cm cell.
-  const cellKey = (slot, x, z) => `${slot}:${Math.floor(x * 10)}:${Math.floor(z * 10)}`, wallPoints = new Map();
-  for (const w of shells.plan.walls) {
-    if (w.kind !== 'upper') continue;
-    const slot = Math.floor(w.stamp / CUT_ROLES);
-    for (const st of [0, ...w.stations, w.length]) {
-      const x = w.cx + w.ux * (st - w.length / 2) + w.shift[0], z = w.cz + w.uz * (st - w.length / 2) + w.shift[1], k = cellKey(slot, x, z);
-      (wallPoints.get(k) || wallPoints.set(k, []).get(k)).push([x, z]);
-    }
-  }
-  const onColumn = (slot, x, z) => {
-    for (const dx of [-.1, 0, .1]) for (const dz of [-.1, 0, .1]) for (const [px, pz] of wallPoints.get(cellKey(slot, x + dx, z + dz)) || []) if (Math.hypot(px - x, pz - z) < 2e-3) return true;
-    return false;
-  };
-  const bad = [], off = [];
-  let roles = [0, 0, 0, 0, 0, 0, 0, 0];
+test('city facades: every part carries the cut for its height; above its first floor, its wall\'s anchor (rule 6) or none', () => {
+  // world/city-cut.js CUT.wall: a part above its first floor (role 1: a flat
+  // panel on the lattice; 3: anything else) is anchored CUT.wall.back m in
+  // behind its own wall's line (so the shader reads the wall's outward
+  // normal from it: a part on a wall goes with the wall's face, seen from
+  // behind); a piece on no wall (roof kit, a laundry line across a courtyard)
+  // at its own xz, and then only over its building's top or off its footprint.
+  const bad = [], noWall = [];
+  let roles = [0, 0, 0, 0, 0, 0, 0, 0], onWall = 0;
   each((a, v) => {
-    const c = a.cityCut[v], slot = Math.floor(c / CUT_ROLES + .01), role = Math.round(c) - slot * CUT_ROLES, y = a.position[v * 3 + 1];
+    const c = a.cityCut[v], slot = Math.floor(c / CUT_ROLES + .01), role = Math.round(c) - slot * CUT_ROLES;
+    const x = a.position[v * 3], y = a.position[v * 3 + 1], z = a.position[v * 3 + 2];
     roles[role]++;
     if (role === 0) { if (slot < 1 || slot > shells.slotCount) bad.push(`first-floor stamp ${c}`); return; } // (a first floor: its building's slot)
-    const row = shells.table[slot], floor = row.z, top = row.w;
+    const row = shells.table[slot], floor = row.z, top = row.w, b = shells.cut.bySlot.get(slot);
     if (slot < 1 || slot > shells.slotCount || (role !== 1 && role !== 3)) { bad.push(`stamp ${c}`); return; }
     if (y < floor - 1e-3) bad.push(`slot ${slot} role ${role} at ${y.toFixed(2)} under its first floor ${floor}`);
-    if (role === 1) {
-      if (y > top - FACADES.topMargin + 1e-3) bad.push(`slot ${slot} flat part at ${y.toFixed(2)} over ${top} - margin`);
-      const ax = a.cityAt[v * 2], az = a.cityAt[v * 2 + 1];
-      if (Math.hypot(ax - a.position[v * 3], az - a.position[v * 3 + 2]) > T * 1.5) bad.push(`slot ${slot}: reads the scoop ${Math.hypot(ax - a.position[v * 3], az - a.position[v * 3 + 2]).toFixed(2)} m off`);
-      if (!onColumn(slot, ax, az)) off.push(`slot ${slot} (${ax.toFixed(3)}, ${az.toFixed(3)})`);
+    if (role === 1 && y > top - FACADES.topMargin + 1e-3) bad.push(`slot ${slot} flat part at ${y.toFixed(2)} over ${top} - margin`);
+    const dx = x - a.cityAt[v * 2], dz = z - a.cityAt[v * 2 + 1], off = Math.hypot(dx, dz);
+    if (off < CUT.wall.onWall) {
+      if (off > 1e-4) bad.push(`slot ${slot}: a piece on no wall anchored ${off.toFixed(3)} m off its own xz`);
+      const out = -Math.max(...b.polygons.map(poly => convexDistance(poly, x, z)));
+      if (y < top - 1e-3 && out < .1) noWall.push(`slot ${slot} (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
+      return;
     }
+    onWall++;
+    // Its wall's line: CUT.wall.back m out from the anchor, on its building's outline; the part in front of it.
+    const nx = dx / off, nz = dz / off, lx = a.cityAt[v * 2] + nx * CUT.wall.back, lz = a.cityAt[v * 2 + 1] + nz * CUT.wall.back;
+    // (on one of its outline's edges, or that edge's line just past its end: a corner pilaster wraps the corner)
+    const onEdge = poly => poly.some((p, i) => { const q = poly[(i + 1) % poly.length], l = Math.hypot(q[0] - p[0], q[1] - p[1]); return Math.abs(((q[0] - p[0]) * (lz - p[1]) - (q[1] - p[1]) * (lx - p[0])) / l) < 2e-3; });
+    if (!b.polygons.some(poly => onEdge(poly) && convexDistance(poly, lx, lz) > -FACADES.face - .15)) bad.push(`slot ${slot}: anchor's line (${lx.toFixed(2)}, ${lz.toFixed(2)}) is not on its outline`);
+    if (off - CUT.wall.back < -FACADES.face - 2e-3) bad.push(`slot ${slot}: a part ${(off - CUT.wall.back).toFixed(2)} m behind its wall's line`);
   });
   // And a first-floor part (role 0) never reaches over its first floor.
   each((a, v) => { if (a.cityCut[v] % CUT_ROLES === 0 && a.position[v * 3 + 1] > 3.6 + 1e-3) bad.push(`fixed part at ${a.position[v * 3 + 1].toFixed(2)}`); });
-  assert.ok(roles[0] > 1000 && roles[1] > 1000 && roles[3] > 1000, roles.join());
+  assert.ok(roles[0] > 1000 && roles[1] > 1000 && roles[3] > 1000 && onWall > 10000, roles.join() + ' ' + onWall);
   assert.equal(roles[2], 0, 'no part is a cap');
-  assert.deepEqual(bad.slice(0, 6), [], `${bad.length} bad stamps`);
-  assert.deepEqual(off.slice(0, 6), [], `${off.length} flat storey parts read the scoop off their wall's column points`);
+  assert.deepEqual(bad.slice(0, 6), [], `${bad.length} bad stamps or anchors`);
+  assert.deepEqual(noWall.slice(0, 6), [], `${noWall.length} pieces on no wall stand on their building's walls under its top`);
 });
 
 test('city facades: every part is wound to face its normal (in the shells\' meshes and the detail meshes)', () => {

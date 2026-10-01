@@ -29,6 +29,20 @@
 //  reset      out of sight: a breather (reload), then comes back from a
 //             different angle (a flank spot away from the old line).
 //
+//  hold       (normal robots; owner, 2026-10-01: "Tune the base bot from
+//             normal difficulty to be less aggressive, so it's not always
+//             chasing and initiating and should be in cover sometimes or in
+//             the open") it keeps its ground and lets them come: behind cover
+//             peeking out now and then (stance 'cover'), or at its weapon's
+//             range in the open, weaving, not closing (stance 'open'). Taken
+//             now and then where it would otherwise go after them (first
+//             sight out of its band, its initiative, them backing off, a
+//             reset over). Ends when they come in, it is shot and cannot
+//             answer from there, it has the edge (press: picks its moment),
+//             any reason to back off, the storm, or its time (HOLD.for).
+//             Robots whose skill has no `hold` (easy, hard...) never hold:
+//             their loop, and every random number it draws, is as before.
+//
 // Every switch has hysteresis: a least stay in each state, randomized timers,
 // press thresholds in and out apart, and a calm spell after a reset during
 // which it does not back off again for anything but reloading or being hurt
@@ -42,7 +56,7 @@
 // fills in place (RobotBrain.situation) and writes the state into `eng`.
 import { RULES, SHOTGUN, ICHOR, SHEATH } from '../config/gameplay.js';
 
-export const ENGAGE_STATES = Object.freeze(['seek', 'approach', 'engage', 'press', 'disengage', 'reset']);
+export const ENGAGE_STATES = Object.freeze(['seek', 'approach', 'engage', 'press', 'disengage', 'reset', 'hold']);
 
 // How close someone with each weapon has to be to hurt you badly with its main
 // fire (not its occasional long ability): a gun robot kites a shorter weapon to
@@ -61,6 +75,31 @@ export const ENGAGE = Object.freeze({
  calmFor: [2.5, 5], initFor: [2.5, 6.5], farFor: .8, whimEvery: [2, 4], whim: .18,
 });
 
+// Holding its ground (owner, 2026-10-01: "Tune the base bot from normal
+// difficulty to be less aggressive, so it's not always chasing and initiating
+// and should be in cover sometimes or in the open"). Only a skill with a
+// `hold` (robot-profile.js SKILLS: normal) ever holds; `thresholds` turns it
+// into this robot's chance (`th.hold`, bolder robots and moods less), how long
+// (`th.holdLen`) and how often in cover rather than the open (`th.cover`).
+//  for       s a hold lasts (× th.holdLen), then it goes back after them
+//  again     s after a hold before it will hold again (never a standing camp)
+//  wait/peek cover stance: s behind cover, then s stepped out to a spot with a
+//            line on them (shooting), back and forth
+//  seek, init, far, reset: how keen it is to hold (× th.hold) at each place it
+//            would otherwise go after them: seeing them first out of its band;
+//            its initiative after holding its band (`initAt`); them backing
+//            out of its band; a reset over; back in sight after backing off
+//            to reload, or a press run out with them out of its band (back)
+//  approach  how keen, every `every` s of an approach in sight of them
+//  edge      how much more edge it wants before it presses, × th.hold
+//  shot      s after a hit that counts as just shot at (it answers or moves)
+//  close     a weapon whose band ends nearer than this (Ballast, the blades)
+//            holds only in cover: in the open it would only be shot at
+export const HOLD = Object.freeze({
+ for: [4, 9], again: [2.5, 5.5], wait: [1.4, 3.2], peek: [.9, 1.9],
+ seek: .8, init: 1, far: .7, reset: .8, back: .6, approach: .45, every: [1, 2], shot: .35, close: 6, edge: .3,
+});
+
 // The leaning of a profile, from its continuous numbers (a blend or a mood
 // lands between them).
 export function persona(pf) {
@@ -77,7 +116,16 @@ export function persona(pf) {
 // taking the initiative.
 export function thresholds(pf, out = {}) {
  const a = pf.aggr ?? .5, tech = pf.tech ?? .5;
- out.pressAt = .95 - a * .6 + (1 - tech) * .35; out.pressOut = out.pressAt - .45;
+ // Holding (HOLD; 2026-10-01): the skill's `hold` leaned by boldness (a
+ // rusher-heavy blend or a fired-up mood holds less, a calm or cautious one
+ // more and longer), and its own lean to cover over the open, cooled by mood.
+ // A robot that holds also waits for a bigger edge before it presses
+ // (HOLD.edge): a reload alone is not always enough.
+ const h = pf.hold || 0;
+ out.hold = h > 0 ? h * Math.max(.35, Math.min(1.1, 1.35 - a)) : 0;
+ out.holdLen = 1.3 - a * .6;
+ out.cover = Math.max(0, Math.min(1, (pf.coverLean ?? .5) - (pf.mood || 0) * .25));
+ out.pressAt = .95 - a * .6 + (1 - tech) * .35 + out.hold * HOLD.edge; out.pressOut = out.pressAt - .45;
  out.trade = 16 + a * 26 + (1 - tech) * 18;
  out.chase = 2.2 + a * 2.2 + (1 - tech) * 2.5;
  out.init = (1.35 - a * .7) * (1.5 - tech * .5);
@@ -88,13 +136,18 @@ export function thresholds(pf, out = {}) {
 export function newEngagement(random = Math.random) {
  return { state: 'seek', reason: null, since: 0, at: 0, until: 0, phase: null, best: Infinity, bestAt: 0, farSince: 0, calmUntil: 0, initAt: 0,
   th: {}, init: 1, hideUntil: 0, taken: 0, dealt: 0, whim: 0, whimAt: 0, side: random() < .5 ? -1 : 1, fromAngle: null, lastSeen: -99, coverEnded: -9, hurtCoverAt: -99,
-  counts: { disengage: 0, press: 0, reset: 0, chase: 0 } };
+  // (hold: `stance` 'cover' / 'open', `phaseUntil` the cover stance's next
+  // wait/peek switch, `phaseAt` when this one began, `holdAgain` the earliest
+  // next hold, `holdRoll` the next chance to stop on an approach.)
+  stance: null, phaseUntil: 0, phaseAt: 0, holdAgain: 0, holdRoll: 0,
+  counts: { disengage: 0, press: 0, reset: 0, chase: 0, hold: 0 } };
 }
 
 // A situation (RobotBrain.situation fills one in place each think).
 export function newSituation() {
  return { has: false, seen: false, fresh: false, d: 0, near: 0, far: 0, reach: 0, threat: 0, my: 1, their: 1, empty: false, openReload: false, ability: false,
-  theirReload: false, theirSpent: false, reloadFrom: 0, recharging: false, foes: 0, mates: 0, isolated: false, hurt: 99, fall: false, inThreat: false, melee: false, leader: false };
+  theirReload: false, theirSpent: false, reloadFrom: 0, recharging: false, foes: 0, mates: 0, isolated: false, hurt: 99, fall: false, inThreat: false, melee: false, leader: false,
+  stormNear: false };
 }
 
 const span = (r, [a, b]) => a + r() * (b - a);
@@ -120,7 +173,35 @@ function go(e, state, now, reason, random) {
  // anything but reloading or bad hurt), so it does not flicker.
  if ((was === 'reset' || was === 'disengage') && state !== 'reset' && state !== 'disengage') e.calmUntil = now + span(random, ENGAGE.calmFor);
  if (state !== 'reset') e.phase = null;
+ // (Out of a hold: not another straight away.)
+ if (was === 'hold') { e.holdAgain = now + span(random, HOLD.again); e.stance = null; }
  return state;
+}
+
+// Would it hold here (HOLD)? `k`: how keen at this place. A robot whose skill
+// never holds draws no random number (its loop is exactly as before).
+function wantsHold(e, s, th, now, random, k) {
+ if (!(th.hold > 0) || now < e.holdAgain || s.leader || s.stormNear) return false;
+ return random() < th.hold * k;
+}
+
+// Where it would go after them (approach): a holding robot may hold instead.
+function goAfter(e, s, th, now, random, k) {
+ return wantsHold(e, s, th, now, random, k) ? hold(e, s, th, now, random) : go(e, 'approach', now, null, random);
+}
+
+// Into a hold: for how long, and where (cover, or the open at its range).
+// (A weapon that only bites close, or one outranged out here, holds in cover:
+// standing in the open it would only be shot at.)
+// (Its `reason` is the stance, for the dev overlay: HOLD (cover) / HOLD (open).)
+function hold(e, s, th, now, random) {
+ go(e, 'hold', now, null, random);
+ e.until = now + span(random, HOLD.for) * th.holdLen; e.counts.hold++;
+ const exposed = s.melee || s.far < HOLD.close || (s.seen && s.d > s.far + 1 && s.threat > s.far + 2);
+ e.stance = e.reason = exposed || random() < th.cover ? 'cover' : 'open';
+ e.phase = e.stance === 'cover' ? 'wait' : null; e.phaseAt = now;
+ e.phaseUntil = now + span(random, HOLD.wait);
+ return 'hold';
 }
 
 // Why it would back off now, or null. `severe` only: reloading, hurt badly.
@@ -176,7 +257,9 @@ export function judge(e, s, pf, now, random = Math.random) {
  let why;
  switch (e.state) {
   case 'seek':
-   return go(e, s.seen && s.d <= s.far ? 'engage' : 'approach', now, null, random);
+   if (s.seen && s.d <= s.far) return go(e, 'engage', now, null, random);
+   // (Seen out of its band: a holding robot may let them come.)
+   return s.seen ? goAfter(e, s, th, now, random, HOLD.seek) : go(e, 'approach', now, null, random);
   case 'approach':
    if ((why = danger(e, s, pf, now, false))) return go(e, 'disengage', now, why, random);
    if (s.seen && adv >= th.pressAt && stay > ENGAGE.minStay) return go(e, 'press', now, 'edge', random);
@@ -184,15 +267,28 @@ export function judge(e, s, pf, now, random = Math.random) {
    // A chase that is not closing (while it can see them: out of sight the
    // hunt has its own give-up, RobotBrain.watchGoal): give it up, go round.
    if (chaseStalled(e, s, th, now) && !s.leader) return go(e, 'disengage', now, 'chase', random);
+   // On the way in, in sight of them, a holding robot now and then stops and
+   // lets them come (every HOLD.every s; none for a robot that never holds).
+   if (th.hold > 0 && s.seen && stay > HOLD.every[0] && now >= e.holdRoll) {
+    e.holdRoll = now + span(random, HOLD.every);
+    if (wantsHold(e, s, th, now, random, HOLD.approach)) return hold(e, s, th, now, random);
+   }
    return e.state;
   case 'engage':
    if ((why = danger(e, s, pf, now, false))) return go(e, 'disengage', now, why, random);
    if (stay > ENGAGE.minStay && s.seen && adv >= th.pressAt) return go(e, 'press', now, 'edge', random);
-   if (s.d > s.far * 1.3 + 1) { e.farSince ||= now; if (now - e.farSince > ENGAGE.farFor) return go(e, 'approach', now, null, random); } else e.farSince = 0;
+   if (s.d > s.far * 1.3 + 1) {
+    e.farSince ||= now;
+    // (They backed out of its band: after them, or a holding robot lets them go and waits.)
+    if (now - e.farSince > ENGAGE.farFor) return goAfter(e, s, th, now, random, HOLD.far);
+   } else e.farSince = 0;
    // Held its band long enough: take the initiative, or go round. (An easy
-   // robot now and then presses at a bad moment.)
+   // robot now and then presses at a bad moment.) With the edge it presses;
+   // without it a holding robot may sit tight instead (HOLD).
    if (now >= e.initAt && !s.leader) {
-    if (adv >= th.pressAt - .55 || random() < (1 - (pf.tech ?? .5)) * .4) return go(e, 'press', now, 'initiative', random);
+    if (adv >= th.pressAt - .55) return go(e, 'press', now, 'initiative', random);
+    if (wantsHold(e, s, th, now, random, HOLD.init)) return hold(e, s, th, now, random);
+    if (random() < (1 - (pf.tech ?? .5)) * .4) return go(e, 'press', now, 'initiative', random);
     return go(e, 'reset', now, 'reposition', random);
    }
    return e.state;
@@ -200,13 +296,13 @@ export function judge(e, s, pf, now, random = Math.random) {
    if ((why = danger(e, s, pf, now, true))) return go(e, 'disengage', now, why, random);
    if (s.d <= s.far) { e.best = s.d; e.bestAt = now; }
    else if (chaseStalled(e, s, th, now) && !s.leader) return go(e, 'disengage', now, 'chase', random);
-   if (now > e.until || (stay > 1.2 && adv < th.pressOut)) return go(e, s.d > s.far * 1.3 + 1 ? 'approach' : 'engage', now, null, random);
+   if (now > e.until || (stay > 1.2 && adv < th.pressOut)) return s.d > s.far * 1.3 + 1 ? goAfter(e, s, th, now, random, HOLD.back) : go(e, 'engage', now, null, random);
    return e.state;
   case 'disengage':
    // (Not while still empty or waiting for its orbs: it would only back off again.)
    if (s.seen && stay > .8 && adv >= th.pressAt + .3 && e.reason !== 'hurt' && e.reason !== 'reload' && !s.empty && !s.recharging) return go(e, 'press', now, 'counter', random);
    // Backed off to reload, loaded again and still in sight: straight back in.
-   if ((e.reason === 'reload' || e.reason === 'recharge') && !s.empty && !s.recharging && s.seen && stay > .5) return go(e, s.d > s.far * 1.15 ? 'approach' : 'engage', now, null, random);
+   if ((e.reason === 'reload' || e.reason === 'recharge') && !s.empty && !s.recharging && s.seen && stay > .5) return s.d > s.far * 1.15 ? goAfter(e, s, th, now, random, HOLD.back) : go(e, 'engage', now, null, random);
    if ((!s.seen && now - e.lastSeen > .4 && stay > .6) || (s.d > Math.max(s.threat * 1.5, s.far * 1.4) && stay > 1) || now > e.until) return go(e, 'reset', now, e.reason, random);
    return e.state;
   case 'reset':
@@ -215,10 +311,34 @@ export function judge(e, s, pf, now, random = Math.random) {
     if (adv >= th.pressAt) return go(e, 'press', now, 'edge', random);
     if (s.d <= s.far * 1.15) return go(e, 'engage', now, null, random);
     // Round the side and they are in sight: in from here.
-    if (e.phase === 'flank' && stay > 1.5) return go(e, 'approach', now, null, random);
+    if (e.phase === 'flank' && stay > 1.5) return goAfter(e, s, th, now, random, HOLD.reset);
    }
-   if (now > e.until) return go(e, 'approach', now, null, random);
+   if (now > e.until) return goAfter(e, s, th, now, random, HOLD.reset);
    return e.state;
+  case 'hold': {
+   if ((why = danger(e, s, pf, now, false))) return go(e, 'disengage', now, why, random);
+   // Picks its moment: they are reloading, low, spent their ability...
+   if (stay > ENGAGE.minStay && s.seen && adv >= th.pressAt) return go(e, 'press', now, 'edge', random);
+   // Shot and it cannot answer from where it is (behind its cover, out of
+   // sight of them, or they are out of its reach): it moves. In the open,
+   // in its band, it trades back where it stands.
+   const far = s.d > s.far * 1.3 + 1;
+   if (s.hurt < HOLD.shot && stay > .3) {
+    // (In the open and they reach it from out of its own reach: to cover, still holding.)
+    if (e.stance === 'open' && s.seen && far) { e.stance = e.reason = 'cover'; e.phase = 'wait'; e.phaseAt = now; e.phaseUntil = now + span(random, HOLD.wait); }
+    else if (!s.seen || far || e.phase === 'wait') return go(e, s.seen && !far ? 'engage' : 'approach', now, 'shot', random);
+   }
+   // They came to it: the fight is on. (A blade springs from a dash off.)
+   if (s.seen && s.d < (s.melee ? THREAT.ichor : s.near)) return go(e, 'engage', now, null, random);
+   if (s.stormNear || s.leader) return go(e, 'approach', now, null, random);
+   // Behind cover: out to a spot with a line on them a moment, then back.
+   if (e.stance === 'cover' && now >= e.phaseUntil) {
+    e.phase = e.phase === 'wait' ? 'peek' : 'wait'; e.phaseAt = now;
+    e.phaseUntil = now + span(random, e.phase === 'peek' ? HOLD.peek : HOLD.wait);
+   }
+   if (now > e.until) return go(e, s.seen && !far ? 'engage' : 'approach', now, null, random);
+   return e.state;
+  }
  }
  return e.state;
 }

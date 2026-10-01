@@ -13,11 +13,13 @@ const r2 = v => Math.round(v * 100) / 100;
 const count = (text, needle) => text.split(needle).length - 1;
 
 test("Deadwater's (and Dry Creek's) overhead map is exactly as before", () => {
- // A fixed stand-in view; the hashes were taken before s3-look.
+ // A fixed stand-in view; the hashes were taken before s3-look (and retaken
+ // 2026-10-01 for the live layer's <g id="overhead-live"> wrapper round the
+ // dot: tests/overhead-storm.test.js; nothing else changed).
  const view = { roadProfile: [{ z: -124, left: -4, right: 4 }, { z: 0, left: 10, right: 18 }, { z: 124, left: 51, right: 59 }], farmRoadPoints: [[60, 80], [70, 90], [72, 88]], approachPaths: [{ points: [{ x: 1, z: 2 }, { x: 5, z: 9 }] }] };
  const hash = id => createHash('sha256').update(overheadMapSVG(maps[id], view, { x: 3, z: 4 })).digest('hex');
- assert.equal(hash('deadwater'), '2cbe818df5068e0801d5ba812ab80cd0c9b4c9feb4aa0e2b5ad5b97d5b89e15c');
- assert.equal(hash('dry-creek'), 'ee2d158fcede4fe87680ecb5a93003b0a21ca53f0c259c12e1443c0de42348a4');
+ assert.equal(hash('deadwater'), '8e5ea7dce734cebe9ae9caf9b4bd04b6b73b6617cfe5e2627cc7b6fa959f81e6');
+ assert.equal(hash('dry-creek'), '898526144fb192814270a76fb39181dc5f66c4307ad32f65c7300bf2b5f8517d');
 });
 
 test("Hollow Wick's overhead map shows the stream, paths, decks, buildings, fence and woods", () => {

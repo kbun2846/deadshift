@@ -1,13 +1,17 @@
 import { buildingPoint } from '../maps.js';
 import { BUILDING_FINISHES } from '../world/building-finishes.js';
 import {playableOutline} from '../playable-area.js';
-import { hillsOverheadMapSVG, duelCircleSVG } from './overhead-hills.js'; // s3-look: maps with hills
-import { cityOverheadMapSVG } from './overhead-city.js'; // Lumen stage 4: the night city
+import { hillsOverheadMapSVG } from './overhead-hills.js'; // s3-look: maps with hills
+import { cityOverheadMapSVG, OVERHEAD_CITY } from './overhead-city.js'; // Lumen stage 4: the night city
+import { NO_ZONES, LIVE_LAYER_ID, overheadLiveLayer, overheadLiveSVG, overheadLiveKey } from './overhead-zones.js';
 
 // Read the rendered road profile and current layout, never a hand-maintained image.
-export function overheadMapSVG(map, view, player) {
-  if (map.terrain) return hillsOverheadMapSVG(map, view, player); // s3-look: Hollow Wick's own drawing
-  if (map.city) return cityOverheadMapSVG(map, view, player); // Lumen stage 4: a city map's own drawing
+// `zones` (overhead-zones.js overheadZones): the storm or 1V1's duel circle,
+// from the same state the world draws them from; every map draws them in its
+// live layer (on top, with you).
+export function overheadMapSVG(map, view, player, zones = NO_ZONES) {
+  if (map.terrain) return hillsOverheadMapSVG(map, view, player, zones); // s3-look: Hollow Wick's own drawing
+  if (map.city) return cityOverheadMapSVG(map, view, player, zones); // Lumen stage 4: a city map's own drawing
   const points=items=>items.map(p=>`${p.x},${p.z}`).join(' ');
   const perimeter=playableOutline(map).map(p=>p.join(',')).join(' ');
   const road=[...view.roadProfile.map(p=>({x:p.left,z:p.z})),...view.roadProfile.slice().reverse().map(p=>({x:p.right,z:p.z}))];
@@ -29,6 +33,23 @@ export function overheadMapSVG(map, view, player) {
     }).join('')}</g>
     </g>
     <polygon points="${perimeter}" fill="none" stroke="#b0a087" stroke-width=".65" opacity=".9"/>
-    ${duelCircleSVG(view)}${player ? `<circle cx="${player.x}" cy="${player.z}" r="3.8" fill="#a8e2ff" opacity=".18"/><circle cx="${player.x}" cy="${player.z}" r="1.65" fill="#c7efff" stroke="#203844" stroke-width=".65"/>` : ''}
+    ${overheadLiveLayer(zones, player)}
   </svg>`;
+}
+
+// The open map kept live (main.js): `draw` when it opens (or after a
+// teleport); `refresh` every frame while it is open rewrites only the live
+// layer (the storm, the duel circle, you), and only when it changed. Online
+// the match runs on while the map is open, and a storm or circle can start
+// after it opened (a new round).
+export function overheadMapLive(root) {
+  let key = null, look;
+  return {
+    draw(map, view, player, zones = NO_ZONES) { root.innerHTML = overheadMapSVG(map, view, player, zones); key = overheadLiveKey(zones, player); look = map.city ? OVERHEAD_CITY : undefined; },
+    refresh(player, zones = NO_ZONES) {
+      const next = overheadLiveKey(zones, player); if (next === key) return false;
+      const layer = root.querySelector('#' + LIVE_LAYER_ID); if (!layer) return false;
+      layer.innerHTML = overheadLiveSVG(zones, player, look); key = next; return true;
+    },
+  };
 }

@@ -32,7 +32,7 @@ import { Admins } from './admins.js';
 import { DevCode, handleDevUnlock } from './devcode.js';
 import { Maintenance } from './maintenance.js';
 import { AdminLog } from './admin-log.js';
-import { RecentPlayers } from './recent-players.js';
+import { PlayerLog } from './player-log.js';
 import { PlayerStats } from './player-stats.js';
 import { ServerStats, readVersion, SAMPLE_SECONDS } from './stats.js';
 import { PROTOCOL_VERSION } from '../src/net/protocol.js';
@@ -61,7 +61,7 @@ export function startServer(config = SERVER, { log = console, exit = code => pro
  const devcode = new DevCode({ dir: config.dataDir, now, log });
  const maintenance = new Maintenance(config.dataDir);
  const adminLog = new AdminLog(config.dataDir);
- const recent = new RecentPlayers();
+ const recent = new PlayerLog({ dir: config.dataDir, log });
  const playerStats = new PlayerStats();
  const stats = new ServerStats({ dir: config.dataDir, planBytes: config.monthlyTransferBytes, version: readVersion(REPO_DIR) });
  let serial = 0, tickMs = 0;
@@ -110,7 +110,7 @@ export function startServer(config = SERVER, { log = console, exit = code => pro
   const conn = {
    id: 'c' + (++serial).toString(36) + randomBytes(3).toString('hex'), ip, pid: null, room: null, generation: -1,
    send(message) { if (ws.readyState !== 1) return; const text = JSON.stringify(message); ws.send(text); stats.sent(frameBytes(text)); },
-   // (`ended`: how it ended, for the admin page's recent players.)
+   // (`ended`: how it ended, for the admin page's player log.)
    close(code = 1000, reason = '') { conn.ended ??= reason || 'closed'; try { ws.close(code, reason); } catch {} },
    buffered: () => ws.bufferedAmount,
    window: now(), count: 0,
@@ -232,6 +232,7 @@ export function startServer(config = SERVER, { log = console, exit = code => pro
    running = false; clearTimeout(timer); clearInterval(heartbeat); clearInterval(sampler); clearInterval(saver);
    stats.save();
    for (const conn of conns) { conn.send({ t: 'removed', reason }); conn.close(1012, 'server restart'); }
+   recent.endAll('server restart');
    await new Promise(r => setTimeout(r, 100));
    wss.close(); await new Promise(r => http.close(() => r()));
   })();

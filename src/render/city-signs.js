@@ -59,6 +59,7 @@ import * as THREE from 'three';
 import { BRIGHT_LAYER, GROUND_LAYER, registerCitySystem } from './city-registry.js';
 import { CUT, SCOOP_GLSL, cutUniforms } from '../world/city-cut.js';
 import { SHELLS } from './city-shells.js';
+import { FACADES } from './city-facades.js';
 import { ATLAS, GLYPH_COUNT, PICTOGRAMS, PICTOGRAM_INDEX, PICTOGRAM_NAMES, glyphAtlasTexture, glyphShape, pictogramRect, shapeStrokes } from './glyph-atlas.js';
 
 // ---------------------------------------------------------------------------
@@ -309,8 +310,13 @@ vec2 breakTimes(float id) { return texelFetch(signBreaks, ivec2(int(id + 0.5), 0
 // The shells' rule at a piece's centre (world/city-cut.js cityPieceHidden).
 ${SCOOP_GLSL}
 // cut: (its building's slot, centre height, centre x, centre z); slot 0: free-standing, never cut.
-bool cutAway(vec4 cut) {
-  return cut.x > 0.5 && cityPieceHidden(texelFetch(cityCut, ivec2(int(cut.x + 0.5), 0), 0), texelFetch(cityCut, ivec2(int(cut.x + 0.5), 2), 0).x, vec3(cut.z, cut.y, cut.w));
+// wall: a piece on a wall, its anchor (world/city-cut.js CUT.wall: rule 6, seen from behind its
+// wall it goes with the wall's face); one on no wall, its own centre's x, z.
+bool cutAway(vec4 cut, vec2 wall) {
+  if (cut.x < 0.5) return false;
+  vec4 row = texelFetch(cityCut, ivec2(int(cut.x + 0.5), 0), 0);
+  vec3 p = vec3(cut.z, cut.y, cut.w);
+  return cityPieceHidden(row, texelFetch(cityCut, ivec2(int(cut.x + 0.5), 2), 0).x, p) || cityPieceBehind(row, p, wall);
 }
 float signModeLevel(float mode, float seed, float t) {
   float s = floor(seed * 65535.0 + 0.5);
@@ -389,12 +395,13 @@ attribute float seed;
 attribute float mode;
 attribute float signId;
 attribute vec4 cut;
+attribute vec2 cutWall;
 uniform float time;
 uniform float sag;
 ${LEVEL_GLSL}
 varying vec3 vColour;
 void main() {
-  if (cutAway(cut)) { ${HIDDEN} }
+  if (cutAway(cut, cutWall)) { ${HIDDEN} }
   if (mode > 4.5) vColour = tint;
   else {
     float level = signModeLevel(mode, seed, time) * breakLevel(breakTimes(signId), time) * (1.0 - ${f(SIGN.sagDim)} * sag);
@@ -643,6 +650,7 @@ attribute float palette;
 attribute float signId;
 attribute vec2 screenSize;
 attribute vec4 cut;
+attribute vec2 cutWall;
 uniform float time;
 uniform vec3 screenPalette[${SCREEN_PALETTE.length}];
 ${LEVEL_GLSL}
@@ -652,7 +660,7 @@ varying vec4 vInfo;
 varying vec3 vInk;
 varying vec3 vField;
 void main() {
-  if (cutAway(cut)) { ${HIDDEN} }
+  if (cutAway(cut, cutWall)) { ${HIDDEN} }
   vUv = uv; vSize = screenSize;
   vec2 b = mode > 6.5 && mode < 7.5 ? vec2(0.0) : screenBreak(breakTimes(signId), time); // the centrepiece is never shot out (a landmark)
   vInfo = vec4(mode, seed, b.x, b.y);
@@ -670,6 +678,7 @@ attribute float phaseOffset;
 attribute float group;
 attribute float signalMode;
 attribute vec4 cut;
+attribute vec2 cutWall;
 uniform float time;
 uniform float sag;
 ${LEVEL_GLSL}
@@ -677,7 +686,7 @@ varying vec3 vColour;
 varying vec2 vUv;
 varying float vLamp;
 void main() {
-  if (cutAway(cut)) { ${HIDDEN} }
+  if (cutAway(cut, cutWall)) { ${HIDDEN} }
   vUv = uv; vLamp = lamp;
   if (lamp > 5.5) vColour = tint;
   else vColour = tint * (${f(TRAFFIC.offGlow)} + (${f(TRAFFIC.intensity)} - ${f(TRAFFIC.offGlow)}) * trafficLevel(lamp, phaseOffset, group, signalMode, signalClock) * (1.0 - ${f(TRAFFIC.sagDim)} * sag));
@@ -708,6 +717,7 @@ attribute vec4 cardSource;
 attribute vec3 cardRight;   // a screen's glow: its face's half width along its right, and
 attribute vec3 cardUp;      // half height along its up (zero: a round glow facing the camera)
 attribute vec4 cardCut;     // its building's cut slot and its piece's centre (height, x, z)
+attribute vec2 cardWall;    // its piece's anchor on its wall (cutAway)
 uniform float time;
 uniform float sag;
 ${LEVEL_GLSL}
@@ -727,7 +737,7 @@ uniform float haloScale;
 ${CARD_GLSL}
 void main() {
   float level = cardLevel(cardSource), r = cardAt.w * haloScale;
-  if (level < 0.002 || r <= 0.0 || cutAway(cardCut)) { ${HIDDEN} }
+  if (level < 0.002 || r <= 0.0 || cutAway(cardCut, cardWall)) { ${HIDDEN} }
   vColour = mix(cardColour.rgb, vec3(dot(cardColour.rgb, vec3(0.2126, 0.7152, 0.0722))), ${f(HALO.desaturate)}) * cardColour.w * level * ${f(HALO.opacity)};
   // A piece with a face (a tube, a lit panel, a screen): a soft rectangle in
   // the camera's plane laid along the face's own right as the camera sees it,
@@ -776,7 +786,7 @@ varying vec2 vMaskUv;
 uniform vec4 maskBounds;
 void main() {
   float level = cardLevel(cardSource);
-  if (level < 0.002 || cutAway(cardCut)) { ${HIDDEN} } // (its sign cut out of view: its light goes with it, as the light pool's)
+  if (level < 0.002 || cutAway(cardCut, cardWall)) { ${HIDDEN} } // (its sign cut out of view: its light goes with it, as the light pool's)
   vLocal = position.xy;
   vColour = mix(cardColour.rgb, vec3(dot(cardColour.rgb, vec3(0.2126, 0.7152, 0.0722))), ${f(POOLS.desaturate)}) * cardColour.w * level;
   // A round spot, or an ellipse laid along the wall or the kerb (cardRight, cardUp: its two half axes on the ground).
@@ -805,17 +815,19 @@ void main() {
 // Geometry: plain arrays filled by the builders, typed arrays at finish().
 
 const LAYOUTS = Object.freeze({
-  sign: { position: 3, tint: 3, intensity: 1, seed: 1, mode: 1, signId: 1, cut: 4 },
-  screen: { position: 3, uv: 2, mode: 1, seed: 1, palette: 1, signId: 1, screenSize: 2, cut: 4 },
-  traffic: { position: 3, tint: 3, uv: 2, lamp: 1, phaseOffset: 1, group: 1, signalMode: 1, cut: 4 },
+  sign: { position: 3, tint: 3, intensity: 1, seed: 1, mode: 1, signId: 1, cut: 4, cutWall: 2 },
+  screen: { position: 3, uv: 2, mode: 1, seed: 1, palette: 1, signId: 1, screenSize: 2, cut: 4, cutWall: 2 },
+  traffic: { position: 3, tint: 3, uv: 2, lamp: 1, phaseOffset: 1, group: 1, signalMode: 1, cut: 4, cutWall: 2 },
 });
 export const ATTRIBUTES = Object.freeze(Object.fromEntries(Object.entries(LAYOUTS).map(([k, v]) => [k, Object.freeze(Object.keys(v))])));
 
+// A piece's cut (CitySigns.mount): [slot, centre height, x, z, its wall anchor's x, z].
+const cutWall = c => [c[4] ?? c[2], c[5] ?? c[3]];
 class Accumulator {
-  constructor(layout) { this.layout = layout; this.data = {}; for (const k in layout) this.data[k] = []; this.index = []; this.vertices = 0; this.cut = [0, 0, 0, 0]; }
+  constructor(layout) { this.layout = layout; this.data = {}; for (const k in layout) this.data[k] = []; this.index = []; this.vertices = 0; this.cut = [0, 0, 0, 0, 0, 0]; }
   vertex(p, values, uv) {
     for (const k in this.layout) {
-      const n = this.layout[k], v = k === 'position' ? p : k === 'uv' ? uv || values.uv : k === 'cut' ? this.cut : values[k], out = this.data[k];
+      const n = this.layout[k], v = k === 'position' ? p : k === 'uv' ? uv || values.uv : k === 'cut' ? this.cut : k === 'cutWall' ? cutWall(this.cut) : values[k], out = this.data[k];
       if (n === 1) out.push(v ?? 0); else for (let i = 0; i < n; i++) out.push(v ? v[i] : 0);
     }
     return this.vertices++;
@@ -1028,14 +1040,21 @@ export class CitySigns {
   // The next builder's pieces belong to building cut slot `slot` (0: free-
   // standing) and are judged against its first floor at height `y`.
   // p: its centre ([x, y, z]; dy added to its height), for the shells' scoop.
-  mount(slot, p, dy = 0) { const c = [slot || 0, p[1] + dy, p[0], p[2]]; this.sign.cut = this.screen.cut = this.traffic.cut = c; return c; }
+  // wall: the facing of the wall it hangs on (on one, its `at` on the wall's
+  // outer face), else null: its anchor (world/city-cut.js CUT.wall, rule 6)
+  // CUT.wall.back m in behind the wall's line, as a wall's dressing's.
+  mount(slot, p, dy = 0, wall = null) {
+    let ax = p[0], az = p[2];
+    if (slot && wall !== null) { const k = CUT.wall.back + FACADES.face; ax -= Math.sin(wall) * k; az -= Math.cos(wall) * k; }
+    const c = [slot || 0, p[1] + dy, p[0], p[2], ax, az]; this.sign.cut = this.screen.cut = this.traffic.cut = c; return c;
+  }
   // The cut table as the CPU sees it (the light pool: a light on a cut storey goes out).
   cutAway(cut) {
     const slot = cut?.[0]; if (!slot) return false;
     const data = this.shared.cityCut.value?.image?.data; if (!data) return false;
     // (row 0: x how far it is hidden from the top down, z its first floor, w its top: world/city-cut.js hideAt)
     const x = data[slot * 4], top = data[slot * 4 + 3] + 3, low = data[slot * 4 + 2] + CUT.above;
-    return (x > .001 && cut[1] > top + (low - top) * x) || !!this.city.shells?.cut?.hides?.(slot, cut[2], cut[1], cut[3]);
+    return (x > .001 && cut[1] > top + (low - top) * x) || !!this.city.shells?.cut?.hides?.(slot, cut[2], cut[1], cut[3], cut[4], cut[5]);
   }
   nextSeed() { return lumenHash(++this.seedCounter, 7, 99); }
   touch() { if (this.finished) this.dirty = true; }
@@ -1097,7 +1116,7 @@ export class CitySigns {
   // neon outline signs, owner 2026-09-30: they glow in their own colour but
   // light nothing: no light-pool light, no facade wash, no ground pool).
   addNeon(shape, { at, x, y, z, facing = 0, tilt = SIGN.tilt, size = 1, colour = 'pink', intensity = SIGN.intensity, mode = 'steady', seed, backing = true, breakable = true, emitter = true, glow = false, mount = 'wall', building = 0, poolReach, spark = 0 } = {}) {
-    this.touch(); this.mount(building, vec(at ?? [x, y, z]));
+    this.touch(); this.mount(building, vec(at ?? [x, y, z]), 0, mount === 'wall' ? facing : null);
     seed ??= this.nextSeed();
     const { strokes: full, aspect } = neonStrokes(shape, seed), w = size * aspect, h = size, tube = SIGN.tube;
     const outline = glow && !emitter, strokes = full.map(st => simplifyStroke(st, w, h, outline ? NEON_OUTLINE.simplify : SIGN.simplify));
@@ -1144,7 +1163,7 @@ export class CitySigns {
   // A lit panel: a lightbox, a shop fluorescent, a window slit (emitter off:
   // the facades have hundreds). Returns its signId.
   addPanel({ at, x, y, z, facing = 0, tilt = 0, w = 1, h = .3, depth = .05, colour = 'warmWhite', intensity = 1, mode = 'steady', seed, backing = false, breakable = false, emitter = false, mount = 'wall', building = 0 } = {}) {
-    this.touch(); this.mount(building, vec(at ?? [x, y, z]));
+    this.touch(); this.mount(building, vec(at ?? [x, y, z]), 0, mount === 'wall' ? facing : null);
     seed ??= this.nextSeed();
     const F = this.mountFrame(vec(at ?? [x, y, z]), facing, tilt * DEG, h, mount), tint = linear(colour);
     const piece = { kind: 'panel', centre: P(F, 0, 0, depth), right: F.r, width: w, facing, breakable };
@@ -1163,7 +1182,7 @@ export class CitySigns {
   // material). mode: SCREEN_MODES name; palette: [ink, field] names from NEON
   // (or indices). Returns its signId (the centrepiece is never shot out).
   addScreen({ at, x, y, z, w = 2, h = 1.2, facing = 0, tilt = SIGN.tilt, mode = 'glyphs', seed, palette, breakable = true, emitter = true, mount = 'wall', building = 0 } = {}) {
-    this.touch(); this.mount(building, vec(at ?? [x, y, z]));
+    this.touch(); this.mount(building, vec(at ?? [x, y, z]), 0, mount === 'wall' ? facing : null);
     seed ??= this.nextSeed();
     const modeNumber = SCREEN_MODES[mode] ?? 0, centre = modeNumber === SCREEN_MODES.centrepiece;
     const F = this.mountFrame(vec(at ?? [x, y, z]), facing, tilt * DEG, h + 2 * SCREEN.bezel, mount);
@@ -1476,7 +1495,7 @@ function cardGeometry(list, pool = false) {
   const g = new THREE.InstancedBufferGeometry(), n = Math.max(1, list.length);
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
   g.setIndex([0, 1, 2, 0, 2, 3]);
-  const at = new Float32Array(n * 4), colour = new Float32Array(n * 4), source = new Float32Array(n * 4), right = new Float32Array(n * 3), up = new Float32Array(n * 3), cut = new Float32Array(n * 4);
+  const at = new Float32Array(n * 4), colour = new Float32Array(n * 4), source = new Float32Array(n * 4), right = new Float32Array(n * 3), up = new Float32Array(n * 3), cut = new Float32Array(n * 4), wall = new Float32Array(n * 2);
   list.forEach((e, i) => {
     if (pool) at.set([e.pool.x, POOLS.lift, e.pool.z, e.pool.radius * POOLS.size], i * 4);
     else if (e.rect) at.set([...e.rect.centre, e.halo], i * 4);
@@ -1485,7 +1504,7 @@ function cardGeometry(list, pool = false) {
     source.set(e.source, i * 4);
     if (!pool && e.rect) { right.set(e.rect.right, i * 3); up.set(e.rect.up, i * 3); }
     else if (pool && e.pool.rx) { const rx = e.pool.rx * POOLS.size, rz = e.pool.rz * POOLS.size; right.set([e.pool.ax * rx, 0, e.pool.az * rx], i * 3); up.set([-e.pool.az * rz, 0, e.pool.ax * rz], i * 3); }
-    if (e.cut) cut.set(e.cut, i * 4);
+    if (e.cut) { cut.set(e.cut.slice(0, 4), i * 4); wall.set(cutWall(e.cut), i * 2); }
   });
   g.setAttribute('cardAt', new THREE.InstancedBufferAttribute(at, 4));
   g.setAttribute('cardColour', new THREE.InstancedBufferAttribute(colour, 4));
@@ -1493,6 +1512,7 @@ function cardGeometry(list, pool = false) {
   g.setAttribute('cardRight', new THREE.InstancedBufferAttribute(right, 3));
   g.setAttribute('cardUp', new THREE.InstancedBufferAttribute(up, 3));
   g.setAttribute('cardCut', new THREE.InstancedBufferAttribute(cut, 4));
+  g.setAttribute('cardWall', new THREE.InstancedBufferAttribute(wall, 2));
   g.instanceCount = list.length; // 0 on a map with none: the empty-draw skip passes it by
   g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
   return g;

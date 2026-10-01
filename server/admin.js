@@ -5,7 +5,7 @@
 //
 //   GET  /admin                      the page (asks for your key, keeps it for the tab)
 //   GET  /admin/api/state            overview, rooms with players, bans, maintenance, you
-//        ?with=recent | log | owner  plus recent players, the admin log, or the owner's tab
+//        ?with=recent | log | owner  plus the player log (&tz= &open=days &q= &online=1 &limit=), the admin log, or the owner's tab
 //   GET  /admin/api/player?id=&pid=  one player's sheet: live seat, this connection, this player id
 //   POST /admin/api/kick             { code, id }                    out of that room (and kept out of it)
 //   POST /admin/api/ban              { code, id } | { recent } | { target }, duration, reason
@@ -107,7 +107,18 @@ export async function handleAdmin(req, res, ctx) {
   if (req.method === 'GET' && url.pathname === '/admin/api/state') {
    const state = { you: who, owner, overview: ctx.overview?.() || null, rooms: rooms.adminState(), bans: bans.active, maintenance: ctx.maintenance?.state || { on: false } };
    const extra = url.searchParams.get('with');
-   if (extra === 'recent') state.recent = ctx.recent?.list() || [];
+   if (extra === 'recent') {
+    // The player log by day and week (player-log.js grouped): today's visits,
+    // the days the page has open, or every search match.
+    const p = url.searchParams, limit = Math.min(5000, Math.max(50, Math.floor(Number(p.get('limit')) || 500)));
+    const open = line(p.get('open'), 2000).split(',').filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 120);
+    const log = ctx.recent?.grouped({ q: line(p.get('q'), 64), online: p.get('online') === '1', tz: Number(p.get('tz')) || 0, open, limit }) || { entries: [], days: [], weeks: [], more: 0 };
+    // (`known`: the player sheet has something on them; it starts over with the server.)
+    state.recent = log.entries.map(e => ({ ...e, known: !!(e.id || (e.pid && ctx.playerStats?.player(e.pid))) }));
+    state.recentGroups = { today: log.today, thisWeek: log.thisWeek, days: log.days, weeks: log.weeks, searching: log.searching };
+    state.recentMore = log.more;
+    state.recentSummary = ctx.recent?.summary?.() || null;
+   }
    if (extra === 'log') state.log = ctx.adminLog?.list() || [];
    if (extra === 'owner' && owner) { state.keys = admins.names(); state.devcode = ctx.devcode?.status() || { set: false }; }
    json(res, 200, state); return true;
@@ -137,7 +148,7 @@ export async function handleAdmin(req, res, ctx) {
      if (!conn) { json(res, 404, { error: 'That player is gone. Ban them from the players tab.' }); return true; }
      target = { pid: conn.pid, ip: conn.ip, name: nameIn(room, conn.id) || conn.name || '' };
     } else if (body.recent !== undefined) {
-     // Someone from the recent players list (they may have left).
+     // Someone from the player log (they may have left).
      const entry = ctx.recent?.find(line(body.recent, 20));
      if (!entry) { json(res, 404, { error: 'That entry is no longer in the list.' }); return true; }
      target = { pid: entry.pid, ip: entry.ip, name: entry.conn?.name || entry.name || '' };

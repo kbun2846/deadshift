@@ -193,6 +193,32 @@ h3{font-size:14px;font-weight:700}
 
 /* online players */
 .list tr.click{cursor:pointer}
+/* the player log: weeks, and the days in them, open and close */
+.log-weeks{display:flex;flex-direction:column;gap:10px}
+.log-week{background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden}
+.log-week>summary,.log-day>summary{list-style:none;display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;cursor:pointer;user-select:none}
+.log-week>summary::-webkit-details-marker,.log-day>summary::-webkit-details-marker{display:none}
+.log-week>summary{padding:12px 14px;font-size:14.5px}
+.log-week>summary b{color:var(--ink)}
+.log-week>summary .sub,.log-day>summary .sub{color:var(--muted);font-size:12.5px;font-weight:500}
+.log-week>summary:hover,.log-day>summary:hover{background:#ffffff05}
+.log-week .chev,.log-day .chev{width:14px;height:14px;fill:none;stroke:var(--muted);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;flex:none;transition:transform .15s}
+.log-week[open]>summary .chev,.log-day[open]>summary .chev{transform:rotate(90deg)}
+.log-week[open]>summary{border-bottom:1px solid var(--line2)}
+.log-days{display:flex;flex-direction:column}
+.log-day+.log-day{border-top:1px solid var(--line2)}
+.log-day>summary{padding:9px 14px 9px 30px;font-size:13.5px}
+.log-day>summary b{color:var(--ink);font-weight:600}
+.log-day[open]>summary{background:var(--panel2)}
+.log-day .list{border-top:1px solid var(--line2)}
+.log-day .none{padding:12px 30px;color:var(--muted);font-size:13px}
+/* the same columns in every day */
+@media (min-width:721px){.log-day .list{table-layout:fixed}.log-day .list th:nth-child(1){width:17%}.log-day .list th:nth-child(2){width:9%}.log-day .list th:nth-child(3){width:13%}.log-day .list th:nth-child(4){width:10%}.log-day .list th:nth-child(5){width:7%}.log-day .list th:nth-child(6){width:12%}.log-day .list th:nth-child(7){width:13%}.log-day .list th:nth-child(8){width:12%}.log-day .list th:nth-child(9){width:7%}.log-day .list td{overflow:hidden;text-overflow:ellipsis}}
+@media (max-width:720px){.log-day>summary{padding-left:22px}.log-day .none{padding-left:22px}}
+.more-row{display:flex;justify-content:center;padding:12px}
+.grid.tight{margin-bottom:12px}
+@media (max-width:720px){.grid.tight{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.grid.tight .stat{padding:9px 10px}.grid.tight .stat .v{font-size:21px}.grid.tight .stat .s{font-size:11px}}
+@media (max-width:720px){.list tr.day{padding:0}.list tr.day td{justify-content:flex-start;padding:6px 12px;text-align:left}.list tr.day td::before{display:none}}
 .list tr.click:hover td{background:#e8afb908}
 .linkish{background:none;border:0;padding:0;color:var(--ink);font-weight:600;cursor:pointer;text-align:left;overflow-wrap:anywhere}
 .linkish:hover{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
@@ -276,7 +302,7 @@ h3{font-size:14px;font-weight:700}
    <button class="tab" role="tab" id="t-overview" data-tab="overview" aria-controls="p-overview">overview</button>
    <button class="tab" role="tab" id="t-online" data-tab="online" aria-controls="p-online">online<span class="n" id="n-online"></span></button>
    <button class="tab" role="tab" id="t-rooms" data-tab="rooms" aria-controls="p-rooms">rooms<span class="n" id="n-rooms"></span></button>
-   <button class="tab" role="tab" id="t-players" data-tab="players" aria-controls="p-players">players</button>
+   <button class="tab" role="tab" id="t-players" data-tab="players" aria-controls="p-players">player log</button>
    <button class="tab" role="tab" id="t-bans" data-tab="bans" aria-controls="p-bans">bans<span class="n" id="n-bans"></span></button>
    <button class="tab" role="tab" id="t-log" data-tab="log" aria-controls="p-log">log</button>
    <button class="tab" role="tab" id="t-owner" data-tab="owner" aria-controls="p-owner" hidden>owner</button>
@@ -345,11 +371,12 @@ h3{font-size:14px;font-weight:700}
   <div class="rooms" id="rooms-list"></div>
  </section>
 
- <!-- recent players -->
+ <!-- the player log -->
  <section id="p-players" role="tabpanel" aria-labelledby="t-players" data-panel="players" hidden>
-  <div class="section-head"><h2>recent players</h2><span class="sub">the last 300 connections since the server started</span></div>
+  <div class="section-head"><h2>player log</h2><span class="sub" id="recent-sub">who came online and when, kept across restarts</span></div>
+  <div class="grid tight" id="recent-cards"></div>
   <div class="toolbar">
-   <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="recent-q" placeholder="search name, player id, address, room" aria-label="Search recent players"></label>
+   <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="recent-q" placeholder="search name, player id, address, room" aria-label="Search the player log"></label>
    <label class="check"><input type="checkbox" id="recent-here"> only players online now</label>
   </div>
   <div id="recent-list"></div>
@@ -490,13 +517,31 @@ function authFailed(error) {
  signOut(error.status === 429 ? error.message : 'That key was not accepted. Check it and sign in again.');
  return true;
 }
+// The player log is grouped, searched and paged on the server: it sends the
+// counts for every day and week, and the visits of today, the days open here
+// and every search match. Which drop-downs are open is kept for the tab.
+let recentLimit = 500;
+let logOpen = {};
+try { logOpen = JSON.parse(sessionStorage.getItem(STORE + '-log-open') || '{}') || {}; } catch {}
+const saveLogOpen = () => { try { sessionStorage.setItem(STORE + '-log-open', JSON.stringify(logOpen)); } catch {} };
+// Open unless closed here: this week and today; everything else starts closed.
+const isOpen = (key, byDefault) => (Object.hasOwn(logOpen, key) ? logOpen[key] : byDefault);
+function openDays() {
+ const g = state?.recentGroups; if (!g) return Object.keys(logOpen).filter(k => k.startsWith('d:') && logOpen[k]).map(k => k.slice(2));
+ return g.days.filter(d => d.day !== g.today && isOpen('d:' + d.day, false) && isOpen('w:' + d.week, d.week === g.thisWeek)).map(d => d.day);
+}
+function withQuery(extra) {
+ if (extra !== 'recent') return '';
+ const q = $('recent-q').value.trim();
+ return '&tz=' + -new Date().getTimezoneOffset() + '&limit=' + recentLimit + (q ? '&q=' + encodeURIComponent(q) : '') + ($('recent-here').checked ? '&online=1' : '') + (openDays().length ? '&open=' + openDays().join(',') : '');
+}
 async function refresh() {
  if (!key) return;
  if (inflight) return inflight;
  const extra = WITH[tab];
  inflight = (async () => {
   try {
-   const next = await api('state' + (extra ? '?with=' + extra : ''));
+   const next = await api('state' + (extra ? '?with=' + extra + withQuery(extra) : ''));
    state = next; lastOk = Date.now(); problem = '';
    render();
   } catch (error) {
@@ -714,21 +759,80 @@ function renderRooms() {
 }
 
 const banned = (pid, ip) => state.bans.some(b => (b.pid && b.pid === pid) || (b.ip && b.ip === ip));
-function renderRecent() {
- if (!state.recent) { setHTML($('recent-list'), '<div class="empty">Loading…</div>'); return; }
- const q = $('recent-q').value.trim().toLowerCase(), hereOnly = $('recent-here').checked;
- const list = state.recent.filter(e => (!hereOnly || !e.left) && matches(q, e.name, e.pid, e.ip, e.room, e.how));
- if (!list.length) { setHTML($('recent-list'), '<div class="empty">' + (state.recent.length ? 'Nobody matches.' : 'Nobody has connected since the server started.') + '</div>'); return; }
- const rows = list.map(e => '<tr><td class="lead name" data-label="name">' + (e.name ? esc(e.name) : '<span class="faint">(no name yet)</span>') + '</td>' +
-  '<td data-label="joined" class="nowrap" title="' + esc(fullTime(e.at)) + '">' + esc(when(e.at)) + '</td>' +
-  '<td data-label="left" class="nowrap">' + (e.left ? '<span title="' + esc(fullTime(e.left)) + '">' + esc(when(e.left)) + '</span>' : '<span class="tag ok">online</span>') + '</td>' +
+// Day keys (YYYY-MM-DD, the viewer's days) as words.
+const dayDate = key => new Date(key + 'T12:00:00');
+const shiftDay = (key, n) => { const d = dayDate(key); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+function dayName(key, today) {
+ if (key === today) return 'today';
+ if (key === shiftDay(today, -1)) return 'yesterday';
+ const d = dayDate(key);
+ return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', ...(d.getFullYear() === dayDate(today).getFullYear() ? {} : { year: 'numeric' }) });
+}
+function weekName(key, thisWeek) {
+ if (key === thisWeek) return 'this week';
+ if (key === shiftDay(thisWeek, -7)) return 'last week';
+ const a = dayDate(key), b = dayDate(shiftDay(key, 6)), md = d => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+ return md(a) + ' – ' + (a.getMonth() === b.getMonth() ? b.getDate() : md(b)) + (a.getFullYear() === new Date().getFullYear() ? '' : ', ' + a.getFullYear());
+}
+const counts = g => plural(g.visits, 'visit') + ' · ' + plural(g.players, 'player') + (g.online ? ' · <span class="tag ok">' + g.online + ' online</span>' : '');
+const clockOnly = t => new Date(toMs(t)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const CHEVRON = '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+const LOG_HEAD = '<thead><tr><th>name</th><th>on</th><th>off</th><th>time on</th><th>room</th><th>player id</th><th>address</th><th>how it ended</th><th></th></tr></thead>';
+function visitRow(e) {
+ const name = e.name ? esc(e.name) : '<span class="faint">(no name yet)</span>';
+ const took = ((e.left ? toMs(e.left) : Date.now()) - toMs(e.at)) / 1000;
+ const offSameDay = e.left && new Date(toMs(e.left)).toDateString() === new Date(toMs(e.at)).toDateString();
+ return '<tr><td class="lead name" data-label="name">' + (e.known ? '<button class="linkish" type="button" data-act="player" data-id="' + esc(e.id || '') + '" data-pid="' + esc(e.pid || '') + '" title="Player details">' + name + '</button>' : name) + '</td>' +
+  '<td data-label="on" class="nowrap" title="' + esc(fullTime(e.at)) + '">' + esc(clockOnly(e.at)) + '</td>' +
+  '<td data-label="off" class="nowrap">' + (e.left ? '<span title="' + esc(fullTime(e.left)) + '">' + esc(offSameDay ? clockOnly(e.left) : when(e.left)) + '</span>' : '<span class="tag ok">online</span>') + '</td>' +
+  '<td data-label="time on" class="nowrap">' + esc(span(took)) + '</td>' +
   '<td data-label="room">' + (e.room ? '<code>' + esc(e.room) + '</code>' : '<span class="faint">–</span>') + '</td>' +
   '<td data-label="player id">' + idCell(e.pid) + '</td>' +
   '<td data-label="address" class="wrap"><code>' + esc(e.ip) + '</code></td>' +
   '<td data-label="how it ended" class="wrap' + (/^refused|banned|kicked/.test(e.how) ? ' muted' : '') + '">' + esc(e.how || (e.left ? 'left' : '')) + '</td>' +
-  '<td class="acts">' + (banned(e.pid, e.ip) ? '<span class="tag red">banned</span>' : '<button class="btn small danger" type="button" data-act="ban-recent" data-key="' + esc(e.key) + '" data-name="' + esc(e.name || shortId(e.pid)) + '">ban</button>') + '</td></tr>').join('');
- setHTML($('recent-list'), '<div class="panel flush"><table class="list"><thead><tr><th>name</th><th>joined</th><th>left</th><th>room</th><th>player id</th><th>address</th><th>how it ended</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>');
+  '<td class="acts">' + (banned(e.pid, e.ip) ? '<span class="tag red">banned</span>' : '<button class="btn small danger" type="button" data-act="ban-recent" data-key="' + esc(e.key) + '" data-name="' + esc(e.name || shortId(e.pid)) + '">ban</button>') + '</td></tr>';
 }
+function renderRecent() {
+ const sum = state.recentSummary;
+ if (sum) {
+  setHTML($('recent-cards'), [
+   ['online now', sum.online, ''],
+   ['last 24 hours', sum.day.players, plural(sum.day.players, 'player').replace(/^\d+ /, '') + ' · ' + plural(sum.day.visits, 'visit')],
+   ['last 7 days', sum.week.players, plural(sum.week.players, 'player').replace(/^\d+ /, '') + ' · ' + plural(sum.week.visits, 'visit')],
+  ].map(([k, v, sub]) => '<div class="stat"><span class="k">' + esc(k) + '</span><span class="v">' + v + '</span>' + (sub ? '<span class="s">' + esc(sub) + '</span>' : '<span class="s">&nbsp;</span>') + '</div>').join(''));
+  $('recent-sub').textContent = sum.since ? 'who came online and when · ' + plural(sum.total, 'visit') + ' since ' + new Date(sum.since).toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' · kept ' + sum.keepDays + ' days' : 'who came online and when, kept across restarts';
+ }
+ const g = state.recentGroups;
+ if (!state.recent || !g) { setHTML($('recent-list'), '<div class="empty">Loading…</div>'); return; }
+ if (!g.days.length) { setHTML($('recent-list'), '<div class="empty">' + (g.searching ? 'Nobody matches.' : 'Nobody has come online yet.') + '</div>'); return; }
+ const byDay = new Map();
+ for (const e of state.recent) { if (!byDay.has(e.day)) byDay.set(e.day, []); byDay.get(e.day).push(e); }
+ // Searching: every match, its days and weeks all open.
+ const day = d => {
+  const open = g.searching || isOpen('d:' + d.day, d.day === g.today), list = byDay.get(d.day);
+  const body = !open ? '' : list ? '<table class="list">' + LOG_HEAD + '<tbody>' + list.map(visitRow).join('') + '</tbody></table>' : '<div class="none">Loading…</div>';
+  return '<details class="log-day" data-log="d:' + esc(d.day) + '"' + (open ? ' open' : '') + '><summary>' + CHEVRON + '<b>' + esc(dayName(d.day, g.today)) + '</b><span class="sub">' + counts(d) + '</span></summary>' + body + '</details>';
+ };
+ const html = g.weeks.map(w => {
+  const open = g.searching || isOpen('w:' + w.week, w.week === g.thisWeek);
+  const days = open ? g.days.filter(d => d.week === w.week).map(day).join('') : '';
+  return '<details class="log-week" data-log="w:' + esc(w.week) + '"' + (open ? ' open' : '') + '><summary>' + CHEVRON + '<b>' + esc(weekName(w.week, g.thisWeek)) + '</b><span class="sub">' + counts(w) + '</span></summary><div class="log-days">' + days + '</div></details>';
+ }).join('');
+ const more = g.searching && state.recentMore ? '<div class="more-row"><button class="btn small" type="button" data-act="recent-more">show older (' + state.recentMore + ' more)</button></div>' : '';
+ setHTML($('recent-list'), '<div class="log-weeks">' + html + '</div>' + more);
+}
+// Opening or closing a week or a day (kept for the tab); a day opened for the
+// first time fetches its visits.
+$('recent-list').addEventListener('toggle', event => {
+ const el = event.target, key = el.dataset?.log, g = state?.recentGroups;
+ if (!key || !g || g.searching) return;
+ const byDefault = key === 'w:' + g.thisWeek || key === 'd:' + g.today;
+ if (isOpen(key, byDefault) === el.open) return;
+ logOpen[key] = el.open; saveLogOpen();
+ renderRecent();
+ // (A refresh already on its way asked without this day: one more after it.)
+ if (el.open && (key.startsWith('w:') || !state.recent.some(e => 'd:' + e.day === key))) { const busy = !!inflight; refresh().then(() => { if (busy) refresh(); }); }
+}, true);
 
 function expiry(b) {
  if (!b.until) return '<span class="tag red">permanent</span>';
@@ -871,6 +975,7 @@ document.addEventListener('click', async event => {
  switch (d.act) {
   case 'copy': copy(d.value); break;
   case 'player': openPlayer(d.id, d.pid); break;
+  case 'recent-more': recentLimit = Math.min(5000, recentLimit + 500); refresh(); break;
   case 'player-close': closePlayer(); break;
   case 'whisper': {
    const v = await ask({ title: 'message ' + d.name, html: 'A private message card on <b>' + esc(d.name) + '</b>\'s screen only.', fields: [{ name: 'text', label: 'message', max: 140, required: true, count: true }], ok: 'send' });
@@ -957,7 +1062,10 @@ $('devcode-form').addEventListener('submit', async event => {
  $('devcode').value = '';
  if (r) refresh();
 });
-for (const id of ['online-q', 'online-sort', 'rooms-q', 'rooms-empty', 'recent-q', 'recent-here', 'bans-q', 'log-q']) $(id).addEventListener('input', render);
+for (const id of ['online-q', 'online-sort', 'rooms-q', 'rooms-empty', 'bans-q', 'log-q']) $(id).addEventListener('input', render);
+// The player log's search runs on the server: a moment after typing stops.
+let recentTimer = 0;
+for (const id of ['recent-q', 'recent-here']) $(id).addEventListener('input', () => { recentLimit = 500; clearTimeout(recentTimer); recentTimer = setTimeout(refresh, id === 'recent-q' ? 250 : 0); });
 
 // ---------- GAME: the game in a new tab, developer tools on ----------
 // The server makes a one-time link (good for a minute); the tab is opened at

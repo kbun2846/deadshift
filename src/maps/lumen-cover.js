@@ -38,6 +38,15 @@
 // rule at a time (vehicles, then the hoardings, crash barriers and street furniture the
 // budgets allow), and pruned to what the rules need. Heights are the gameplay truth: stage 4 swaps the grey models for real
 // ones of the same footprints.
+//
+// Clutter cut (owner, 2026-10-01: "remove some, maybe 20% of objects on the
+// streets... some objects are perfectly vertical and difficult to see with
+// camera so player just runs into them"): every bollard, three hydrants, two
+// charging posts, doubled cones, bags and planters at busy corners, a vending
+// machine and a utility box went (173 pieces, was 198); no car moved. New
+// pieces keep tests/lumen-clutter.test.js: no thin upright collider (under
+// 0.5 m across, 0.75 m or taller) without a reason, and the street-object
+// budget.
 
 // Where the cars are (design 6: "some areas more cars, some less"). Each zone is a
 // polygon; the test counts the vehicles (not the pileup, bus or motorbikes) whose
@@ -91,13 +100,11 @@ export const LUMEN_PROPS = [
   { type: 'citySedan', x: -22.9, z: 8.15, angle: -1.571 },
   // --- The fallen signal pole, West Street x South Street (1)
   { type: 'cityFallenPole', x: -30.35, z: 29.75, angle: -0.785 },
-  // --- The abandoned checkpoint (6)
+  // --- The abandoned checkpoint (4)
   { type: 'cityCheckpointBarrier', x: 3.6, z: -44.6, angle: 0.35 },
   { type: 'cityCheckpointBarrier', x: 3.4, z: -51.4, angle: -0.3 },
   { type: 'cityCone', x: 5.8, z: -48.6, angle: 0 },
-  { type: 'cityCone', x: 5.2, z: -50.6, angle: 0 },
   { type: 'cityCone', x: 4.4, z: -47.4, angle: 0 },
-  { type: 'cityCone', x: 2.2, z: -46.6, angle: 0 },
   // --- Night market stalls on North Lane (5)
   { type: 'cityStall', x: -19.8, z: -39.3, angle: 0 },
   { type: 'cityStall', x: -15.9, z: -39.3, angle: 0 },
@@ -106,18 +113,17 @@ export const LUMEN_PROPS = [
   { type: 'cityStall', x: -4.2, z: -39.3, angle: 0 },
   // --- The bus shelter (1)
   { type: 'cityShelter', x: 38.8, z: 7.5, angle: 3.142 },
-  // --- Uptown plaza (base A) (6)
+  // --- Uptown plaza (base A) (5)
   { type: 'cityPlanterTall', x: 46.4, z: -17.2, angle: 0.357 },
   { type: 'cityConstruction', x: 47, z: -27.6, angle: 0.6 },
   { type: 'cityHoarding', x: 57.4, z: -28.8, angle: 1.571 },
   { type: 'cityUtilityBox', x: 41.5, z: -15.6, angle: 0.15 },
   { type: 'cityVending', x: 53.5, z: -13.2, angle: 0 },
-  // --- The Stacks courtyard (base B) (4)
+  // --- The Stacks courtyard (base B) (3)
   { type: 'cityDumpster', x: -44.5, z: -28, angle: 0.359 },
   { type: 'cityDumpster', x: -41.5, z: -31.5, angle: 1.571 },
-  { type: 'cityTrashBags', x: -48, z: -31.5, angle: 0 },
   { type: 'cityUtilityBox', x: -41.8, z: -24, angle: -0.125 },
-  // --- The charging lot (base C) (9)
+  // --- The charging lot (base C) (8)
   { type: 'cityChargePost', x: -21.7, z: 41, angle: 1.571 },
   { type: 'cityChargePost', x: -21.7, z: 44.4, angle: 1.571 },
   { type: 'cityChargePost', x: -21.7, z: 46.6, angle: 1.571 },
@@ -126,12 +132,9 @@ export const LUMEN_PROPS = [
   { type: 'cityDumpster', x: -3.4, z: 38.4, angle: 0.316 },
   { type: 'cityUtilityBox', x: -11.2, z: 36.9, angle: -0.157 },
   { type: 'cityCompact', x: -19.4, z: 50, angle: 0.03 },
-  // --- Metro plaza (5)
+  // --- Metro plaza (2)
   { type: 'cityAdPillar', x: 26.5, z: 37.5, angle: 0 },
   { type: 'cityPlanterTall', x: 18.6, z: 49, angle: 0.157 },
-  { type: 'cityBollard', x: 27.6, z: 41, angle: 0 },
-  { type: 'cityBollard', x: 28.5, z: 41, angle: 0 },
-  { type: 'cityBollard', x: 29.4, z: 41, angle: 0 },
   // --- The evacuation jam (Boulevard west, eastbound lanes) (7)
   { type: 'citySedan', x: -56.7, z: 2, angle: -0.015 },
   { type: 'cityWreck', x: -52.03, z: 1.92, angle: 0.022 },
@@ -266,48 +269,29 @@ export const LUMEN_PROPS = [
   { type: 'cityHoarding', x: 27.96, z: 10.63, angle: 0.785 },
   { type: 'cityShelter', x: 31.53, z: 30.39, angle: 0.785 },
   { type: 'cityPlanterTall', x: 38.39, z: 23.53, angle: -0.639 },
-  // --- Street dressing (low or small: changes no rule) (43)
+  // --- Street dressing (low or small: changes no rule) (24)
   { type: 'cityHydrant', x: 44.71, z: 8.44, angle: 3.142 },
-  { type: 'cityHydrant', x: 29.66, z: 12.19, angle: 2.356 },
   { type: 'cityHydrant', x: 38.51, z: 38.89, angle: -0.785 },
-  { type: 'cityHydrant', x: -33.97, z: 24.38, angle: 0 },
-  { type: 'cityHydrant', x: -35.16, z: -30.53, angle: -1.571 },
   { type: 'cityBench', x: 27.76, z: 26.57, angle: 2.592 },
   { type: 'cityBench', x: 20.13, z: 19.93, angle: -0.568 },
   { type: 'cityBench', x: 36.47, z: -7.35, angle: -0.158 },
   { type: 'cityBench', x: 49.8, z: -16.06, angle: -0.142 },
   { type: 'cityBench', x: 45, z: -19.93, angle: 1.899 },
-  { type: 'cityBollard', x: 37.15, z: 36.34, angle: 2.356 },
-  { type: 'cityBollard', x: 11.36, z: -26.38, angle: -1.571 },
-  { type: 'cityBollard', x: -31.36, z: 25, angle: 3.142 },
-  { type: 'cityBollard', x: 51.62, z: 7.69, angle: 0 },
-  { type: 'cityBollard', x: 56.88, z: -16.16, angle: 0 },
-  { type: 'cityBollard', x: 45.75, z: -13.31, angle: 0 },
   { type: 'cityPlanter', x: -34.2, z: 30.13, angle: -1.728 },
-  { type: 'cityPlanter', x: 30.02, z: 13.27, angle: 2.513 },
   { type: 'cityPlanter', x: 12.99, z: 18.33, angle: 1.414 },
   { type: 'cityPlanter', x: 40.77, z: -33.66, angle: 1.728 },
-  { type: 'cityPlanter', x: 56.32, z: -17.3, angle: 1.447 },
   { type: 'cityPlanter', x: 57.52, z: -32.49, angle: 1.728 },
   { type: 'cityVending', x: -25.1, z: -32.05, angle: 3.142 },
-  { type: 'cityVending', x: 47.93, z: -9.12, angle: 0 },
   { type: 'cityVending', x: -26.2, z: 19.65, angle: -1.571 },
-  { type: 'cityTrashBags', x: 27.16, z: 9.93, angle: -1.169 },
   { type: 'cityTrashBags', x: 22.38, z: 21.82, angle: 2.356 },
   { type: 'cityTrashBags', x: -48.44, z: 34.06, angle: 3.142 },
-  { type: 'cityTrashBags', x: -9.33, z: 29.18, angle: -0.179 },
   { type: 'cityTrashBags', x: -31.27, z: -44.02, angle: 1.001 },
-  { type: 'cityChargePost', x: -15.17, z: 43.72, angle: 0 },
-  { type: 'cityChargePost', x: -18.9, z: 42.35, angle: 0 },
   { type: 'cityMotorbike', x: -15.79, z: -34.2, angle: 0.715 },
   { type: 'cityMotorbike', x: -43.7, z: -5.53, angle: 2.563 },
   { type: 'cityMotorbike', x: -50.01, z: 34.17, angle: 0 },
   { type: 'cityCone', x: 25.8, z: -3.21, angle: 2.908 },
   { type: 'cityCone', x: -31.98, z: 26.69, angle: 3.953 },
   { type: 'cityJersey', x: -12.5, z: -32.9, angle: 1.466 },
-  { type: 'cityCone', x: 26.35, z: -3.53, angle: 3.873 },
-  { type: 'cityCone', x: -31.03, z: 25.92, angle: 2.398 },
   { type: 'cityCone', x: 4.97, z: 35.76, angle: 2.87 },
   { type: 'cityUtilityBox', x: -33.94, z: -23.83, angle: -1.728 },
-  { type: 'cityUtilityBox', x: -6.49, z: 35.52, angle: 2.985 },
 ];

@@ -482,7 +482,7 @@ export class LifeWorld {
     this.roads = ROADS.filter(r => r.axis !== 'diagonal');
     // The frame.
     this.fx = 0; this.fz = 0; this.aspect = 16 / 9; this.tan = Math.tan(fairFov(16 / 9) * Math.PI / 360); this.me = null; this.others = EMPTY; this.time = 0;
-    this.thX = 0; this.thZ = 0; this.filled = false; this.gatherT = 0; this.gatherAt = 0; this.gatherRat = 0; this.gatherBird = 0; this.flyT = 12; this.hushUntil = 0;
+    this.thX = 0; this.thZ = 0; this.freeX = 0; this.freeZ = 0; this.filled = false; this.gatherT = 0; this.gatherAt = 0; this.gatherRat = 0; this.gatherBird = 0; this.flyT = 12; this.hushUntil = 0;
     this.flockN = 0; this.flockX = 0; this.flockZ = 0; this.flockT = 0; this.squeakT = 0; this.lastLandX = 0; this.lastLandZ = 0; this.lastLandT = -99;
     // Sound hooks (agent D): a flock going up, a squeak, a coo.
     this.onFlock = null; this.onSqueak = null; this.onCoo = null;
@@ -1029,6 +1029,16 @@ export class LifeWorld {
   // One step toward (tx, tz) at `speed`, sliding round what is in the way.
   // Returns true when stuck for good. `enter`: may end in blocked ground (the hide).
   stepRat(r, dt, speed, enter) {
+    // Coming out of a hide (a drain in the gutter, under a dumpster) a rat stands in blocked ground,
+    // where every step on toward home can be blocked too (home across the road, the dumpster's far
+    // side): it gets out to the nearest free ground first, else it would forage on the road or inside
+    // the dumpster for good (seen once the street lost a fifth of its props, 2026-10-01).
+    if (!enter && !this.field.ratFree(r.x, r.z) && this.nearestFree(r.x, r.z)) {
+      const ex = this.freeX - r.x, ez = this.freeZ - r.z, e = Math.hypot(ex, ez), step = Math.min(e, speed * dt);
+      r.yaw = Math.atan2(ex, ez); r.gait += dt * (6 + speed * 3);
+      r.x += ex / e * step; r.z += ez / e * step; r.stuck = 0;
+      return false;
+    }
     const dx = r.tx - r.x, dz = r.tz - r.z, d = Math.hypot(dx, dz);
     if (d < .02) return false;
     const want = Math.atan2(dx, dz), turn = angleDiff(r.yaw, want), max = 14 * dt;
@@ -1043,6 +1053,17 @@ export class LifeWorld {
     }
     r.stuck += dt;
     return r.stuck > .6;
+  }
+  // The nearest free ground within 1.5 m of (x, z), into freeX / freeZ (no allocation); false if none.
+  nearestFree(x, z) {
+    for (let ring = 1; ring <= 10; ring++) {
+      const rad = ring * .15;
+      for (let k = 0; k < 16; k++) {
+        const a = k * TAU / 16, px = x + Math.sin(a) * rad, pz = z + Math.cos(a) * rad;
+        if (this.field.ratFree(px, pz)) { this.freeX = px; this.freeZ = pz; return true; }
+      }
+    }
+    return false;
   }
 
   runRat(r, dt) {

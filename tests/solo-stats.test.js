@@ -12,7 +12,7 @@ const tick = (you, bots, input = { moveX: 0, moveZ: 0, aimX: 1, aimZ: 0 }) => { 
 const world = () => { const you = new Simulation(map); you.weapon = 'rifle'; you.reset(); you.player.id = 'you'; const bots = new BotMatch(map, { createSim: m => new Simulation(m), random }); return { you, bots }; };
 
 test('shooting a robot counts your damage dealt and its damage taken, then your kill and its death', () => {
- const { you, bots } = world();
+ const { you, bots } = world(); you.dev.invulnerable = true; // it shoots back from 3 m and sometimes won the duel (flaky before 2026-10-01)
  const bot = bots.spawn(you, 'rifle', { team: 'red' });
  bot.sim.player.x = you.player.x + 3; bot.sim.player.z = you.player.z; bot.sim.player.vx = bot.sim.player.vz = 0;
  bots.holdRespawns = true;

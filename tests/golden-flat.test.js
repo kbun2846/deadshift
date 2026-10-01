@@ -96,7 +96,13 @@ import { ClientSession } from '../src/net/client-session.js';
 //   - rifle, robots and hosted: re-recorded after the owner-requested Nominal
 //     nerf (2026-09-30: ~10% less damage on bullets, grenade and Nova; looser
 //     hip fire). Static and shotgun unchanged.
-export const GOLDEN = { static: '17d0bb9e', rifle: 'a9f85eb2', shotgun: '632d6dc5', robots: '5427c800', hosted: 'd9076296' };
+//   - robots and hosted: re-recorded, 5427c800 -> 1967664c and d9076296 ->
+//     f1d2f89, for the owner's "Tune the base bot from normal difficulty to be
+//     less aggressive, so it's not always chasing and initiating and should be
+//     in cover sometimes or in the open" (2026-10-01): normal robots now hold
+//     their ground some of the time (engagement.js HOLD). With NORMAL_HOLD 0
+//     both give the old hashes again; static, rifle and shotgun unchanged.
+export const GOLDEN = { static: '17d0bb9e', rifle: 'a9f85eb2', shotgun: '632d6dc5', robots: '1967664c', hosted: 'f1d2f89' };
 
 const map = maps.deadwater;
 function seeded(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }

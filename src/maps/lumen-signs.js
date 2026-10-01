@@ -43,6 +43,7 @@ import { LUMEN_PROPS } from './lumen-cover.js';
 import { LUMEN_BASES } from './lumen-spawns.js';
 import { LUMEN_PROP_TYPES } from '../world/lumen-props.js';
 import { LUMEN_DETAIL_PROPS } from './lumen-detail.js';
+import { edgeTowers } from '../world/lumen-edge.js';
 
 export const LUMEN_SIGN_RULES = Object.freeze({
   wall: .19,            // m from a footprint edge to the shell's outer face (half the 0.38 m wall)
@@ -289,7 +290,35 @@ function nearestFree(x, z, reach = 2.5, options = {}) {
 // The list. Every piece goes through `emit`, which rounds its numbers.
 
 const NUMERIC_3 = new Set(['facing', 'seed', 'tilt']);
+// Every other building's and ring tower's footprint (outline, top): a face is
+// "exposed" in buildFaces when no other part of its own building covers it,
+// so a stretch against a neighbour (a party wall) counted too, and 53 signs
+// stood inside the building next door: unseen until that one was cut away
+// or the camera came into it, then floating in the air (owner, 2026-10-01,
+// "exterior detail showing when ... they go transparent").
+const getVolumes = once(() => [
+  ...FOOTPRINTS.flatMap(f => [...(f.parts || []).map(([x0, x1, z0, z1]) => [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]), ...(f.quads || []).map(q => q.map(p => [p[0], p[1]]))]
+    .map(ring => ({ id: f.id, ring, top: SPEC.get(f.id)?.height ?? f.low ?? 60 }))),
+  ...edgeTowers().filter(s => s.shell !== false).map(s => {
+    const a = s.angle || 0, c = Math.cos(a), n = Math.sin(a), hw = s.w / 2, hd = s.d / 2;
+    return { id: 'tower', ring: [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([x, z]) => [s.x + x * c + z * n, s.z - x * n + z * c]), top: s.height ?? 60 };
+  }),
+]);
+// Is a piece on building `id`'s wall (at its middle, facing, `half` m to
+// each side along the wall, its foot at `foot` m) inside another building or
+// tower under its top? (`.1` m out from the wall, so a party line counts.)
+export function buriedPiece(id, at, facing, half, foot) {
+  const nx = Math.sin(facing || 0), nz = Math.cos(facing || 0);
+  for (const s of [0, -half, half]) {
+    const x = at[0] + nx * .1 + nz * s, z = at[2] + nz * .1 - nx * s;
+    for (const v of getVolumes()) if (v.id !== id && foot < v.top && inPoly(v.ring, x, z)) return true;
+  }
+  return false;
+}
+const pieceBuried = o => o.buildingId && o.at && o.mount !== 'free' && (o.kind === 'neon' || o.kind === 'screen' || o.kind === 'panel')
+  && buriedPiece(o.buildingId, o.at, o.facing, o.kind === 'neon' ? (o.size ?? 1) * aspectOf(o.shape) / 2 : (o.w ?? 1) / 2, o.at[1] - (o.kind === 'neon' ? (o.size ?? 1) : (o.h ?? .5)) / 2);
 function emit(out, o) {
+  if (pieceBuried(o)) return { ...o }; // (inside the building next door: never made)
   const piece = {};
   for (const k of Object.keys(o)) {
     const v = o[k];
@@ -953,6 +982,7 @@ function outlineList(out) {
     if (t - hw < O.margin || t + hw > f.len - O.margin) return false;
     if (!spec.tall && y + hh > spec.height - O.roof) return false;
     const u = f.axis === 'x' ? f.a[0] + f.dir[0] * t : f.axis === 'z' ? f.a[1] + f.dir[1] * t : t, w = wallPoint(f, u);
+    if (buriedPiece(spec.id, [w.x, y, w.z], w.facing, hw, y - hh)) return false; // (a party wall: inside the building next door)
     // Clear of every piece already on this wall (the district's own signs, strips, slits and the outlines so far).
     for (const o of out) {
       if (o.buildingId !== spec.id || !o.at || o.kind === 'pole') continue;
@@ -984,10 +1014,12 @@ function outlineList(out) {
     if (!faces.length) continue;
     // (the longest faces first, then the rest, seeded)
     const order = faces.slice().sort((a, b) => b.len - a.len);
+    // (a face that takes none, a party wall's stretch inside the building
+    // next door, hands the sign on to the next face)
+    const onFaces = (i, make) => { for (let k = 0; k < order.length; k++) if (tryFace(spec, order[(i + k) % order.length], make(order[(i + k) % order.length]))) return; };
     O.street.perBuilding.forEach((chance, i) => {
       if (rand() > chance) return;
-      const f = order[i % order.length];
-      tryFace(spec, f, () => {
+      onFaces(i, f => () => {
         const word = rand() < O.wordShare, size = word ? range(O.street.word) : range(O.street.picto);
         const shape = word ? { glyphs: Math.round(range(O.street.glyphs)), seed: Math.round(rand() * 1000) / 1000 } : pick(O.pictograms);
         return { t: rand() * f.len, y: range(O.street.y), shape, size, tilt: O.street.tilt };
@@ -996,8 +1028,7 @@ function outlineList(out) {
     if (!spec.tall) continue;
     O.tower.perBuilding.forEach((chance, i) => {
       if (rand() > chance) return;
-      const f = order[i % order.length];
-      tryFace(spec, f, () => {
+      onFaces(i, f => () => {
         const word = rand() < O.wordShare;
         const shape = word ? { glyphs: Math.round(range(O.tower.glyphs)), vertical: true, seed: Math.round(rand() * 1000) / 1000 } : pick(O.pictograms);
         const size = word ? range(O.tower.column) : range(O.tower.picto);

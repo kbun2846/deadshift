@@ -21,6 +21,7 @@ import { mapProps, buildingOpenings } from '../maps.js';
 import { roomPolygon } from '../world/city-rooms.js';
 import { LUMEN_GROUND } from '../world/lumen-ground.js';
 import { overheadFrame } from './overhead-hills.js';
+import { overheadLiveLayer } from './overhead-zones.js';
 
 // The city night palette, in the menu's style: dark slate, muted greys, a few
 // lit accents. The ground's own colours are the lit-street values of the
@@ -208,10 +209,12 @@ function cityMapBody(map) {
   return body;
 }
 
-export function cityOverheadMapSVG(map, view, player) {
+// (`zones`: the storm or the duel circle, overhead-zones.js; the city map
+// left them out until 2026-10-01, so Lumen's map never showed the storm.)
+export function cityOverheadMapSVG(map, view, player, zones) {
   const { frame, svg } = cityMapBody(map);
   return `<svg viewBox="${fmt(frame.x)} ${fmt(frame.z)} ${fmt(frame.w)} ${fmt(frame.d)}" role="img" aria-label="Overhead map showing the roads, buildings, cover and your location" xmlns="http://www.w3.org/2000/svg">
     ${svg}
-    ${player ? `<circle cx="${fmt(player.x)}" cy="${fmt(player.z)}" r="3.8" fill="${C.playerHalo}" opacity=".18"/><circle cx="${fmt(player.x)}" cy="${fmt(player.z)}" r="1.65" fill="${C.player}" stroke="${C.playerEdge}" stroke-width=".65"/>` : ''}
+    ${overheadLiveLayer(zones, player, C)}
   </svg>`;
 }

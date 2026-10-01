@@ -1,5 +1,5 @@
 // The game server's admin side: the developer tools' code check, ban expiry,
-// maintenance mode, announcements, closing rooms, recent players, the owner's
+// maintenance mode, announcements, closing rooms, the player log, the owner's
 // own routes and the restart (server/admin.js, devcode.js, bans.js, ...).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -295,4 +295,30 @@ test('the overview counts data sent this month and keeps it across restarts', ()
  assert.equal(again.overview().peakToday, 5);
  t = Date.parse('2026-10-01T00:05:00Z');
  assert.equal(again.overview().sent.month, 1e9, 'a new month starts from the unsaved bytes only');
+});
+
+test('the player log: who came online and when, searched on the server, kept across a restart', async () => {
+ const first = await serve();
+ let dir = first.dir;
+ try {
+  const a = player(first.ws, create, { name: 'Ann', pid: 'ann-player-0001' }); const room = await a.ready;
+  const b = player(first.ws, { t: 'join', code: room.code }, { name: 'Bob', pid: 'bob-player-0002' }); await b.ready;
+  await until(() => false, 250);
+  b.close(); await b.closed; await until(() => false, 100);
+  const state = (await first.api('state?with=recent')).body;
+  assert.deepEqual(state.recent.map(e => [e.name, !!e.left]), [['Bob', true], ['Ann', false]]);
+  assert.equal(state.recent[1].known, true, 'Ann is online: her name opens the player sheet');
+  assert.equal(state.recentSummary.online, 1); assert.equal(state.recentSummary.day.players, 2); assert.equal(state.recentMore, 0);
+  assert.deepEqual((await first.api('state?with=recent&q=bob')).body.recent.map(e => e.name), ['Bob']);
+  assert.deepEqual((await first.api('state?with=recent&online=1')).body.recent.map(e => e.name), ['Ann']);
+  const limited = (await first.api('state?with=recent&limit=1')).body;
+  assert.equal(limited.recent.length, 2, 'at least 50 at a time'); assert.equal(limited.recentMore, 0);
+ } finally { await first.server.close(); }
+ // The server restarts (an update): the log is still there, Ann's visit ended by the restart.
+ const second = await serve({ dataDir: dir });
+ try {
+  const recent = (await second.api('state?with=recent')).body.recent;
+  assert.deepEqual(recent.map(e => [e.name, e.how]), [['Bob', 'left'], ['Ann', 'server restart']]);
+  assert.ok(recent.every(e => e.left && e.at && e.ip && e.room));
+ } finally { await second.server.close(); }
 });

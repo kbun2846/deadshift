@@ -88,7 +88,7 @@ test('placement: 80 to 140 breakables, every new type placed, spread over the di
 test('placement rules for the new pieces: inside the outline, no overlap, 2.4 m from outer doors, off zebras, 1 m from the sniper lane, gaps under 0.7 or 1.4 and over, the alley kept, spawns legal', () => {
   const mine = new Set(LUMEN_BREAKABLE_PROPS.map(p => p.id));
   const all = L.propPolys(hooked), pieces = all.filter(c => mine.has(c.propId)), byId = new Map(L.mapProps(hooked).map(p => [p.id, p]));
-  assert.ok(pieces.length >= 120, `${pieces.length} colliders`);
+  assert.ok(pieces.length >= 80, `${pieces.length} colliders`); // (120 before the owner's clutter cut, 2026-10-01)
   const bad = [], f1 = v => v.toFixed(1), name = c => { const p = byId.get(c.propId); return `${p.id} ${p.type} (${f1(p.x)},${f1(p.z)})`; };
   const near = (a, b, m) => a.bb.x1 + m >= b.bb.x0 && a.bb.x0 - m <= b.bb.x1 && a.bb.z1 + m >= b.bb.z0 && a.bb.z0 - m <= b.bb.z1;
   const walls = [...L.footprints, ...L.solids.filter(s => s.kind !== 'barricade')];

@@ -58,6 +58,25 @@
 //      (render/city-shells.js, role `lid`): no wall the camera is about to
 //      pass through fills the screen and then vanishes; it goes as the
 //      camera comes, and comes back as it leaves. Row 2 x.
+//   6. A wall's dressing goes with its wall's outer face (owner, 2026-10-01:
+//      "lots of buildings on lumen still have exterior detail showing when
+//      player goes in front of them and they go transparent"). A storey's
+//      wall shows only its outer face (back faces are culled), so from behind
+//      it (the camera over a building: rule 5 takes only CUT.near.radius m
+//      round the camera, the rest of the hull faces away and is not drawn;
+//      or looking through a building whose near side is cut) the wall is
+//      gone, but the end faces of its pieces (one a room's run of wall, each
+//      a box: where two runs meet, 0.38 m wide and up to 58 m tall) and the
+//      fins, pilasters, ledges, sills, frames, fire escapes and neon standing
+//      on it had faces turned every way and stayed: long bars floating over
+//      the street. So a storey's or a dressing's fragment above its first
+//      floor is not drawn where the line from the camera to it crosses its
+//      wall's plane (CUT.wall) from behind inside a footprint under the
+//      building's top: exactly where that wall's own face would be turned
+//      away. Round a corner (the crossing off every footprint) or over a low
+//      roof (the crossing above its top) it stands: continuous, no pop.
+//      Signs and screens on a wall are read the same way at their centre
+//      (cityPieceBehind).
 // Interiors (render/city-shells.js): yours, and one within
 // SHELLS.interiorReach of whose outer door you stand; never another's.
 export const CUT = Object.freeze({
@@ -87,6 +106,17 @@ export const CUT = Object.freeze({
   // signed distance clamped at `range` m (bilinear filtering keeps the edge
   // exact between texels), `margin` m round the city.
   mask: Object.freeze({ cell: .5, grow: .3, range: 1.5, margin: 4 }),
+  // Rule 6 (a wall's dressing goes with its wall's face): a facade part above
+  // its first floor (render/city-facades.js, roles `upper` and `dressing`),
+  // and a storey's wall itself (render/city-shells.js), carries as its
+  // anchor (cityAt) its own point projected onto its wall's line and moved
+  // `back` m in behind it, so (its xz - the anchor) is the wall's outward
+  // normal (a piece on no wall, roof kit or a line across a courtyard, is
+  // anchored at its own xz: under `onWall` m, never this rule). The wall's
+  // plane is taken `inset` m in from its line (past the wall's inner face,
+  // .19 m in: a storey's end faces, which stand across its thickness where
+  // two rooms' runs of wall meet, are all in front of it).
+  wall: Object.freeze({ back: 1, inset: .2, onWall: .5 }),
 });
 
 // The cut stamp every shell vertex carries (render/city-shells.js,
@@ -105,6 +135,9 @@ export const cutStamp = (slot, role) => slot * CUT_ROLES + role;
 export const STANDING = 'standing', OPEN = 'open';
 
 const f = v => Number(v).toFixed(4);
+// The footprint mask's value on a footprint's own outline (it is grown
+// CUT.mask.grow m; .5 is the grown edge): over this, inside a footprint.
+export const FOOTPRINT_EDGE = .5 + CUT.mask.grow / (2 * CUT.mask.range);
 // The rule in GLSL (the shells' fragment shader and their black twin's; the
 // signs', screens', halos' and pools' vertex shaders, per piece centre). The
 // cut table (city.cutTexture, one texel a slot), row 0: x how far it is
@@ -184,11 +217,34 @@ bool cityHidden(vec3 p, float firstTop, float hide, float beside, float near) {
   if (p.y > firstTop + ${f(CUT.above)}) return cityInK(g) && !(beside > .5 && abs(p.z - cutTargets[0].y) < ${f(CUT.beside.band)});
   return p.y > cityFadeKnee(g);
 }
+// Rule 6: a wall's dressing at p (at: its anchor, CUT.wall.back m in behind
+// its wall's line; top: its building's top) seen from behind its wall: the
+// line from the camera crosses the wall's plane (CUT.wall.inset m in from
+// its line) inside a footprint (the mask's own outline, not the grown one),
+// under the top.
+bool cityBehindWall(vec3 p, vec2 at, float top) {
+  vec2 d = p.xz - at;
+  float off = length(d);
+  if (off < ${f(CUT.wall.onWall)}) return false;
+  vec2 n = d / off;
+  float plane = ${f(CUT.wall.back - CUT.wall.inset)}, eye = dot(cutEye.xz - at, n);
+  if (eye >= plane || off <= plane) return false;
+  vec3 q = mix(cutEye.xyz, p, (plane - eye) / (off - eye));
+  if (q.y >= top) return false;
+  vec2 uv = (q.xz - cityFootBox.xy) * cityFootBox.zw;
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return false;
+  return textureLod(cityFootMask, uv, 0.0).r >= ${f(FOOTPRINT_EDGE)};
+}
 // A piece (a sign, a screen, a halo, a pool) whose centre is p, on the
 // building whose cut rows are row (0) and near (row 2 x): the same rule at
 // its centre (whole pieces).
 bool cityPieceHidden(vec4 row, float near, vec3 p) {
   return cityHidden(p, row.w > row.z + .05 ? row.z : 1e5, cityHideHeight(row, row.x), row.y > 1.5 ? 1.0 : 0.0, cityHideHeight(row, near));
+}
+// Rule 6 for a piece on a wall (a sign, a screen: at its anchor, CUT.wall,
+// as a wall's dressing) whose centre is p, over its building's first floor.
+bool cityPieceBehind(vec4 row, vec3 p, vec2 at) {
+  return row.w > row.z + .05 && p.y > row.z + ${f(CUT.above)} && cityBehindWall(p, at, row.w);
 }
 `;
 export const SCOOP_GLSL = CUT_GLSL; // (the old name, still imported by city-signs.js)
@@ -476,15 +532,29 @@ export class CityCut {
   // cityHideHeight: building b's height above which nothing is drawn (yours,
   // `x` = b.hide), or (x = b.near) near the camera.
   hideAt(b, x = b.hide) { return x > .001 ? b.top + 3 + (b.floor + CUT.above - b.top - 3) * x : 1e5; }
+  // cityBehindWall: is a wall's dressing at (x, y, z), anchored at (ax, az)
+  // (CUT.wall), on a building whose top is `top`, seen from behind its wall?
+  behindWall(x, y, z, ax, az, top) {
+    const dx = x - ax, dz = z - az, off = Math.hypot(dx, dz);
+    if (off < CUT.wall.onWall) return false;
+    const nx = dx / off, nz = dz / off, plane = CUT.wall.back - CUT.wall.inset, e = this.eye, eye = (e.x - ax) * nx + (e.z - az) * nz;
+    if (eye >= plane || off <= plane) return false;
+    const t = (plane - eye) / (off - eye), qy = e.y + (y - e.y) * t;
+    if (qy >= top) return false;
+    return maskAt(this.mask, e.x + (x - e.x) * t, e.z + (z - e.z) * t) >= FOOTPRINT_EDGE;
+  }
   // Is b's piece at (x, y, z) hidden for the camera near it (rule 5)?
   nearCut(b, x, y, z) { const r = CUT.near.radius; return y > this.hideAt(b, b.near) && (x - this.eye.x) ** 2 + (z - this.eye.z) ** 2 < r * r; }
 
   // Is a piece whose centre is (x, y, z) on building `slot` out of view now
-  // (cityPieceHidden: a sign, a screen, a hologram's projector)? The CPU twin
+  // (cityPieceHidden, and cityPieceBehind for one on a wall anchored at (ax,
+  // az): a sign, a screen, a hologram's projector)? The CPU twin
   // of the signs' cutAway (a light out of view goes out).
-  hides(slot, x, y, z) {
+  hides(slot, x, y, z, ax = x, az = z) {
     const b = this.bySlot.get(slot);
     if (!b) return false;
+    // (rule 6: a piece on a wall, anchored at (ax, az): cityPieceBehind)
+    if (b.upper && y > b.floor + CUT.above && this.behindWall(x, y, z, ax, az, b.top)) return true;
     if (y > this.hideAt(b) || this.nearCut(b, x, y, z)) return true;
     if (!this.on || !this.landing(x, y, z)) return false;
     if (b.upper && y > b.floor + CUT.above) return this.inK(this.g.x, this.g.z) && !this.kept(b, z);

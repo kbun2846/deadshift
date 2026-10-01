@@ -484,12 +484,13 @@ function infoTerminal(view, p, g) {
 function parkingMeter(view, p, g) {
   const K = kit(view, p, g);
   // A parking meter .3 x .3 x 1.3: a base plate, a slim steel pole, a rounded head with a lit lemon display, a
-  // coin slot and a solar cap; a lemon band on the pole.
+  // coin slot and a solar cap; a lemon band on the pole. The cap is hazard lemon, the size of the collider
+  // (owner, 2026-10-01: thin posts went unseen from above and players ran into them).
   K.box(0, .02, 0, .26, .04, .26, C.concreteDark);
   K.cyl(0, .62, 0, .035, 1.2, C.steelMid, 6); K.cyl(0, .35, 0, .04, .06, C.hazard, 6);
   K.box(0, 1.14, 0, .2, .3, .14, C.graphite); K.box(0, 1.14, .075, .16, .26, .01, C.steelDark);
   K.lit(0, 1.22, .085, .1, .07, .01, C.litLemon, 1.1); K.box(.0, 1.06, .085, .08, .012, .01, C.black); K.box(0, 1.02, .085, .1, .04, .01, C.steel);
-  K.box(0, 1.3 - .025, 0, .24, .04, .18, '#1c2735', [-.12, 0, 0]);
+  K.box(0, 1.3 - .025, 0, .26, .04, .22, C.hazard, [-.12, 0, 0]);
   K.done();
 }
 

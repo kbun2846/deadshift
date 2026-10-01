@@ -13,6 +13,18 @@
 // `this.pf`. Chosen once per robot (BotMatch.spawn) and kept for the whole
 // session, like its make.
 
+// Normal's waiting game (owner, 2026-10-01: "Tune the base bot from normal
+// difficulty to be less aggressive, so it's not always chasing and initiating
+// and should be in cover sometimes or in the open"). NORMAL_HOLD: its chance
+// of holding at each place it would otherwise go after them (before its
+// boldness: engagement.js thresholds). HOLD_JITTER: each robot's own share of
+// it (±), so some normal robots camp more than others. COVER_LEAN: how a
+// style leans to holding behind cover rather than in the open (cautious and
+// marksman robots to cover, rushers and flankers to the open), with
+// COVER_JITTER of its own.
+export const NORMAL_HOLD = .8, HOLD_JITTER = .25;
+export const COVER_LEAN = Object.freeze({ base: .4, range: .9, calm: .7 }), COVER_JITTER = .15;
+
 // trigger: how far off target it will still fire (easy: sprays early).
 // burst: how long its Nominal bursts run at range (longer = more recoil).
 // shake: an unsteady hand, a wobble that never settles.
@@ -34,6 +46,8 @@
 // hand off: fully for easy and normal, less for hard, little for expert.
 // whiff: melee (Ichor, Sheath): the chance a swing is misjudged, started out
 // of reach or cut off line (robot-brain.js meleeSwing), as a person does.
+// hold (2026-10-01): how often it holds its ground rather than going after
+// them (NORMAL_HOLD, engagement.js HOLD); none for the other skills.
 // (Owner, 2026-09-29: "robots aim is too good, especially in normal it should
 // be more balanced. dont make it easy but make it miss a bit more, especially
 // with melee and ranged weapons ... make easy extra easy and make hard
@@ -46,7 +60,11 @@ export const SKILLS = Object.freeze({
  easy:   { label: 'easy',   reaction: [.55, .8],  aim: 4.6,  settle: 1.15, turn: 5.5, lead: .45, dodge: .05, trigger: 2.4, burst: 1.8, shake: 2.7,  miss: .62, whiff: .6,  rest: .6,  feel: 1.15, tech: .1, bold: -.28, patience: .85, xRate: .3 },
  // Normal (owner, v146: it was too hard): slower to react, looser aim, a
  // shakier hand and less game sense than before.
- normal: { label: 'normal', reaction: [.3, .46],  aim: 2.3,  settle: .62,  turn: 9,   lead: .72, dodge: .28, trigger: 1.15, burst: 1.1, shake: 1.15, miss: .36, whiff: .45, rest: .2,  feel: 1, tech: .5, bold: -.14, patience: .6, xRate: .45 },
+ // `hold` (owner, 2026-10-01: "Tune the base bot from normal difficulty to be
+ // less aggressive, so it's not always chasing and initiating and should be in
+ // cover sometimes or in the open"): how often it holds its ground instead of
+ // going after them (engagement.js HOLD). Normal only: easy and hard as before.
+ normal: { label: 'normal', reaction: [.3, .46],  aim: 2.3,  settle: .62,  turn: 9,   lead: .72, dodge: .28, trigger: 1.15, burst: 1.1, shake: 1.15, miss: .36, whiff: .45, rest: .2,  feel: 1, tech: .5, bold: -.14, patience: .6, xRate: .45, hold: NORMAL_HOLD },
  hard:   { label: 'hard',   reaction: [.1, .17],  aim: .5,   settle: .22,  turn: 17, lead: .99, dodge: .8,  trigger: .8,  burst: .75, shake: .14, miss: .04, whiff: .05, feel: .45, tech: 1, bold: .02,  patience: 0, xRate: .65 },
  expert: { label: 'expert', reaction: [.09, .14], aim: .4,   settle: .18,  turn: 19, lead: 1,   dodge: .85, trigger: .7,  burst: .65, shake: .1,  miss: .03, whiff: .04, feel: .35, tech: 1, bold: .05,   patience: 0, xRate: .65 },
  // Perfect (owner, v0.9b): the hands maxed, nearly unbeatable. Same guns,
@@ -138,6 +156,12 @@ export function makeProfile({ skill = null, style = null, temper = null, random 
  }
  // (Drawn last, so every other number is what the same seed gave before.)
  pf.whiff = Math.min(.9, own(k.whiff ?? .2, .15));
+ // Holding (2026-10-01; after whiff, and only for a skill that holds, so
+ // every other robot's numbers are what the same seed gave before).
+ if (k.hold) {
+  pf.hold = own(k.hold, HOLD_JITTER);
+  pf.coverLean = clamp01(COVER_LEAN.base + (s.range - 1) * COVER_LEAN.range + (.5 - s.aggr) * COVER_LEAN.calm + (random() * 2 - 1) * COVER_JITTER);
+ }
  return pf;
 }
 

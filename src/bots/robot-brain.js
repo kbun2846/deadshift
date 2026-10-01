@@ -175,7 +175,7 @@ export class RobotBrain {
  // Back to a blank mind (a respawn).
  reset() {
   this.memory.clear(); this.path = null; this.goal = null; this.hp = null; this.targetId = null; this.investigate = null;
-  this.mode = this.leader ? 'follow' : 'patrol'; this.watch = null; this.shotSpot = null; this.coverUntil = 0; this.aimAngle = null;
+  this.mode = this.leader ? 'follow' : 'patrol'; this.watch = null; this.shotSpot = null; this.peekSpot = null; this.coverUntil = 0; this.aimAngle = null;
   this.roomPlan=null;this.roomBurstUntil=this.roomPauseUntil=0;this.sniper=null;this.laserResponse=null;
   const counts = this.eng?.counts; this.eng = newEngagement(this.random); if (counts) this.eng.counts = counts; this.backoff = false; this.approach = null; this.flankSpot = null;
  }
@@ -436,7 +436,10 @@ export class RobotBrain {
   const eng = this.eng, was = eng.state;
   judge(eng, this.situation(known, visibleCount, fresh, empty, openReload, hpShare), pf, this.time, this.random);
   if (eng.state !== was) this.entered(eng.state, known);
-  const hide = !!known && !this.backoff && eng.reason !== 'recharge' && (eng.state === 'disengage' || (eng.state === 'reset' && eng.phase === 'hide'));
+  // (Holding its ground, engagement.js HOLD: behind cover between peeks, or
+  // where it stands, its gun on where they were.)
+  const holding = !!known && eng.state === 'hold';
+  const hide = !!known && !this.backoff && eng.reason !== 'recharge' && (eng.state === 'disengage' || (eng.state === 'reset' && eng.phase === 'hide') || (holding && eng.phase === 'wait'));
   const lowLead = lead && lead.hp / (lead.maxHp || RULES.playerHealth) < .35;
   if(laser){this.mode=laser.kind;if(laser.kind==='cover'){this.coverWhy='laser';this.coverUntil=laser.until;}}
   else if (hide) { this.mode = 'cover'; this.coverWhy = eng.reason; }
@@ -448,6 +451,7 @@ export class RobotBrain {
   // Coming back from a reset: round to a new angle.
   else if (known && eng.state === 'reset' && eng.phase === 'flank' && this.flankSpot !== false && leashed(known)) this.mode = 'flank';
   else if (seen) this.mode = 'engage';
+  else if (holding) this.mode = 'watch';
   else if (known && this.time - known.seen < pf.hunt && leashed(known)) this.mode = 'hunt';
   else if (this.investigate && this.time - this.investigate.at < 10 && leashed(this.investigate)) this.mode = 'investigate';
   else this.mode = lead ? 'follow' : 'patrol';
@@ -471,6 +475,8 @@ export class RobotBrain {
    if (!this.goal) {
     this.coverEnded = eng.coverEnded = this.time;
     if (eng.state === 'reset') { eng.phase = 'flank'; this.mode = 'flank'; }
+    // (Holding with no cover about: it holds in the open instead.)
+    else if (holding) { eng.stance = eng.reason = 'open'; eng.phase = null; this.mode = seen ? 'engage' : 'watch'; }
     else { this.backoff = true; this.mode = seen ? 'engage' : known ? 'hunt' : lead ? 'follow' : 'patrol'; }
    }
   }
@@ -489,6 +495,16 @@ export class RobotBrain {
     this.goal = { x: this.flankSpot.x, z: this.flankSpot.z };
     if (Math.hypot(this.flankSpot.x - p.x, this.flankSpot.z - p.z) < 1.2) eng.until = this.time;
    } else { this.goal = { x: known.x, z: known.z, chase: true }; if (this.flankSpot === false) eng.until = this.time; }
+  } else if (this.mode === 'watch') {
+   // Holding (engagement.js HOLD), out of their sight: where it stands, its
+   // gun on where they were; peeking (cover stance), out to the nearest spot
+   // with a line on them, found once per peek, no nearer them than it is.
+   if (eng.phase !== 'peek') this.goal = null;
+   else {
+    if (this.peekAt !== eng.phaseAt) { this.peekAt = eng.phaseAt; this.peekSpot = null; }
+    if (this.peekSpot == null && this.afford('search')) this.peekSpot = this.findShotSpot(known, this.holdBand(style, Math.hypot(known.x - p.x, known.z - p.z))) || false;
+    this.goal = this.peekSpot ? { x: this.peekSpot.x, z: this.peekSpot.z } : null;
+   }
   } else if (this.mode === 'engage') {
    const d = Math.hypot(known.x - p.x, known.z - p.z);
    if (!(sim.weapon==='sightline'?sniperClear(this,known.x,known.z):shotClear(sim.colliders, p.x, p.z, known.x, known.z, .04, sim.ground))) {
@@ -502,11 +518,13 @@ export class RobotBrain {
     if (this.shotSpot && Math.hypot(this.shotSpot.x - p.x, this.shotSpot.z - p.z) < .6) { this.markBadSpot(this.shotSpot); this.shotSpot = null; this.shotSpotAt = -1e9; }
     const s = this.shotSpot;
     if ((!s || this.time - this.shotSpotAt > 1.2 || Math.hypot(s.forX - known.x, s.forZ - known.z) > 2.5) && this.afford('search')) {
-     const found = this.findShotSpot(known, style);
+     // (Holding: a line from about here, not a step nearer them.)
+     const found = this.findShotSpot(known, holding ? this.holdBand(style, d) : style);
      this.shotSpot = found ? { ...found, forX: known.x, forZ: known.z } : null; this.shotSpotAt = this.time;
     }
-    this.goal = this.shotSpot ? { x: this.shotSpot.x, z: this.shotSpot.z } : { x: known.x, z: known.z, chase: true };
-   } else { this.shotSpot = null; this.goal = d > style.far ? this.approachSpot(known, style, d) : null; }
+    this.goal = this.shotSpot ? { x: this.shotSpot.x, z: this.shotSpot.z } : holding ? null : { x: known.x, z: known.z, chase: true };
+   // (Holding: it lets them come, never walks in after them.)
+   } else { this.shotSpot = null; this.goal = d > style.far && !holding ? this.approachSpot(known, style, d) : null; }
    // An ally chases no further than a few steps from you.
    if (lead && this.goal && Math.hypot(this.goal.x - lead.x, this.goal.z - lead.z) > 12) {
     const gx = this.goal.x - lead.x, gz = this.goal.z - lead.z, gl = Math.hypot(gx, gz);
@@ -554,6 +572,10 @@ export class RobotBrain {
   }
  }
 
+ // The band a holding robot (engagement.js HOLD) looks for a line from: about
+ // as far as it is now (`d`), so a shot or peek spot is a step aside, not in.
+ holdBand(style, d) { return { ...style, near: Math.min(style.near, Math.max(1, d - 3)), far: Math.max(style.far, d + 1), reach: Math.max(style.reach, d + 2) }; }
+
  // Fills the situation the engagement loop reads (engagement.js), in place.
  situation(known, visibleCount, fresh, empty, openReload, hpShare) {
   const s = this.sit, p = this.sim.player, pf = this.pf, base = STYLE[this.sim.weapon] || STYLE.static;
@@ -573,6 +595,8 @@ export class RobotBrain {
   s.openReload = !!openReload; s.ability = this.abilityReady();
   s.theirReload = !!known.reloading; s.theirSpent = !!known.spent;
   s.foes = visibleCount; s.hurt = this.time - this.hurtAt; s.fall = this.fight?.kind === 'fall';
+  // (Near the storm's closing edge: no place to hold, engagement.js HOLD.)
+  const c = this.sim.storm; s.stormNear = !!c && Math.hypot(p.x - c.x, p.z - c.z) > c.r - ROBOT_EDGE - STORM_EDGE - 3;
   // Its side close by, and (team games) whether its target has anyone of its own near.
   let mates = 0;
   for (const f of this.friends) if (f.hp > 0 && Math.hypot(f.x - p.x, f.z - p.z) < 14) mates++;
@@ -586,7 +610,7 @@ export class RobotBrain {
  // A new stage of the fight (engagement.js): what changes with it.
  entered(state, known) {
   const p = this.sim.player;
-  if (state === 'disengage' || state === 'reset' || state === 'seek') this.backoff = state === 'disengage' && this.eng.reason === 'recharge';
+  if (state === 'disengage' || state === 'reset' || state === 'seek' || state === 'hold') this.backoff = state === 'disengage' && this.eng.reason === 'recharge';
   if (state === 'reset') {
    // The line it backed off along: it comes back from another.
    this.flankSpot = null;
@@ -645,7 +669,8 @@ export class RobotBrain {
   const known = this.targetId != null ? this.memory.get(this.targetId) : null;
   if (this.mode === 'hunt' && known) this.lose(known);
   else if (this.mode === 'investigate') this.investigate = null;
-  else if (this.mode === 'cover') { this.coverEnded = this.eng.coverEnded = this.time; this.coverUntil = 0; if (this.eng.state === 'reset') this.eng.phase = 'flank'; else this.backoff = true; }
+  else if (this.mode === 'cover') { this.coverEnded = this.eng.coverEnded = this.time; this.coverUntil = 0; if (this.eng.state === 'reset') this.eng.phase = 'flank'; else if (this.eng.state === 'hold') { this.eng.stance = this.eng.reason = 'open'; this.eng.phase = null; } else this.backoff = true; }
+  else if (this.mode === 'watch') this.peekSpot = false;
   else if (this.mode === 'flank') { this.flankSpot = false; this.eng.until = this.time; }
   else if (this.mode === 'follow') this.followNudge = (this.followNudge || 0) + 1;
   this.goal = this.mode === 'patrol' ? this.wanderSpot(this.lastWorld) : null; this.path = null;
@@ -867,7 +892,8 @@ export class RobotBrain {
   if ((this.mode === 'engage' || this.mode === 'guard') && target?.visible && !this.goal) {
    // In range with a clear line: hold the band, strafe across the line.
    const dx = target.x - p.x, dz = target.z - p.z, d = Math.hypot(dx, dz) || 1, ux = dx / d, uz = dz / d;
-   let radial = d > style.far ? 1 : d < style.near ? -1 : (d - (style.near + style.far) / 2) / (style.far - style.near) * .6;
+   // (Holding, engagement.js HOLD: out past its band it waits for them, weaving where it stands.)
+   let radial = d > style.far ? (this.eng.state === 'hold' ? 0 : 1) : d < style.near ? -1 : (d - (style.near + style.far) / 2) / (style.far - style.near) * .6;
    // Inside its band it peeks: drifts in and out a little as it weaves
    // (robot behaviour pass 2026-09-30), each weave its own width.
    if (d >= style.near && d <= style.far) radial += Math.sin(this.time * 1.9 + this.slotIndex * 2.1) * .22 * (.4 + this.pf.tech * .6);
@@ -961,7 +987,7 @@ export class RobotBrain {
   const room=this.mode==='hunt'&&this.roomPlan?.id===target?.id?this.roomPlan:null;
   if(this.sniper?.mode==='scan'){tx=p.x+Math.cos(this.sniper.angle)*24;tz=p.z+Math.sin(this.sniper.angle)*24;this.aimPoint=null;}
   else if(room){tx=room.aim.x;tz=room.aim.z;this.aimPoint={x:tx,z:tz,d:Math.hypot(tx-p.x,tz-p.z)};}
-  else if (target && (target.visible || this.time - target.seen < 1.5 || this.mode === 'hunt')) {
+  else if (target && (target.visible || this.time - target.seen < 1.5 || this.mode === 'hunt' || this.mode === 'watch')) {
    const d = Math.hypot(target.x - p.x, target.z - p.z);
    // Lead by the projectile's flight time (and a little of the robot's own
    // reaction), aim error settling as it tracks.

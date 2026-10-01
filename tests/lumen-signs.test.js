@@ -297,7 +297,9 @@ test('lumen signs: only palette colours, none of the team hues (Amber, Cyan, Vio
 // --- The neon outline signs (owner, 2026-09-30) -----------------------------------------------
 test('lumen signs: pink and electric-blue neon outlines (pictograms and invented words) on every district\'s walls, lighting nothing', () => {
   const { OUTLINES } = LS;
-  assert.ok(outlines.length >= 60, `${outlines.length} outlines`);
+  // (55: 78 were placed before 2026-10-01, but 38 of them stood on party walls inside the
+  // building next door, never seen until it was cut away; tests/lumen-cut-detail.test.js)
+  assert.ok(outlines.length >= 55, `${outlines.length} outlines`);
   const byArea = {};
   for (const p of outlines) {
     assert.equal(p.kind, 'neon'); assert.ok(['pink', 'blue'].includes(p.colour), p.id);

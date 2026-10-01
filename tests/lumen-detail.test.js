@@ -185,7 +185,7 @@ test('placement: many pieces of many types, each keeping the rules on the live m
   assert.ok(LUMEN_DETAIL_PROPS.filter(p => p.type === 'cityDDrain').length >= O.drains.length - 8);
   const onRun = p => STAMPEDE.some(path => path.some((a, i) => { const b = path[i + 1]; if (!b) return false; const dx = b[0] - a[0], dz = b[1] - a[1], t = Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.z - a[1]) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a[0] - dx * t, p.z - a[1] - dz * t) < 3.2; }));
   const stampede = LUMEN_DETAIL_PROPS.filter(p => LUMEN_DETAIL_INFO[p.type].spot === 'stampede');
-  assert.ok(stampede.length >= 50 && stampede.every(onRun), `${stampede.length} belongings, all on the run`);
+  assert.ok(stampede.length >= 40 && stampede.every(onRun), `${stampede.length} belongings, all on the run`);
   assert.ok(LUMEN_DETAIL_PROPS.filter(p => /Umbrella/.test(p.type)).length >= 12, 'umbrellas along the stampede');
   // nothing on the ground in a main sidewalk's building-side 1.4 m
   for (const q of placed) if (LUMEN_DETAIL_INFO[q.type].spot !== 'wall') for (const f of L.footprints) if (L.distance(q.f.poly, f.poly) < 1.4 && q.f.poly.some(([x, z]) => onMainWalk(x, z))) bad.push(`${q.id} in the strip`);

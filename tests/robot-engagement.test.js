@@ -21,7 +21,7 @@ const fight = patch => Object.assign(newSituation(), { has: true, seen: true, fr
 function run(e, p, secs, at, from = 0, random = () => .5) { let t = from; for (; t < from + secs; t += .1) judge(e, at(t), p, t, random); return t; }
 
 test('the states, and a fresh robot seeks until it knows of someone', () => {
- assert.deepEqual([...ENGAGE_STATES], ['seek', 'approach', 'engage', 'press', 'disengage', 'reset']);
+ assert.deepEqual([...ENGAGE_STATES], ['seek', 'approach', 'engage', 'press', 'disengage', 'reset', 'hold']);
  const e = newEngagement(() => .5);
  assert.equal(judge(e, newSituation(), pf(), 0, () => .5), 'seek');
  assert.equal(judge(e, fight({ d: 25 }), pf(), .1, () => .5), 'approach', 'out of its band: approach');
@@ -88,11 +88,13 @@ test('a chase that is not closing is given up for a reset, never followed foreve
  for (const skill of ['easy', 'normal', 'hard']) {
   const p = pf(skill), e = newEngagement(() => .5), limit = thresholds(p).chase;
   // They keep 22 m off, out of its band, running as fast as it walks.
-  let gaveUp = null;
-  for (let t = 0; t < 20 && gaveUp == null; t += .1) { judge(e, fight({ d: 22 + Math.sin(t) * .3 }), p, t, () => .5); if (e.state === 'disengage') gaveUp = t; }
+  // (A normal robot may first hold its ground a while, engagement.js HOLD:
+  // the chase is timed from when it sets off after them.)
+  let gaveUp = null, from = null;
+  for (let t = 0; t < 30 && gaveUp == null; t += .1) { judge(e, fight({ d: 22 + Math.sin(t) * .3 }), p, t, () => .5); if (e.state === 'approach') from ??= t; else if (e.state !== 'disengage') from = null; if (e.state === 'disengage') gaveUp = t; }
   assert.ok(gaveUp != null, skill + ': gave the chase up');
   assert.equal(e.reason, 'chase');
-  assert.ok(gaveUp < limit + 1, `${skill}: within ${limit.toFixed(1)} s (${gaveUp.toFixed(1)})`);
+  assert.ok(gaveUp - from < limit + 1, `${skill}: within ${limit.toFixed(1)} s (${(gaveUp - from).toFixed(1)})`);
  }
  // Easy robots over-chase (a mistake), hard ones give up soonest.
  assert.ok(thresholds(pf('easy')).chase > thresholds(pf('hard')).chase);
@@ -103,12 +105,18 @@ test('a chase that is not closing is given up for a reset, never followed foreve
 });
 
 test('holding a band too long it takes the initiative: presses or goes round, never stands there', () => {
- for (const style of ['rusher', 'balanced', 'cautious', 'flanker', 'marksman']) {
-  const p = pf('normal', style), e = newEngagement(() => .5);
-  let left = null;
+ for (const skill of ['easy', 'normal', 'hard']) for (const style of ['rusher', 'balanced', 'cautious', 'flanker', 'marksman']) {
+  const p = pf(skill, style), e = newEngagement(() => .5);
+  let left = null, at = 0;
   run(e, p, .3, () => fight());
-  for (let t = .3; t < 25 && left == null; t += .1) { judge(e, fight(), p, t, () => .5); if (e.state !== 'engage') left = e.state; }
-  assert.ok(left === 'press' || left === 'reset', style + ': ' + left);
+  for (let t = .3; t < 25 && left == null; t += .1) { judge(e, fight(), p, t, () => .5); if (e.state !== 'engage') { left = e.state; at = t; } }
+  // (A normal robot may hold its ground instead, engagement.js HOLD: for a
+  // while only, then it is back in the fight.)
+  assert.ok(left === 'press' || left === 'reset' || (skill === 'normal' && left === 'hold'), skill + ' ' + style + ': ' + left);
+  if (left === 'hold') {
+   let t = at; for (; t < at + 15 && e.state === 'hold'; t += .1) judge(e, fight(), p, t, () => .5);
+   assert.notEqual(e.state, 'hold', skill + ' ' + style + ': held for good');
+  }
  }
 });
 
@@ -297,11 +305,14 @@ test('a chase gaining under the closing rate is given up; a real one goes on', (
  for (const skill of ['easy', 'normal', 'hard']) {
   const p = pf(skill), e = newEngagement(() => .5), limit = thresholds(p).chase;
   let gaveUp = null;
-  for (let t = 0; t < 25 && gaveUp == null; t += .1) { judge(e, fight({ d: 24 - t * .3 }), p, t, () => .5); if (e.state === 'disengage') gaveUp = t; }
+  // (Timed from when it sets off after them: a normal robot may hold first, HOLD.)
+  let from = null;
+  for (let t = 0; t < 40 && gaveUp == null; t += .1) { judge(e, fight({ d: 24 - t * .3 }), p, t, () => .5); if (e.state === 'approach') from ??= t; else if (e.state !== 'disengage') from = null; if (e.state === 'disengage') gaveUp = t; }
   assert.ok(gaveUp != null && e.reason === 'chase', `${skill}: a .3 m/s chase given up`);
-  assert.ok(gaveUp < limit * 1.2 + 1, `${skill}: after about one window (${gaveUp.toFixed(1)} s, window ${limit.toFixed(1)})`);
-  const f = newEngagement(() => .5);
-  run(f, p, limit * 2.5, t => fight({ d: 30 - t * 1.2 }));
+  assert.ok(gaveUp - from < limit * 1.2 + 1, `${skill}: after about one window (${(gaveUp - from).toFixed(1)} s, window ${limit.toFixed(1)})`);
+  // (Its holding off, HOLD: a normal robot may stop and let them come, which is not a chase given up.)
+  const f = newEngagement(() => .5), q = { ...p, hold: 0 };
+  run(f, q, limit * 2.5, t => fight({ d: 30 - t * 1.2 }));
   assert.equal(f.state, 'approach', `${skill}: a 1.2 m/s chase goes on`);
  }
 });
