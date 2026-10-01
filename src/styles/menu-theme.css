@@ -37,6 +37,11 @@ input,textarea,[contenteditable=true]{-webkit-user-select:text;user-select:text}
    main.js (layoutPauseMenu) sets that each time it opens. */
 #game .menu-shell button{text-align:left}
 .game-version{display:block;margin-top:8px;font-size:.34em;line-height:1.2;letter-spacing:.08em;font-weight:700;color:var(--ui-accent)}
+/* The version: no selection, callout or tap highlight. */
+#game .game-version{position:relative;width:max-content;pointer-events:auto;cursor:default;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;touch-action:none}
+#game .game-version::after{content:'';position:absolute;inset:-6px -8px}
+#game .title-version::after{inset:-12px -14px}
+#game .title-heading{pointer-events:none}
 /* Match the borderless input selector so cropped lettering meets the highlight. */
 #weapon .weapon-readout{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 7px;color:#fff;text-shadow:0 1px 3px #14221c;font-family:Arial,sans-serif}
 #weapon .weapon-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--weapon-accent)}
@@ -135,15 +140,6 @@ input,textarea,[contenteditable=true]{-webkit-user-select:text;user-select:text}
 }
 #game button .back-arrow{position:absolute;left:10px;top:-4%;height:108%;width:64px;max-width:calc(100% - 20px);display:block;pointer-events:none}
 #game button:has(>.back-arrow){width:86px;min-width:86px;justify-self:start}
-.controls-grid{width:100%;border-collapse:collapse;table-layout:fixed;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;text-align:left;color:#e6ebe8}
-.controls-grid th,.controls-grid td{padding:12px 14px;border:1px solid #3a4540;vertical-align:top;overflow-wrap:anywhere}
-.controls-grid th:first-child{width:36%}
-.controls-grid thead th{background:#35413b;color:#fff;font-size:11px;letter-spacing:.08em;font-weight:700}
-.controls-grid tbody th{font-weight:600;color:#c0d9d2}
-.controls-grid tbody tr:nth-child(odd){background:#ffffff04}
-.controls-grid td small{display:block;margin-top:5px;color:#99aaa2;font-size:11px;line-height:1.5}
-.weapon-control-entry .controls-grid{border-style:hidden}
-@media(max-width:600px){.controls-grid th,.controls-grid td{padding:10px 9px}.controls-grid{font-size:12px}}
 
 
 
@@ -305,24 +301,6 @@ body.dying .health-hud,body.dying #weapon,body.dying #reticle,body.dying .rifle-
 #game .perf-ping[data-grade=poor]{color:#e09090}
 #game .perf-ping[data-grade=unknown]{opacity:.55}
 @media(max-width:760px){#game .perf-readout{top:70px;font-size:10px}}
-/* Frame limit slider. Walks the discrete FPS ladder; the pink thumb is the grab
-   target and the travelled track is painted from a --fill custom property,
-   since the WebKit thumb pseudo-element cannot style the run behind it. */
-#game .slider-setting{justify-content:space-between}
-#game .slider-field{display:flex;align-items:center;gap:12px;margin-left:auto;min-width:0}
-#game .slider-value{min-width:78px;text-align:right;font:700 11px/1 var(--hud-font);letter-spacing:.06em;font-variant-numeric:tabular-nums;color:#eee9df}
-#game .slider-field input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;margin:0;padding:0;background:transparent;cursor:pointer}
-#game .slider-field input[type=range]:focus{outline:none}
-#game .slider-field input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:2px;background:linear-gradient(90deg,var(--ui-accent) var(--fill,50%),#4a534f var(--fill,50%))}
-#game .slider-field input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:17px;height:17px;margin-top:-6px;border:0;border-radius:50%;background:var(--ui-accent);box-shadow:0 1px 3px #0d1412a8;transition:transform .12s ease,box-shadow .12s ease;position:relative;z-index:2}
-#game .slider-field input[type=range]:is(:hover,:focus-visible)::-webkit-slider-thumb{transform:scale(1.16);box-shadow:0 0 0 5px #e8afb926,0 1px 3px #0d1412a8}
-#game .slider-field input[type=range]:active::-webkit-slider-thumb{transform:scale(1.26)}
-#game .slider-field input[type=range]::-moz-range-track{height:5px;border-radius:2px;background:#4a534f}
-#game .slider-field input[type=range]::-moz-range-progress{height:5px;border-radius:2px;background:var(--ui-accent)}
-#game .slider-field input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:var(--ui-accent);box-shadow:0 1px 3px #0d1412a8;transition:transform .12s ease}
-#game .slider-field input[type=range]:is(:hover,:focus-visible)::-moz-range-thumb{transform:scale(1.16)}
-@media(prefers-reduced-motion:reduce){#game .slider-field input[type=range]::-webkit-slider-thumb,#game .slider-field input[type=range]::-moz-range-thumb{transition:none}}
-@media(max-width:520px){#game .slider-field input[type=range]{width:118px}#game .slider-value{min-width:68px}}
 
 /* Developer controls use ordinary interface text, not the display treatment. */
 #game :is(.dev-tools,.dev-window) button{font:700 11px/1 var(--hud-font);letter-spacing:.06em;height:auto;min-height:34px;padding:10px 12px;overflow:visible;text-align:left}
@@ -352,7 +330,6 @@ body.dying .health-hud,body.dying #weapon,body.dying #reticle,body.dying .rifle-
 #game :is(.dev-tools,.dev-window) .dev-section .dev-section{margin:6px 8px;background:#1b201f}
 #game :is(.dev-tools,.dev-window) .dev-section .dev-section>summary{letter-spacing:.06em}
 #game :is(.dev-tools,.dev-window) .dev-empty{margin:0;padding:6px 10px;font:600 11px/1.4 var(--hud-font);color:#7f8b86;text-transform:none!important}
-#game #settings-controls .weapons-group>.weapon-control-list{padding:0 10px 4px}
 body.dev-hide-hud #game :is(.health-hud,#weapon,.masthead .brand,.masthead .mode,.footer,#online-badge,.damage-feedback,.touch-controls){visibility:hidden!important}
 /* Robot lab (ui/robot-lab-panel.js): a dev window of its own, on the left. */
 #game .dev-window.robot-lab{left:12px;top:64px;right:auto;width:min(372px,calc(100vw - 24px));display:flex;flex-direction:column;max-height:calc(100dvh - 80px)}
@@ -432,55 +409,6 @@ body.lab-watching #game :is(.health-hud,#weapon,#reticle,#charge-ring,#hit-marke
 #game .robot-lab.folded :is(.lab-tabs,.lab-body){display:none}
 @media(max-width:520px){#game .dev-window{width:210px}}
 
-/* Frame-limit prongs: one per weighted stop, sitting under the handle on the
-   same scale, so the detents are visible rather than only felt. */
-#game .slider-track{position:relative;display:block;width:248px;flex:none}
-#game .slider-ticks{position:absolute;left:0;right:0;top:50%;height:13px;transform:translateY(-50%);pointer-events:none}
-#game .slider-ticks i{position:absolute;top:0;width:2px;height:13px;margin-left:-1px;border-radius:1px;background:var(--ui-accent);opacity:.5}
-#game .slider-field input[type=range]{position:relative;z-index:1}
-@media(max-width:520px){#game .slider-track{width:186px}}
-/* Settings: a fixed-shape card that opens larger, with the sections as tabs
-   across the top and the exit arrow occupying the first tab slot. Developer
-   tools open as a second card of the same size beside it, not inside it. */
-#game #settings-panel .settings-stage{display:flex;align-items:stretch;justify-content:center;gap:16px;width:100%;padding:0 16px}
-#game #settings-panel .settings-card{width:min(560px,94vw);height:min(86dvh,760px);max-height:min(86dvh,760px);display:flex;flex-direction:column;padding:0;overflow:hidden}
-#game #settings-panel .settings-tabs{display:flex;gap:6px;margin:0;padding:12px 14px;border-bottom:1px solid #333c39;background:#20262500}
-/* Tabs wear the same fitted display lettering as every other menu button, so
-   the label fills the button height instead of sitting as small UI text. */
-#game #settings-panel .settings-tabs button{flex:1;min-width:0;height:40px;min-height:40px;padding:0 10px;text-align:center;border:1px solid #4b5651;border-radius:5px;background:transparent;overflow:hidden}
-/* One highlight for every way a tab can be current: pointer hover, keyboard
-   focus and the selected tab itself all read as the same pink block. */
-#game #settings-panel .settings-tabs button[aria-selected=true],
-#game #settings-panel .settings-tabs button:not(:disabled):focus-visible,
-#game #settings-panel .settings-tabs button[aria-selected=true]:focus-visible{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent);text-shadow:none}
-@media(hover:hover){
- #game #settings-panel .settings-tabs button:not(:disabled):hover,
- #game #settings-panel .settings-tabs button[aria-selected=true]:hover{background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent);text-shadow:none}
-}
-/* The generic back button pins its arrow absolutely at the label origin and
-   forces an 86px box, which leaves the tab oversized with the arrow stuck in
-   its top-left corner. In the tab strip the arrow is the whole content, so the
-   button centres it and the arrow goes back to being in flow. */
-#game #settings-panel .settings-tabs .settings-exit{flex:0 0 52px;width:52px;min-width:52px;padding:0;display:grid;place-items:center;place-content:center}
-#game #settings-panel .settings-tabs .settings-exit .back-arrow{position:static;left:auto;top:auto;width:22px;height:14px;max-width:none;margin:0;display:block}
-#game .settings-body{flex:1;min-height:0;overflow-y:auto;padding:18px 22px 22px}
-#game .settings-body>[role=tabpanel][hidden]{display:none}
-#game .settings-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-top:0;margin:0 0 10px;padding-top:0;font:700 10px/1 var(--hud-font);letter-spacing:.2em;color:#93a09a}
-#game .settings-heading .fps-counter{float:none;opacity:.8;letter-spacing:.1em}
-#game .settings-body .settings-heading:not(:first-child){margin-top:26px;padding-top:18px;border-top:1px solid #313a37}
-#game .settings-note{font:400 11px/1.6 var(--hud-font);color:#8e9a94;margin:8px 0 0;text-transform:none;letter-spacing:.01em}
-#game .settings-warning{color:#e0c18c}
-#game #settings-panel .setting{margin-top:14px;justify-content:space-between;gap:14px}
-#game .settings-dev-toggle{flex:none;margin:0;border:0;border-top:1px solid #333c39;border-radius:0;background:transparent;color:#8e9a94;font:700 10px/1 var(--hud-font);letter-spacing:.16em;text-transform:uppercase;text-align:left;padding:13px 22px;min-height:42px}
-#game .settings-dev-toggle:is(:hover,:focus-visible){background:#272e2c;color:var(--ui-accent)}
-#game .dev-panel{padding:0}
-#game .dev-panel .dev-tools{display:flex;flex-direction:column;min-height:0;overflow-y:auto;padding:18px 22px 22px}
-#game .dev-panel .dev-tools h3{display:none}
-@media(max-width:1100px){
- #game #settings-panel .settings-stage{flex-direction:column;align-items:center;overflow-y:auto;padding:12px 16px;gap:12px}
- #game #settings-panel .settings-card{height:min(78dvh,680px);max-height:min(78dvh,680px);width:min(560px,94vw)}
- #game #settings-panel.with-dev .settings-card{height:56dvh;max-height:56dvh}
-}
 /* The switch list scrolls on its own so the window can carry more of them
    without growing past the screen. */
 #game .dev-window-switches{max-height:190px;overflow-y:auto;margin-top:4px;padding-right:2px;border-top:1px solid #333c39;border-bottom:1px solid #333c39}
@@ -726,7 +654,7 @@ body[data-controls=touch] #game .brand .online-badge{position:fixed;margin:0}
 #game .title-word text{font:900 40px 'Arial Black',Arial,Helvetica,sans-serif;fill:#e9dfc6}
 #game .title-version{align-self:flex-start;margin:0 0 12px;font:700 16px/1 Arial,Helvetica,sans-serif;letter-spacing:.08em;color:var(--ui-accent)}
 #game .title-buttons{width:min(360px,100%);margin-top:calc(max(210px,var(--title-w)) * .21)}
-#game .title-buttons>button:not(.title-dev){border:0;min-width:0}
+#game .title-buttons>button:not(.plain-text){border:0;min-width:0}
 #game .title-home{position:relative}
 #game .title-blood{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:1}
 /* PLAY (owner, 2026-09-29: "turn the game modes button [to] just PLAY ...
@@ -744,8 +672,6 @@ body[data-controls=touch] #game .brand .online-badge{position:fixed;margin:0}
 #game .title-buttons>button.title-play:not(:disabled):focus-visible{background:#f7f6f2;color:#101413;border-color:#f7f6f2}
 @media(hover:hover){#game .title-buttons>button.title-play:not(:disabled):hover{background:#f7f6f2;color:#101413;border-color:#f7f6f2}}
 #game .title-buttons>button.title-play>.button-label{z-index:2}
-#game .menu-shell .title-buttons .title-dev{display:block;width:auto;height:auto;min-height:0;margin:14px auto 0;padding:6px 10px;border:0;background:none;color:#8a928e;font:600 13px Arial,sans-serif;letter-spacing:.06em;text-align:center}
-#game .menu-shell .title-buttons .title-dev:is(:hover,:focus-visible){color:var(--button-active-ink);background:var(--ui-accent)}
 /* Top-right HUD buttons are icons (map, sound, menu), drawn in the button's
    ink; sound off turns the button pink (the game's accent) with a bar struck
    across the speaker. */
@@ -770,17 +696,10 @@ body[data-controls=touch] #game .top-actions .icon-button svg{width:18px;height:
 @media(max-height:520px){
  #game #intro{--title-w:min(760px,90vw,calc((100vh - 250px) * 2.4))}
  #game #intro:has(>[data-page=home]:not([hidden])){padding:10px}
- #game .menu-shell .title-buttons>button:not(.title-dev),#game .menu-shell .title-buttons>.input-choice button{height:32px;min-height:32px;margin-top:5px;margin-bottom:5px}
+ #game .menu-shell .title-buttons>button:not(.plain-text),#game .menu-shell .title-buttons>.input-choice button{height:32px;min-height:32px;margin-top:5px;margin-bottom:5px}
  #game .menu-shell .title-buttons>.input-choice{margin:5px 0}
  #game .title-version{margin-bottom:6px;font-size:13px}
- #game .menu-shell .title-buttons .title-dev{margin-top:4px;padding:4px 10px}
 }
-/* Settings > Mobile: the three layout tools side by side, EDIT the lead. */
-#game #settings-panel .mobile-layout-actions{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px;margin:10px 0 4px}
-#game #settings-panel .mobile-layout-actions>button{min-width:0;height:44px;min-height:44px;margin:0}
-#game #settings-panel .mobile-layout-actions>#touch-edit-layout:not(:disabled){background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}
-/* Short landscape phones: the settings card takes the whole height. */
-@media(max-height:500px) and (orientation:landscape){#game #settings-panel .settings-card{height:calc(100dvh - 16px);max-height:calc(100dvh - 16px)}}
 /* Robot options (robot-options.js, a preview): the round-settings rows, a
    small SOON tag on each, and the lobby's empty slots. */
 #game .soon-tag{display:inline-block;margin-left:6px;padding:2px 5px;border-radius:3px;background:#9fb0aa33;color:#9fb0aa;font:700 9px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.12em;vertical-align:middle;text-transform:uppercase}
@@ -1022,25 +941,11 @@ body[data-controls=touch].duel-on.playing #game .health-hud{top:calc(max(8px,env
 #game .lobby-screen .lobby-tune-foot button.lobby-tune-all{background:var(--ui-accent);color:#151718}
 @media(max-width:600px){#game .lobby-screen button.lobby-tune{padding:0 6px;font-size:11px;letter-spacing:.04em}#game .lobby-screen button.lobby-remove{padding:0 6px;font-size:11px;letter-spacing:.04em}}
 /* Settings > Controls > KEYBOARD (v147): rebindable keys. */
-#game .keybinds{margin:18px 0 20px}
-#game .keybind-group{margin:0 0 12px}
-#game .keybind-group-title{font:700 10px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#93a09a;margin:0 0 6px}
-#game .keybind-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:38px;padding:3px 0;border-bottom:1px solid #313a3780}
-#game .keybind-label{font:700 13px/1.25 var(--hud-font,Arial),sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#eee9df;min-width:0}
-#game .keybinds .keybind-key{flex:none;min-width:86px;width:auto;height:32px;min-height:32px;margin:0;padding:0 12px;border:1px solid #ffffff2e;border-bottom-width:3px;border-radius:7px;background:#2c3331;color:#fff;font:800 13px/28px var(--hud-font,Arial),sans-serif;letter-spacing:.08em;text-align:center;box-shadow:none;transform:none;display:inline-flex;align-items:center;justify-content:center}
-#game .keybinds button.keybind-key:is(:hover,:focus-visible){border-color:var(--ui-accent);background:#3a4240}
-#game .keybinds button.keybind-key.listening{background:var(--ui-accent);color:#151718;border-color:var(--ui-accent);animation:keybind-wait .7s ease-in-out infinite alternate}
-#game .keybinds .keybind-locked{opacity:.5;border-style:dashed}
-#game .keybinds .keybind-status{min-height:1.3em;margin:4px 0 8px;color:var(--ui-accent)}
-#game .keybinds .keybind-reset{width:100%}
-@keyframes keybind-wait{from{opacity:1}to{opacity:.6}}
-@media(prefers-reduced-motion:reduce){#game .keybinds button.keybind-key.listening{animation:none}}
 /* The ROBOTS box (v147): one tick turns robots and their settings on. */
 #game .round-settings .round-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-direction:row!important;min-height:36px;padding:2px 8px 2px 0;cursor:pointer;border-radius:6px}
 #game .round-settings .round-toggle input{width:20px;height:20px;margin:0;accent-color:var(--ui-accent);cursor:pointer}
 #game .round-settings-readonly .round-toggle{cursor:default}
 #game .round-settings .round-setting[hidden]{display:none!important}
-#game .keybinds>.settings-note{margin:0 0 14px}
 /* s3-look: a map card's one line (maps.js `card`), over the top of its picture. */
 #game .map-choice .map-line{position:absolute;top:12px;left:12px;right:12px;display:block;font:italic 13px/1.35 Georgia,'Times New Roman',serif;color:#ece4d2;text-align:center;text-shadow:0 1px 3px #000d,0 0 10px #000a;pointer-events:none;letter-spacing:.01em}
 
@@ -1571,8 +1476,6 @@ body.storm-sudden #match-clock{animation:storm-blink .5s steps(2,start) infinite
    menu) take the middle of the top edge, so the BOTS score moves to the top
    left and drops its side names (the numbers keep their side's colour). */
 @media(max-width:560px){#game .duel-score:not(.score-flash){left:max(12px,env(safe-area-inset-left));transform:none;column-gap:8px;justify-items:start}#game .duel-score:not(.score-flash) .duel-side em{display:none}#game .duel-score:not(.score-flash) b{font-size:26px}#game .duel-score:not(.score-flash) small{justify-self:start;font-size:9px}}
-/* The version in its full form at the foot of Settings (owner, 2026-09-30). */
-#game .settings-version{flex:none;margin:0;padding:9px 22px 12px;color:#6f7a75;font:700 10px/1 var(--hud-font);letter-spacing:.14em;text-transform:lowercase;user-select:text}
 /* The developer tools' PEER-TO-PEER box: under the code box (JOIN) and above
    CREATE GAME (HOST). */
 #game .online-p2p{align-items:center;gap:8px;margin:0 0 12px;font:700 11px/1.2 Arial,sans-serif;letter-spacing:.12em;color:#a8b6b2;text-transform:uppercase;cursor:pointer}
@@ -1691,3 +1594,182 @@ body.dev-unlocked #game .online-p2p.dev-only{display:flex!important}
    line of their own. (Its NO RESPAWNS mark made it wide enough to run under
    SCORES in the middle.) */
 @media(max-width:560px){body[data-controls=touch] #game .match-clock:not(.score-flash){left:max(16px,env(safe-area-inset-left));transform:none}body[data-controls=touch] #game .match-clock:not(.score-flash) .clock-teams{display:flex;margin:5px 0 0}}
+/* A long toast (the game server's announcements are up to 140 characters)
+   wraps inside the screen instead of running off it; short ones are unchanged. */
+#game .toast{width:max-content;max-width:min(92vw,640px);white-space:normal;text-align:center;line-height:1.6}
+/* (Above the menus, the lobby and the death screen, just under the admin
+   cards: on the title screen the menu covered it, so DEV TOOLS UNLOCKED and
+   the lobby's own notices never showed there.) */
+#game .toast{z-index:57}
+
+/* ---- Settings (2026-09-30 redesign, owner: "redesign the settings ui ...
+   to fit with other ui and style and keep it consistent. make it work on
+   mobile as well"). One slate card like the pause card: a header with the
+   menus' back arrow and a lowercase "settings", the four sections as a
+   choice-button bar (the host page's rows), then a body that scrolls on its
+   own under them, and a foot with the version (and Developer tools once
+   unlocked). Rows: a lowercase label on the left and its control on the
+   right, stacked on phones. On/off and few-option settings are choice bars;
+   the preset stays a dropdown. Developer tools open as a second card beside
+   it (stacked below on narrower screens). */
+#game #settings-panel{display:block;background:#191c1c}
+#game #settings-panel .settings-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:16px;width:100%;height:100%;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+#game #settings-panel .settings-card{display:flex;flex-direction:column;width:min(620px,100%);height:min(640px,100%);max-height:none;margin:0;padding:0;overflow:hidden;background:#232827;color:#eee9df;border:1px solid #2f3735;border-radius:4px;box-shadow:none}
+#game #settings-panel .settings-top{flex:none;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:14px 16px;padding:20px 24px 16px;border-bottom:1px solid #2f3735}
+#game #settings-panel #settings-back{margin:0;border:1px solid var(--button-edge);border-radius:5px}
+#game #settings-panel .settings-top h2{margin:0;font-size:28px;line-height:40px;color:#eee9df;white-space:nowrap}
+#game #settings-panel .settings-tabs{grid-column:1/-1;display:flex;min-width:0;margin:0;border:1px solid var(--button-edge);border-radius:8px;overflow:hidden}
+/* Idle choices in the same muted ink as the host page's. */
+#game #settings-panel :is(.settings-tabs,.settings-choices) button.choice-button{height:40px!important;min-height:40px!important;color:#c9c3b6}
+#game #settings-panel :is(.settings-tabs,.settings-choices) button.choice-button:is([aria-pressed=true],[aria-selected=true]){color:#151718}
+#game #settings-panel .settings-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:6px 24px 22px}
+#game #settings-panel .settings-body>[role=tabpanel][hidden]{display:none}
+#game #settings-panel .settings-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.65fr);align-items:start;gap:8px 20px;padding:14px 0;border-bottom:1px solid #2c3432}
+#game #settings-panel .settings-row[hidden]{display:none}
+#game #settings-panel .settings-label{min-width:0;min-height:42px;display:flex;flex-direction:column;justify-content:center;font:700 12px/1.3 var(--hud-font);letter-spacing:.1em;color:#eee9df}
+#game #settings-panel .settings-label small:empty{display:none}
+#game #settings-panel .settings-label small{display:block;margin-top:5px;font:600 11px/1.2 var(--hud-font);letter-spacing:.06em;color:#8e9a94;font-variant-numeric:tabular-nums}
+#game #settings-panel .settings-control{display:flex;flex-direction:column;gap:8px;min-width:0}
+#game #settings-panel .settings-note{margin:0;font:600 11px/1.45 var(--hud-font);letter-spacing:.04em;color:#9fb0aa}
+#game #settings-panel .settings-note:empty{display:none}
+#game #settings-panel .settings-warning{color:#e0c18c}
+#game #settings-panel :is(.settings-note,.control-ref) kbd{display:inline-block;min-width:18px;padding:1px 5px;margin:0 2px 0 0;text-align:center;border:1px solid #ffffff2e;border-bottom-width:2px;border-radius:4px;background:#2c3331;color:#fff;font:800 10px/1.3 var(--hud-font);letter-spacing:.06em;text-transform:uppercase!important}
+#game #settings-panel .settings-heading{margin:24px 0 2px;padding:0;border:0;font:700 10px/1 var(--hud-font);letter-spacing:.2em;color:#7f8b86}
+#game #settings-panel .settings-choices{display:flex;width:100%;min-width:0;border:1px solid var(--button-edge);border-radius:8px;overflow:hidden}
+/* The preset dropdown wears the BOTS page's picker bar. */
+#game #settings-panel .menu-select{width:100%;min-width:0;height:42px;min-height:42px;padding:0 14px;border:1px solid #ffffff22;border-radius:8px;background:#3a41408c;color:#eee9df;font:800 13px/1 var(--hud-font);letter-spacing:.12em;text-transform:uppercase!important}
+#game #settings-panel .menu-select *{text-transform:uppercase!important}
+#game #settings-panel .menu-select::after{width:8px;height:8px;border-width:0 2px 2px 0;opacity:.8}
+#game #settings-panel .menu-select:is(:focus,[aria-expanded=true]){background:#4a5250;color:#fff;border-color:var(--ui-accent)}
+@media(hover:hover){#game #settings-panel .menu-select:hover{background:#4a5250;color:#fff;border-color:var(--ui-accent)}}
+#game #settings-panel .menu-select-list{border-radius:8px;background:#1c2120f2;box-shadow:0 14px 28px #000a}
+#game #settings-panel .menu-select-option{min-height:40px;padding:12px 14px;font:800 12px/1.3 var(--hud-font);letter-spacing:.12em;text-transform:uppercase!important}
+/* Sliders (frame limit, volumes): the travelled track painted from --fill
+   (the WebKit thumb cannot paint the run behind it), a 40 px tall hit area
+   round a thin track, and the value at the end. */
+#game #settings-panel .slider-field{flex-direction:row;align-items:center;gap:14px;min-height:42px}
+#game .slider-track{position:relative;display:block;flex:1;min-width:0}
+#game .slider-field input[type=range]{position:relative;z-index:1;display:block;-webkit-appearance:none;appearance:none;width:100%;height:40px;margin:0;padding:0;background:transparent;cursor:pointer}
+#game .slider-field input[type=range]:focus{outline:none}
+#game .slider-field input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:3px;background:linear-gradient(90deg,var(--ui-accent) var(--fill,50%),#4a534f var(--fill,50%))}
+#game .slider-field input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;margin-top:-6.5px;border:0;border-radius:50%;background:var(--ui-accent);box-shadow:0 1px 3px #0d1412a8;transition:transform .12s ease,box-shadow .12s ease}
+#game .slider-field input[type=range]:is(:hover,:focus-visible)::-webkit-slider-thumb{transform:scale(1.18);box-shadow:0 0 0 6px #e8afb926,0 1px 3px #0d1412a8}
+#game .slider-field input[type=range]:active::-webkit-slider-thumb{transform:scale(1.28)}
+#game .slider-field input[type=range]::-moz-range-track{height:5px;border-radius:3px;background:#4a534f}
+#game .slider-field input[type=range]::-moz-range-progress{height:5px;border-radius:3px;background:var(--ui-accent)}
+#game .slider-field input[type=range]::-moz-range-thumb{width:18px;height:18px;border:0;border-radius:50%;background:var(--ui-accent);box-shadow:0 1px 3px #0d1412a8;transition:transform .12s ease}
+#game .slider-field input[type=range]:is(:hover,:focus-visible)::-moz-range-thumb{transform:scale(1.18)}
+@media(prefers-reduced-motion:reduce){#game .slider-field input[type=range]::-webkit-slider-thumb,#game .slider-field input[type=range]::-moz-range-thumb{transition:none}}
+/* Frame-limit prongs: one per weighted stop, on the handle's own scale (inset
+   half a handle each side), so the detents are seen as well as felt. */
+#game .slider-ticks{position:absolute;left:9px;right:9px;top:50%;height:13px;transform:translateY(-50%);pointer-events:none}
+#game .slider-ticks i{position:absolute;top:0;width:2px;height:13px;margin-left:-1px;border-radius:1px;background:var(--ui-accent);opacity:.5}
+#game .slider-value{flex:none;min-width:72px;text-align:right;font:700 12px/1 var(--hud-font);letter-spacing:.06em;font-variant-numeric:tabular-nums;color:#eee9df}
+/* Mobile: the three layout tools side by side, EDIT the lead (pink). */
+#game #settings-panel .mobile-layout-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+#game #settings-panel .mobile-layout-actions>button{min-width:0;width:auto;height:40px;min-height:40px;margin:0;text-align:center;border:1px solid var(--button-edge);border-radius:8px}
+#game #settings-panel .mobile-layout-actions>#touch-edit-layout:not(:disabled){background:var(--ui-accent);color:var(--button-active-ink);border-color:var(--ui-accent)}
+#game #settings-panel .mobile-layout-actions>button:disabled{opacity:.4;cursor:default}
+/* Swapped is a state, not the lead action: pink ink and edge, not a pink block. */
+#game #settings-panel #touch-swap-sides[aria-pressed=true]{background:var(--button-idle);color:var(--ui-accent);border-color:var(--ui-accent);text-shadow:none}
+/* Controls: the keyboard keys as keycaps. */
+#game #settings-panel .keybinds{margin:0}
+#game #settings-panel .keybinds>.settings-note{margin:8px 0 2px}
+#game .keybind-group-title{margin:18px 0 0;font:700 10px/1 var(--hud-font);letter-spacing:.18em;color:#7f8b86}
+#game .keybind-row{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:50px;padding:5px 0;border-bottom:1px solid #2c3432}
+#game .keybind-label{min-width:0;font:700 12px/1.3 var(--hud-font);letter-spacing:.1em;color:#eee9df}
+#game .keybind-label small{display:block;margin-top:3px;font:600 11px/1.25 var(--hud-font);letter-spacing:.04em;color:#8e9a94}
+#game .keybinds .keybind-key{text-transform:uppercase!important;flex:none;min-width:96px;width:auto;height:40px;min-height:40px;margin:0;padding:0 14px;border:1px solid #ffffff2e;border-bottom-width:3px;border-radius:7px;background:#2c3331;color:#fff;font:800 13px/34px var(--hud-font);letter-spacing:.08em;text-align:center;box-shadow:none;transform:none;display:inline-flex;align-items:center;justify-content:center}
+#game .keybinds button.keybind-key:is(:hover,:focus-visible){border-color:var(--ui-accent);background:#3a4240;color:#fff}
+#game .keybinds button.keybind-key.listening{background:var(--ui-accent);color:#151718;border-color:var(--ui-accent);animation:keybind-wait .7s ease-in-out infinite alternate}
+#game .keybinds .keybind-locked{opacity:.5;border-style:dashed}
+#game #settings-panel .keybinds .keybind-status{min-height:1.45em;margin:10px 0 8px;color:var(--ui-accent)}
+#game #settings-panel .keybinds .keybind-status:empty{display:block}
+#game .keybinds .keybind-reset{width:100%;margin:0;border:1px solid var(--button-edge);border-radius:8px}
+@keyframes keybind-wait{from{opacity:1}to{opacity:.6}}
+@media(prefers-reduced-motion:reduce){#game .keybinds button.keybind-key.listening{animation:none}}
+/* Reference dropdowns (basics, weapons): bars like the BOTS pickers, opening
+   to plain rows; a weapon's own dropdown sits a step in. */
+#game #settings-panel .control-reference{display:grid;gap:8px;margin-top:10px}
+#game #settings-panel .weapon-control-entry{margin:0;border:0;background:none}
+#game #settings-panel .weapon-control-entry>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:0 14px;border:1px solid #ffffff22;border-radius:8px;background:#3a41408c;color:#eee9df;font:800 13px/1 var(--hud-font);letter-spacing:.12em;cursor:pointer;box-shadow:none;transform:none}
+#game #settings-panel .weapon-control-entry>summary::-webkit-details-marker{display:none}
+#game #settings-panel .weapon-control-entry>summary::after{content:'';flex:none;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-2px) rotate(45deg);opacity:.8;transition:transform .15s}
+#game #settings-panel .weapon-control-entry[open]>summary::after{transform:translateY(2px) rotate(-135deg)}
+#game #settings-panel .weapon-control-entry>summary:is(:hover,:focus-visible){background:#4a5250;color:#fff;border-color:var(--ui-accent)}
+#game #settings-panel .weapon-control-entry[open]>summary{border-color:var(--ui-accent);border-radius:8px 8px 0 0}
+#game #settings-panel .weapon-control-entry[open]>:not(summary){border:1px solid var(--ui-accent);border-top:0;border-radius:0 0 8px 8px;background:#1c2120}
+#game #settings-panel .weapon-control-list{display:grid;gap:6px;padding:10px}
+#game #settings-panel .weapon-control-list .weapon-control-entry>summary{min-height:40px;font-size:12px;background:#2a302f}
+#game #settings-panel .control-ref{padding:2px 14px 6px}
+#game #settings-panel .control-ref-row{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.5fr);gap:3px 16px;padding:10px 0;border-bottom:1px solid #2c3432;font:600 12px/1.4 var(--hud-font);letter-spacing:.03em}
+#game #settings-panel .control-ref-row:last-child{border-bottom:0}
+#game #settings-panel .control-ref-row b{grid-row:span 2;font-weight:700;letter-spacing:.08em;color:#eee9df}
+#game #settings-panel .control-ref-row span{color:#e8d9da}
+#game #settings-panel .control-ref-row small{grid-column:2;font:600 11px/1.45 var(--hud-font);letter-spacing:.03em;color:#8e9a94}
+/* The foot: version left, Developer tools (once unlocked) right. */
+#game #settings-panel .settings-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:0 24px;border-top:1px solid #2f3735}
+#game .settings-version{margin:0;color:#6f7a75;font:700 10px/1 var(--hud-font);letter-spacing:.14em;text-transform:lowercase;user-select:text}
+#game #settings-panel .settings-dev-toggle{flex:none;width:auto;height:40px;min-height:40px;margin:0 -8px 0 0;padding:0 8px;border:0;border-radius:4px;background:transparent;color:#8e9a94;font:700 10px/40px var(--hud-font);letter-spacing:.16em;text-align:right;box-shadow:none;transform:none}
+#game #settings-panel .settings-dev-toggle:is(:hover,:focus-visible),#game #settings-panel .settings-dev-toggle[aria-expanded=true]{background:#2c3432;color:var(--ui-accent)}
+#game #settings-panel .settings-dev-toggle[hidden]{display:none}
+/* Developer tools: a second card of the same height (dev-tools.js fills it). */
+#game #settings-panel .dev-panel{width:min(420px,100%);padding:0;display:flex;flex-direction:column}
+#game #settings-panel .dev-panel.hidden{display:none}
+#game .dev-panel .dev-tools{flex:1;min-height:0;overflow-y:auto;margin:0;border:0;padding:18px 22px 22px}
+#game .dev-panel .dev-tools h3{display:none}
+@media(max-width:1100px){
+ #game #settings-panel.with-dev .settings-stage{flex-direction:column;justify-content:flex-start;overflow-y:auto}
+ #game #settings-panel.with-dev .settings-card{flex:none;height:min(640px,82dvh)}
+ #game #settings-panel.with-dev .dev-panel{flex:none;width:min(620px,100%);max-height:none}
+}
+/* Phones upright and narrow windows: rows stack (label over its control),
+   the card takes the screen. */
+@media(max-width:560px){
+ #game #settings-panel .settings-stage{padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) calc(max(10px,env(safe-area-inset-bottom)) + 14px) max(10px,env(safe-area-inset-left))}
+ #game #settings-panel .settings-card{height:100%}
+ #game #settings-panel .settings-top{padding:14px 16px 12px;gap:12px 14px}
+ #game #settings-panel .settings-body{padding:2px 16px 18px}
+ #game #settings-panel .settings-foot{padding:0 16px}
+ #game #settings-panel .settings-row{grid-template-columns:minmax(0,1fr);gap:8px;padding:12px 0}
+ #game #settings-panel .settings-label{min-height:0;display:block}
+ #game #settings-panel .settings-label small{display:inline;margin:0 0 0 8px}
+ #game #settings-panel .control-ref{padding:2px 12px 6px}
+ #game #settings-panel .control-ref-row{grid-template-columns:minmax(0,1fr)}
+ #game #settings-panel .control-ref-row b{grid-row:auto}
+ #game #settings-panel .control-ref-row small{grid-column:1}
+}
+/* Phones on their side (short): one header row, back, title and the tabs. */
+@media(max-height:520px) and (min-width:600px){
+ #game #settings-panel .settings-stage{padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) calc(max(8px,env(safe-area-inset-bottom)) + 14px) max(12px,env(safe-area-inset-left))}
+ #game #settings-panel .settings-card{width:min(760px,100%);height:100%}
+ #game #settings-panel .settings-top{grid-template-columns:auto auto minmax(0,1fr);padding:10px 18px}
+ #game #settings-panel .settings-tabs{grid-column:auto}
+ #game #settings-panel .settings-body{padding:0 18px 14px}
+ #game #settings-panel .settings-row{padding:10px 0}
+ #game #settings-panel .settings-foot{min-height:40px;padding:0 18px}
+}
+
+/* ---- Messages from the admins (ui/admin-message.js; owner, 2026-09-30:
+   "global messages with ui to players that matches game ui"). A slate card
+   like the pause and settings cards, top centre under the health bar (never
+   over it, nor the touch controls at the bottom), a pink edge, a small
+   lowercase label in the accent and the words in the HUD's type. At most two
+   stack; a tap closes one; a thin line runs down while it stays. Above the
+   lobby, death, vote and match-end screens. */
+#game .admin-messages{position:absolute;z-index:58;left:50%;top:calc(env(safe-area-inset-top,0px) + 104px);transform:translateX(-50%);width:min(460px,calc(100vw - 32px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));display:flex;flex-direction:column;align-items:stretch;gap:8px;pointer-events:none}
+body:not(.playing) #game .admin-messages{top:calc(env(safe-area-inset-top,0px) + 22px)}
+#game .admin-card{position:relative;display:grid;gap:5px;padding:10px 16px 12px 17px;background:#232827;border:1px solid #ffffff14;border-left:0;border-radius:8px;box-shadow:0 12px 34px #0a0f0e8c;color:#eef1ef;text-align:left;text-transform:none!important;pointer-events:auto;cursor:pointer;overflow:hidden;animation:admin-card-in .26s cubic-bezier(.2,.7,.2,1) both;-webkit-tap-highlight-color:transparent}
+#game .admin-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--ui-accent)}
+#game .admin-card-label{font:800 10px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.2em;color:var(--ui-accent);text-transform:lowercase!important}
+#game .admin-card-text{font:700 15px/1.38 var(--hud-font,Arial),sans-serif;letter-spacing:.015em;color:#f2f4f2;text-transform:none!important;overflow-wrap:anywhere}
+#game .admin-card-private{background:#2a2426;border-color:#e8afb933}
+#game .admin-card-time{position:absolute;left:4px;right:0;bottom:0;height:2px;background:#e8afb966;transform-origin:left;animation:admin-card-time linear both}
+#game .admin-card.leaving{animation:admin-card-out .22s ease-in both;pointer-events:none}
+#game .admin-card:hover{border-color:#ffffff26}
+@keyframes admin-card-in{from{transform:translateY(-10px) scale(.98)}to{transform:none}}
+@keyframes admin-card-out{to{opacity:0;transform:translateY(-6px)}}
+@keyframes admin-card-time{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@media(max-width:760px){#game .admin-messages{top:calc(env(safe-area-inset-top,0px) + 158px)}#game .admin-card-text{font-size:14px}}
+@media(max-height:520px) and (orientation:landscape){#game .admin-messages{top:calc(env(safe-area-inset-top,0px) + 92px);width:min(400px,calc(100vw - 32px))}}
+@media(prefers-reduced-motion:reduce){#game .admin-card,#game .admin-card.leaving{animation:none}#game .admin-card-time{display:none}}

@@ -31,6 +31,22 @@ import { snapShadowFocus, SHADOW_FIT } from './shadow-snap.js';
 // patch of ground from one region to the next, so a region redraw is not
 // seen (no crawl, no pop). Extreme keeps three's own every-frame redraw.
 //
+// The moving things are drawn on every frame they move (2026-09-30, owner:
+// "shadows are still flickering often ... lower end devices ... mostly
+// happens when player is moving"). Shadow updates used to come only at the
+// preset's shadowFPS (24 a second on Performance, 30 on Balanced and Quality,
+// two thirds of that when strained) while the bodies move every frame, so
+// the player's shadow (and every bot's, every target's) was drawn where the
+// body had been one or two frames before, then snapped back: at 60 fps the
+// lag went 0, 1, 0, 1, 2 frames over and over (up to 18 cm at a run), a
+// shadow shivering against its own feet. Now the preset's rate (the
+// renderer's shadowTick) only paces the work for the still things (the box,
+// the region, watching, patches); in between, a frame on which anything
+// drawn as moving has changed puts the kept picture back and draws the
+// moving things again (`movingOnly`), in the same region, so the box sampled
+// is always the box drawn. A frame on which nothing moving changed draws
+// nothing at all (standing still, or only the camera moving).
+//
 // Hooked in through three's own shadow pass (renderer.shadowMap.render is
 // wrapped): the region's static and patch draws, and the moving things, are
 // three drawing the scene (or part of it) into the map as it always did, so
@@ -45,8 +61,30 @@ export const SHADOW_CACHE = Object.freeze({
   maxInstances: 512,// an instanced caster with more is counted as covering the whole region
 });
 
+// This frame's shadow work (renderer.js, each frame). `clock`: seconds
+// carried since the last tick; `rate`: the preset's shadowFPS (strained:
+// two thirds); `forced`: a redraw already asked for (a cut, a preset change);
+// `cached`: the kept map is on. Returns { full, moving, clock }:
+//  - full: a tick. The box is fitted again, the sun (or the kept region)
+//    placed, and the map drawn: at `rate` a second, or every frame with no rate.
+//  - moving (kept map only): every other frame. The moving things are drawn
+//    again in the same region, if any of them has changed (ShadowCache.movers).
+// Without the kept map (Extreme) each tick is three's own full redraw, so a
+// tick is due a quarter of a frame early: at 60 a second on a 60 Hz screen
+// the frame times wobble either side of 1/60 s, and a frame that came a
+// little early used to skip its redraw (the moving things' shadows lagged a
+// frame). With the kept map the moving things never wait for a tick, so the
+// ticks keep the preset's exact rate (no extra still-thing work at 30 fps).
+export function shadowTick(clock, dt, rate, forced = false, cached = false) {
+  if (!rate) return { full: true, moving: false, clock: 0 };
+  const period = 1 / rate;
+  clock += dt;
+  if (forced || clock >= period - (cached ? 0 : dt / 4)) { clock -= period; return { full: true, moving: false, clock: clock > 0 ? clock % period : 0 }; }
+  return { full: false, moving: cached, clock };
+}
+
 const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
-const sphere = new THREE.Sphere(), matrix = new THREE.Matrix4(), instanceMatrix = new THREE.Matrix4();
+const sphere =new THREE.Sphere(), matrix = new THREE.Matrix4(), instanceMatrix = new THREE.Matrix4();
 
 // Casters of an object tree: what three's shadow pass would draw.
 const isCaster = o => (o.isMesh || o.isLine || o.isPoints) && o.castShadow;
@@ -57,13 +95,24 @@ export class ShadowCache {
     this.view = view; this.active = false; this.region = null; this.pristine = null;
     this.roots = []; this.dirty = []; this.dirtyAll = false; this.rebuild = true;
     this.drawn = new Set(); this.pending = []; this.propRects = new WeakMap(); this.patches = [];
-    this.stats = { updates: 0, rebuilds: 0, patches: 0, restored: 0 }; // (for the headless tools)
+    // What was drawn as moving, as numbers (movers), and which watched things
+    // were last seen moving, kept across a full redraw (classify).
+    this.moverSig = []; this.restless = new WeakMap();
+    // The renderer's ask for this update: only the moving things (between the preset's ticks).
+    this.movingOnly = false;
+    this.stats = { updates: 0, rebuilds: 0, patches: 0, restored: 0, movingOnly: 0, skipped: 0 }; // (for the headless tools)
     const renderer = view.renderer, shadowMap = renderer.shadowMap, base = shadowMap.render;
     this.base = (lights, scene, camera) => base.call(shadowMap, lights, scene, camera);
     shadowMap.render = (lights, scene, camera) => {
       if (!this.active || !this.region || lights.length !== 1 || lights[0] !== view.sun || shadowMap.enabled === false) return this.base(lights, scene, camera);
       const shadow = view.sun.shadow;
       if (!shadow.needsUpdate && !shadow.autoUpdate) return;
+      // Between ticks with nothing drawn as moving changed: the map already
+      // shows this frame. (Checked here, inside three's render, so the world
+      // matrices compared are this frame's.)
+      if (this.movingOnly && !this.rebuild && !this.movers(false)) {
+        this.movingOnly = false; shadow.needsUpdate = false; this.stats.skipped++; return;
+      }
       this.update(scene, camera);
     };
     // Putting the kept picture back: one draw of up to maxRects quads, the
@@ -107,11 +156,14 @@ void main() {
 
   // Everything drawn again at the next update (a preset change, a lost
   // context, the warm-up).
-  reset() { this.region = null; this.rebuild = true; this.dirty.length = 0; this.dirtyAll = false; this.pending = []; }
+  reset() { this.region = null; this.rebuild = true; this.dirty.length = 0; this.dirtyAll = false; this.pending = []; this.movingOnly = false; this.restless = new WeakMap(); }
 
-  // Replaces the sun's placement each shadow update (renderer.js, right after
-  // fitShadow): the region's camera, moved only when the view's box leaves it.
+  // Replaces the sun's placement on each tick (renderer.js, right after
+  // fitShadow): the region's camera, moved only when the view's box leaves
+  // it. Never between ticks: the box the scene samples stays exactly the box
+  // the map was drawn for.
   follow(fx, fy, fz) {
+    this.movingOnly = false;
     const view = this.view, box = view.shadowBox, size = view.quality?.shadows;
     if (!box || !size) return;
     const basis = view.sunBasis, off = view.sunOffset, length = Math.hypot(off.x, off.y, off.z);
@@ -178,7 +230,12 @@ void main() {
     try {
       const warm = view.drawEmpty; this.stats.updates++;
       if (!shadow.map || shadow.map.width !== r.nx || shadow.map.height !== r.ny) this.rebuild = true;
-      if (!this.rebuild) this.rebuild = !this.watch(scene);
+      // Between ticks only the moving things are drawn again; the still
+      // things (and props' patches, propMoved) are watched and patched on the
+      // ticks, as before.
+      const full = !this.movingOnly || this.rebuild; this.movingOnly = false;
+      this.patches = []; if (!full) this.stats.movingOnly++;
+      if (!this.rebuild && full) this.rebuild = !this.watch(scene);
       if (this.rebuild) {
         this.classify(scene); this.stats.rebuilds++;
         mode = 'all'; this.drawStill();
@@ -228,6 +285,7 @@ void main() {
     }
     this.propRects = new WeakMap(); this.pending = [];
     this.roots = [];
+    const now = performance.now() / 1000;
     for (const root of scene.children) {
       if (root.isLight || root === view.player || root.userData.shadowCache) continue;
       if (!roofs.has(root) && !hasCaster(root, view.camera.layers)) continue;
@@ -235,7 +293,18 @@ void main() {
       root.traverse(o => { if (o.customDepthMaterial || o.customDistanceMaterial || o.isSkinnedMesh) moving = true; });
       if (moving) continue;
       const entry = { root, trusted: trusted.has(root) || !!root.userData.propBatch, children: root.children.length, sig: [], still: true, since: 0, rect: null };
-      if (!entry.trusted) { this.signature(entry, true); entry.rect = this.bounds(root); }
+      if (!entry.trusted) {
+        this.signature(entry, true);
+        // Seen moving within `calm` before this redraw: still moving (drawn
+        // with the moving things). Taken as still again, something that never
+        // stops (Hollow Wick's mill wheel, its animals' shared mesh, which
+        // covers half the region) was found changed on the very next update,
+        // its patch was too big and the whole region was drawn again: on every
+        // update, every still thing, for as long as you were near them.
+        const since = this.restless.get(root);
+        if (since !== undefined && now - since < SHADOW_CACHE.calm) { entry.still = false; entry.since = since; }
+        else entry.rect = this.bounds(root);
+      }
       this.roots.push(entry);
     }
     this.stillRoot.children = this.roots.filter(e => e.still).map(e => e.root);
@@ -290,12 +359,12 @@ void main() {
       if (entry.still) {
         if (!changed) continue;
         // Drawn with the moving things from now on; the kept picture loses it.
-        entry.still = false; entry.since = now; changedStill = true;
+        entry.still = false; entry.since = now; changedStill = true; this.restless.set(entry.root, now);
         if (entry.rect) patches.push(entry.rect);
-      } else if (changed) entry.since = now;
+      } else if (changed) { entry.since = now; this.restless.set(entry.root, now); }
       else if (now - entry.since >= SHADOW_CACHE.calm && entry.root.parent === scene) {
         // At rest again: kept, and the kept picture gains it where it is.
-        entry.still = true; changedStill = true;
+        entry.still = true; changedStill = true; this.restless.delete(entry.root);
         entry.rect = this.bounds(entry.root);
         if (entry.rect) patches.push(entry.rect);
       }
@@ -439,6 +508,31 @@ void main() {
       if (rect[2] === this.region.nx && rect[3] === this.region.ny) { this.dirtyAll = true; break; }
       this.dirty.push(rect);
     }
+    this.movers(true);
+  }
+
+  // The things just drawn as moving, as numbers: where each is, whether it is
+  // still shown and in the scene, its geometry's and instances' versions.
+  // `fill`: note them (after a draw); otherwise compare with what was noted
+  // and return true when any has changed (the map no longer shows them where
+  // they are). Something new that throws a shadow is drawn at the next tick.
+  movers(fill) {
+    const sig = this.moverSig, scene = this.view.scene; let i = 0, changed = false;
+    const put = value => { if (fill) sig[i] = value; else if (sig[i] !== value) changed = true; i++; };
+    for (const o of this.drawn) {
+      if (o.isSkinnedMesh || o.morphTargetInfluences?.length) { if (!fill) return true; continue; }
+      let shown = 1, top = o;
+      for (let p = o; p; p = p.parent) { if (!p.visible) shown = 0; top = p; }
+      put(shown); put(top === scene ? 1 : 0); put(o.castShadow ? 1 : 0); put(o.material?.visible === false ? 0 : 1);
+      const g = o.geometry, position = g?.attributes.position;
+      put(g ? g.id : -1); put(position ? position.version : -1); put(g?.index ? g.index.version : -1);
+      put(g ? g.drawRange.start : 0); put(g ? g.drawRange.count : 0);
+      if (o.isInstancedMesh) { put(o.count); put(o.instanceMatrix.version); }
+      const e = o.matrixWorld.elements; for (let k = 0; k < 16; k++) put(e[k]);
+      if (changed) return true;
+    }
+    if (fill) sig.length = i;
+    return changed || i !== sig.length;
   }
 
   dispose() { this.pristine?.dispose(); this.pristine = null; this.restorer.geometry.dispose(); this.copy.dispose(); }

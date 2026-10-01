@@ -72,11 +72,17 @@ test('restore fills health, ammo and every cooldown',()=>{
  for(const cooldown of [sim.hexCooldown,sim.grenadeCooldown,sim.surge.cooldown])assert.equal(cooldown,0);
 });
 
-test('O opens the window, and only once the tools are unlocked',()=>{
+test('O opens the window on any screen, and only once the tools are unlocked',()=>{
  const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
  assert.ok(main.includes("e.code==='KeyO'"),'O should be bound');
  assert.ok(/KeyO'[^\n]*devTools\.isUnlocked\(\)/.test(main),'and gated on the unlock');
- assert.ok(/KeyO'[^\n]*devWindow\.toggle\(\)/.test(main),'to toggle the window');
+ assert.ok(/KeyO'[^\n]*toggleDevWindow\(\)/.test(main),'to toggle the window');
+ assert.ok(/KeyO'[^\n]*input,select,textarea/.test(main),'never while typing');
+ // Before the screens are sorted out (title, menus, pause, match end): not behind "if(!started)return".
+ const o=main.indexOf("if(e.code==='KeyO'"),started=main.indexOf('if(!started)return;',main.indexOf("window.addEventListener('keydown', e => {"));
+ assert.ok(o>0&&o<main.indexOf('if(matchEnd.open){navigateMenu')&&o<started,'O is handled before the per-screen key handling');
+ const wiring=readFileSync(new URL('../src/ui/dev-wiring.js',import.meta.url),'utf8');
+ assert.match(wiring,/DEV TOOLS ARE SOLO ONLY · OFF ONLINE/);
  assert.ok(main.includes('devWindow.hide()'),'and it should close on leaving a run');
 });
 
@@ -122,7 +128,7 @@ test('every graphics tier is offered by the dev window and the settings tab',()=
  assert.ok(/Object\.entries\(GRAPHICS\)/.test(dev),'the dev window derives its presets from GRAPHICS');
  assert.ok(!/'potato',\s*'performance'/.test(dev),'no hand-written preset list left to drift');
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
- const select=html.match(/<select id="graphics-preset">([\s\S]*?)<\/select>/);
+ const select=html.match(/<select id="graphics-preset"[^>]*>([\s\S]*?)<\/select>/);
  assert.ok(select,'the settings tab has a preset select');
  for(const name of Object.keys(GRAPHICS)){
   assert.ok(select[1].includes(`value="${name}"`),`${name} is selectable in settings`);

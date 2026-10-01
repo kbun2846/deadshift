@@ -151,7 +151,7 @@ export class Room {
 
  deliver(to, message) {
   const conn = this.conns.get(to);
-  if (!conn) return;
+  if (!conn || (conn.toldWhy && message.t === 'removed')) return;
   // A backed-up link skips a snapshot rather than queueing it: the next one,
   // a twentieth of a second later, replaces it.
   if (message.t === 'snapshot' && conn.buffered() > this.config.backlogBytes) return;
@@ -236,14 +236,35 @@ export class Room {
  tellLeader(text) { const lead = this.conns.get(this.leaderId); if (lead) this.note(lead, text || 'Cannot start.'); }
 
  // The owner's admin page: take a player out (and keep them out of this room).
- kick(id) {
+ // `reason` is what their page says (it replaces the session's own words).
+ kick(id, reason = 'You were removed from this room.') {
   const conn = this.conns.get(id);
   if (!conn) return false;
   this.removedPids.add(conn.pid);
-  if (!this.session.kick(id)) conn.send({ t: 'removed', reason: 'You were removed from the game.' });
-  conn.close(4001, 'removed');
+  conn.send({ t: 'removed', reason }); conn.toldWhy = true;
+  this.session.kick(id);
+  conn.close(4001, 'kicked');
   return true;
  }
+
+ // The admin page's messages: `kind` 'global' (an announcement), 'room' or
+ // 'private'. A page that shows them as cards said so when it joined
+ // (`conn.cards`); an older one gets the same words as a note (a toast).
+ static tell(conn, kind, text) {
+  if (conn.cards) conn.send({ t: 'admin', kind, text: String(text), from: 'server' });
+  else conn.send({ t: 'note', text: String(text) });
+ }
+ message(text, kind = 'room') { for (const conn of this.players) Room.tell(conn, kind, text); return this.players.length; }
+
+ // Everyone out, told why (the admin page's CLOSE ROOM, a crashed tick).
+ closeAll(reason) {
+  for (const conn of this.conns.values()) conn.send({ t: 'removed', reason });
+  this.close();
+ }
+
+ // Is this player coming back after a map move? (Their old connection is
+ // still here, stale, for a few seconds: maintenance mode lets them back in.)
+ expects(pid) { for (const conn of this.conns.values()) if (conn.pid === pid && conn.generation !== this.generation) return true; return false; }
 
  // One 60 Hz tick. An empty room does nothing (always-open rooms cost no
  // CPU while nobody plays).
@@ -259,8 +280,8 @@ export class Room {
   // A connection never let in (no hello, a wrong version) goes after ADMIT s.
   let admittedNow = false;
   for (const conn of this.players) {
-   if (this.session.remotes.has(conn.id)) { if (!conn.admitted) { conn.admitted = true; admittedNow = true; } }
-   else if (!conn.closing && (conn.admitted || t - conn.joinedAt > ADMIT)) { conn.closing = true; conn.close(4000, 'left'); }
+   if (this.session.remotes.has(conn.id)) { if (!conn.admitted) { conn.admitted = true; admittedNow = true; conn.name = this.session.remotes.get(conn.id).name; } }
+   else if (!conn.closing && (conn.admitted || t - conn.joinedAt > ADMIT)) { conn.closing = true; conn.close(4000, conn.admitted ? 'dropped by the game' : 'never said hello'); }
   }
   if (admittedNow || (!this.leaderId && !this.isPublic)) this.chooseLeader();
   // The vote chose another map: move there, and start once everyone is back.
@@ -299,11 +320,44 @@ export class Room {
  // For the owner's admin page.
  adminState() {
   const lobby = this.session.lobby(), byId = new Map(lobby.players.map(p => [p.id, p]));
-  return { ...this.info(), leader: this.leaderId, players: this.players.map(c => ({ id: c.id, name: byId.get(c.id)?.name || '(joining)', pid: c.pid, ip: c.ip, ping: byId.get(c.id)?.ping ?? null, lead: c.id === this.leaderId, since: Math.round(this.now() - c.joinedAt) })) };
+  const match = this.session.match();
+  // Time left in the round (or the results), and the round of an elimination match.
+  const clock = { left: match.phase === 'lobby' ? null : match.left, timed: !!match.timed, round: match.elimination ? match.round : null, rounds: match.elimination ? match.rounds : null, startsIn: this.session.lobbyExtra.startsIn ?? null };
+  const seats = this.session.arena.seats;
+  return { ...this.info(), ...clock, leader: this.leaderId, players: this.players.map(c => {
+   const seat = seats.get(c.id);
+   return { id: c.id, name: byId.get(c.id)?.name || '(joining)', pid: c.pid, ip: c.ip, ping: byId.get(c.id)?.ping ?? null, lead: c.id === this.leaderId, since: Math.round(this.now() - c.joinedAt),
+    connectedAt: c.track?.at ?? null, kills: seat?.stats.kills ?? null, deaths: seat?.stats.deaths ?? null, alive: seat ? seat.present && !seat.dead : null, dead: seat ? !!seat.dead : null, team: seat?.team || null, weapon: seat?.weapon || null };
+  }) };
+ }
+
+ // One player's live state for the admin page's player sheet: the room, the
+ // seat (this match's numbers, health, weapon) and the ping. Only what the
+ // session keeps; anything it doesn't track is left out.
+ playerState(conn) {
+  const s = this.session, arena = s.arena, here = conn.generation === this.generation;
+  const seat = here ? arena.seats.get(conn.id) : null, remote = here ? s.remotes.get(conn.id) : null;
+  const match = s.match(), p = seat?.sim?.player;
+  const sideKey = seat ? seat.team || seat.id : null;
+  const board = arena.phase === 'lobby' ? [] : arena.scoreboard();
+  const rank = seat ? board.findIndex(r => r.id === conn.id) + 1 || null : null;
+  return {
+   room: { code: this.code, name: this.name, public: this.isPublic, map: this.mapId, mapName: serverMap(this.mapId)?.name || this.mapId, mode: arena.mode, modeName: modeById(arena.mode)?.name || arena.mode, phase: arena.phase, matchNumber: arena.matchNumber, round: match.elimination ? match.round : null, rounds: match.elimination ? match.rounds : null, left: match.phase === 'lobby' ? null : match.left, leader: conn.id === this.leaderId, inRoom: Math.round(this.now() - conn.joinedAt), stale: !here },
+   ping: remote?.ping == null ? null : Math.round(remote.ping),
+   seat: seat ? {
+    team: seat.team || null, weapon: seat.weapon || null, present: !!seat.present, dead: !!seat.dead, alive: !!seat.present && !seat.dead, bench: !!seat.bench, picking: !!seat.picking,
+    respawnIn: seat.dead && Number.isFinite(seat.respawnIn) ? Math.max(0, Math.round(seat.respawnIn * 10) / 10) : null,
+    hp: p && seat.present ? Math.max(0, Math.round(p.hp)) : null, maxHp: p ? Math.round(p.maxHp) : null,
+    kills: seat.stats.kills, deaths: seat.stats.deaths, dealt: Math.round(seat.stats.dealt), taken: Math.round(seat.stats.taken), time: Math.round(seat.stats.time),
+    roundsWon: match.elimination && sideKey ? arena.points.get(sideKey) || 0 : null,
+    rank, of: board.length || null,
+   } : null,
+  };
  }
 
  close() {
   for (const conn of this.conns.values()) conn.close(4004, 'room closed');
+  // (Their sockets close after this; leave() then finds nothing to do.)
   this.conns.clear();
  }
 }

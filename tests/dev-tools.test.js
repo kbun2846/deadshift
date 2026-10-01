@@ -29,23 +29,25 @@ test('practice invulnerability, cooldown and movement overrides can be disabled'
 
 import {readFileSync} from 'node:fs';
 import {DEV_OPTIONS,DEV_SECTIONS,BULK_KEYS,optionsFor} from '../src/ui/dev-options.js';
-import {checkDevCode,DEV_CODE_HASH} from '../src/ui/dev-code.js';
 import {maps} from '../src/maps.js';
 import {WEAPONS} from '../src/items.js';
 import {HostSession} from '../src/net/host-session.js';
 import {ClientSession} from '../src/net/client-session.js';
 import {createLoopback} from '../src/net/transport.js';
 
-test('the tools open with Shift+P from the pause menu and the access code, and are silent before that',()=>{
- // Only a hash of the code is in the source; the old code and near misses fail.
- assert.equal(DEV_CODE_HASH.length,64);
- for(const wrong of ['1213','','0000','1234'])assert.equal(checkDevCode(wrong),false,wrong);
+test('no code or hash in the page; P and O do nothing until unlocked; no other way in on screen',()=>{
  const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
- assert.ok(/paused&&[^\n]*e\.code==='KeyP'&&e\.shiftKey/.test(main),'Shift+P while paused opens the code prompt');
- assert.ok(/\(e\.code==='KeyO'\|\|e\.code==='KeyP'\)[^\n]*devTools\.isUnlocked\(\)/.test(main),'P and O do nothing until unlocked');
- assert.ok(!main.includes('devDialog.show();else'),'plain P no longer asks for the code');
+ assert.ok(!/e\.code==='KeyP'&&e\.shiftKey/.test(main),'no Shift+P prompt');
+ assert.ok(/e\.code==='KeyO'[^\n]*devTools\.isUnlocked\(\)/.test(main),'O does nothing until unlocked');
+ assert.ok(/e\.code==='KeyP'[^\n]*devTools\.isUnlocked\(\)/.test(main),'P does nothing until unlocked');
+ assert.ok(!main.includes('devDialog.show()'),'no key asks for the code');
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  assert.ok(/id="dev-open"[^>]*hidden/.test(html),'the settings entry starts hidden');
+ assert.ok(!/title-dev|dev tools/i.test(html),'no dev tools link on the title');
+ for(const file of ['dev-tools.js','dev-wiring.js','dev-unlock.js','dev-unlock-dialog.js','dev-session.js']){
+  const src=readFileSync(new URL('../src/ui/'+file,import.meta.url),'utf8');
+  assert.ok(!/dev-code\.js|checkDevCode|DEV_CODE|[0-9a-f]{64}/.test(src),file+' holds no client-side check or hash');
+ }
 });
 
 test('every option has a home section, a unique key and a short label; P only touches everyday overrides',()=>{

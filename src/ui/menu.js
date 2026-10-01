@@ -15,6 +15,7 @@ import { cleanSettings, MODES } from '../config/match.js';
 import { buildDuelMenu } from './duel-menu.js';
 import { duelParam } from '../duel.js';
 import { buildKeybindMenu } from './keybind-menu.js';
+import { KEY_ACTIONS, keyName, displayKey, bindLabel } from '../config/keybinds.js';
 import { installMenuFit } from './menu-fit.js';
 import { createJoinList } from './join-list.js';
 import { PROTOCOL_VERSION } from '../net/protocol.js';
@@ -127,7 +128,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   if(autoJoin)go({role:'join',code:invite,name,retry:true,via:via('join-p2p')});
   else if(autoHost){const carry=takeCarry();go({role:'host',name,settings:carry?.settings?cleanSettings(carry.settings):withDevDefaults(hostSettings),mode:MODES.some(m=>m.id===carry?.mode)?carry.mode:hostMode,room:carry?.code||null,carry,via:carry?.via==='p2p'?'p2p':'server'});}
  };
- document.querySelectorAll('.menu-back').forEach(b=>b.onclick=back);
+ document.querySelectorAll('#intro .menu-back').forEach(b=>b.onclick=back);
  // The page title says which weapon list this is: a tutorial course or a match.
  const chooseWeapons=()=>{$('tutorial-basics').hidden=selectedMap!=='tutorial';document.querySelector('[data-page="weapons"] h2').textContent=selectedMap==='tutorial'?'tutorial weapons':'weapons';show('weapons');for(const card of $('weapon-options').children)card.loadPreview();};
  // Home's tutorial goes straight into the basics: no weapon to pick for
@@ -230,48 +231,45 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
   for(const tab of tabs)tab.setAttribute('aria-selected',String(tab.dataset.tab===name));
   for(const tab of tabs)$('settings-'+tab.dataset.tab).hidden=tab.dataset.tab!==name;
   $('settings-panel').dataset.tab=name;
+  const body=document.querySelector('#settings-panel .settings-body');if(body)body.scrollTop=0;
  };
  for(const tab of tabs)tab.onclick=()=>openTab(tab.dataset.tab);
  openTab('graphics');
+ // Settings > Controls (2026-09-30 redesign): the HUD key hints switch and the
+ // keyboard keys (keybind-menu.js) for keyboard players, then two reference
+ // dropdowns: the basics and one per weapon. Key names in the reference follow
+ // the player's bindings (displayKeys) and redraw when a key changes.
  const generalControls=[
-  ['Move','WASD / drag anywhere on the left half','On touch the stick appears wherever your thumb lands.'],
-  ['Aim','Mouse / arrow keys / swipe on the right half','Movement sets facing when not aiming independently. Arrows and swipes lock onto the target that way; a running player pulls ahead of the lock, and holding an arrow leads them. Tap a spot on the world to fire at it.'],
-  ['Aim in','Hold Shift / right mouse button / AIM','Slows the walk and steadies the cursor on every weapon; Nominal, Ballast and Omen also tighten their spread.'],
-  ['Dodge','Q / DODGE','Rolls the way you are moving, or the way you are facing when standing still, and breaks through breakable scenery. Each weapon carries its own number of dodges (see Weapons); they refill after a moment.'],
-  ['Weapon ability','X / the weapon\'s ability button','Static: the hex. Nominal: the nova. Ballast: the blast. Omen: the covenant. See Weapons.'],
-  ['Scores','Tab / SCORES (online)','Hold to see the round\'s scoreboard.'],
-  ['Map','M / map button; M or Escape closes'],
-  ['Pause / resume','Esc / pause button'],
-  ['Restart current session','RESTART in pause menu'],
-  ['Reset map','RESET MAP in pause menu (practice)','Props, crops and targets back, blood, marks and bodies cleared; you stay where you are. Press twice.'],
-  ['Change weapon','CHANGE WEAPON in pause menu (practice)'],
-  ['Toggle sound','N / sound button'],
-  ['Menu selection','Arrow keys / Tab / pointer'],
-  ['Change setting','Left / right arrows','Up/down moves between settings. E enters editing; arrows change the value and E or Q finishes.'],
-  ['Confirm / open controls','E / Enter / click / tap','On a weapon dropdown, right opens and left closes.'],
-  ['Back','Q / Escape'],
+  ['Move',()=>['up','left','down','right'].map(id=>'<kbd>'+bindLabel(id)+'</kbd>').join('')+' · drag on the left half'],
+  ['Aim','Mouse / arrow keys / swipe on the right half','Tap a spot on the world to fire at it.'],
+  ['Aim in','Shift / right mouse / hold AIM','Slows the walk and steadies the aim.'],
+  ['Dodge','Q / DODGE','Rolls the way you move and breaks through breakable scenery. Each weapon has its own number of dodges.'],
+  ['Weapon ability','X / the ability button','What it does depends on the weapon: see Weapons.'],
+  ['Scores','Tab / SCORES','Hold to see the scoreboard (online).'],
+  ['Map','M / map button'],
+  ['Sound','N / sound button'],
+  ['Pause','Esc / pause button'],
+  ['Menus','Arrows move / E confirms / Q goes back'],
  ];
- const list=rows=>'<table class="controls-grid"><thead><tr><th scope="col">Action</th><th scope="col">Keybind</th></tr></thead><tbody>'+rows.map(([action,binding,note])=>'<tr><th scope="row">'+action+'</th><td>'+binding+(note?'<small>'+note+'</small>':'')+'</td></tr>').join('')+'</tbody></table>';
-  $('settings-controls').innerHTML='<details class="weapon-control-entry general-group"><summary>What each control does</summary>'+list(generalControls)+'</details>'+'<details class="weapon-control-entry weapons-group"><summary>Weapons</summary><div class="weapon-control-list">'+WEAPONS.map(weapon=>'<details class="weapon-control-entry"><summary>'+weapon.name+'</summary>'+list(weapon.controls||[])+'</details>').join('')+'</div></details>';
- $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">SHOW HUD CONTROL HINTS<input id="control-hints" type="checkbox" checked/></label>');
- // Moved into Settings > Mobile by mobile-settings.js, with the opacity.
- $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">AIM ASSIST<input id="aim-assist" type="checkbox" checked/></label>');
- $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting">VIBRATION<input id="vibration" type="checkbox" checked/></label>');
- $('settings-controls').insertAdjacentHTML('afterbegin','<label class="setting select-setting">MOBILE BUTTON OPACITY<select id="mobile-opacity"><option value="1">Solid · 100%</option><option value="0.7">Medium · 70%</option><option value="0.4">Faint · 40%</option></select></label>');
- // Rebindable keyboard keys (keybind-menu.js), above the reference tables.
- buildKeybindMenu($('settings-controls'),{before:$('settings-controls').querySelector('.general-group')});
- const channels=[
-  ['master','MASTER','Everything, including the mute bound to N.'],
-  ['ambient','AMBIENT','Wind, dust and the birds overhead.'],
-  ['weapons','WEAPONS','Fire, reloads, dodges and each weapon\'s ability (hex, nova, blast).'],
-  ['effects','EFFECTS','Impacts, breakage, footsteps and blasts.'],
- ];
- $('settings-audio').innerHTML='<div class="settings-heading">MIX</div>'+channels.map(([key,label,note])=>
-  '<label class="setting slider-setting">'+label+'<span class="slider-field"><span class="slider-track">'+
-  '<input id="volume-'+key+'" class="volume-slider" type="range" min="0" max="100" step="1" aria-label="'+label.toLowerCase()+' volume"></span>'+
-  '<output class="slider-value" id="volume-'+key+'-value" for="volume-'+key+'"></output></span></label>'+
-  '<p class="settings-note">'+note+'</p>').join('')+
-  '<button type="button" id="mute-all" class="secondary" aria-pressed="false">MUTE ALL</button>';
+ // A part that names a key becomes a keycap showing the player's key for it.
+ const KEY_WORDS=new Set([...KEY_ACTIONS.map(a=>keyName(a.key)),'TAB','ESC','LMB','RMB']);
+ const cap=part=>KEY_WORDS.has(part.trim().toUpperCase())?'<kbd>'+displayKey(part.trim().toUpperCase())+'</kbd>':part;
+ const keys=text=>typeof text==='function'?text():String(text).split(/\s*\/\s*/).map(cap).join(' · ');
+ const list=rows=>'<div class="control-ref">'+rows.map(([action,binding,note])=>'<div class="control-ref-row"><b>'+action+'</b><span>'+keys(binding)+'</span>'+(note?'<small>'+note+'</small>':'')+'</div>').join('')+'</div>';
+ const reference=()=>'<details class="weapon-control-entry general-group"><summary>basics</summary>'+list(generalControls)+'</details>'+'<details class="weapon-control-entry weapons-group"><summary>weapons</summary><div class="weapon-control-list">'+WEAPONS.map(weapon=>'<details class="weapon-control-entry"><summary>'+weapon.name+'</summary>'+list(weapon.controls||[])+'</details>').join('')+'</div></details>';
+ $('settings-controls').innerHTML=
+  '<div class="settings-row pc-only"><span class="settings-label">hud key hints</span><div class="settings-control"><input id="control-hints" type="checkbox" checked hidden><div class="settings-choices" role="group" aria-label="hud key hints" data-for="control-hints"><button type="button" class="choice-button" data-value="on" aria-pressed="false">ON</button><button type="button" class="choice-button" data-value="off" aria-pressed="false">OFF</button></div></div></div>'+
+  '<div class="settings-heading">reference</div><div class="control-reference">'+reference()+'</div>';
+ // Rebindable keyboard keys (keybind-menu.js), above the reference.
+ buildKeybindMenu($('settings-controls'),{before:$('settings-controls').querySelector('.settings-heading'),onChange:()=>{$('settings-controls').querySelector('.control-reference').innerHTML=reference();}});
+ // Settings > Audio: sound on or off (the N key's switch), then the four mixes.
+ const channels=[['master','master'],['ambient','ambient'],['weapons','weapons'],['effects','effects']];
+ $('settings-audio').innerHTML=
+  '<div class="settings-row"><span class="settings-label">sound</span><div class="settings-control"><div class="settings-choices" role="group" aria-label="sound"><button type="button" id="sound-on" class="choice-button" aria-pressed="true">ON</button><button type="button" id="mute-all" class="choice-button" aria-pressed="false">OFF</button></div></div></div>'+
+  channels.map(([key,label])=>
+  '<div class="settings-row slider-setting"><span class="settings-label">'+label+'</span><div class="settings-control slider-field"><span class="slider-track">'+
+  '<input id="volume-'+key+'" class="volume-slider" type="range" min="0" max="100" step="1" aria-label="'+label+' volume"></span>'+
+  '<output class="slider-value" id="volume-'+key+'-value" for="volume-'+key+'"></output></div></div>').join('');
  // Multiplayer: pick a weapon over the running game (after joining, after
  // dying, or from the pause menu). Picking hands the weapon to `onPick`; the
  // back arrow is `onBack` (leave multiplayer).

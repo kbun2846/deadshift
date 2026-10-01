@@ -3,10 +3,33 @@
 // shared `settings` object, saves it, and tells the game what changed through
 // the callbacks. The option markup lives in index.html (and menu.js for the
 // sliders it builds).
+//
+// Choice rows (2026-09-30 redesign): an on/off or few-option setting is a bar
+// of fitted choice buttons like the host page's rows (`.settings-choices
+// [data-for=<id>]`). The hidden checkbox or select it names stays the source
+// of truth: a press sets it and fires its `change`, and the bar follows it.
 import { GRAPHICS, isDemanding, fpsToSlider, fpsFromSlider, fpsLabel, snapFps, FPS_STOPS, FPS_MIN, FPS_UNCAPPED_SLIDER, VOLUME_CHANNELS } from '../settings.js';
 const byId = id => document.getElementById(id);
 const save = settings => { try { localStorage.setItem('deadstab-settings', JSON.stringify(settings)); } catch { /* Incognito still plays normally. */ } };
 const sliderFraction = at => (Number(at) - FPS_MIN) / (FPS_UNCAPPED_SLIDER - FPS_MIN);
+
+// Which button of a choice bar shows as picked for its input's value.
+export const choicePicked = (input, value) => (input.type === 'checkbox' ? (value === 'on') === input.checked : String(value) === String(input.value));
+export function wireChoiceBars(root = document) {
+ const bars = [...root.querySelectorAll('.settings-choices[data-for]')].map(bar => {
+  const input = byId(bar.dataset.for);
+  const sync = () => { for (const b of bar.querySelectorAll('button[data-value]')) b.setAttribute('aria-pressed', String(choicePicked(input, b.dataset.value))); };
+  for (const b of bar.querySelectorAll('button[data-value]')) b.addEventListener('click', () => {
+   if (choicePicked(input, b.dataset.value)) return;
+   if (input.type === 'checkbox') input.checked = b.dataset.value === 'on'; else input.value = b.dataset.value;
+   input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  input.addEventListener('change', sync);
+  sync();
+  return sync;
+ });
+ return () => bars.forEach(sync => sync());
+}
 
 // hooks: { setQuality(name), setFps(fps), setMotion(on), setVolumes(volume), changed() }
 export function installSettingsPanel(settings, hooks) {
@@ -59,13 +82,14 @@ export function installSettingsPanel(settings, hooks) {
  byId('graphics-preset').value = settings.qualityAuto ? 'auto' : settings.quality; byId('fps-limit').value = String(fpsToSlider(settings.fps));
  byId('control-hints').checked = settings.controlHints;
  byId('aim-assist').checked = settings.aimAssist;
- // Fullscreen or Windowed is for PC players: hidden on a phone or tablet
- // (they have Settings > Mobile > FULL SCREEN WHILE PLAYING).
+ // Keyboard-only rows (the keys, the HUD key hints) are hidden on a phone or
+ // tablet without a mouse: nothing there can use them.
  const touchOnly = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
  for (const el of document.querySelectorAll('#settings-panel .pc-only')) el.hidden = touchOnly;
  byId('vibration').checked = settings.vibration;
  byId('mobile-opacity').value = String(settings.mobileOpacity);
  for (const id of ['graphics-preset', 'fps-limit', 'control-hints', 'mobile-opacity', 'aim-assist', 'vibration']) byId(id).addEventListener('change', applySettings);
+ const syncChoices = wireChoiceBars(byId('settings-panel'));
  // The slider needs to read live while dragged, not only on release.
  byId('fps-limit').addEventListener('input', applySettings);
  for (const channel of VOLUME_CHANNELS) {
@@ -74,6 +98,6 @@ export function installSettingsPanel(settings, hooks) {
   slider.addEventListener('input', applyVolume);
   slider.addEventListener('change', applyVolume);
  }
- applySettings(); applyVolume();
- return { applySettings, applyVolume };
+ applySettings(); applyVolume(); syncChoices();
+ return { applySettings, applyVolume, syncChoices };
 }

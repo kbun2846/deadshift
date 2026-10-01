@@ -17,11 +17,11 @@
 // HUD, one-hit kills) stays off that list and is only ever set by hand.
 // `where: 'window'` / `'settings'` limits an entry to one surface.
 //
-// How to get in (nothing about the tools shows before this): pause, press
-// Shift+P, enter the access code (checked by dev-code.js, which holds only a
-// hash of it; the code is never written in the repository). That adds Developer tools to Settings and makes O
-// open the window. Online the tools are the host's alone (joiners' sims are
-// reset every tick); freeze and game speed are solo only (main.js).
+// Nothing about the tools shows until they are unlocked (dev-wiring.js; the
+// code is checked by the game server and is never in the repository). That
+// adds Developer tools to Settings and makes O open the window. Online the
+// tools are a peer-to-peer host's alone (everyone else's sim is reset every
+// tick, on the game server too); freeze and game speed are solo only (main.js).
 
 import { WEAPONS } from '../items.js';
 import { workMaps } from '../maps.js';

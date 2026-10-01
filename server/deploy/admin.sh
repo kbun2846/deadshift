@@ -4,6 +4,7 @@
 #   bash /opt/deadstab/server/deploy/admin.sh add sam       a key for Sam (printed once)
 #   bash /opt/deadstab/server/deploy/admin.sh list          who has one
 #   bash /opt/deadstab/server/deploy/admin.sh remove sam    Sam's key stops working at once
+#   bash /opt/deadstab/server/deploy/admin.sh devcode       set the developer tools' code (asked for, not shown)
 #
 # Your own key is ADMIN_TOKEN in /etc/deadstab.env. The server notices
 # changes by itself; no restart needed.

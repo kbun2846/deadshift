@@ -9,15 +9,19 @@ test('the title is the main menu home page, with the blood installed on it', () 
  const html = read('../index.html'), main = read('../src/main.js');
  assert.match(html, /data-page="home" class="title-home"><p class="title-version game-version">/, 'version above the word');
  assert.match(html, /<svg class="title-word"[^>]*><text[^>]*>deadstab<\/text>/);
- for (const id of ['gamemodes', 'tutorial-entry', 'input-preference', 'menu-settings', 'title-dev']) assert.ok(html.includes(`id="${id}"`), id);
+ for (const id of ['gamemodes', 'tutorial-entry', 'input-preference', 'menu-settings']) assert.ok(html.includes(`id="${id}"`), id);
  assert.match(main, /installTitle\(\{page:/);
- assert.match(html, /<button id="title-dev"[^>]*>dev tools<\/button><\/div><svg class="title-blood"[^>]*><\/svg><\/div>/, 'the blood svg lives inside the home page, attached to it');
+ assert.match(html, /<button id="menu-settings"[^>]*>SETTINGS<\/button><\/div><svg class="title-blood"[^>]*><\/svg><\/div>/, 'the blood svg lives inside the home page, attached to it');
+ assert.ok(!html.includes('title-dev') && !/>dev tools</i.test(html), 'no developer link on the title');
  assert.ok(!DEV_OPTIONS.some(o => o.key === 'titleScreen'), 'no longer a dev-only screen');
 });
 
-test('the dev tools link asks for the code until the tools are unlocked', () => {
- const wiring = read('../src/ui/dev-wiring.js');
- assert.match(wiring, /\$\('title-dev'\)\.onclick = \(\) => \{ if \(devTools\.isUnlocked\(\)\) devWindow\.toggle\(\); else \{ fromTitle = true; devDialog\.show\(\); \} \};/);
+test('the version: plain text, styled the same, no developer link beside it', () => {
+ const css = read('../src/styles/menu-theme.css'), wiring = read('../src/ui/dev-wiring.js');
+ assert.match(css, /#game \.game-version\{position:relative;width:max-content;pointer-events:auto;cursor:default;[^}]*user-select:none/);
+ assert.match(css, /#game \.title-heading\{pointer-events:none\}/);
+ assert.doesNotMatch(css, /title-dev/);
+ assert.match(wiring, /installVersionTaps\(document\.querySelectorAll\('\.game-version'\)/);
  assert.match(read('../src/main.js'), /installDevWiring\(/);
 });
 

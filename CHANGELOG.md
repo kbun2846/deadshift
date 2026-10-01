@@ -2,6 +2,13 @@
 
 Deadstab, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## v0.1.5-alpha (2026-10-01)
+
+- **New settings:** redesigned to match the rest of the menus, and it works properly on phones (upright and sideways). Quality, frame limit, audio, key bindings, the controls reference and the touch layout editor are all still there, with less clutter. Resetting keys or the touch layout now asks for a second press.
+- **Shadows no longer flicker while you move** on Performance, Balanced and Quality: moving things' shadows are now drawn every frame instead of lagging behind and snapping back. Balanced on Hollow Wick also does less shadow work than before.
+- **Messages from the server** (announcements, room and private messages) now show as a card in the game's style instead of a plain line of text.
+- Online: the server has better tools for keeping games running smoothly (maintenance mode, timed bans).
+
 ## v0.1.4-alpha (2026-09-30)
 
 - **Nominal does about 10% less damage everywhere**: bullets 6 (6.8), 4.3 at long range (4.8); the grenade 36.8 on a direct hit (42) and 14.4 at its edge; Nova keeps its double damage, so its bullets are 10% lighter too.

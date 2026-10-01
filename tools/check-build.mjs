@@ -16,6 +16,8 @@ else {
  const code = readFileSync(new URL(socket, dir), 'utf8');
  if (!code.includes('onMessage.call(')) problems.push(socket + ': the call that hands server messages to the game is missing');
  if (!code.includes('onLeave.call(')) problems.push(socket + ': the call that reports a closed connection is missing');
+ // (The admin page's messages: collected for the cards, and asked for on joining.)
+ if (!code.includes('adminMessages.push(') || !code.includes('cards:1')) problems.push(socket + ': the admin messages (cards) are not collected');
 }
 const peer = files.find(name => name.startsWith('peer-transport-'));
 if (peer) {

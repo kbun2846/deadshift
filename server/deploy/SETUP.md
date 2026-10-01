@@ -9,7 +9,7 @@ You do every step yourself: the accounts, the payment and the passwords are your
 - The game page stays where it is (deadstab.com, GitHub Pages).
 - The game server runs on the VPS. Caddy sits in front of it and handles HTTPS, and it gets and renews its own certificate.
 - Every 2 minutes the VPS checks GitHub for a new version. When one arrives it waits for a moment with nobody playing (at most 20 minutes), then updates and restarts. **Pushing to `main` updates both the page and the server.**
-- An admin page at https://play.deadstab.com/admin shows every room and who is in it, with KICK, BAN and UNBAN buttons. Only you, and people you give their own key to, can use it.
+- An admin page at https://play.deadstab.com/admin: server health, every room and who is in it, kicks, bans, announcements and maintenance mode. Only you, and people you give their own key to, can use it.
 
 ## 1. Rent the VPS
 
@@ -94,7 +94,31 @@ Log in with `ssh root@<address>`, then:
 | What did the updater do? | `journalctl -u deadstab-update -n 30` |
 | Change settings | `nano /etc/deadstab.env`, then restart |
 
-**Kicking and banning:** on the admin page. KICK removes a player from that room, and they can't rejoin that room. BAN keeps their browser's player id *and* their internet address off every room. There are no accounts yet, so someone determined can get around a ban by clearing their browser and switching networks. UNBAN is in the list below the rooms.
+## The admin page
+
+https://play.deadstab.com/admin works on a phone and a computer. It refreshes itself every few seconds while you look at it.
+
+- **GAME** (the pink button at the top): opens deadstab.com in a new tab with the developer tools already on. The link it uses works once, for a minute, and the log notes who used it. (Another address for the game: `GAME_URL=...` in `/etc/deadstab.env`.)
+
+- **overview:** players online (and today's peak), rooms, server load (if the average often goes above about 10 ms a tick, move up a VPS size), uptime, memory, the version running, and data sent this month against your 1 TB plan, with an estimate for the whole month. (A different plan size: add `MONTHLY_TRANSFER_GB=2000`, say, to `/etc/deadstab.env` and restart.) Also here: an **announcement** box (a short message, up to 140 characters, shown as a card at the top of every player's screen: in a game, in the lobby or on the death screen) and **maintenance mode** (new games and joins are refused with your message while matches already running carry on; it stays on through restarts until you turn it off).
+- **online:** everyone playing right now, across every room: search, sort by name, room, ping, kills or time online. **MESSAGE** sends one player a private card only they see; **STATS** (or a click on the name) opens their sheet.
+- **player sheet:** everything the server knows about one player: player id and address (copy buttons), room, map, mode, team, ping (now and average), when they connected; this match (kills, deaths, damage dealt and taken, weapon, health, alive or dead, rank; a dash where the game doesn't count something yet, like assists and accuracy); since they connected (rooms, matches, kills, deaths, damage); and since the server started for that browser (connections, totals, names used, recent rooms, kicks, bans and messages). A private message box, KICK and BAN are at the bottom. These numbers live in memory: a restart clears them.
+- **rooms:** every game with players in it, and who is in each. **KICK** removes a player from that room for good (other rooms are fine). **BAN** keeps their browser's player id *and* their internet address off every room, for 1 hour, 1 day, 7 days or for good. **MESSAGE ROOM** shows a card to everyone in one room, a player's **MESSAGE** to just them; **CLOSE ROOM** disconnects everyone in it (an always-open room just starts over).
+- **players:** the last 300 people who connected, including ones who already left, so you can still ban someone after they quit.
+- **bans:** every ban with who made it, why and when it ends; **UNBAN**; and a box to ban a player id or address by hand.
+- **log:** what everyone with a key did, and when.
+- **owner** (only with your own admin token): other people's keys, the developer tools code, and **RESTART SERVER**.
+
+There are no accounts yet, so someone determined can get around a ban by clearing their browser and switching networks.
+
+## The developer tools code
+
+The game asks the server whether a developer tools code is right; the code itself is never in the game or the repo. Until you set one, the developer tools can't be unlocked. Set or change it either way:
+
+- on the admin page: **owner → developer tools code**, type it, **SET CODE**; or
+- on the VPS: `bash /opt/deadstab/server/deploy/admin.sh devcode` (it asks twice and shows nothing as you type).
+
+Use 4 to 32 letters or digits; longer and with letters is much harder to guess. The server keeps only a scrambled (hashed) form of it, so it can't be shown back: if you forget it, set a new one. Wrong guesses are limited, so guessing takes a very long time.
 
 ## Who can use the admin page
 
@@ -102,13 +126,13 @@ Only someone with a key. Yours is the admin token. To let someone else in, give 
 
 | What | Command (on the VPS) |
 |---|---|
-| Make a key for Sam | `bash /opt/deadstab/server/deploy/admin.sh add sam` |
+| Make a key for Sam (or: owner tab, **ADD KEY**) | `bash /opt/deadstab/server/deploy/admin.sh add sam` |
 | Who has a key | `bash /opt/deadstab/server/deploy/admin.sh list` |
 | Take Sam's key back (works at once) | `bash /opt/deadstab/server/deploy/admin.sh remove sam` |
 
 - `add` prints the key **once**. Send it to them privately, e.g. a direct message, not a group chat. The VPS only keeps a fingerprint of it, so a lost key can't be looked up; remove it and add a new one.
 - They paste it at https://play.deadstab.com/admin and click **Sign in**. The page remembers it only until that browser tab closes, and **Sign out** forgets it straight away.
-- The server's log records every kick, ban and unban with the name of whoever did it (`journalctl -u deadstab | grep admin`). The ban list shows who banned each player.
+- Every kick, ban, announcement and so on is recorded with the name of whoever did it: the admin page's **log** tab, and the server's log (`journalctl -u deadstab | grep admin`). Other people's keys can't see or use the owner tab.
 - An address that gets a key wrong 10 times in 10 minutes is locked out for 10 minutes.
 
 ## If the repo is private

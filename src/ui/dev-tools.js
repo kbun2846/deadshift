@@ -1,9 +1,8 @@
 // The Developer tools panel beside Settings. It stays empty and hidden until
-// the code is entered (pause, Shift+P, the access code: dev-code.js); before that nothing in the
-// game mentions the tools. The options themselves come from dev-options.js,
-// shared with the floating window on O.
+// the tools are unlocked (the code is checked by the game server: dev-unlock.js,
+// dev-wiring.js); before that nothing in the game mentions them. The options
+// themselves come from dev-options.js, shared with the floating window on O.
 import { buildDevOptions, refill, toggleDevOverrides } from './dev-options.js';
-import { checkDevCode } from './dev-code.js';
 import { RULES } from '../config/gameplay.js';
 export { toggleDevOverrides };
 
@@ -23,8 +22,8 @@ export function installDevTools(sim, panel, changed, hooks = {}) {
   const options = root.querySelector('#dev-options');
   let unlocked = false, built = null;
 
-  function unlock(code) {
-    if (!checkDevCode(code)) return false;
+  // (The check is made before this, by the caller.)
+  function unlock() {
     unlocked = true; options.hidden = false;
     // Built on unlock, not at startup: until then the page holds no trace of the tools.
     built ||= buildDevOptions(root.querySelector('.dev-option-list'), { sim, where: 'settings', hooks: { refill: () => refill(sim), ...hooks }, changed });

@@ -37,7 +37,7 @@ import { cropEntityVisible } from '../crops.js';
 import { InteriorVisibility } from './interior-visibility.js';
 import { lightBasis, snapShadowFocus, shadowFrame, shadowBoxOver, settleShadowBox, shadowReach, shadowSpan, placeShadowBox, SHADOW_FIT } from './shadow-snap.js';
 import { isPlayable } from '../playable-area.js';
-import { ShadowCache } from './shadow-cache.js';
+import { ShadowCache, shadowTick } from './shadow-cache.js';
 import { ChunkCull } from './chunk-cull.js';
 import { placeFpsCamera } from '../fps-mode.js';
 import { castersOnlyInShadow } from './bake-colors.js';
@@ -1901,10 +1901,18 @@ export class WorldView {
     const shakeX = this.motion ? Math.sin(elapsed * 91) * (this.shake+pressureShake) * .65 : 0;
     const shakeZ = this.motion ? Math.cos(elapsed * 77) * (this.shake+pressureShake) * .5 : 0;
     const fx = this.focus.x + shakeX + (this.motion && !cameraRoom ? this.kick.x : 0), fz = this.focus.z + shakeZ + (this.motion && !cameraRoom ? this.kick.z : 0);
-    this.shadowClock=(this.shadowClock||0)+dt;
-    // Strained (see setStrain): shadows redraw at two thirds of their rate.
+    // Strained (see setStrain): the still things' shadow work at two thirds of its rate.
     const shadowRate=this.quality.shadowFPS?this.quality.shadowFPS*(this.strained?2/3:1):0;
-    if(!shadowRate||this.sun.shadow.needsUpdate||this.shadowClock>=1/shadowRate){
+    // The preset's rate paces the box, the sun and the still things (a tick);
+    // with the kept map the moving things are drawn again on every frame in
+    // between that they moved, in the same box, so a body and its shadow are
+    // never a frame or two apart (shadow-cache.js shadowTick: the flicker of
+    // moving shadows on the lower presets, 2026-09-30).
+    const shadowCache=this.shadowCache?.active?this.shadowCache:null;
+    const tick=shadowTick(this.shadowClock||0,dt,shadowRate,this.sun.shadow.needsUpdate,!!shadowCache);
+    this.shadowClock=tick.clock;
+    if(tick.moving){shadowCache.movingOnly=true;this.sun.shadow.needsUpdate=true;}
+    if(tick.full){
       // Snapped to whole shadow texels so the map's grid stays fixed to the
       // world; otherwise every update lands edges on a slightly different grid
       // and they crawl. See shadow-snap.js.
@@ -1919,7 +1927,6 @@ export class WorldView {
       this.sun.target.position.set(at.x, at.y, at.z);
       }
       this.sun.shadow.needsUpdate=true;
-      this.shadowClock=shadowRate?this.shadowClock%(1/shadowRate):0;
     }
     const fy = this.focus.y, snapped = snapCameraFocus(fx, fz, this.cameraHeight, this.camera.fov, this.crisp ? this.crisp.height : this.renderer.getDrawingBufferSize(this.bufferSize).y, fy);
     this.camera.position.set(snapped.x, fy + this.cameraHeight, snapped.z + this.cameraHeight * CAMERA_TILT); this.camera.lookAt(snapped.x, fy, snapped.z); this.camera.updateMatrixWorld();

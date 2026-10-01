@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>deadstab admin</title>
+<!-- Deadstab's admin page (served by server/admin.js). One file, no outside
+     requests: the CSP allows only inline script/style and fetches to this
+     server. The key lives in sessionStorage for this tab only. -->
+<style>
+:root{color-scheme:dark;--bg:#161919;--panel:#232827;--panel2:#1c2020;--line:#343c3a;--line2:#2a302f;--ink:#eef1ef;--muted:#94a19d;--faint:#6d7976;--accent:#e8afb9;--accent-ink:#151718;--danger:#ef8a95;--danger-line:#8d3f49;--danger-bg:#3a2026;--ok:#9fd4b0;--warn:#f2d37a;--radius:10px}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Arial,sans-serif;min-height:100vh}
+[hidden]{display:none!important}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--accent)}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* buttons: quiet by default, pink for the main action, red for anything that removes */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:6px 12px;border-radius:8px;border:1px solid #47504d;background:#2b3130;color:var(--ink);font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s}
+.btn:hover{background:#343b3a;border-color:#5a6461}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{background:#f1c3cb}
+.btn.danger{background:transparent;border-color:var(--danger-line);color:var(--danger)}
+.btn.danger:hover{background:var(--danger-bg)}
+.btn.danger.solid{background:#c9505f;border-color:#c9505f;color:#fff}
+.btn.danger.solid:hover{background:#d8606f}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn.ghost:hover{color:var(--ink);background:#262b2a}
+.btn.small{min-height:28px;padding:3px 9px;font-size:10.5px}
+.icon-btn{display:inline-grid;place-items:center;width:26px;height:26px;padding:0;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;vertical-align:middle}
+.icon-btn:hover{color:var(--accent);border-color:#3d4543;background:#262b2a}
+.icon-btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+input[type=text],input[type=password],input[type=search],select{min-height:36px;padding:7px 10px;border-radius:8px;border:1px solid #3f4846;background:#171b1a;color:var(--ink);width:100%;min-width:0}
+input::placeholder{color:#66726f}
+input:focus,select:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px #e8afb926}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;background-size:5px 5px;background-repeat:no-repeat;padding-right:28px}
+label.field{display:grid;gap:5px;font-size:12px;color:var(--muted);min-width:0}
+.check{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;cursor:pointer;user-select:none}
+.check input{accent-color:var(--accent);width:16px;height:16px}
+
+/* frame */
+.top{position:sticky;top:0;z-index:20;background:#161919ee;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line2)}
+.top-in{max-width:1180px;margin:0 auto;padding:10px max(16px,env(safe-area-inset-right)) 0 max(16px,env(safe-area-inset-left));display:flex;flex-direction:column;gap:8px}
+.bar{display:flex;align-items:center;gap:12px;min-height:36px}
+.brand{font-weight:800;letter-spacing:.2em;font-size:13px;text-transform:uppercase;white-space:nowrap}
+.brand span{color:var(--accent);margin-left:6px;font-weight:600;letter-spacing:.14em}
+.status{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;min-width:0}
+.status b{color:var(--ink);font-weight:600}
+.status .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px #9fd4b022;flex:none}
+.dot.stale{background:var(--warn);box-shadow:0 0 0 3px #f2d37a22}
+.dot.off{background:var(--danger);box-shadow:0 0 0 3px #ef8a9522}
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;margin:0 -4px;padding:0 4px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{position:relative;background:none;border:0;color:var(--muted);padding:9px 12px 11px;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap;border-radius:8px 8px 0 0}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected=true]{color:var(--accent)}
+.tab[aria-selected=true]::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:var(--accent)}
+.tab .n{display:inline-block;min-width:18px;margin-left:6px;padding:0 5px;border-radius:9px;background:#2c3231;color:var(--ink);font-size:11px;line-height:18px;text-align:center}
+main{max-width:1180px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right)) 80px max(16px,env(safe-area-inset-left))}
+
+.banner{max-width:1180px;margin:12px auto 0;padding:0 16px}
+.banner-in{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border-radius:var(--radius);background:repeating-linear-gradient(-45deg,#3b3220,#3b3220 10px,#352d1d 10px,#352d1d 20px);border:1px solid #6e5d33;color:#f6e3ad}
+.banner-in strong{text-transform:lowercase;letter-spacing:.04em}
+.banner-in .msg{flex:1 1 220px;color:#e9d9ad;font-size:13px}
+
+h1,h2,h3{text-transform:lowercase;letter-spacing:.02em;margin:0}
+h2{font-size:15px;color:var(--accent);font-weight:700}
+h3{font-size:14px;font-weight:700}
+.section-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:22px 0 10px}
+.section-head:first-child{margin-top:4px}
+.section-head .sub{color:var(--muted);font-size:12.5px}
+.section-head .grow{flex:1}
+.panel{background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);padding:14px}
+.muted{color:var(--muted)}
+.faint{color:var(--faint)}
+.empty{padding:22px 14px;text-align:center;color:var(--muted);background:var(--panel2);border:1px dashed var(--line);border-radius:var(--radius)}
+.tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:#2f3635;color:#c7d0cd;vertical-align:1px;white-space:nowrap}
+.tag.pink{background:#e8afb922;color:var(--accent)}
+.tag.ok{background:#9fd4b01f;color:var(--ok)}
+.tag.warn{background:#f2d37a1f;color:var(--warn)}
+.tag.red{background:#ef8a9520;color:var(--danger)}
+
+/* sign in */
+.signin{max-width:420px;margin:12vh auto 0;padding:26px 22px}
+.signin h1{font-size:20px;margin-bottom:6px}
+.signin p{margin:0 0 16px;color:var(--muted)}
+.signin form{display:flex;gap:8px}
+.signin .err{margin:12px 0 0;color:var(--danger);min-height:1.4em}
+
+/* overview */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);padding:12px 14px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.stat .k{font-size:12px;color:var(--muted);text-transform:lowercase;letter-spacing:.03em}
+.stat .v{font-size:26px;font-weight:700;letter-spacing:-.01em;line-height:1.2;font-variant-numeric:tabular-nums}
+.stat .v small{font-size:13px;font-weight:600;color:var(--muted);margin-left:4px;letter-spacing:0}
+.stat .s{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.stat.wide{grid-column:span 2}
+.stat .warn{color:var(--warn)}
+.spark{width:100%;height:46px;margin-top:6px;display:block}
+.spark .a{fill:none;stroke:var(--accent);stroke-width:1.6;vector-effect:non-scaling-stroke}
+.spark .p{fill:none;stroke:#e8afb955;stroke-width:1;vector-effect:non-scaling-stroke}
+.spark .f{fill:#e8afb914;stroke:none}
+.spark .b{stroke:#f2d37a66;stroke-width:1;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+.spark-legend{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);margin-top:2px}
+.meter{position:relative;height:8px;border-radius:5px;background:#171b1a;border:1px solid #333b39;margin:8px 0 4px;overflow:visible}
+.meter i{position:absolute;inset:0 auto 0 0;border-radius:5px;background:var(--accent)}
+.meter b{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--warn);border-radius:1px}
+.meter.over i{background:var(--danger)}
+.actions-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.form-row>.grow{flex:1 1 220px}
+.count{font-size:11px;color:var(--faint);text-align:right;margin-top:4px;font-variant-numeric:tabular-nums}
+.panel h3{margin-bottom:4px}
+.panel p.help{margin:0 0 10px;color:var(--muted);font-size:12.5px}
+.pill-state{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+
+/* toolbars */
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.toolbar .search{flex:1 1 260px;position:relative}
+.toolbar .search input{padding-left:32px}
+.toolbar .search svg{position:absolute;left:10px;top:50%;width:15px;height:15px;transform:translateY(-50%);fill:none;stroke:var(--faint);stroke-width:2;stroke-linecap:round}
+
+/* rooms */
+.rooms{display:grid;gap:10px}
+.room{background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden}
+.room.idle{background:var(--panel2)}
+.room-head{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;padding:12px 14px}
+.room-title{flex:1 1 300px;min-width:0}
+.room-title h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap;text-transform:none;font-size:15px}
+.room-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;letter-spacing:.12em;color:var(--accent);background:#e8afb914;border:1px solid #e8afb933;border-radius:6px;padding:1px 4px 1px 7px;display:inline-flex;align-items:center;gap:2px}
+.room-code .icon-btn{width:22px;height:22px}
+.room-meta{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:5px;color:var(--muted);font-size:12.5px}
+.room-meta span{white-space:nowrap}
+.room-meta b{color:var(--ink);font-weight:600}
+.room-actions{display:flex;gap:6px;flex-wrap:wrap}
+.room .list{border-top:1px solid var(--line2)}
+.room .none{padding:10px 14px;border-top:1px solid var(--line2);color:var(--faint);font-size:12.5px}
+
+/* tables (cards on a phone) */
+.list{width:100%;border-collapse:collapse;font-size:13px}
+.list th{text-align:left;font-weight:600;color:var(--muted);font-size:11.5px;text-transform:lowercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--line2);white-space:nowrap}
+.list td{padding:7px 10px;border-top:1px solid #2a302f;vertical-align:middle;font-variant-numeric:tabular-nums}
+.list tr:first-child td{border-top:0}
+.list tbody tr:hover td{background:#ffffff05}
+.list td.acts{text-align:right;white-space:nowrap}
+.list td.acts .btn+.btn{margin-left:6px}
+.list .name{font-weight:600;overflow-wrap:anywhere}
+.list .wrap{overflow-wrap:anywhere}
+.list .nowrap{white-space:nowrap}
+.panel.flush{padding:0;overflow:hidden}
+.ping-ok{color:var(--ok)}.ping-mid{color:var(--warn)}.ping-bad{color:var(--danger)}
+
+@media (max-width:720px){
+ .list thead{display:none}
+ .list,.list tbody,.list tr,.list td{display:block;width:100%}
+ .list tr{padding:9px 12px;border-top:1px solid var(--line2)}
+ .list tbody tr:first-child{border-top:0}
+ .list tbody tr:hover td{background:none}
+ .list td{display:flex;justify-content:space-between;gap:12px;padding:3px 0;border:0;text-align:right;min-width:0}
+ .list td::before{content:attr(data-label);color:var(--muted);font-size:12px;text-align:left;flex:none}
+ .list td.lead{font-size:14.5px;padding-bottom:5px}
+ .list td.lead::before{display:none}
+ .list td.acts{justify-content:flex-end;padding-top:8px;flex-wrap:wrap}
+ .list td.acts::before{display:none}
+ .list td.acts{gap:6px}
+ .list td.acts .btn{flex:1 1 calc(50% - 6px)}
+ .list td.acts .btn+.btn{margin-left:0}
+ .list td>*{min-width:0}
+ .stat.wide{grid-column:auto}
+ .actions-grid{grid-template-columns:1fr}
+ .room-actions{width:100%}
+ .room-actions .btn{flex:1 1 0}
+ .status .who{display:none}
+ .form-row{flex-direction:column;align-items:stretch}
+ .form-row>.grow{flex:none}
+ .tabs{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent);padding-right:28px}
+}
+@media (max-width:420px){.signin form{flex-direction:column}.brand span{display:none}}
+
+/* the GAME button: the game's own primary button, pink, heavy stretched lettering */
+.btn.game{min-height:36px;padding:6px 16px 6px 13px;gap:8px;border-radius:8px;background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font:900 13px/1 'Arial Black',Arial,sans-serif;letter-spacing:.24em;box-shadow:0 0 0 3px #e8afb91f}
+.btn.game:hover{background:#f1c3cb}
+.btn.game svg{width:11px;height:11px;fill:currentColor;flex:none}
+.btn.game span{display:inline-block;transform:scaleY(1.18)}
+
+/* online players */
+.list tr.click{cursor:pointer}
+.list tr.click:hover td{background:#e8afb908}
+.linkish{background:none;border:0;padding:0;color:var(--ink);font-weight:600;cursor:pointer;text-align:left;overflow-wrap:anywhere}
+.linkish:hover{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+.kd{font-variant-numeric:tabular-nums;white-space:nowrap}
+.kd b{color:var(--ink)}
+.toolbar select{width:auto;flex:none}
+
+/* the player sheet */
+.psheet{position:fixed;inset:0;z-index:45;display:grid;place-items:center;padding:16px;background:#0b0e0dcc;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.psheet-card{width:min(760px,100%);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;background:var(--panel);border:1px solid #3a4341;border-radius:14px;box-shadow:0 20px 70px #000a;overflow:hidden}
+.psheet-head{display:flex;align-items:flex-start;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line2)}
+.psheet-head h2{font-size:19px;color:var(--ink);text-transform:none;overflow-wrap:anywhere}
+.psheet-head .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.psheet-head .grow{flex:1;min-width:0}
+.psheet-body{overflow:auto;padding:4px 18px 16px;overscroll-behavior:contain}
+.psheet-body h3{margin:16px 0 8px;color:var(--accent);font-size:13px;font-weight:700}
+.psheet-foot{border-top:1px solid var(--line2);padding:12px 18px max(12px,env(safe-area-inset-bottom));display:grid;gap:10px;background:var(--panel2)}
+.facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 18px;margin:0}
+.facts div{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #2a302f;min-width:0}
+.facts dt{color:var(--muted);font-size:12.5px;flex:none}
+.facts dd{margin:0;text-align:right;min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.tile{background:var(--panel2);border:1px solid var(--line2);border-radius:9px;padding:8px 10px;min-width:0}
+.tile .k{display:block;font-size:11px;color:var(--muted);text-transform:lowercase;letter-spacing:.03em}
+.tile .v{display:block;font-size:20px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.tile .v.small{font-size:14px;line-height:1.6}
+.tile .v.none{color:var(--faint)}
+.hp{height:6px;border-radius:4px;background:#171b1a;border:1px solid #333b39;margin-top:5px;overflow:hidden}
+.hp i{display:block;height:100%;background:var(--accent)}
+.hist{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.hist li{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;padding:7px 10px;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;font-size:13px}
+.hist li .faint{font-size:12px}
+.msg-row{display:flex;gap:8px;align-items:flex-start}
+.msg-row .grow{flex:1;min-width:0}
+.psheet-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+@media (max-width:720px){
+ .psheet{padding:0;place-items:end stretch}
+ .psheet-card{width:100%;max-height:calc(100dvh - 24px);border-radius:16px 16px 0 0;border-bottom:0}
+ .psheet-head{padding:14px 16px 10px}
+ .psheet-body{padding:2px 16px 14px}
+ .psheet-foot{padding:10px 16px max(12px,env(safe-area-inset-bottom))}
+ .msg-row{flex-direction:column;align-items:stretch}
+ .psheet-actions .btn{flex:1 1 0}
+ .facts{grid-template-columns:1fr}
+ .btn.game{padding:6px 12px 6px 10px;letter-spacing:.18em}
+ .toolbar select{flex:1 1 auto}
+}
+
+/* the confirm panel */
+.sheet{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:16px;background:#0b0e0dcc;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.sheet-card{width:min(440px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:var(--panel);border:1px solid #3a4341;border-radius:14px;padding:18px;box-shadow:0 20px 70px #000a}
+.sheet-card.danger{border-color:var(--danger-line)}
+.sheet-card h2{font-size:17px;margin:0 0 6px}
+.sheet-card.danger h2{color:var(--danger)}
+.sheet-card p{margin:0 0 12px;color:#c9d1ce;overflow-wrap:anywhere}
+.sheet-card form{display:grid;gap:12px}
+.sheet-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+@media (max-width:420px){.sheet{place-items:end center}.sheet-actions .btn{flex:1}}
+.keybox{display:flex;gap:8px}
+.keybox input{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+
+/* toasts */
+.toasts{position:fixed;left:50%;bottom:max(16px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:8px;align-items:center;width:min(460px,calc(100% - 32px));pointer-events:none}
+.toast{padding:10px 14px;border-radius:10px;background:#2c3332;border:1px solid #46504d;color:var(--ink);box-shadow:0 8px 30px #0008;font-size:13px;animation:rise .2s ease-out;max-width:100%;overflow-wrap:anywhere}
+.toast.ok{border-color:#4b6f58}
+.toast.bad{border-color:var(--danger-line);background:#35242a}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top" id="top" hidden>
+ <div class="top-in">
+  <div class="bar">
+   <div class="brand">deadstab<span>admin</span></div>
+   <button class="btn game" id="game-btn" type="button" title="Open the game in a new tab with developer tools on"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 0.5 9.5 5 1 9.5z"/></svg><span>GAME</span></button>
+   <div class="status" aria-live="polite"><span class="dot" id="dot"></span><span class="txt"><span class="who" id="who"></span><span id="updated">connecting…</span></span></div>
+   <button class="btn ghost small" id="signout" type="button">sign out</button>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Sections" id="tabs">
+   <button class="tab" role="tab" id="t-overview" data-tab="overview" aria-controls="p-overview">overview</button>
+   <button class="tab" role="tab" id="t-online" data-tab="online" aria-controls="p-online">online<span class="n" id="n-online"></span></button>
+   <button class="tab" role="tab" id="t-rooms" data-tab="rooms" aria-controls="p-rooms">rooms<span class="n" id="n-rooms"></span></button>
+   <button class="tab" role="tab" id="t-players" data-tab="players" aria-controls="p-players">players</button>
+   <button class="tab" role="tab" id="t-bans" data-tab="bans" aria-controls="p-bans">bans<span class="n" id="n-bans"></span></button>
+   <button class="tab" role="tab" id="t-log" data-tab="log" aria-controls="p-log">log</button>
+   <button class="tab" role="tab" id="t-owner" data-tab="owner" aria-controls="p-owner" hidden>owner</button>
+  </nav>
+ </div>
+</header>
+
+<div class="banner" id="maint-banner" hidden>
+ <div class="banner-in" role="status">
+  <strong>maintenance mode is on</strong>
+  <span class="msg">New rooms and joins are refused with: <q id="maint-banner-text"></q> Matches already running carry on.</span>
+  <button class="btn small" type="button" data-act="maint-off">turn off</button>
+ </div>
+</div>
+
+<section class="panel signin" id="signin" hidden>
+ <h1>deadstab admin</h1>
+ <p>Paste your admin key. It is kept for this tab only.</p>
+ <form id="signin-form" autocomplete="off">
+  <input id="key" type="password" placeholder="admin key" aria-label="Admin key" autocomplete="off" spellcheck="false" maxlength="200">
+  <button class="btn primary" type="submit">sign in</button>
+ </form>
+ <p class="err" id="signin-err" role="alert"></p>
+</section>
+
+<main id="app" hidden>
+ <!-- overview -->
+ <section id="p-overview" role="tabpanel" aria-labelledby="t-overview" data-panel="overview">
+  <div class="grid" id="ov-cards"></div>
+  <div class="section-head"><h2>tell players</h2></div>
+  <div class="actions-grid">
+   <div class="panel">
+    <h3>announcement</h3>
+    <p class="help">A message card at the top of every player's screen, in every room (in game, the lobby or the death screen).</p>
+    <form id="announce-form" class="form-row">
+     <div class="grow"><input type="text" id="announce-text" maxlength="140" placeholder="e.g. restarting in 5 minutes for an update" aria-label="Announcement"><div class="count" id="announce-count">0 / 140</div></div>
+     <button class="btn primary" type="submit">send to everyone</button>
+    </form>
+   </div>
+   <div class="panel">
+    <h3>maintenance mode <span id="maint-state"></span></h3>
+    <p class="help">While on, new rooms and joins are refused with this message. Matches already running carry on. Kept across restarts.</p>
+    <form id="maint-form" class="form-row">
+     <div class="grow"><input type="text" id="maint-text" maxlength="140" placeholder="Servers are updating, back in a few minutes." aria-label="Maintenance message"><div class="count" id="maint-count">0 / 140</div></div>
+     <button class="btn" type="submit" id="maint-btn">turn on</button>
+    </form>
+   </div>
+  </div>
+ </section>
+
+ <!-- players online now -->
+ <section id="p-online" role="tabpanel" aria-labelledby="t-online" data-panel="online" hidden>
+  <div class="toolbar">
+   <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="online-q" placeholder="search name, room, map, player id, address" aria-label="Search players online"></label>
+   <select id="online-sort" aria-label="Sort by"><option value="name">sort: name</option><option value="room">sort: room</option><option value="ping">sort: ping</option><option value="kills">sort: kills</option><option value="time">sort: time online</option></select>
+  </div>
+  <div id="online-list"></div>
+ </section>
+
+ <!-- rooms -->
+ <section id="p-rooms" role="tabpanel" aria-labelledby="t-rooms" data-panel="rooms" hidden>
+  <div class="toolbar">
+   <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="rooms-q" placeholder="search code, room, map, player, address" aria-label="Search rooms"></label>
+   <label class="check"><input type="checkbox" id="rooms-empty"> show empty rooms</label>
+  </div>
+  <div class="rooms" id="rooms-list"></div>
+ </section>
+
+ <!-- recent players -->
+ <section id="p-players" role="tabpanel" aria-labelledby="t-players" data-panel="players" hidden>
+  <div class="section-head"><h2>recent players</h2><span class="sub">the last 300 connections since the server started</span></div>
+  <div class="toolbar">
+   <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="recent-q" placeholder="search name, player id, address, room" aria-label="Search recent players"></label>
+   <label class="check"><input type="checkbox" id="recent-here"> only players online now</label>
+  </div>
+  <div id="recent-list"></div>
+ </section>
+
+ <!-- bans -->
+ <section id="p-bans" role="tabpanel" aria-labelledby="t-bans" data-panel="bans" hidden>
+  <div class="panel">
+   <h3>ban by player id or address</h3>
+   <p class="help">For someone who isn't in the lists. A player id is the long code from the players tab; an address is an IP.</p>
+   <form id="ban-form" class="form-row">
+    <label class="field grow">player id or address<input type="text" id="ban-target" maxlength="64" spellcheck="false" autocomplete="off"></label>
+    <label class="field grow">reason (optional)<input type="text" id="ban-reason" maxlength="200" autocomplete="off"></label>
+    <label class="field">how long<select id="ban-duration"><option value="1h">1 hour</option><option value="1d" selected>1 day</option><option value="7d">7 days</option><option value="perm">permanent</option></select></label>
+    <button class="btn danger" type="submit">ban</button>
+   </form>
+  </div>
+  <div class="section-head"><h2>bans</h2><span class="sub" id="bans-sub"></span></div>
+  <div class="toolbar">
+   <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="bans-q" placeholder="search name, player id, address, reason, who" aria-label="Search bans"></label>
+  </div>
+  <div id="bans-list"></div>
+ </section>
+
+ <!-- admin log -->
+ <section id="p-log" role="tabpanel" aria-labelledby="t-log" data-panel="log" hidden>
+  <div class="section-head"><h2>admin activity</h2><span class="sub">the last 200 actions by anyone with a key</span></div>
+  <div class="toolbar">
+   <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="log-q" placeholder="search who, action, target" aria-label="Search the log"></label>
+  </div>
+  <div id="log-list"></div>
+ </section>
+
+ <!-- owner only -->
+ <section id="p-owner" role="tabpanel" aria-labelledby="t-owner" data-panel="owner" hidden>
+  <div class="section-head"><h2>admin keys</h2><span class="sub">People you let in. Each has their own key; removing one stops it at once.</span></div>
+  <div class="panel flush" id="keys-list"></div>
+  <div class="panel" style="margin-top:10px">
+   <form id="key-form" class="form-row">
+    <label class="field grow">new key for (a name: letters, digits, - or _)<input type="text" id="key-name" maxlength="24" autocomplete="off" spellcheck="false" placeholder="sam"></label>
+    <button class="btn primary" type="submit">add key</button>
+   </form>
+  </div>
+
+  <div class="section-head"><h2>developer tools code</h2></div>
+  <div class="panel">
+   <p class="help" id="devcode-status">…</p>
+   <form id="devcode-form" class="form-row">
+    <label class="field grow">new code (4 to 32 letters or digits; never shown again)<input type="password" id="devcode" maxlength="32" autocomplete="new-password" spellcheck="false"></label>
+    <button class="btn primary" type="submit">set code</button>
+   </form>
+  </div>
+
+  <div class="section-head"><h2>server</h2></div>
+  <div class="panel">
+   <h3>restart server</h3>
+   <p class="help">Everyone is told, then disconnected about 3 seconds later; the server comes back by itself within a few seconds. Matches in progress are lost.</p>
+   <button class="btn danger" type="button" data-act="restart">restart server</button>
+  </div>
+ </section>
+</main>
+
+<div class="psheet" id="psheet" hidden><div class="psheet-card" id="psheet-card" role="dialog" aria-modal="true" aria-labelledby="psheet-title"></div></div>
+<div class="sheet" id="sheet" hidden><div class="sheet-card" id="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title"></div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const STORE = 'ds-admin', TABS = ['overview', 'online', 'rooms', 'players', 'bans', 'log', 'owner'];
+// Extra data a tab needs from the server (the rest is in every refresh).
+const WITH = { players: 'recent', log: 'log', owner: 'owner' };
+const POLL = 3000;
+const CLOSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+const COPY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>';
+const DURATIONS = [['1h', '1 hour'], ['1d', '1 day'], ['7d', '7 days'], ['perm', 'permanent']];
+
+let key = '';
+try { key = sessionStorage.getItem(STORE) || ''; } catch {}
+let tab = 'overview';
+try { const saved = sessionStorage.getItem(STORE + '-tab'); if (TABS.includes(saved)) tab = saved; } catch {}
+let state = null, lastOk = 0, problem = '', pollTimer = 0, inflight = null;
+
+// ---------- formatting ----------
+const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
+function bytes(n) {
+ if (!Number.isFinite(n)) return '–';
+ const units = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0;
+ while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
+ return (i === 0 || n >= 100 ? String(Math.round(n)) : n.toFixed(1).replace(/\.0$/, '')) + ' ' + units[i];
+}
+function span(seconds) {
+ seconds = Math.max(0, Math.round(seconds));
+ if (seconds < 60) return seconds + ' s';
+ const m = Math.floor(seconds / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
+ if (d) return d + ' d ' + (h % 24) + ' h';
+ if (h) return h + ' h ' + (m % 60) + ' min';
+ return m + ' min';
+}
+const clockText = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const toMs = t => (typeof t === 'number' ? t : Date.parse(t));
+function ago(t) {
+ const s = (Date.now() - toMs(t)) / 1000;
+ if (!Number.isFinite(s)) return '';
+ if (s < 10) return 'just now';
+ return span(s) + ' ago';
+}
+function when(t) {
+ const d = new Date(toMs(t)); if (isNaN(d)) return '';
+ const today = new Date().toDateString() === d.toDateString();
+ const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+ return today ? time : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
+}
+const fullTime = t => { const d = new Date(toMs(t)); return isNaN(d) ? '' : d.toLocaleString(); };
+const shortId = pid => (pid ? String(pid).slice(0, 8) : '');
+const pingClass = p => (p == null ? 'faint' : p < 90 ? 'ping-ok' : p < 180 ? 'ping-mid' : 'ping-bad');
+const copyBtn = (value, label) => '<button class="icon-btn" type="button" data-act="copy" data-value="' + esc(value) + '" title="Copy ' + esc(label) + '" aria-label="Copy ' + esc(label) + '">' + COPY_ICON + '</button>';
+const idCell = pid => (pid ? '<span class="nowrap"><code title="' + esc(pid) + '">' + esc(shortId(pid)) + '</code>' + copyBtn(pid, 'player id') + '</span>' : '<span class="faint">–</span>');
+const matches = (q, ...fields) => !q || fields.some(f => String(f ?? '').toLowerCase().includes(q));
+function setHTML(el, html) { if (el.__html !== html) { el.__html = html; el.innerHTML = html; } }
+
+// ---------- talking to the server ----------
+class ApiError extends Error { constructor(message, status) { super(message); this.status = status; } }
+async function api(path, body) {
+ let reply;
+ try {
+  reply = await fetch('/admin/api/' + path, { method: body ? 'POST' : 'GET', cache: 'no-store', headers: body ? { authorization: 'Bearer ' + key, 'content-type': 'application/json' } : { authorization: 'Bearer ' + key }, body: body ? JSON.stringify(body) : undefined });
+ } catch { throw new ApiError('Could not reach the server.', 0); }
+ const data = await reply.json().catch(() => ({}));
+ if (!reply.ok) throw new ApiError(data.error || 'Error ' + reply.status, reply.status);
+ return data;
+}
+// A wrong key (401) or a locked-out address (429): stop at once. Polling on
+// with a bad key would burn every try and lock the owner out.
+function authFailed(error) {
+ if (error.status !== 401 && error.status !== 429) return false;
+ signOut(error.status === 429 ? error.message : 'That key was not accepted. Check it and sign in again.');
+ return true;
+}
+async function refresh() {
+ if (!key) return;
+ if (inflight) return inflight;
+ const extra = WITH[tab];
+ inflight = (async () => {
+  try {
+   const next = await api('state' + (extra ? '?with=' + extra : ''));
+   state = next; lastOk = Date.now(); problem = '';
+   render();
+  } catch (error) {
+   if (!authFailed(error)) { problem = error.message; renderStatus(); }
+  } finally {
+   inflight = null;
+   // The tab changed while this was on its way: fetch what the new one needs.
+   if (key && state && WITH[tab] && WITH[tab] !== extra) setTimeout(refresh, 0);
+  }
+ })();
+ return inflight;
+}
+function schedule() {
+ clearTimeout(pollTimer);
+ if (key && !document.hidden) pollTimer = setTimeout(async () => { await refresh(); schedule(); }, POLL);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) clearTimeout(pollTimer); else if (key) refresh().then(schedule); });
+setInterval(renderStatus, 1000);
+
+// ---------- signing in and out ----------
+function showSignin(message = '') {
+ $('top').hidden = true; $('app').hidden = true; $('maint-banner').hidden = true; $('signin').hidden = false;
+ $('signin-err').textContent = message; $('key').value = '';
+ setTimeout(() => $('key').focus(), 0);
+}
+function signOut(message = '') {
+ key = ''; state = null; clearTimeout(pollTimer);
+ try { sessionStorage.removeItem(STORE); } catch {}
+ closeSheet(null);
+ showSignin(message);
+}
+$('signin-form').addEventListener('submit', async event => {
+ event.preventDefault();
+ const typed = $('key').value.trim();
+ if (!typed) return;
+ key = typed; $('signin-err').textContent = 'Checking…';
+ try {
+  state = await api('state' + (WITH[tab] ? '?with=' + WITH[tab] : ''));
+  try { sessionStorage.setItem(STORE, key); } catch {}
+  lastOk = Date.now(); problem = '';
+  $('signin').hidden = true; render(); schedule();
+ } catch (error) {
+  key = '';
+  $('signin-err').textContent = error.status === 401 ? 'Wrong key. (10 wrong tries lock this address out for 10 minutes.)' : error.message;
+ }
+});
+$('signout').addEventListener('click', () => signOut('Signed out.'));
+
+// ---------- tabs ----------
+function selectTab(name, { focus = false } = {}) {
+ if (!TABS.includes(name) || (name === 'owner' && !state?.owner)) name = 'overview';
+ const changed = name !== tab;
+ tab = name;
+ try { sessionStorage.setItem(STORE + '-tab', tab); } catch {}
+ for (const button of document.querySelectorAll('.tab')) {
+  const on = button.dataset.tab === tab;
+  button.setAttribute('aria-selected', String(on)); button.tabIndex = on ? 0 : -1;
+  if (on && focus) button.focus();
+ }
+ for (const panel of document.querySelectorAll('[data-panel]')) panel.hidden = panel.dataset.panel !== tab;
+ render();
+ if (changed) { refresh().then(schedule); }
+}
+$('tabs').addEventListener('click', event => { const b = event.target.closest('.tab'); if (b) selectTab(b.dataset.tab); });
+$('tabs').addEventListener('keydown', event => {
+ const shown = [...document.querySelectorAll('.tab')].filter(b => !b.hidden), at = shown.findIndex(b => b.dataset.tab === tab);
+ let next = null;
+ if (event.key === 'ArrowRight') next = shown[(at + 1) % shown.length];
+ else if (event.key === 'ArrowLeft') next = shown[(at - 1 + shown.length) % shown.length];
+ else if (event.key === 'Home') next = shown[0];
+ else if (event.key === 'End') next = shown[shown.length - 1];
+ if (next) { event.preventDefault(); selectTab(next.dataset.tab, { focus: true }); }
+});
+
+// ---------- rendering ----------
+function renderStatus() {
+ if (!state) return;
+ const age = (Date.now() - lastOk) / 1000, dot = $('dot');
+ $('who').textContent = 'signed in as ' + state.you + ' · ';
+ if (document.hidden) { $('updated').textContent = 'paused'; dot.className = 'dot stale'; return; }
+ if (problem) { $('updated').textContent = problem + ' Retrying…'; dot.className = 'dot off'; return; }
+ $('updated').textContent = 'updated ' + (age < 2 ? 'just now' : Math.floor(age) + ' s ago');
+ dot.className = age > 10 ? 'dot stale' : 'dot';
+}
+
+function render() {
+ if (!state) return;
+ $('top').hidden = false; $('app').hidden = false; $('signin').hidden = true;
+ $('t-owner').hidden = !state.owner;
+ if (tab === 'owner' && !state.owner) { selectTab('overview'); return; }
+ for (const button of document.querySelectorAll('.tab')) { const on = button.dataset.tab === tab; button.setAttribute('aria-selected', String(on)); button.tabIndex = on ? 0 : -1; }
+ for (const panel of document.querySelectorAll('[data-panel]')) panel.hidden = panel.dataset.panel !== tab;
+ const active = state.rooms.filter(r => r.players.length).length;
+ $('n-rooms').textContent = active || ''; $('n-rooms').hidden = !active;
+ const online = onlinePlayers().length;
+ $('n-online').textContent = online || ''; $('n-online').hidden = !online;
+ $('n-bans').textContent = state.bans.length || ''; $('n-bans').hidden = !state.bans.length;
+ const m = state.maintenance || {};
+ $('maint-banner').hidden = !m.on; $('maint-banner-text').textContent = m.text || '';
+ $('maint-state').innerHTML = m.on ? '<span class="tag warn">on</span>' : '<span class="tag">off</span>';
+ $('maint-btn').textContent = m.on ? 'turn off' : 'turn on';
+ $('maint-btn').className = m.on ? 'btn' : 'btn primary';
+ if (document.activeElement !== $('maint-text') && !$('maint-text').dataset.dirty) { $('maint-text').value = m.on ? m.text || '' : ''; countChars('maint'); }
+ renderStatus();
+ if (tab === 'overview') renderOverview();
+ if (tab === 'online') renderOnline();
+ if (tab === 'rooms') renderRooms();
+ if (tab === 'players') renderRecent();
+ if (tab === 'bans') renderBans();
+ if (tab === 'log') renderLog();
+ if (tab === 'owner') renderOwner();
+}
+
+function spark(values, { budget = null, peaks = null, label = '' } = {}) {
+ if (values.length < 2) return '<div class="spark-legend"><span>collecting: a point every 10 s</span></div>';
+ // Scaled to the line (and the tick budget when it is in sight); a peak far
+ // above that is drawn clipped at the top rather than flattening the line.
+ const high = Math.max(1e-6, ...values), usualPeak = peaks ? [...peaks].sort((a, b) => a - b)[Math.floor(peaks.length * .75)] : 0;
+ const top = Math.max(high * 1.3, usualPeak * 1.15, budget && high > budget * .4 ? budget * 1.15 : 0);
+ const w = 300, h = 46, step = w / (values.length - 1);
+ const pts = list => list.map((v, i) => (i * step).toFixed(1) + ',' + (h - (Math.min(v, top) / top) * h).toFixed(1)).join(' ');
+ const line = pts(values);
+ let svg = '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-label="' + esc(label) + '">';
+ svg += '<polygon class="f" points="0,' + h + ' ' + line + ' ' + w + ',' + h + '"/>';
+ if (peaks) svg += '<polyline class="p" points="' + pts(peaks) + '"/>';
+ if (budget && budget < top) { const y = (h - (budget / top) * h).toFixed(1); svg += '<line class="b" x1="0" x2="' + w + '" y1="' + y + '" y2="' + y + '"/>'; }
+ svg += '<polyline class="a" points="' + line + '"/></svg>';
+ const minutes = Math.round((values.length - 1) * 10 / 60);
+ return svg + '<div class="spark-legend"><span>' + (minutes ? minutes + ' min ago' : 'just now') + '</span><span>now</span></div>';
+}
+
+function renderOverview() {
+ const o = state.overview;
+ if (!o) { setHTML($('ov-cards'), '<div class="empty">No numbers yet.</div>'); return; }
+ const tick = 1000 / 60, load = o.load, busy = load.avg > tick * .7;
+ const samples = o.samples || [];
+ const sent = o.sent, used = sent.month / sent.plan, est = sent.estimate;
+ const v = o.version;
+ const cards = [
+  '<div class="stat"><span class="k">players online</span><span class="v">' + o.players + '</span><span class="s">peak today ' + o.peakToday + ' <span class="faint">(UTC day)</span></span>' + spark(samples.map(s => s.players), { label: 'players over the last 15 minutes' }) + '</div>',
+  '<div class="stat"><span class="k">rooms</span><span class="v">' + o.activeRooms + '<small>with players</small></span><span class="s">' + plural(o.rooms, 'room') + ' open in total (listed rooms are always open)</span></div>',
+  '<div class="stat wide"><span class="k">server load</span><span class="v' + (busy ? ' warn' : '') + '">' + load.now.toFixed(2) + '<small>ms a tick now</small></span><span class="s">last minute: avg ' + load.avg.toFixed(2) + ' ms · peak ' + load.peak.toFixed(1) + ' ms · budget ' + tick.toFixed(1) + ' ms' + (busy ? ' · <span class="warn">busy</span>' : '') + '</span>' + spark(samples.map(s => s.avg), { peaks: samples.map(s => s.peak), budget: tick, label: 'tick time over the last 15 minutes' }) + '</div>',
+  '<div class="stat"><span class="k">data sent to players</span><span class="v">' + bytes(sent.total) + '</span><span class="s">since start · now ' + bytes(sent.rate) + '/s</span></div>',
+  '<div class="stat wide"><span class="k">this month (' + esc(sent.monthKey) + ', UTC)</span><span class="v">' + bytes(sent.month) + '<small>of ' + bytes(sent.plan) + '</small></span>' +
+   '<div class="meter' + (est && est > sent.plan ? ' over' : '') + '"><i style="width:' + Math.min(100, used * 100).toFixed(1) + '%"></i>' + (est ? '<b style="left:calc(' + Math.min(100, (est / sent.plan) * 100).toFixed(1) + '% - 1px)" title="estimate for the month"></b>' : '') + '</div>' +
+   '<span class="s">' + (est ? 'on pace for about <b class="' + (est > sent.plan ? 'warn' : '') + '">' + bytes(est) + '</b> by the end of the month (yellow mark)' : 'an estimate shows after the first hour of counting') + ' · counted since ' + esc(when(sent.monthSince)) + '</span></div>',
+  '<div class="stat"><span class="k">uptime</span><span class="v">' + span(o.uptime) + '</span><span class="s">memory ' + bytes(o.rss) + ' (RSS)</span></div>',
+  '<div class="stat wide"><span class="k">version</span><span class="v" style="font-size:17px">' + (v?.commit ? '<code>' + esc(v.commit) + '</code> ' : '') + esc(v?.subject || 'unknown') + '</span><span class="s">' + (v?.date ? esc(fullTime(v.date)) + ' · ' + esc(ago(v.date)) : 'commit date unknown') + '</span></div>',
+ ];
+ setHTML($('ov-cards'), cards.join(''));
+}
+
+const kd = p => (p.kills == null ? '<span class="faint">–</span>' : '<span><b>' + p.kills + '</b> / ' + p.deaths + '</span>');
+// Everyone in a room now, across every room (the online tab).
+function onlinePlayers() {
+ if (!state) return [];
+ return state.rooms.flatMap(r => r.players.map(p => ({ ...p, room: r })));
+}
+function renderOnline() {
+ const q = $('online-q').value.trim().toLowerCase(), sort = $('online-sort').value;
+ const all = onlinePlayers();
+ const list = all.filter(p => matches(q, p.name, p.pid, p.ip, p.room.code, p.room.name, p.room.mapName, p.room.modeName));
+ const by = {
+  name: (a, b) => a.name.localeCompare(b.name),
+  room: (a, b) => String(a.room.name || a.room.code).localeCompare(String(b.room.name || b.room.code)) || a.name.localeCompare(b.name),
+  ping: (a, b) => (a.ping ?? 1e9) - (b.ping ?? 1e9) || a.name.localeCompare(b.name),
+  kills: (a, b) => (b.kills ?? -1) - (a.kills ?? -1) || (a.deaths ?? 0) - (b.deaths ?? 0) || a.name.localeCompare(b.name),
+  time: (a, b) => (a.connectedAt ?? Infinity) - (b.connectedAt ?? Infinity),
+ }[sort] || ((a, b) => a.name.localeCompare(b.name));
+ list.sort(by);
+ if (!list.length) { setHTML($('online-list'), '<div class="empty">' + (all.length ? 'Nobody matches.' : 'Nobody is playing right now.') + '</div>'); return; }
+ const rows = list.map(p => '<tr class="click" data-act="player" data-id="' + esc(p.id) + '" data-pid="' + esc(p.pid) + '"><td class="lead name" data-label="name"><button class="linkish" type="button" data-act="player" data-id="' + esc(p.id) + '" data-pid="' + esc(p.pid) + '">' + esc(p.name) + '</button>' + (p.lead ? ' <span class="tag pink">leader</span>' : '') + (p.dead && p.room.phase === 'playing' ? ' <span class="tag red">dead</span>' : '') + '</td>' +
+  '<td data-label="room"><span><code>' + esc(p.room.code) + '</code> <span class="muted">' + esc(p.room.mapName) + ' · ' + esc(p.room.modeName || p.room.mode) + '</span></span></td>' +
+  '<td data-label="phase">' + esc(p.room.phase) + '</td>' +
+  '<td data-label="k / d" class="kd">' + kd(p) + '</td>' +
+  '<td data-label="ping"><span class="' + pingClass(p.ping) + '">' + (p.ping == null ? '–' : p.ping + ' ms') + '</span></td>' +
+  '<td data-label="online for">' + (p.connectedAt ? span((Date.now() - p.connectedAt) / 1000) : span(p.since)) + '</td>' +
+  '<td class="acts"><button class="btn small" type="button" data-act="whisper" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">message</button><button class="btn small primary" type="button" data-act="player" data-id="' + esc(p.id) + '" data-pid="' + esc(p.pid) + '">stats</button></td></tr>').join('');
+ setHTML($('online-list'), '<div class="panel flush"><table class="list"><thead><tr><th>name</th><th>room</th><th>phase</th><th>k / d</th><th>ping</th><th>online for</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>');
+}
+
+function roomClock(r) {
+ if (r.phase === 'lobby') return r.startsIn != null ? 'starts in ' + r.startsIn + ' s' : '';
+ if (r.phase === 'results') return r.left ? 'next in ' + clockText(r.left) : '';
+ const parts = [];
+ if (r.round) parts.push('round ' + r.round + (r.rounds ? ' of ' + r.rounds : ''));
+ if (r.timed && r.left) parts.push(clockText(r.left) + ' left');
+ return parts.join(' · ');
+}
+function renderRooms() {
+ const q = $('rooms-q').value.trim().toLowerCase(), showEmpty = $('rooms-empty').checked;
+ const rooms = state.rooms.filter(r => (showEmpty || r.players.length || q) && matches(q, r.code, r.name, r.mapName, r.map, r.modeName, ...r.players.flatMap(p => [p.name, p.ip, p.pid])))
+  .sort((a, b) => b.players.length - a.players.length || (a.public === b.public ? 0 : a.public ? 1 : -1) || String(a.name || '').localeCompare(String(b.name || '')));
+ if (!rooms.length) {
+  const total = state.rooms.length;
+  setHTML($('rooms-list'), '<div class="empty">' + (q ? 'No room matches “' + esc(q) + '”.' : 'Nobody is playing right now. ' + plural(total, 'room') + ' open and waiting; tick “show empty rooms” to see them.') + '</div>');
+  return;
+ }
+ setHTML($('rooms-list'), rooms.map(r => {
+  const clock = roomClock(r), title = r.name || (r.public ? 'listed room' : 'player-made room');
+  const head = '<div class="room-head"><div class="room-title"><h3>' + esc(title) + ' <span class="room-code">' + esc(r.code) + copyBtn(r.code, 'room code') + '</span>' + (r.public ? '<span class="tag">listed</span>' : '<span class="tag pink">player-made</span>') + '</h3>' +
+   '<div class="room-meta"><span>' + esc(r.mapName) + '</span><span>' + esc(r.modeName || r.mode) + '</span><span><b>' + esc(r.phase) + '</b>' + (clock ? ' · ' + esc(clock) : '') + '</span><span><b>' + r.players.length + '</b>/' + r.max + ' players</span><span>' + plural(r.robots, 'bot') + '</span></div></div>' +
+   '<div class="room-actions"><button class="btn small" type="button" data-act="room-message" data-code="' + esc(r.code) + '" data-players="' + r.players.length + '"' + (r.players.length ? '' : ' disabled') + '>message room</button>' +
+   '<button class="btn small danger" type="button" data-act="room-close" data-code="' + esc(r.code) + '" data-listed="' + (r.public ? 1 : 0) + '" data-name="' + esc(title) + '"' + (r.public && !r.players.length ? ' disabled' : '') + '>' + (r.public ? 'reset room' : 'close room') + '</button></div></div>';
+  if (!r.players.length) return '<article class="room idle">' + head + '<div class="none">no players</div></article>';
+  const rows = r.players.map(p => '<tr><td class="lead name" data-label="name"><button class="linkish" type="button" data-act="player" data-id="' + esc(p.id) + '" data-pid="' + esc(p.pid) + '" title="Player details">' + esc(p.name) + '</button>' + (p.lead ? ' <span class="tag pink">leader</span>' : '') + '</td>' +
+   '<td data-label="ping"><span class="' + pingClass(p.ping) + '">' + (p.ping == null ? '–' : p.ping + ' ms') + '</span></td>' +
+   '<td data-label="in room">' + span(p.since) + '</td>' +
+   '<td data-label="player id">' + idCell(p.pid) + '</td>' +
+   '<td data-label="address" class="wrap"><code>' + esc(p.ip) + '</code></td>' +
+   '<td data-label="k / d" class="kd">' + kd(p) + '</td>' +
+   '<td class="acts"><button class="btn small" type="button" data-act="player" data-id="' + esc(p.id) + '" data-pid="' + esc(p.pid) + '">stats</button><button class="btn small" type="button" data-act="whisper" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">message</button><button class="btn small" type="button" data-act="kick" data-code="' + esc(r.code) + '" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">kick</button><button class="btn small danger" type="button" data-act="ban-live" data-code="' + esc(r.code) + '" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">ban</button></td></tr>').join('');
+  return '<article class="room">' + head + '<table class="list"><thead><tr><th>name</th><th>ping</th><th>in room</th><th>player id</th><th>address</th><th>k / d</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></article>';
+ }).join(''));
+}
+
+const banned = (pid, ip) => state.bans.some(b => (b.pid && b.pid === pid) || (b.ip && b.ip === ip));
+function renderRecent() {
+ if (!state.recent) { setHTML($('recent-list'), '<div class="empty">Loading…</div>'); return; }
+ const q = $('recent-q').value.trim().toLowerCase(), hereOnly = $('recent-here').checked;
+ const list = state.recent.filter(e => (!hereOnly || !e.left) && matches(q, e.name, e.pid, e.ip, e.room, e.how));
+ if (!list.length) { setHTML($('recent-list'), '<div class="empty">' + (state.recent.length ? 'Nobody matches.' : 'Nobody has connected since the server started.') + '</div>'); return; }
+ const rows = list.map(e => '<tr><td class="lead name" data-label="name">' + (e.name ? esc(e.name) : '<span class="faint">(no name yet)</span>') + '</td>' +
+  '<td data-label="joined" class="nowrap" title="' + esc(fullTime(e.at)) + '">' + esc(when(e.at)) + '</td>' +
+  '<td data-label="left" class="nowrap">' + (e.left ? '<span title="' + esc(fullTime(e.left)) + '">' + esc(when(e.left)) + '</span>' : '<span class="tag ok">online</span>') + '</td>' +
+  '<td data-label="room">' + (e.room ? '<code>' + esc(e.room) + '</code>' : '<span class="faint">–</span>') + '</td>' +
+  '<td data-label="player id">' + idCell(e.pid) + '</td>' +
+  '<td data-label="address" class="wrap"><code>' + esc(e.ip) + '</code></td>' +
+  '<td data-label="how it ended" class="wrap' + (/^refused|banned|kicked/.test(e.how) ? ' muted' : '') + '">' + esc(e.how || (e.left ? 'left' : '')) + '</td>' +
+  '<td class="acts">' + (banned(e.pid, e.ip) ? '<span class="tag red">banned</span>' : '<button class="btn small danger" type="button" data-act="ban-recent" data-key="' + esc(e.key) + '" data-name="' + esc(e.name || shortId(e.pid)) + '">ban</button>') + '</td></tr>').join('');
+ setHTML($('recent-list'), '<div class="panel flush"><table class="list"><thead><tr><th>name</th><th>joined</th><th>left</th><th>room</th><th>player id</th><th>address</th><th>how it ended</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>');
+}
+
+function expiry(b) {
+ if (!b.until) return '<span class="tag red">permanent</span>';
+ const left = (toMs(b.until) - Date.now()) / 1000;
+ return '<span title="' + esc(fullTime(b.until)) + '">' + (left > 0 ? span(left) + ' left' : 'ending') + '</span>';
+}
+function renderBans() {
+ const q = $('bans-q').value.trim().toLowerCase();
+ $('bans-sub').textContent = state.bans.length ? plural(state.bans.length, 'ban') + ' in force' : '';
+ const list = [...state.bans].reverse().filter(b => matches(q, b.name, b.pid, b.ip, b.reason, b.by));
+ if (!list.length) { setHTML($('bans-list'), '<div class="empty">' + (state.bans.length ? 'No ban matches.' : 'Nobody is banned.') + '</div>'); return; }
+ const rows = list.map(b => '<tr><td class="lead name" data-label="name">' + (b.name ? esc(b.name) : '<span class="faint">(no name)</span>') + '</td>' +
+  '<td data-label="player id">' + idCell(b.pid) + '</td>' +
+  '<td data-label="address" class="wrap">' + (b.ip ? '<code>' + esc(b.ip) + '</code>' : '<span class="faint">–</span>') + '</td>' +
+  '<td data-label="reason" class="wrap">' + (b.reason ? esc(b.reason) : '<span class="faint">–</span>') + '</td>' +
+  '<td data-label="by">' + esc(b.by || '?') + '</td>' +
+  '<td data-label="when" class="nowrap" title="' + esc(fullTime(b.at)) + '">' + esc(when(b.at)) + '</td>' +
+  '<td data-label="expires" class="nowrap">' + expiry(b) + '</td>' +
+  '<td class="acts"><button class="btn small" type="button" data-act="unban" data-key="' + esc(b.key) + '" data-name="' + esc(b.name || shortId(b.pid) || b.ip) + '">unban</button></td></tr>').join('');
+ setHTML($('bans-list'), '<div class="panel flush"><table class="list"><thead><tr><th>name</th><th>player id</th><th>address</th><th>reason</th><th>by</th><th>when</th><th>expires</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>');
+}
+
+function renderLog() {
+ if (!state.log) { setHTML($('log-list'), '<div class="empty">Loading…</div>'); return; }
+ const q = $('log-q').value.trim().toLowerCase();
+ const list = state.log.filter(e => matches(q, e.who, e.what, e.target));
+ if (!list.length) { setHTML($('log-list'), '<div class="empty">' + (state.log.length ? 'Nothing matches.' : 'No admin actions yet.') + '</div>'); return; }
+ const rows = list.map(e => '<tr><td data-label="when" class="nowrap" title="' + esc(fullTime(e.at)) + '">' + esc(when(e.at)) + ' <span class="faint">' + esc(ago(e.at)) + '</span></td>' +
+  '<td data-label="who">' + esc(e.who) + '</td><td data-label="did" class="name">' + esc(e.what) + '</td><td data-label="target" class="wrap">' + (e.target ? esc(e.target) : '<span class="faint">–</span>') + '</td></tr>').join('');
+ setHTML($('log-list'), '<div class="panel flush"><table class="list"><thead><tr><th>when</th><th>who</th><th>did</th><th>target</th></tr></thead><tbody>' + rows + '</tbody></table></div>');
+}
+
+function renderOwner() {
+ if (!state.keys) { setHTML($('keys-list'), '<div class="empty">Loading…</div>'); return; }
+ setHTML($('keys-list'), state.keys.length ? '<table class="list"><thead><tr><th>name</th><th>added</th><th></th></tr></thead><tbody>' + state.keys.map(k => '<tr><td class="lead name" data-label="name">' + esc(k.name) + '</td><td data-label="added" title="' + esc(fullTime(k.added)) + '">' + esc(k.added ? when(k.added) : '?') + '</td><td class="acts"><button class="btn small danger" type="button" data-act="key-remove" data-name="' + esc(k.name) + '">remove</button></td></tr>').join('') + '</tbody></table>'
+  : '<div class="empty" style="border:0">Only you (the owner key) can sign in. Add a key to let someone help.</div>');
+ const d = state.devcode || {};
+ $('devcode-status').innerHTML = d.set ? 'Set on <b>' + esc(fullTime(d.setAt)) + '</b>' + (d.setBy ? ' by ' + esc(d.setBy) : '') + '. Setting a new one replaces it.' : '<span class="tag warn">not set</span> The developer tools can\'t be unlocked until you set a code.';
+}
+
+// ---------- the confirm panel ----------
+let sheetDone = null, sheetReturn = null;
+function fieldHTML(f) {
+ if (f.type === 'select') return '<label class="field">' + esc(f.label) + '<select name="' + esc(f.name) + '">' + f.options.map(([v, l]) => '<option value="' + esc(v) + '"' + (v === f.value ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select></label>';
+ return '<label class="field">' + esc(f.label) + '<input type="text" name="' + esc(f.name) + '" maxlength="' + (f.max || 140) + '" placeholder="' + esc(f.placeholder || '') + '" autocomplete="off"' + (f.required ? ' required' : '') + '>' + (f.count ? '<span class="count" data-count="' + esc(f.name) + '">0 / ' + (f.max || 140) + '</span>' : '') + '</label>';
+}
+// Resolves to the form's values, or null when cancelled.
+function ask({ title, html = '', fields = [], ok = 'confirm', danger = false, cancel = 'cancel' }) {
+ closeSheet(null);
+ return new Promise(resolve => {
+  sheetDone = resolve; sheetReturn = document.activeElement;
+  const card = $('sheet-card');
+  card.className = 'sheet-card' + (danger ? ' danger' : '');
+  card.innerHTML = '<h2 id="sheet-title">' + esc(title) + '</h2>' + (html ? '<p>' + html + '</p>' : '') + '<form id="sheet-form" novalidate>' + fields.map(fieldHTML).join('') +
+   '<div class="sheet-actions">' + (cancel ? '<button type="button" class="btn ghost" data-sheet="cancel">' + esc(cancel) + '</button>' : '') + '<button type="submit" class="btn ' + (danger ? 'danger solid' : 'primary') + '">' + esc(ok) + '</button></div></form>';
+  $('sheet').hidden = false;
+  const form = $('sheet-form');
+  form.addEventListener('input', event => { const c = form.querySelector('[data-count="' + event.target.name + '"]'); if (c) c.textContent = event.target.value.length + ' / ' + event.target.maxLength; });
+  form.addEventListener('submit', event => {
+   event.preventDefault();
+   const values = {};
+   for (const el of form.elements) if (el.name) values[el.name] = el.value.trim();
+   const missing = fields.find(f => f.required && !values[f.name]);
+   if (missing) { form.elements[missing.name].focus(); return; }
+   closeSheet(values);
+  });
+  (form.querySelector('input,select') || form.querySelector('button[type=submit]')).focus();
+ });
+}
+function closeSheet(value) {
+ if (!sheetDone) return;
+ const done = sheetDone; sheetDone = null;
+ $('sheet').hidden = true; $('sheet-card').innerHTML = '';
+ if (sheetReturn && document.contains(sheetReturn)) sheetReturn.focus();
+ done(value);
+}
+$('sheet').addEventListener('click', event => { if (event.target === $('sheet') || event.target.closest('[data-sheet=cancel]')) closeSheet(null); });
+document.addEventListener('keydown', event => {
+ if (!sheetDone) { if (event.key === 'Escape' && !$('psheet').hidden) { event.preventDefault(); closePlayer(); } return; }
+ if (event.key === 'Escape') { event.preventDefault(); closeSheet(null); return; }
+ // Keep Tab inside the panel.
+ if (event.key === 'Tab') {
+  const items = [...$('sheet-card').querySelectorAll('button,input,select')].filter(el => !el.disabled);
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+ }
+});
+
+// ---------- feedback ----------
+function toast(text, kind = 'ok') {
+ const el = document.createElement('div');
+ el.className = 'toast ' + kind; el.textContent = text;
+ $('toasts').append(el);
+ setTimeout(() => el.remove(), kind === 'bad' ? 5000 : 3200);
+ while ($('toasts').children.length > 4) $('toasts').firstChild.remove();
+}
+async function copy(text) {
+ try { await navigator.clipboard.writeText(text); }
+ catch {
+  const area = document.createElement('textarea'); area.value = text; area.style.position = 'fixed'; area.style.opacity = '0';
+  document.body.append(area); area.select();
+  try { document.execCommand('copy'); } catch {}
+  area.remove();
+ }
+ toast('Copied.');
+}
+// Runs an API call with feedback; a refused key signs out.
+async function run(path, body, success) {
+ try {
+  const result = await api(path, body);
+  if (success) toast(typeof success === 'function' ? success(result) : success);
+  await refresh();
+  return result;
+ } catch (error) {
+  if (!authFailed(error)) toast(error.message, 'bad');
+  return null;
+ }
+}
+
+const banFields = [{ name: 'duration', label: 'how long', type: 'select', value: '1d', options: DURATIONS }, { name: 'reason', label: 'reason (optional, only admins see it)', max: 200 }];
+const durationName = v => (DURATIONS.find(d => d[0] === v) || [, v])[1];
+
+// ---------- actions ----------
+async function kickPlayer(d) {
+ if (!await ask({ title: 'kick ' + d.name + '?', html: 'Out of room <b>' + esc(d.code) + '</b>. They can\'t come back to this room, but can play in others.', ok: 'kick', danger: true })) return;
+ run('kick', { code: d.code, id: d.id }, 'Kicked ' + d.name + '.');
+}
+async function banPlayer(d, how) {
+ const v = await ask({ title: 'ban ' + d.name + '?', html: 'Bans their player id <i>and</i> their address from every room' + (how === 'ban-live' ? ', and removes them now' : '') + '. Others on the same network (a school, say) are kept out too.', fields: banFields, ok: 'ban', danger: true });
+ if (!v) return;
+ const body = how === 'ban-live' ? { code: d.code, id: d.id } : { recent: d.key };
+ run('ban', { ...body, duration: v.duration, reason: v.reason }, 'Banned ' + d.name + ' (' + durationName(v.duration) + ').');
+}
+document.addEventListener('click', async event => {
+ const b = event.target.closest('[data-act]');
+ if (!b || b.disabled) return;
+ const d = b.dataset;
+ switch (d.act) {
+  case 'copy': copy(d.value); break;
+  case 'player': openPlayer(d.id, d.pid); break;
+  case 'player-close': closePlayer(); break;
+  case 'whisper': {
+   const v = await ask({ title: 'message ' + d.name, html: 'A private message card on <b>' + esc(d.name) + '</b>\'s screen only.', fields: [{ name: 'text', label: 'message', max: 140, required: true, count: true }], ok: 'send' });
+   if (!v) return;
+   run('whisper', { id: d.id, text: v.text }, r => 'Sent to ' + r.name + '.'); break;
+  }
+  // (The player sheet's KICK and BAN: the rooms tab's, with its room and id.)
+  case 'sheet-kick': kickPlayer(d); break;
+  case 'sheet-ban': banPlayer(d, 'ban-live'); break;
+  case 'kick': kickPlayer(d); break;
+  case 'ban-live': case 'ban-recent': banPlayer(d, d.act); break;
+  case 'unban': run('unban', { key: d.key }, 'Unbanned ' + d.name + '.'); break;
+  case 'room-message': {
+   const v = await ask({ title: 'message room ' + d.code, html: 'A message card on the screen of everyone in this room (' + plural(Number(d.players) || 0, 'player') + ').', fields: [{ name: 'text', label: 'message', max: 140, required: true, count: true }], ok: 'send' });
+   if (!v) return;
+   run('message', { code: d.code, text: v.text }, r => 'Sent to ' + plural(r.players, 'player') + '.'); break;
+  }
+  case 'room-close': {
+   const listed = d.listed === '1';
+   const ok = await ask({ title: (listed ? 'reset ' : 'close ') + d.name + '?', html: listed ? 'Everyone in it is told and disconnected, and the room starts over empty. It stays on the list (listed rooms are always open).' : 'Everyone in it is told and disconnected, and the room and its code are gone.', ok: listed ? 'reset room' : 'close room', danger: true });
+   if (!ok) return;
+   run('close', { code: d.code }, r => (r.listed ? 'Reset' : 'Closed') + ' room ' + d.code + ' (' + plural(r.players, 'player') + ' disconnected).'); break;
+  }
+  case 'maint-off': run('maintenance', { on: false }, 'Maintenance mode is off. Players can join again.'); break;
+  case 'key-remove': {
+   if (!await ask({ title: 'remove ' + d.name + '\'s key?', html: 'Their key stops working at once. You can add a new one later.', ok: 'remove key', danger: true })) return;
+   run('keys/remove', { name: d.name }, 'Removed ' + d.name + '\'s key.'); break;
+  }
+  case 'restart': {
+   if (!await ask({ title: 'restart the server?', html: 'Every player (' + (state?.overview?.players ?? 0) + ' now) is told, then disconnected in about 3 seconds. Matches in progress are lost. The server comes back by itself.', ok: 'restart now', danger: true })) return;
+   const r = await run('restart', {}, 'Restarting. The page reconnects by itself.');
+   if (r) { problem = 'The server is restarting.'; renderStatus(); }
+   break;
+  }
+ }
+});
+
+// ---------- forms ----------
+function countChars(which) { $(which + '-count').textContent = $(which + '-text').value.length + ' / 140'; }
+$('announce-text').addEventListener('input', () => countChars('announce'));
+$('maint-text').addEventListener('input', () => { $('maint-text').dataset.dirty = '1'; countChars('maint'); });
+$('announce-form').addEventListener('submit', async event => {
+ event.preventDefault();
+ const text = $('announce-text').value.trim();
+ if (!text) { $('announce-text').focus(); return; }
+ const v = await ask({ title: 'send to everyone?', html: '“' + esc(text) + '” to ' + plural(state?.overview?.players ?? 0, 'player') + ' online.', ok: 'send' });
+ if (!v) return;
+ const r = await run('announce', { text }, r => 'Sent to ' + plural(r.players, 'player') + '.');
+ if (r) { $('announce-text').value = ''; countChars('announce'); }
+});
+$('maint-form').addEventListener('submit', async event => {
+ event.preventDefault();
+ const on = !state?.maintenance?.on, text = $('maint-text').value.trim();
+ if (on && !await ask({ title: 'turn maintenance mode on?', html: 'New rooms and joins are refused with: “' + esc(text || 'Servers are updating, back in a few minutes.') + '” Matches already running carry on.', ok: 'turn on' })) return;
+ const r = await run('maintenance', { on, text }, on ? 'Maintenance mode is on.' : 'Maintenance mode is off. Players can join again.');
+ if (r) delete $('maint-text').dataset.dirty;
+});
+$('ban-form').addEventListener('submit', async event => {
+ event.preventDefault();
+ const target = $('ban-target').value.trim();
+ if (!target) { $('ban-target').focus(); return; }
+ const duration = $('ban-duration').value, reason = $('ban-reason').value.trim();
+ if (!await ask({ title: 'ban ' + target + '?', html: durationName(duration) + '. Anyone connected with it is removed now.', ok: 'ban', danger: true })) return;
+ const r = await run('ban', { target, duration, reason }, r => 'Banned' + (r.kicked ? ' (' + plural(r.kicked, 'player') + ' removed)' : '') + '.');
+ if (r) { $('ban-target').value = ''; $('ban-reason').value = ''; }
+});
+$('key-form').addEventListener('submit', async event => {
+ event.preventDefault();
+ const name = $('key-name').value.trim();
+ if (!name) { $('key-name').focus(); return; }
+ const r = await run('keys/add', { name });
+ if (!r) return;
+ $('key-name').value = '';
+ const shown = ask({ title: 'key for ' + r.name, html: 'Shown only now. Send it to them privately (a direct message, not a group). They paste it on this page.<span class="keybox" style="margin-top:12px"><input type="text" readonly value="' + esc(r.key) + '" aria-label="New key"><button type="button" class="btn" data-act="copy" data-value="' + esc(r.key) + '">copy</button></span>', ok: 'done', cancel: '' });
+ $('sheet-card').querySelector('.keybox input').select();
+ await shown;
+});
+$('devcode-form').addEventListener('submit', async event => {
+ event.preventDefault();
+ const code = $('devcode').value.trim();
+ if (!/^[A-Za-z0-9]{4,32}$/.test(code)) { toast('Use 4 to 32 letters or digits.', 'bad'); $('devcode').focus(); return; }
+ if (state?.devcode?.set && !await ask({ title: 'replace the developer tools code?', html: 'The old code stops working at once.', ok: 'replace' })) return;
+ const r = await run('devcode', { code }, 'Developer tools code set.');
+ $('devcode').value = '';
+ if (r) refresh();
+});
+for (const id of ['online-q', 'online-sort', 'rooms-q', 'rooms-empty', 'recent-q', 'recent-here', 'bans-q', 'log-q']) $(id).addEventListener('input', render);
+
+// ---------- GAME: the game in a new tab, developer tools on ----------
+// The server makes a one-time link (good for a minute); the tab is opened at
+// once (before the request, so no popup blocker stops it) and sent there.
+$('game-btn').addEventListener('click', async () => {
+ const button = $('game-btn');
+ let win = null;
+ try { win = window.open('about:blank', '_blank'); } catch {}
+ button.disabled = true;
+ try {
+  const r = await api('devticket', {});
+  if (win && !win.closed) { try { win.opener = null; } catch {} win.location.replace(r.url); toast('Opened the game with developer tools.'); }
+  else {
+   await ask({ title: 'open the game', html: 'Your browser kept the new tab from opening. This link works once, for a minute.<span class="keybox" style="margin-top:12px"><a class="btn primary" href="' + esc(r.url) + '" target="_blank" rel="noopener noreferrer" data-sheet="cancel">open the game</a></span>', ok: 'close', cancel: '' });
+  }
+ } catch (error) {
+  try { win?.close(); } catch {}
+  if (!authFailed(error)) toast(error.message, 'bad');
+ } finally { button.disabled = false; }
+});
+
+// ---------- the player sheet ----------
+let sheetPlayer = null, sheetTimer = 0, sheetData = null;
+const dash = '<span class="faint">—</span>';
+const val = (v, unit = '') => (v == null ? dash : esc(v) + unit);
+function fact(k, v) { return '<div><dt>' + esc(k) + '</dt><dd>' + v + '</dd></div>'; }
+function tileHTML(k, v, small = false, extra = '') { const none = v == null || v === dash; return '<div class="tile"><span class="k">' + esc(k) + '</span><span class="v' + (small ? ' small' : '') + (none ? ' none' : '') + '">' + (none ? '—' : v) + '</span>' + extra + '</div>'; }
+async function openPlayer(id, pid) {
+ sheetPlayer = { id: id || '', pid: pid || '' }; sheetData = null;
+ $('psheet').hidden = false;
+ setHTML($('psheet-card'), '<div class="psheet-head"><div class="grow"><h2 id="psheet-title">loading…</h2></div><button class="icon-btn" type="button" data-act="player-close" aria-label="Close">' + CLOSE_ICON + '</button></div><div class="psheet-body"><div class="empty" style="margin-top:12px">Loading…</div></div>');
+ await loadPlayer();
+}
+function closePlayer() { sheetPlayer = null; sheetData = null; clearTimeout(sheetTimer); $('psheet').hidden = true; $('psheet-card').innerHTML = ''; $('psheet-card').__html = ''; }
+async function loadPlayer() {
+ clearTimeout(sheetTimer);
+ const want = sheetPlayer; if (!want) return;
+ try {
+  const data = await api('player?id=' + encodeURIComponent(want.id) + '&pid=' + encodeURIComponent(want.pid));
+  if (sheetPlayer !== want) return;
+  sheetData = data; renderPlayer();
+ } catch (error) {
+  if (authFailed(error) || sheetPlayer !== want) return;
+  if (!sheetData) setHTML($('psheet-card'), '<div class="psheet-head"><div class="grow"><h2 id="psheet-title">player</h2></div><button class="icon-btn" type="button" data-act="player-close" aria-label="Close">' + CLOSE_ICON + '</button></div><div class="psheet-body"><div class="empty" style="margin-top:12px">' + esc(error.message) + '</div></div>');
+ }
+ if (sheetPlayer === want && !document.hidden) sheetTimer = setTimeout(loadPlayer, POLL);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && sheetPlayer) loadPlayer(); });
+$('psheet').addEventListener('click', event => { if (event.target === $('psheet')) closePlayer(); });
+function renderPlayer() {
+ const p = sheetData; if (!p) return;
+ const room = p.room, seat = p.seat, c = p.connection, all = p.player;
+ const live = p.online && room && !room.stale;
+ const status = !p.online ? '<span class="tag">left</span>' : !seat ? '<span class="tag">joining</span>' : seat.bench ? '<span class="tag warn">on the bench</span>' : seat.picking ? '<span class="tag">picking a weapon</span>' : seat.alive ? '<span class="tag ok">alive</span>' : seat.dead ? '<span class="tag red">dead' + (seat.respawnIn != null ? ' · back in ' + Math.ceil(seat.respawnIn) + ' s' : '') + '</span>' : '<span class="tag">waiting</span>';
+ const head = '<div class="psheet-head"><div class="grow"><h2 id="psheet-title">' + esc(p.name || '(no name yet)') + '</h2><div class="tags">' + (p.online ? '<span class="tag ok">online</span>' : '') + (room?.leader ? '<span class="tag pink">leader</span>' : '') + (live ? status : '') + (p.bans.length ? '<span class="tag red">banned</span>' : '') + '</div></div><button class="icon-btn" type="button" data-act="player-close" aria-label="Close">' + CLOSE_ICON + '</button></div>';
+ let body = '<h3>player</h3><dl class="facts">' +
+  fact('player id', p.pid ? '<code title="' + esc(p.pid) + '">' + esc(shortId(p.pid)) + '…</code>' + copyBtn(p.pid, 'player id') : dash) +
+  fact('address', p.ip ? '<code>' + esc(p.ip) + '</code>' + copyBtn(p.ip, 'address') : dash) +
+  fact('connected', p.connectedAt ? '<span title="' + esc(fullTime(p.connectedAt)) + '">' + esc(when(p.connectedAt)) + '</span> · ' + span((Date.now() - p.connectedAt) / 1000) : dash) +
+  fact('ping', p.ping == null ? dash : '<span class="' + pingClass(p.ping) + '">' + p.ping + ' ms</span>' + (p.pingAvg != null ? ' <span class="muted">· avg ' + p.pingAvg + ' ms</span>' : '')) +
+  (room ? fact('room', '<code>' + esc(room.code) + '</code>' + copyBtn(room.code, 'room code') + ' ' + esc(room.name || (room.public ? 'listed room' : 'player-made room'))) +
+   fact('map · mode', esc(room.mapName) + ' · ' + esc(room.modeName)) +
+   fact('phase', esc(room.phase) + (room.round ? ' · round ' + room.round + (room.rounds ? ' of ' + room.rounds : '') : '') + (room.left != null && room.phase !== 'lobby' ? ' · ' + clockText(room.left) + ' left' : '')) +
+   fact('in this room', span(room.inRoom)) : fact('room', dash)) +
+  fact('team', seat?.team ? esc(seat.team) : dash) +
+  '</dl>';
+ if (live) {
+  const hp = seat && seat.hp != null && seat.maxHp ? '<div class="hp"><i style="width:' + Math.max(0, Math.min(100, seat.hp / seat.maxHp * 100)).toFixed(0) + '%"></i></div>' : '';
+  body += '<h3>this match' + (room.phase === 'lobby' ? ' <span class="faint" style="font-weight:400">(in the lobby: the numbers start with the round)</span>' : '') + '</h3><div class="tiles">' +
+   tileHTML('kills', seat?.kills) + tileHTML('deaths', seat?.deaths) + tileHTML('assists', null) +
+   tileHTML('damage dealt', seat?.dealt) + tileHTML('damage taken', seat?.taken) + tileHTML('accuracy', null) +
+   tileHTML('weapon', seat?.weapon ? esc(seat.weapon) : null, true) + tileHTML('health', seat?.hp != null ? seat.hp + ' / ' + seat.maxHp : null, true, hp) +
+   tileHTML('status', seat ? (seat.bench ? 'bench' : seat.picking ? 'picking' : seat.alive ? 'alive' : seat.dead ? 'dead' : 'waiting') : null, true) +
+   tileHTML('rank', seat?.rank ? seat.rank + ' of ' + seat.of : null, true) +
+   (seat?.roundsWon != null ? tileHTML('rounds won', seat.roundsWon) : '') +
+   tileHTML('time played', seat?.time ? span(seat.time) : null, true) + '</div>';
+ }
+ if (c) body += '<h3>since connecting</h3><div class="tiles">' + tileHTML('rooms joined', c.roomsJoined) + tileHTML('matches', c.matches) + tileHTML('kills', c.kills) + tileHTML('deaths', c.deaths) + tileHTML('damage dealt', c.dealt) + tileHTML('damage taken', c.taken) + '</div>';
+ if (all) {
+  body += '<h3>this player id since the server started</h3><div class="tiles">' + tileHTML('connections', all.connects) + tileHTML('rooms joined', all.roomsJoined) + tileHTML('matches', all.matches) + tileHTML('kills', all.kills) + tileHTML('deaths', all.deaths) + tileHTML('k / d', all.deaths ? (all.kills / all.deaths).toFixed(2) : all.kills ? String(all.kills) : null) + tileHTML('damage dealt', all.dealt) + tileHTML('damage taken', all.taken) + '</div>' +
+   '<dl class="facts" style="margin-top:8px">' + fact('first seen', '<span title="' + esc(fullTime(all.firstSeen)) + '">' + esc(when(all.firstSeen)) + '</span>') + fact('names used', all.names.length ? all.names.map(esc).join(', ') : dash) + '</dl>';
+  body += '<h3>kicks, bans and messages</h3>' + (p.bans.length || all.actions.length ? '<ul class="hist">' +
+   p.bans.map(b => '<li><span><span class="tag red">ban in force</span> ' + esc(b.reason || 'no reason') + ' <span class="faint">by ' + esc(b.by || '?') + '</span></span><span class="faint">' + (b.until ? 'until ' + esc(when(b.until)) : 'permanent') + '</span></li>').join('') +
+   all.actions.map(a => '<li><span><b>' + esc(a.what) + '</b>' + (a.detail ? ' · ' + esc(a.detail) : '') + ' <span class="faint">by ' + esc(a.by) + (a.room ? ' · room ' + esc(a.room) : '') + '</span></span><span class="faint" title="' + esc(fullTime(a.at)) + '">' + esc(ago(a.at)) + '</span></li>').join('') + '</ul>' : '<div class="faint">None since the server started.</div>');
+  body += '<h3>recent rooms</h3>' + (all.recentRooms.length ? '<ul class="hist">' + all.recentRooms.map(r => '<li><span><code>' + esc(r.code) + '</code> ' + esc(r.name || '') + ' <span class="faint">' + esc(r.map) + (r.mode ? ' · ' + esc(r.mode) : '') + '</span></span><span class="faint" title="' + esc(fullTime(r.at)) + '">' + esc(ago(r.at)) + '</span></li>').join('') + '</ul>' : '<div class="faint">None.</div>');
+ }
+ const foot = live ? '<div class="psheet-foot"><form class="msg-row" id="whisper-form" autocomplete="off"><div class="grow"><input type="text" id="whisper-text" maxlength="140" placeholder="private message to ' + esc(p.name || 'this player') + '" aria-label="Private message"><div class="count" id="whisper-count">0 / 140</div></div><button class="btn primary" type="submit">send</button></form>' +
+  '<div class="psheet-actions"><button class="btn small" type="button" data-act="sheet-kick" data-code="' + esc(room.code) + '" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">kick</button><button class="btn small danger" type="button" data-act="sheet-ban" data-code="' + esc(room.code) + '" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">ban</button></div></div>'
+  : '<div class="psheet-foot"><div class="muted" style="font-size:12.5px">' + (p.online ? 'Not in a game right now.' : 'This player left. Ban them from the players tab.') + '</div></div>';
+ // Keep what is being typed (and the focus) across the 3-second refresh.
+ const typing = $('whisper-text'), draft = typing ? typing.value : '', focused = document.activeElement === typing;
+ const caret = typing ? [typing.selectionStart, typing.selectionEnd] : null;
+ const scroll = $('psheet-card').querySelector('.psheet-body')?.scrollTop || 0;
+ setHTML($('psheet-card'), head + '<div class="psheet-body">' + body + '</div>' + foot);
+ const bodyEl = $('psheet-card').querySelector('.psheet-body'); if (bodyEl) bodyEl.scrollTop = scroll;
+ const input = $('whisper-text');
+ if (input) {
+  if (input.value !== draft) { input.value = draft; }
+  $('whisper-count').textContent = input.value.length + ' / 140';
+  if (focused && document.activeElement !== input) { input.focus(); try { input.setSelectionRange(caret[0], caret[1]); } catch {} }
+ }
+}
+$('psheet-card').addEventListener('input', event => { if (event.target.id === 'whisper-text') $('whisper-count').textContent = event.target.value.length + ' / 140'; });
+$('psheet-card').addEventListener('submit', async event => {
+ if (event.target.id !== 'whisper-form') return;
+ event.preventDefault();
+ const input = $('whisper-text'), text = input.value.trim();
+ if (!text || !sheetData) { input.focus(); return; }
+ const r = await run('whisper', { id: sheetData.id, text }, r => 'Sent to ' + r.name + '.');
+ if (r && $('whisper-text')) { $('whisper-text').value = ''; $('whisper-count').textContent = '0 / 140'; }
+ if (sheetPlayer) loadPlayer();
+});
+
+// ---------- start ----------
+const wanted = tab;
+selectTab(tab);
+if (key) refresh().then(() => {
+ if (!state) { if (key) showSignin(problem || 'Could not load the page.'); return; }
+ if (wanted !== tab) selectTab(wanted);
+ schedule();
+}); else showSignin();
+</script>
+</body>
+</html>

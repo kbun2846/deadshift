@@ -6,7 +6,8 @@ export const selectMenuFor=element=>controls.get(element);
 
 export function installSelectMenus(root){
  const entries=[];let opened=null;
- for(const [index,select]of [...root.querySelectorAll('select')].entries()){
+ // (A select with data-choices is shown as a bar of choice buttons instead, settings-panel.js.)
+ for(const [index,select]of [...root.querySelectorAll('select:not([data-choices])')].entries()){
   const name=select.getAttribute('aria-label')||[...select.closest('label').childNodes]
    .filter(node=>node.nodeType===Node.TEXT_NODE).map(node=>node.textContent.trim()).join(' ');
   const id=(select.id||`menu-select-${index}`)+'-choices';
@@ -32,7 +33,8 @@ export function installSelectMenus(root){
   const close=()=>{list.hidden=true;field.setAttribute('aria-expanded','false');field.removeAttribute('aria-activedescendant');if(opened===entry)opened=null;};
   const position=()=>{
    const rect=field.getBoundingClientRect(),below=viewHeight()-rect.bottom-12,above=rect.top-12;
-   const height=Math.min(choices.length*34+8,Math.max(0,Math.max(below,above)),260);
+   // (Measured rows: the settings list's rows are 40 px touch targets.)
+   const row=choices[0]?.offsetHeight||34,height=Math.min(choices.length*row+10,Math.max(0,Math.max(below,above)),300);
    list.style.width=rect.width+'px';list.style.maxHeight=height+'px';
    list.style.left=Math.max(8,Math.min(viewWidth()-rect.width-8,rect.left))+'px';
    list.style.top=(below>=height?rect.bottom+4:Math.max(8,rect.top-height-4))+'px';

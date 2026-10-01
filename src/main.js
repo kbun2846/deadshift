@@ -84,6 +84,7 @@ import { installDevWiring } from './ui/dev-wiring.js';
 import { openSpot } from './net/spawn-points.js';
 import { hasAuthoredSpawns } from './net/map-spawns.js'; // s2-spawns
 import { createToast } from './ui/toast.js';
+import { installAdminMessages } from './ui/admin-message.js';
 import { createRobotMinds } from './ui/robot-minds.js';
 import { RobotLab, watchInput } from './bots/robot-lab.js';
 import { createRobotLabPanel } from './ui/robot-lab-panel.js';
@@ -96,6 +97,8 @@ import { Critters } from './critters.js';
 const $ = id => document.getElementById(id);
 try{migrateGameStorage(localStorage);}catch{}
 const toast = createToast(document.getElementById('game'));
+// The admins' messages online (ui/admin-message.js): cards at the top.
+const adminMessages = installAdminMessages(document.getElementById('game'));
 // Weapons under maintenance (weapon-maintenance.js): every menu shows them with
 // the sticker; a click or tap on one (or Enter on it) only shakes the sticker.
 for(const type of ['click','dblclick'])document.addEventListener(type,e=>{
@@ -283,6 +286,9 @@ function toggleMap() {
 let pendingLaunch = false, pendingSeed = false, pendingQuickShot=false;
 let pendingAimPoint = null;
 let inputMode = 'keyboard', dirty = true, hudTime = 0, fpsTime = 0, renderedFrames = 0, measuredFPS = 0;
+// The last rate measured while playing: Settings > Graphics shows it under FRAME LIMIT
+// (settings open over a paused game or the menu, where the live rate means nothing).
+let playFPS = 0;
 let markerRemaining = 0, coneFlicker = 0;
 const keys = new Set(), tappedKeys = new Set();
 const touchActionResets=[];
@@ -514,10 +520,11 @@ function changeGraphics(name){
  },0));
 }
 
+// Settings > Audio > sound: ON | OFF, the same switch as N and the HUD's speaker.
+function syncSoundChoice(){$('sound-on')?.setAttribute('aria-pressed',String(sound.enabled));$('mute-all')?.setAttribute('aria-pressed',String(!sound.enabled));}
 function toggleAudio() {
   sound.setEnabled(!sound.enabled); $('audio').classList.toggle('muted', !sound.enabled);
-  $('mute-all')?.setAttribute('aria-pressed', String(!sound.enabled));
-  if($('mute-all'))$('mute-all').textContent=sound.enabled?'MUTE ALL':'UNMUTE ALL';
+  syncSoundChoice();
   $('audio').setAttribute('aria-label', sound.enabled ? 'Mute sound' : 'Unmute sound');
   $('audio').title = (sound.enabled ? 'Mute' : 'Unmute') + ' sound · N';
 }
@@ -592,7 +599,7 @@ function updateHUD() {
   abilityHUD.update(sim);
   const count = sim.seeds.length;
   $('reticle').classList.toggle('loaded', count > 0);
-  setText($('fps-counter'), paused ? 'PAUSED' : (measuredFPS || '—') + ' FPS');
+  setText($('fps-counter'), playFPS ? playFPS + ' FPS in game' : '');
   if (import.meta.env.DEV) writeDebugState($('world'), { sim, view, sound, settings, running, paused, measuredFPS, inputMode });
 
 }
@@ -752,8 +759,9 @@ const fpsLook=createFpsLook();
 const fpsOn=()=>!!sim.dev.fps&&!touchPrompts;
 const fpsInput=installFpsInput({world:$('world'),look:fpsLook,active:()=>fpsOn()&&running&&!deathActive,
  onUnlock:()=>setTimeout(()=>{if(fpsOn()&&running&&!deathActive)setPaused(true);},60)});
-const {devTools,devWindow,devDialog,showDevNotice}=installDevWiring({$,sim,view,bots,toast,
+const {devTools,devWindow,devDialog,showDevNotice,toggleDevWindow,devOffHere}=installDevWiring({$,sim,view,bots,toast,
  online:()=>online,settings:()=>settings,settingsPanel:()=>settingsPanel,started:()=>started,paused:()=>paused,
+ server:()=>import.meta.env.DEV?params.get('server'):null,pause:()=>setPaused(true),
  randomSpot:()=>{const ok=randomPracticeSpawn();if(ok)view.cutCamera?.();return ok;},
  changed:()=>{dirty=true;updateHUD();}});
 // The robot lab's window (ui/robot-lab-panel.js): open while its dev option is
@@ -783,7 +791,7 @@ function thumbnail(){
 // Online play (see AGENTS.md > Networking). Practice overrides never go online:
 // the sessions reset sim.dev every tick and P / O / map teleport are refused.
 const online=createOnlinePlay({$,map,sim,createSim:m=>new Simulation(m),start,toast:text=>toast(text,2600),leave:()=>$('main-menu').click(),
- server:import.meta.env.DEV?params.get('peerhost'):null,gameServer:import.meta.env.DEV?params.get('server'):null,pickWeapon:()=>enterOnline()});
+ server:import.meta.env.DEV?params.get('peerhost'):null,gameServer:import.meta.env.DEV?params.get('server'):null,pickWeapon:()=>enterOnline(),adminCard:m=>adminMessages.show(m)});
 const menuFlow=installMenu({$,map,thumbnail,start,openSettings,closeSettings,returnToMenu,tutorialComplete:readTutorialComplete(),online:(request,status)=>online.request(request,status),onlineRooms:()=>online.rooms()});
 // Multiplayer flow (see AGENTS.md > Multiplayer): pick a weapon over the
 // running game, fight, die, respawn after 5 s or change weapon, leave.
@@ -1288,7 +1296,7 @@ const settingsPanel=installSettingsPanel(settings,{
  autoQuality:()=>autoQuality(deviceTier.tier,settings.qualityAutoStep),
 });
 const selectMenus=installSelectMenus($('settings-panel'));
-$('mute-all').onclick=toggleAudio;
+$('mute-all').onclick=()=>{if(sound.enabled)toggleAudio();};$('sound-on').onclick=()=>{if(!sound.enabled)toggleAudio();};syncSoundChoice();
 sticks.set('move',bindFloatingStick($('move-zone'),$('move-stick'),{isRunning:()=>running,onTap:touchTapFire,output:touch,
  onWalkStart:()=>{if(touchAimPointer===null)inputMode='keyboard';}}));
 // Resizing the canvas clears it, so draw straight away rather than show a
@@ -1440,6 +1448,8 @@ window.addEventListener('keydown', e => {
   }
   if(lobbyPanel.open){navigateMenu(e,lobbyPanel.root,()=>closeLobby());if(['Space','Tab','KeyQ','KeyE','Escape','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();return;}
   if(devDialog.isOpen){devDialog.keydown(e);return;}
+  // O: once the tools are unlocked, the floating window, on any screen (not while typing).
+  if(e.code==='KeyO'&&!e.repeat&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&devTools.isUnlocked()&&!e.target.matches?.('input,select,textarea,[contenteditable=true]')){e.preventDefault();toggleDevWindow();return;}
   // The end-of-match card (online and SOLO): the keys work its buttons.
   if(matchEnd.open){navigateMenu(e,matchEnd.root,()=>{});if(['Space','Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();return;}
   if(deathActive){
@@ -1448,13 +1458,6 @@ window.addEventListener('keydown', e => {
    if(deathPick)navigateMenu(e,weaponPick.root,()=>closeDeathPick());
    else if(deathMenuOpen)navigateMenu(e,deathScreen.root,()=>{});
    if(['Escape','Space','Tab','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
-   return;
-  }
-  // The only way in: Shift+P while paused. Before the code, P and O do nothing.
-  // Online only the host has them (the host's sim is the authority).
-  if(paused&&!settingsOpen&&!mapOpen&&e.code==='KeyP'&&e.shiftKey&&!e.repeat&&(!online.active||online.isHost)){
-   e.preventDefault();
-   if(devTools.isUnlocked()){setPaused(false);devWindow.show();}else devDialog.show();
    return;
   }
   const menuRoot=settingsOpen?$('settings-panel'):mapOpen?$('map-panel'):paused?$('pause-panel'):!started?$('intro'):lobbyScreen.open?lobbyScreen.root:weaponPick.open?weaponPick.root:choosing?$('intro'):null;
@@ -1489,10 +1492,10 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (code === 'KeyN' && !e.repeat) toggleAudio();
-  if((e.code==='KeyO'||e.code==='KeyP')&&!e.repeat&&devTools.isUnlocked()){
+  // P: the everyday overrides on or off together (in a game, once unlocked).
+  if(e.code==='KeyP'&&!e.repeat&&devTools.isUnlocked()){
    e.preventDefault();
-   if(online.active&&!online.isHost){toast('DEV TOOLS ARE THE HOST\'S ONLINE');return;}
-   if(e.code==='KeyO'){devWindow.toggle();return;}
+   const off=devOffHere();if(off){toast(off);return;}
    if(running){showDevNotice(devTools.toggleAll());devWindow.sync();}
    return;
   }
@@ -1701,7 +1704,7 @@ function frame(time) {
     }
     else adaptiveResolution.reset();
     fpsTime += dt;
-    if (fpsTime >= 1) { measuredFPS = Math.round(renderedFrames / fpsTime); fpsTime = 0; renderedFrames = 0; }
+    if (fpsTime >= 1) { measuredFPS = Math.round(renderedFrames / fpsTime); fpsTime = 0; renderedFrames = 0; if (running && !paused && measuredFPS) playFPS = measuredFPS; }
   }
   if(paused)adaptiveResolution.reset();
   if(online.active)multiplayerFrame();

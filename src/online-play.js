@@ -33,7 +33,7 @@ const RETRY = Object.freeze({ host: 15000, join: 25000, every: 1500 });
 export const savedName = () => { try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; } };
 const saveName = name => { try { localStorage.setItem(NAME_KEY, name); } catch {} };
 
-export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, server, gameServer = null, pickWeapon }) {
+export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, server, gameServer = null, pickWeapon, adminCard = null }) {
  // The game server's address (a development build may point at another: ?server=).
  const serverUrl = gameServer || NETWORK.gameServer;
  // A development build's server overrides ride along on every reload (a map
@@ -303,7 +303,10 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
     if (!session.startRound(mode)) toast((session.startError || 'CANNOT START').toUpperCase());
    }
    // The game server's word to this page (a refused START, say).
-   for (const note of session.transport?.notes?.splice(0) || []) if (note) toast(note.toUpperCase());
+   // (A long one, an admin's announcement, stays up long enough to read.)
+   for (const note of session.transport?.notes?.splice(0) || []) if (note) toast(note.toUpperCase(), Math.min(9000, Math.max(1800, note.length * 65)));
+   // The admins' messages (announcement, room, private): a card (ui/admin-message.js).
+   for (const message of session.transport?.adminMessages?.splice(0) || []) adminCard ? adminCard(message) : message.text && toast(message.text.toUpperCase(), 6000);
    // The host moved the room to another map: follow it (reload onto it and join again).
    if (session.moveTo) { const to = '?map=' + encodeURIComponent(session.moveTo) + '&join=' + code + '&autojoin=1' + p2pFlag(); toast('MOVING TO ' + (multiplayerMaps(session.moveTo).find(m => m.id === session.moveTo)?.name || 'THE NEW MAP').toUpperCase(), 3000); api.close(); showBusy(); location.href = to + devFlags; return; }
    if (session.ended) { const why = session.ended; api.close(); toast(why.toUpperCase()); leave(); return; }

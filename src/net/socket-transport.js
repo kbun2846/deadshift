@@ -9,6 +9,10 @@
 // { t:'nope', reason }. After that:
 //   - `room` messages update `transport.room` (the leader can change);
 //   - `note` messages (a refused START, say) wait in `transport.notes`;
+//   - `admin` messages ({ t:'admin', kind: 'global' | 'room' | 'private', text },
+//     from the admin page) wait in `transport.adminMessages` (shown as cards,
+//     ui/admin-message.js). The join request says `cards: 1` so the server
+//     sends them; a page without it gets them as notes;
 //   - `transport.lead(op, fields)` sends the leader's lobby controls
 //     (server/room.js lead);
 //   - everything else goes to the session as if from 'host'.
@@ -32,7 +36,7 @@ export function connectServer({ url, request, pid, timeout = 8000, WebSocketClas
   try { socket = new WebSocketClass(String(url).replace(/\/+$/, '') + '/play'); }
   catch { fail('Could not reach the game server.'); return; }
   const transport = {
-   role: 'client', id: null, code: null, room: null, notes: [], server: true,
+   role: 'client', id: null, code: null, room: null, notes: [], adminMessages: [], server: true,
    lostText: 'Lost connection to the game server.',
    onMessage() {}, onJoin() {}, onLeave() {}, onError() {},
    send(_to, message) {
@@ -44,7 +48,7 @@ export function connectServer({ url, request, pid, timeout = 8000, WebSocketClas
    lead(op, fields = {}) { return transport.send('host', { ...fields, t: 'lead', op }); },
    close() { transport.closed = true; try { socket.close(1000, 'left'); } catch {} },
   };
-  socket.onopen = () => socket.send(JSON.stringify({ ...request, pid, version: PROTOCOL_VERSION }));
+  socket.onopen = () => socket.send(JSON.stringify({ ...request, pid, version: PROTOCOL_VERSION, cards: 1 }));
   socket.onerror = () => fail('Could not reach the game server. Check your connection and try again.');
   socket.onclose = () => {
    if (!settled) { fail('The game server closed the connection.'); return; }
@@ -69,6 +73,7 @@ export function connectServer({ url, request, pid, timeout = 8000, WebSocketClas
     return;
    }
    if (message.t === 'note') { transport.notes.push(String(message.text || '')); return; }
+   if (message.t === 'admin') { if (transport.adminMessages.length < 20) transport.adminMessages.push({ kind: String(message.kind || ''), text: String(message.text || '') }); return; }
    if (message.t === 'nope') { transport.notes.push(String(message.reason || '')); return; }
    // (Through a local for the same reason: a direct call was dropped from the
    // build, so no message after 'room' reached the game; v0.1.1.)

@@ -1,15 +1,48 @@
-// The owner's admin page and its API: every room, who is in it, and KICK /
-// BAN, plus the ban list with UNBAN. Only for the owner and the people he
+// The owner's admin page and its API. Only for the owner and the people he
 // gave a key (admins.js); with no key anywhere the whole thing is off.
+// The page itself is admin-page.html (one self-contained file, no outside
+// requests), served here.
 //
-//   GET  /admin                 the page (asks for your key, keeps it for the tab)
-//   GET  /admin/api/state       rooms with players (name, id, player id, address, ping), bans, load, you
-//   POST /admin/api/kick        { code, id }             out of that room (and kept out of it)
-//   POST /admin/api/ban         { code, id, reason }     banned by player id and address, and kicked
-//   POST /admin/api/unban       { key }
+//   GET  /admin                      the page (asks for your key, keeps it for the tab)
+//   GET  /admin/api/state            overview, rooms with players, bans, maintenance, you
+//        ?with=recent | log | owner  plus recent players, the admin log, or the owner's tab
+//   GET  /admin/api/player?id=&pid=  one player's sheet: live seat, this connection, this player id
+//   POST /admin/api/kick             { code, id }                    out of that room (and kept out of it)
+//   POST /admin/api/ban              { code, id } | { recent } | { target }, duration, reason
+//   POST /admin/api/unban            { key }
+//   POST /admin/api/announce         { text }                        an announcement card for every player
+//   POST /admin/api/message          { code, text }                  a card for everyone in one room
+//   POST /admin/api/whisper          { id, text }                    a private card for one player (connection id)
+//   POST /admin/api/devticket        {}                              a one-time link to the game (gameUrl#devticket=...)
+//   POST /admin/api/close            { code }                        everyone out (a listed room starts over)
+//   POST /admin/api/maintenance      { on, text }                    refuse new rooms and joins
+//  Owner only:
+//   POST /admin/api/keys/add         { name }                        a named key, shown once
+//   POST /admin/api/keys/remove      { name }
+//   POST /admin/api/devcode          { code }                        the developer tools' code
+//   POST /admin/api/restart          {}                              tell everyone, exit, systemd restarts
+// (Messages reach a page as { t:'admin', kind, text }, or as a note on an
+// older page: room.js Room.tell.)
 // Every API call carries the header  Authorization: Bearer <key>. A wrong key
 // counts against the address (admins.js locks it out after 10). Every action
-// is logged with who did it.
+// is logged (server log and DATA_DIR/admin-log.json) with who did it.
+import { readFileSync } from 'node:fs';
+import { isIP } from 'node:net';
+import { cleanRoomCode } from '../src/net/transport.js';
+import { DEV_CODE_PATTERN } from './devcode.js';
+import { Room } from './room.js';
+import { keyOf } from './player-stats.js';
+
+const PAGE = readFileSync(new URL('./admin-page.html', import.meta.url), 'utf8');
+const PAGE_HEADERS = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-frame-options': 'DENY', 'referrer-policy': 'no-referrer', 'x-robots-tag': 'noindex', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" };
+// Ban lengths the page offers, in seconds (0: for good).
+export const BAN_LENGTHS = Object.freeze({ '1h': 3600, '1d': 86400, '7d': 7 * 86400, perm: 0 });
+const BAN_NAMES = { '1h': '1 hour', '1d': '1 day', '7d': '7 days', perm: 'permanent' };
+const PID = /^[A-Za-z0-9_-]{8,64}$/;
+const OWNER_ONLY = new Set(['/admin/api/keys/add', '/admin/api/keys/remove', '/admin/api/devcode', '/admin/api/restart']);
+
+// One line of plain text, at most `max` characters.
+const line = (value, max) => String(value ?? '').replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').trim().slice(0, max);
 
 function json(res, status, body) {
  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -19,74 +52,190 @@ function json(res, status, body) {
 function readBody(req, limit = 4096) {
  return new Promise((resolve, reject) => {
   let size = 0; const parts = [];
-  req.on('data', chunk => { size += chunk.length; if (size > limit) { reject(new Error('too big')); req.destroy(); } else parts.push(chunk); });
-  req.on('end', () => { try { resolve(parts.length ? JSON.parse(Buffer.concat(parts).toString('utf8')) : {}); } catch { reject(new Error('bad json')); } });
+  req.on('data', chunk => { size += chunk.length; if (size > limit) { reject(new Error('Too big.')); req.resume(); } else parts.push(chunk); });
+  req.on('end', () => {
+   try { const body = parts.length ? JSON.parse(Buffer.concat(parts).toString('utf8')) : {}; if (!body || typeof body !== 'object' || Array.isArray(body)) throw 0; resolve(body); }
+   catch { reject(new Error('Bad request.')); }
+  });
   req.on('error', reject);
  });
 }
 
+const nameIn = (room, id) => room.session.lobby().players.find(p => p.id === id)?.name || '';
+
+// The player sheet: everything the server knows about one connection and its
+// player id. `conn` may be gone (they left): then only the player id's record.
+function playerSheet(ctx, conn, pid) {
+ const { playerStats, bans, recent } = ctx;
+ const key = conn ? keyOf(conn) : pid;
+ const live = conn && conn.room ? conn.room.playerState(conn) : null;
+ if (conn) playerStats?.sample(conn);
+ const name = (conn && conn.room && nameIn(conn.room, conn.id)) || conn?.name || playerStats?.player(key)?.names[0] || '';
+ const ip = conn?.ip || recent?.list().find(e => e.pid === pid)?.ip || null;
+ return {
+  online: !!conn, id: conn?.id || null, pid: conn?.pid || pid || null, name, ip,
+  connectedAt: conn?.track?.at ?? null,
+  ...(live || { room: null, ping: null, seat: null }),
+  pingAvg: conn ? playerStats?.pingAverage(conn) ?? null : null,
+  connection: conn ? playerStats?.connectionTotals(conn) || null : null,
+  player: key ? playerStats?.player(key) || null : null,
+  bans: bans.active.filter(b => (b.pid && b.pid === (conn?.pid || pid)) || (b.ip && ip && b.ip === ip)),
+ };
+}
+
 // Returns true if it answered the request.
-export async function handleAdmin(req, res, { admins, rooms, bans, load, url, ip = '?', log = console }) {
+export async function handleAdmin(req, res, ctx) {
+ const { admins, rooms, bans, url, ip = '?', log = console } = ctx;
  if (!url.pathname.startsWith('/admin')) return false;
  if (!admins.enabled) { json(res, 404, { error: 'The admin page is off (no admin keys).' }); return true; }
  if (url.pathname === '/admin' || url.pathname === '/admin/') {
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-frame-options': 'DENY', 'referrer-policy': 'no-referrer', 'x-robots-tag': 'noindex', 'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'" });
-  res.end(PAGE); return true;
+  if (req.method !== 'GET' && req.method !== 'HEAD') { json(res, 405, { error: 'GET only.' }); return true; }
+  res.writeHead(200, PAGE_HEADERS); res.end(req.method === 'HEAD' ? undefined : PAGE); return true;
  }
  if (admins.locked(ip)) { json(res, 429, { error: 'Too many wrong keys. Wait 10 minutes.' }); return true; }
  const who = admins.who(String(req.headers.authorization || '').replace(/^Bearer\s+/i, ''), ip);
  if (!who) { json(res, 401, { error: 'Wrong key.' }); return true; }
- const did = (...what) => log.log(new Date().toISOString(), 'admin', who, ...what);
+ const owner = who === 'owner';
+ const did = (what, target = '') => { ctx.adminLog?.add(who, what, target); log.log(new Date().toISOString(), 'admin', who, what, target); };
  try {
-  if (req.method === 'GET' && url.pathname === '/admin/api/state') { json(res, 200, { you: who, rooms: rooms.adminState(), bans: bans.list, load: load() }); return true; }
-  if (req.method !== 'POST') { json(res, 405, { error: 'POST only.' }); return true; }
-  const body = await readBody(req);
-  const room = body.code ? rooms.find(body.code) : null;
-  if (url.pathname === '/admin/api/kick') { const ok = !!room?.kick(String(body.id)); if (ok) did('kicked', body.id, 'from', room.code); json(res, 200, { ok }); return true; }
-  if (url.pathname === '/admin/api/ban') {
-   const conn = room?.conns.get(String(body.id));
-   if (!conn) { json(res, 404, { error: 'That player is gone. Ban from the list later if they come back.' }); return true; }
-   const name = room.session.lobby().players.find(p => p.id === conn.id)?.name || '';
-   const ban = bans.add({ pid: conn.pid, ip: conn.ip, name, reason: body.reason || '', by: who });
-   did('banned', name, conn.ip);
-   // Out of every room they are in (one browser, one id: usually one room).
-   for (const r of rooms.rooms.values()) for (const c of [...r.conns.values()]) if (c.pid === conn.pid || c.ip === conn.ip) { c.send({ t: 'removed', reason: 'You are banned from the Deadstab servers.' }); r.kick(c.id); }
-   json(res, 200, { ok: true, ban }); return true;
+  if (req.method === 'GET' && url.pathname === '/admin/api/player') {
+   const id = line(url.searchParams.get('id'), 40), pid = line(url.searchParams.get('pid'), 64);
+   const conn = id ? ctx.findConn?.(id) || null : null;
+   if (!conn && !(pid && PID.test(pid) && ctx.playerStats?.player(pid))) { json(res, 404, { error: 'Nothing is known about that player.' }); return true; }
+   json(res, 200, playerSheet(ctx, conn, conn ? conn.pid : pid)); return true;
   }
-  if (url.pathname === '/admin/api/unban') { const ok = bans.remove(String(body.key)); if (ok) did('unbanned', body.key); json(res, 200, { ok }); return true; }
+  if (req.method === 'GET' && url.pathname === '/admin/api/state') {
+   const state = { you: who, owner, overview: ctx.overview?.() || null, rooms: rooms.adminState(), bans: bans.active, maintenance: ctx.maintenance?.state || { on: false } };
+   const extra = url.searchParams.get('with');
+   if (extra === 'recent') state.recent = ctx.recent?.list() || [];
+   if (extra === 'log') state.log = ctx.adminLog?.list() || [];
+   if (extra === 'owner' && owner) { state.keys = admins.names(); state.devcode = ctx.devcode?.status() || { set: false }; }
+   json(res, 200, state); return true;
+  }
+  if (req.method !== 'POST') { json(res, 405, { error: 'POST only.' }); return true; }
+  if (OWNER_ONLY.has(url.pathname) && !owner) { json(res, 403, { error: 'Only the owner can do that.' }); return true; }
+  const body = await readBody(req);
+  const code = cleanRoomCode(line(body.code, 12)), room = code ? rooms.find(code) : null;
+  const needRoom = () => { if (!room) { json(res, 404, { error: 'That room is gone.' }); return false; } return true; };
+  switch (url.pathname) {
+   case '/admin/api/kick': {
+    if (!needRoom()) return true;
+    const id = line(body.id, 40), name = nameIn(room, id);
+    const conn = room.conns.get(id);
+    const ok = room.kick(id);
+    if (ok) { did('kick', (name || id) + ' from ' + room.code); if (conn) ctx.playerStats?.action(conn, 'kicked', { by: who, detail: 'from ' + room.code }); }
+    json(res, ok ? 200 : 404, ok ? { ok } : { error: 'That player already left.' }); return true;
+   }
+   case '/admin/api/ban': {
+    const duration = body.duration === undefined ? 'perm' : String(body.duration);
+    if (!Object.hasOwn(BAN_LENGTHS, duration)) { json(res, 400, { error: 'Pick how long the ban lasts.' }); return true; }
+    const reason = line(body.reason, 200);
+    let target = null;
+    if (body.id !== undefined) {
+     // A player in a room now: their player id and address.
+     const conn = room?.conns.get(line(body.id, 40));
+     if (!conn) { json(res, 404, { error: 'That player is gone. Ban them from the players tab.' }); return true; }
+     target = { pid: conn.pid, ip: conn.ip, name: nameIn(room, conn.id) || conn.name || '' };
+    } else if (body.recent !== undefined) {
+     // Someone from the recent players list (they may have left).
+     const entry = ctx.recent?.find(line(body.recent, 20));
+     if (!entry) { json(res, 404, { error: 'That entry is no longer in the list.' }); return true; }
+     target = { pid: entry.pid, ip: entry.ip, name: entry.conn?.name || entry.name || '' };
+    } else {
+     // By hand: a player id or an address.
+     const value = line(body.target, 64);
+     if (isIP(value)) target = { pid: null, ip: value, name: '' };
+     else if (PID.test(value)) target = { pid: value, ip: null, name: '' };
+     else { json(res, 400, { error: 'That is neither a player id nor an address.' }); return true; }
+    }
+    const ban = bans.add({ ...target, reason, by: who, seconds: BAN_LENGTHS[duration] });
+    // Out of every room they are in (one browser, one id: usually one room).
+    let kicked = 0;
+    for (const r of rooms.rooms.values()) for (const c of [...r.conns.values()]) {
+     if ((ban.pid && c.pid === ban.pid) || (ban.ip && c.ip === ban.ip)) { c.ended = 'banned'; r.kick(c.id, 'You are banned from the Deadstab servers.'); kicked++; }
+    }
+    // (Kept on the player id's record for the player sheet, online or not.)
+    if (ban.pid) ctx.playerStats?.action({ pid: ban.pid }, 'banned', { by: who, detail: [BAN_NAMES[duration], reason].filter(Boolean).join(' · ') });
+    did('ban', [target.name || target.pid || target.ip, BAN_NAMES[duration], reason].filter(Boolean).join(' · '));
+    json(res, 200, { ok: true, ban, kicked }); return true;
+   }
+   case '/admin/api/unban': {
+    const key = line(body.key, 20), ban = bans.list.find(b => b.key === key);
+    const ok = bans.remove(key);
+    if (ok) did('unban', ban.name || ban.pid || ban.ip);
+    json(res, ok ? 200 : 404, ok ? { ok } : { error: 'No such ban.' }); return true;
+   }
+   case '/admin/api/announce': {
+    const text = line(body.text, 140);
+    if (!text) { json(res, 400, { error: 'Write a message first.' }); return true; }
+    const players = ctx.announce(text);
+    did('announce', text);
+    json(res, 200, { ok: true, players }); return true;
+   }
+   case '/admin/api/message': {
+    if (!needRoom()) return true;
+    const text = line(body.text, 140);
+    if (!text) { json(res, 400, { error: 'Write a message first.' }); return true; }
+    const players = room.message(text, 'room');
+    did('message room', room.code + ': ' + text);
+    json(res, 200, { ok: true, players }); return true;
+   }
+   case '/admin/api/whisper': {
+    const text = line(body.text, 140);
+    if (!text) { json(res, 400, { error: 'Write a message first.' }); return true; }
+    const conn = ctx.findConn?.(line(body.id, 40));
+    if (!conn || !conn.room || conn.generation !== conn.room.generation) { json(res, 404, { error: 'That player is not in a game now.' }); return true; }
+    Room.tell(conn, 'private', text);
+    const name = nameIn(conn.room, conn.id) || conn.name || conn.pid;
+    ctx.playerStats?.action(conn, 'private message', { by: who, detail: text });
+    did('message player', name + ' in ' + conn.room.code + ': ' + text);
+    json(res, 200, { ok: true, name }); return true;
+   }
+   case '/admin/api/devticket': {
+    // The GAME button: a one-time, short-lived ticket in the link's fragment
+    // (never sent to the page's host), redeemed by the game page.
+    const made = ctx.devcode.issueTicket(who);
+    did('opened the game with dev tools');
+    const base = ctx.gameUrl || 'https://deadstab.com/';
+    json(res, 200, { ok: true, url: base.replace(/#.*$/, '') + '#devticket=' + made.ticket, expiresIn: made.expiresIn }); return true;
+   }
+   case '/admin/api/close': {
+    if (!needRoom()) return true;
+    const listed = room.isPublic, players = room.humanCount;
+    rooms.closeRoom(room, listed ? 'An admin reset this room. Join again in a moment.' : 'An admin closed this room.');
+    did(listed ? 'reset room' : 'close room', room.code + (room.name ? ' (' + room.name + ')' : ''));
+    json(res, 200, { ok: true, players, listed }); return true;
+   }
+   case '/admin/api/maintenance': {
+    if (typeof body.on !== 'boolean') { json(res, 400, { error: 'On or off?' }); return true; }
+    const state = ctx.maintenance.set({ on: body.on, text: line(body.text, 140), by: who });
+    did(state.on ? 'maintenance on' : 'maintenance off', state.on ? state.text : '');
+    json(res, 200, { ok: true, maintenance: state }); return true;
+   }
+   case '/admin/api/keys/add': {
+    const made = admins.add(line(body.name, 40));
+    did('add admin key', made.name);
+    json(res, 200, { ok: true, name: made.name, key: made.key }); return true;
+   }
+   case '/admin/api/keys/remove': {
+    const name = line(body.name, 40), ok = admins.remove(name);
+    if (ok) did('remove admin key', name);
+    json(res, ok ? 200 : 404, ok ? { ok } : { error: 'Nobody has that name.' }); return true;
+   }
+   case '/admin/api/devcode': {
+    const value = typeof body.code === 'string' ? body.code.trim() : '';
+    if (!DEV_CODE_PATTERN.test(value)) { json(res, 400, { error: 'Use 4 to 32 letters or digits.' }); return true; }
+    const status = await ctx.devcode.set(value, 'owner');
+    ctx.adminLog?.add(who, 'dev code changed', '');
+    log.log(new Date().toISOString(), 'dev code changed by owner');
+    json(res, 200, { ok: true, devcode: status }); return true;
+   }
+   case '/admin/api/restart': {
+    const ok = ctx.restart();
+    if (ok) did('restart server');
+    json(res, ok ? 200 : 409, ok ? { ok } : { error: 'Already restarting.' }); return true;
+   }
+  }
   json(res, 404, { error: 'No such call.' }); return true;
- } catch (error) { json(res, 400, { error: error.message }); return true; }
+ } catch (error) { json(res, 400, { error: error.message || 'Bad request.' }); return true; }
 }
-
-// The page: plain, dark, no outside files.
-const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Deadstab admin</title>
-<style>
-:root{color-scheme:dark}body{margin:0;background:#161919;color:#e7ecea;font:14px/1.45 system-ui,Arial,sans-serif}
-main{max-width:980px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 12px}h2{font-size:15px;margin:22px 0 8px;color:#e8afb9}
-input,button{font:inherit;border-radius:4px;border:1px solid #4d5754;background:#202524;color:#e7ecea;padding:6px 10px}button{cursor:pointer}button.bad{border-color:#a8434f;color:#ffb3bd}
-.room{border:1px solid #333b39;border-radius:6px;padding:10px 12px;margin:0 0 10px;background:#1c2020}.room h3{margin:0 0 6px;font-size:14px}
-table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:4px 6px;border-top:1px solid #2b3230;vertical-align:middle}th{color:#9aa7a3;font-weight:600}
-.muted{color:#8d9894}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}code{color:#c9d6d2}
-</style></head><body><main>
-<h1>Deadstab servers</h1>
-<div class="row"><input id="token" type="password" placeholder="your admin key" autocomplete="off" size="30"><button id="save">Sign in</button><button id="out">Sign out</button><span id="status" class="muted"></span></div>
-<h2>Rooms</h2><div id="rooms" class="muted">Enter your key.</div>
-<h2>Bans</h2><div id="bans" class="muted"></div>
-</main><script>
-const $=id=>document.getElementById(id);let token=sessionStorage.getItem('ds-admin')||'';$('token').value=token;
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function call(path,body){const r=await fetch('/admin/api/'+path,{method:body?'POST':'GET',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j;}
-async function refresh(){if(!token)return;try{const s=await call('state');$('status').textContent='load '+s.load.tickMs+' ms a tick · '+s.load.players+' players';
-$('status').textContent='signed in as '+s.you+' · '+$('status').textContent;
-$('rooms').innerHTML=s.rooms.map(r=>'<div class="room"><h3>'+esc(r.name||'Room')+' <code>'+esc(r.code)+'</code> <span class="muted">'+esc(r.map)+' · '+esc(r.mode)+' · '+esc(r.phase)+' · '+r.players+' players, '+r.robots+' bots'+(r.public?' · always open':'')+'</span></h3>'+(r.players?'<table><tr><th>name</th><th>ping</th><th>here</th><th>player id</th><th>address</th><th></th></tr>'+r.players.map(p=>'<tr><td>'+esc(p.name)+(p.lead?' <span class="muted">(leader)</span>':'')+'</td><td>'+(p.ping??'')+'</td><td>'+p.since+' s</td><td><code>'+esc(p.pid).slice(0,12)+'…</code></td><td><code>'+esc(p.ip)+'</code></td><td class="row"><button data-kick="'+esc(r.code)+'|'+esc(p.id)+'">KICK</button><button class="bad" data-ban="'+esc(r.code)+'|'+esc(p.id)+'|'+esc(p.name)+'">BAN</button></td></tr>').join('')+'</table>':'<span class="muted">empty</span>')+'</div>').join('');
-$('bans').innerHTML=s.bans.length?'<table><tr><th>name</th><th>reason</th><th>by</th><th>when</th><th></th></tr>'+s.bans.map(b=>'<tr><td>'+esc(b.name||'?')+'</td><td>'+esc(b.reason)+'</td><td>'+esc(b.by||'')+'</td><td>'+esc(b.at)+'</td><td><button data-unban="'+esc(b.key)+'">UNBAN</button></td></tr>').join('')+'</table>':'none';}
-catch(e){$('status').textContent=e.message;}}
-document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;try{
-if(b.id==='save'){token=$('token').value.trim();sessionStorage.setItem('ds-admin',token);}
-else if(b.id==='out'){token='';sessionStorage.removeItem('ds-admin');$('token').value='';$('rooms').textContent='Enter your key.';$('bans').textContent='';$('status').textContent='signed out';return;}
-else if(b.dataset.kick){const[code,id]=b.dataset.kick.split('|');await call('kick',{code,id});}
-else if(b.dataset.ban){const[code,id,name]=b.dataset.ban.split('|');const reason=prompt('Ban '+name+'? Reason (optional):');if(reason===null)return;await call('ban',{code,id,reason});}
-else if(b.dataset.unban){await call('unban',{key:b.dataset.unban});}
-}catch(err){$('status').textContent=err.message;}refresh();});
-refresh();setInterval(refresh,3000);
-</script></body></html>`;

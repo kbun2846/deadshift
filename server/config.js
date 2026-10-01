@@ -4,6 +4,8 @@
 //
 // Units: seconds, bytes, players.
 const env = process.env;
+// The game page the admin page's GAME button opens (GAME_URL; an http(s) address).
+const gameUrl = text => { try { const u = new URL(text); return /^https?:$/.test(u.protocol) ? u.href : null; } catch { return null; } };
 const list = text => String(text || '').split(',').map(s => s.trim()).filter(Boolean);
 
 export const SERVER = Object.freeze({
@@ -16,6 +18,8 @@ export const SERVER = Object.freeze({
  adminToken: env.ADMIN_TOKEN || '',
  // Bans and the like live here (a folder the server can write).
  dataDir: env.DATA_DIR || new URL('./data/', import.meta.url).pathname,
+ // The VPS plan's monthly data allowance (the admin page's month estimate).
+ monthlyTransferBytes: (Number(env.MONTHLY_TRANSFER_GB) || 1000) * 1e9,
  // Behind Caddy: the player's address is in X-Forwarded-For. Off when the
  // server faces the internet directly (then that header could be faked).
  trustProxy: env.TRUST_PROXY === '1',
@@ -25,6 +29,8 @@ export const SERVER = Object.freeze({
  // separated; ALLOW_ANY_ORIGIN=1 turns the check off (local testing).
  allowedOrigins: Object.freeze(['https://deadstab.com', 'https://www.deadstab.com', 'https://kbun2846.github.io', 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:4173', 'http://localhost:4173', ...list(env.ALLOWED_ORIGINS)]),
  allowAnyOrigin: env.ALLOW_ANY_ORIGIN === '1',
+ // The game itself, for the admin page's GAME button.
+ gameUrl: gameUrl(env.GAME_URL) || 'https://deadstab.com/',
 
  // The JOIN page's list (owner, 2026-09-30: "every combination of gamemode
  // and map"): a room for every released multiplayer map in each of these

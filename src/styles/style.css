@@ -11,7 +11,6 @@
 .seed-pips i.spent{background:linear-gradient(to top,#dfdcb8 var(--refill),#172820e8 var(--refill));border-color:#adbd9b80}
 .weapon-controls{display:flex;justify-content:center;gap:20px;color:#f4e6c5;font-size:8px;letter-spacing:1px;text-shadow:0 1px 3px #13231e}
 .weapon-controls span{display:flex;align-items:center;gap:7px}.weapon-controls kbd{background:#263a30b8;border:1px solid #dacdb759;padding:4px 6px}
-.settings-heading .fps-counter{float:right;font-size:8px;opacity:.6}
 .title-controls{pointer-events:auto;margin-top:18px;font-size:10px;width:310px;max-width:100%;color:#374438}
 .title-controls summary{font-size:9px;letter-spacing:1.6px;cursor:pointer;padding:5px 0}
 .title-controls dl{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:14px 0}.title-controls dt{color:#5e654f}.title-controls dd{margin:0;text-align:right}
@@ -61,7 +60,7 @@
 .menu-shell h1{font-size:36px;letter-spacing:.14em;margin:0 0 52px}
 .menu-shell h2{font-size:26px;font-weight:500;margin:20px 0 28px}
 .menu-shell button{width:100%;display:block;margin:12px 0;border:1px solid #424846;border-radius:5px;background:#242928;color:#eee9df;padding:17px;text-align:left;cursor:pointer;letter-spacing:.08em}
-.menu-shell button:hover,.settings-tabs button:hover{background:#343e3b}
+.menu-shell button:hover{background:#343e3b}
 .menu-shell .primary{background:#b8d9d9;color:#172323}
 .menu-shell .menu-back{border:0;background:none;padding-left:0;font-size:11px;color:#a8b6b2}
 .menu-shell .map-choice{padding:0;overflow:hidden;width:230px;border-color:#65736c}
@@ -75,15 +74,11 @@ body:not(.playing) .masthead,body:not(.playing) .vignette{display:none}
 #settings-panel h2,#pause-panel h2{font-size:28px;color:inherit;margin:18px 0}
 #settings-panel button,#pause-panel button{color:inherit;border-color:#67746e}
 #pause-panel .primary{color:#182322;background:#b8d9d9}
-.settings-tabs{display:flex;gap:8px;margin:22px 0}.settings-tabs button{padding:12px;border:1px solid #4b5651;background:transparent;border-radius:4px}
-.settings-tabs [aria-selected=true]{background:#475950}
-.controls-list{display:grid;grid-template-columns:120px 1fr;gap:16px 18px;font-size:13px;line-height:1.6}.controls-list dt{color:#b8d9d9}.controls-list dd{margin:0;color:#d2d6d2}
-#settings-panel .setting,#settings-panel .small,#graphics-description{color:#c4cdc7}
 
 
 .touch-right{flex-wrap:wrap;max-width:220px}.touch-right>button{min-width:42px;min-height:42px}
 button:focus-visible{outline:2px solid #b5e6ee;outline-offset:4px}
-@media(max-width:600px){.controls-list{grid-template-columns:90px 1fr}.menu-shell h1{font-size:29px}}
+@media(max-width:600px){.menu-shell h1{font-size:29px}}
 
 
 
@@ -108,12 +103,6 @@ body[data-controls=touch] .icon-button{font-size:9px}
 /* The dot stays visible; mouse clicks briefly extend four clean crosshair arms. */
 .reticle,.reticle.loaded{width:10px;height:10px}
 .reticle>span{position:absolute;left:50%;top:50%;width:28px;height:28px;transform:translate(-50%,-50%);opacity:0;pointer-events:none;background:linear-gradient(to right,#fff 0 28%,transparent 28% 72%,#fff 72%) center/100% 2px no-repeat,linear-gradient(to bottom,#fff 0 28%,transparent 28% 72%,#fff 72%) center/2px 100% no-repeat;filter:drop-shadow(0 1px 1px #0005)}
-.weapon-control-entry{border:1px solid #46524d;border-radius:5px;margin:8px 0;background:#202624}
-.weapon-control-entry>summary{padding:16px;cursor:pointer;color:#d3e8e3;font-size:14px;font-weight:600}
-.weapon-control-entry>summary::marker{color:#9bc9c8}
-.weapon-control-entry>summary:focus-visible{outline:2px solid #b5e6ee;outline-offset:2px}
-.weapon-control-entry[open]>summary{border-bottom:1px solid #46524d}
-.weapon-control-entry .controls-list{padding:4px 16px 16px}
 .menu-shell .menu-back{padding:14px 16px;text-align:center;border:1px solid #424846;background:#242928}
 .menu-shell button:not(.map-choice),#settings-back,#pause-panel button{text-align:center}
 .menu-shell button:focus-visible,#settings-panel button:focus-visible,#pause-panel button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #b5e6ee;outline-offset:3px;background-color:#34443f}
@@ -125,12 +114,11 @@ input::placeholder,textarea::placeholder{text-transform:lowercase}
 .menu-shell button:not(.map-choice){height:48px;min-height:48px;padding:0 12px;font-size:42px;line-height:.85;letter-spacing:-.035em;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-weight:500}
 .menu-shell .menu-back{height:40px;min-height:40px;font-size:36px;padding:0 12px}
 #settings-panel button,#pause-panel button{min-height:38px;padding:0 10px;font-size:32px;line-height:.95;letter-spacing:-.035em;font-weight:500}
-.settings-tabs{gap:7px}.settings-tabs button{flex:1;min-width:0}
 #pause-panel .primary{display:block}
 #map-close{padding:0 10px;font-size:26px;line-height:1;min-height:30px}
 #map-close kbd{font-size:inherit}
 #input-preference{font-stretch:condensed}
-@media(max-width:600px){.menu-shell button:not(.map-choice){font-size:36px;height:42px;min-height:42px}#settings-panel button,#pause-panel button{font-size:27px;min-height:33px}.settings-tabs{gap:4px}}
+@media(max-width:600px){.menu-shell button:not(.map-choice){font-size:36px;height:42px;min-height:42px}#settings-panel button,#pause-panel button{font-size:27px;min-height:33px}}
 .menu-shell button:not(.map-choice){height:36px;min-height:36px;line-height:.75}
 .menu-shell button:focus-visible{color:#edf5f1}
 #settings-panel button,#pause-panel button{min-height:30px;line-height:.85}
@@ -168,7 +156,6 @@ button:not(.map-choice),.menu-shell button:not(.map-choice),.menu-shell .input-c
 button>.button-label,.primary .button-label{position:absolute;left:10px;top:0;display:block;float:none;font:inherit;font-size:32px;line-height:32px;letter-spacing:0;margin:0;padding:0;white-space:nowrap;transform-origin:0 0;width:max-content;pointer-events:none}
 .menu-shell h1{font-weight:700;letter-spacing:.02em}
 .map-choice strong,.map-choice small{text-align:left}
-.settings-tabs button{min-width:0}
 /* Capital button labels share a consistent cap-height baseline. */
 body button,body button *,body .weapon-control-entry>summary{text-transform:uppercase!important}
 /* Heavier block lettering with a wider, less rounded silhouette. */

@@ -10,6 +10,8 @@
 //    Keys are kept only as SHA-256 fingerprints (DATA_DIR/admins.json), so
 //    the file never holds a usable key. A removed key stops working at once.
 //  - Every admin action is logged with the name that did it.
+//  - The developer tools' code (devcode.js) is the owner's to set:
+//      bash /opt/deadstab/server/deploy/admin.sh devcode
 //
 // Keys are 32 random bytes: too long to guess. On top of that an address
 // that gets a key wrong 10 times in 10 minutes is shut out for 10 minutes.
@@ -72,6 +74,9 @@ export class Admins {
   return { name: clean, key };
  }
 
+ // For the owner's page: who has a key and since when (never the fingerprints).
+ names() { this.load(); return this.list.map(a => ({ name: a.name, added: a.added || null })); }
+
  remove(name) {
   this.load();
   const clean = cleanAdminName(name), before = this.list.length;
@@ -100,11 +105,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
    console.log('Admin key for ' + made.name + ' (shown only now; send it to them privately):\n\n  ' + made.key + '\n\nThey paste it at https://play.deadstab.com/admin. Take it back any time: admin.sh remove ' + made.name);
   } else if (command === 'remove' && name) {
    console.log(admins.remove(name) ? 'Removed ' + cleanAdminName(name) + '. Their key no longer works.' : 'Nobody called ' + cleanAdminName(name) + '.');
+  } else if (command === 'devcode') {
+   const { DevCode, readCodeFromTerminal } = await import('./devcode.js');
+   const code = await readCodeFromTerminal();
+   await new DevCode({ dir: SERVER.dataDir }).set(code, 'owner (command line)');
+   console.log('Developer tools code changed. The game server uses it at once.');
   } else if (command === 'list') {
    console.log('owner (ADMIN_TOKEN)' + (admins.owner ? '' : ': not set'));
    for (const a of admins.list) console.log(a.name + '  (since ' + a.added.slice(0, 10) + ')');
   } else {
-   console.log('Usage: admin.sh add <name> | remove <name> | list');
+   console.log('Usage: admin.sh add <name> | remove <name> | list | devcode');
    process.exitCode = 1;
   }
  } catch (error) { console.error(error.message); process.exitCode = 1; }

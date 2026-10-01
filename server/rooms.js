@@ -76,8 +76,13 @@ export class Rooms {
  // (a listed room) or closes (a player-made one), so one bad match never
  // stops the rest.
  crashed(room) {
-  for (const conn of room.conns.values()) { conn.send({ t: 'removed', reason: 'The game hit an error and was closed. Join again.' }); }
-  room.close();
+  this.closeRoom(room, 'The game hit an error and was closed. Join again.');
+ }
+
+ // Everyone out of a room, told why. A player-made room goes; a listed one
+ // is always open, so it starts over, empty (the admin page's CLOSE ROOM).
+ closeRoom(room, reason) {
+  room.closeAll(reason);
   if (room.isPublic) { room.emptySince = this.now(); room.reset(); } else this.rooms.delete(room.code);
  }
 

@@ -1,11 +1,12 @@
 // Developer tools wired into the game (see dev-options.js, dev-tools.js,
-// dev-window.js, dev-unlock-dialog.js). Nothing about them shows until the
-// player pauses, presses Shift+P (or uses the title's link) and enters the
-// code, which is checked against a hash (dev-code.js) and never stored here.
+// dev-window.js, dev-unlock-dialog.js). Nothing about them shows until they
+// are unlocked; the code is checked by the game server (dev-unlock.js), never
+// in the page, and the unlock lasts for this tab's page loads (dev-session.js).
 //
 // `ctx` gives what main.js owns: the solo sim and view, the robots, getters
 // for things made later or that change (online, settingsPanel, started,
-// paused), and callbacks to redraw.
+// paused, server: a development build's ?server=), and callbacks to redraw
+// and to pause.
 import { explosionFor } from '../simulation.js';
 import { showBusy } from './busy-screen.js';
 import { launchTo } from '../launch.js';
@@ -13,6 +14,9 @@ import { RULES } from '../config/gameplay.js';
 import { installDevTools } from './dev-tools.js';
 import { createDevWindow } from './dev-window.js';
 import { createDevUnlockDialog } from './dev-unlock-dialog.js';
+import { requestUnlock, unlockUrl, applyDevTicket } from './dev-unlock.js';
+import { restoreDevSession, saveDevSession, clearDevSession } from './dev-session.js';
+import { installVersionTaps } from './version-taps.js';
 import { weaponFromChoice } from './weapon-grid.js';
 import { weapon as weaponInfo } from '../items.js';
 import { workMaps } from '../maps.js';
@@ -116,7 +120,7 @@ export function installDevWiring(ctx) {
  const devTools = installDevTools(sim, $('dev-panel'), () => devChanged(), {
   ...hooks,
   onUnlock: () => showDevEntry(true),
-  onLock: () => { showDevEntry(false); devWindow.hide(); },
+  onLock: () => { showDevEntry(false); devWindow.hide(); clearDevSession(); },
  });
  if ($('dev-open') && $('dev-panel')) $('dev-open').onclick = () => {
   const opening = $('dev-panel').classList.contains('hidden');
@@ -131,17 +135,57 @@ export function installDevWiring(ctx) {
   setQuality: name => { $('graphics-preset').value = name; ctx.settingsPanel().applySettings(); },
   changed: () => devChanged(),
  });
- // Opened from the pause menu, and returns to it.
- let fromTitle = false;
+ // Online, only a peer-to-peer host's sim takes the tools (the sessions reset
+ // everyone else's sim.dev every tick): the reason, or null where they work.
+ const devOffHere = () => {
+  const online = ctx.online();
+  if (!online.active || online.isHost) return null;
+  return online.onServer ? 'DEV TOOLS ARE SOLO ONLY · OFF ONLINE' : 'DEV TOOLS ARE THE HOST\'S ONLINE';
+ };
+ // O: the floating window, anywhere once unlocked.
+ const toggleDevWindow = () => {
+  if (devWindow.isOpen) { devWindow.hide(); return; }
+  const off = devOffHere(); if (off) { toast(off); return; }
+  devWindow.show();
+ };
+ let returnFocus = null;
+ // What a successful unlock shows (the prompt's, and the admin page's link).
+ const unlocked = () => { toast('DEV TOOLS UNLOCKED · O OPENS THE WINDOW', 2600); if (!devOffHere()) devWindow.show(); };
  const devDialog = createDevUnlockDialog($('game'), {
-  unlock: code => devTools.unlock(code),
-  open: () => { $('pause-panel').classList.add('hidden'); },
-  close: () => { if (ctx.paused()) { $('pause-panel').classList.remove('hidden'); $('resume').focus(); } else if (fromTitle) { $('title-dev').focus(); queueMicrotask(() => { fromTitle = false; }); } },
-  enabled: () => { if (fromTitle) { fromTitle = false; devWindow.show(); } toast('DEV TOOLS UNLOCKED · O OPENS THE WINDOW', 2600); },
+  unlock: async code => {
+   const result = await requestUnlock(code, { url: unlockUrl(ctx.server?.() || undefined) });
+   let ok = result.ok;
+   // A development build with no game server to ask takes any code.
+   if (import.meta.env.DEV && result.reason === 'unreachable' && String(code).trim()) ok = true;
+   if (ok) { devTools.unlock(); saveDevSession(); }
+   return ok ? { ok: true } : result;
+  },
+  open: () => { returnFocus = document.activeElement; $('pause-panel').classList.add('hidden'); },
+  close: () => {
+   if (ctx.paused()) { $('pause-panel').classList.remove('hidden'); $('resume').focus(); }
+   else if (returnFocus?.isConnected && returnFocus !== document.body) returnFocus.focus?.();
+   returnFocus = null;
+  },
+  enabled: unlocked,
  });
- // The title's quick link: the code first (the same dialog as Shift+P), then
- // it just opens and closes the developer window.
- $('title-dev').onclick = () => { if (devTools.isUnlocked()) devWindow.toggle(); else { fromTitle = true; devDialog.show(); } };
+ installVersionTaps(document.querySelectorAll('.game-version'), {
+  enabled: () => !devDialog.isOpen && !document.body.classList.contains('loading'),
+  open: () => {
+   if (devTools.isUnlocked()) { if (!devWindow.isOpen) toggleDevWindow(); return; }
+   ctx.pause?.(); devDialog.show();
+  },
+ });
+ // Unlocked earlier in this tab (a map change, online and back): unlocked
+ // again, quietly. A reload starts locked.
+ if (restoreDevSession()) devTools.unlock();
+ // The admin page's GAME link (dev-unlock.js applyDevTicket). Its answer is
+ // shown once the loading screen is gone.
+ const afterLoading = fn => { if (!document.body.classList.contains('loading') && !document.getElementById('loading-screen')) fn(); else setTimeout(() => afterLoading(fn), 150); };
+ applyDevTicket({
+  url: unlockUrl(ctx.server?.() || undefined),
+  unlock: () => { if (!devTools.isUnlocked()) devTools.unlock(); saveDevSession(); afterLoading(unlocked); },
+  toast: text => afterLoading(() => toast(text, 3200)),
+ });
  const showDevNotice = enabled => toast(enabled ? 'DEV TOOLS ON' : 'DEV TOOLS OFF');
- return { devTools, devWindow, devDialog, showDevNotice };
+ return { devTools, devWindow, devDialog, showDevNotice, toggleDevWindow, devOffHere };
 }

@@ -83,7 +83,7 @@ function glyphInfo(char, css) {
 // visible children of .title-buttons except the dev tools link.
 export function installTitle({ page, shell, overlay }) {
  const word = page.querySelector('.title-word'), text = word.querySelector('text');
- const surfaces = () => [...page.querySelectorAll('.title-buttons > :not(.title-dev)')].filter(e => !e.hidden && e.getClientRects().length);
+ const surfaces = () => [...page.querySelectorAll('.title-buttons > *')].filter(e => !e.hidden && e.getClientRects().length);
  let anim = null, frame = 0, last = 0, drawn = 0, geoKey = '', pending = 0, checked = 0, laidKey = '';
  // Where each thing sits in the layout, without any hover lift or press
  // (those are the buttons' own transforms, which the blood follows anyway).
