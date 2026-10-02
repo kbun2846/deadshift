@@ -1,4 +1,5 @@
 import {ichorGuardFor} from '../weapons/ichor-deflect.js';
+import { grantSpawnGuard, guardFlag } from '../spawn-protection.js';
 // Robots in a solo game (spawned from the developer tools, for testing).
 //
 // Each robot is a player in every way that matters: its own Simulation (body,
@@ -234,7 +235,7 @@ export class BotMatch {
  // One robot leaves (the robot lab).
  remove(bot) { const before = this.bots.length; this.bots = this.bots.filter(b => b !== bot); this.intel.forEach(seen => seen.delete(bot.id)); return this.bots.length < before; }
 
- clear() { this.youOut = false; this.onDamage = this.onEvent = this.onFell = null; this.onKill = null; this.respawnSpot = null; this.respawnWait = null; this.squads?.clear(); this.enemyRange = [22, 60]; this.friendlyFire = 0; this.apart = 0; this.teamSpawn = false; this.baseSpawn = false; this.bots = []; this.out = []; this.noises = []; this.mirror = new ProjectileMirror(); this.intel.clear(); this.youHurtBy = null; this.resetStats(); }
+ clear() { this.youOut = false; this.onDamage = this.onEvent = this.onFell = null; this.onKill = null; this.rowExtra = null; this.respawnSpot = null; this.respawnWait = null; this.squads?.clear(); this.enemyRange = [22, 60]; this.friendlyFire = 0; this.apart = 0; this.teamSpawn = false; this.baseSpawn = false; this.bots = []; this.out = []; this.noises = []; this.mirror = new ProjectileMirror(); this.intel.clear(); this.youHurtBy = null; this.resetStats(); }
 
  // A new SOLO match: everyone's numbers back to nothing.
  resetStats() { for (const b of this.bots) { const s = b.stats; s.kills = s.deaths = s.dealt = s.taken = 0; b.lastHitBy = null; } const y = this.youStats; y.kills = y.deaths = y.dealt = y.taken = 0; }
@@ -244,24 +245,37 @@ export class BotMatch {
  // A robot went down (once per death): its death, and the kill to whoever last hurt it.
  fell(bot) {
   bot.stats.deaths++;
+  this.noteDeath(bot.id, bot.lastHitBy && this.clock - bot.lastHitAt < STAT_CREDIT ? bot.lastHitBy : null);
   this.onFell?.(bot, bot.lastHitBy && this.clock - bot.lastHitAt < STAT_CREDIT ? bot.lastHitBy : null);
-  if (bot.lastHitBy && this.clock - bot.lastHitAt < STAT_CREDIT) this.credit(bot.lastHitBy, bot.team);
+  if (bot.lastHitBy && this.clock - bot.lastHitAt < STAT_CREDIT) this.credit(bot.lastHitBy, bot.team, bot);
   bot.lastHitBy = null;
  }
+ // Every death with whoever is credited for it (null: nobody), for the feel
+ // layer's streaks and shutdowns (feel/feel-layer.js drains it each frame;
+ // kept short when nothing drains it, e.g. the robot lab).
+ noteDeath(victim, killer) {
+  const log = this.deaths ||= [];
+  if (log.length >= 32) log.shift();
+  log.push({ victim, killer, victimName: this.nameOf(victim), killerName: killer == null ? null : this.nameOf(killer) });
+ }
+ nameOf(id) { return id === this.youId ? 'you' : this.byId(id)?.name || '?'; }
  // A kill for `id` ('you' or a robot) if it is against the victim's side.
- credit(id, team) {
+ // `victim`: the robot that fell (null: you).
+ credit(id, team, victim = null) {
   const killer = id === this.youId ? null : this.byId(id), side = killer ? killer.team : YOU_TEAM;
   if (!hostile(side, team)) return;
   (killer ? killer.stats : this.youStats).kills++;
-  // (SOLO FFA's syphon: duel.js. `killer`: the robot, or null for you.)
-  this.onKill?.(killer);
+  // (SOLO FFA's syphon and Gun Game's ladder: duel.js. `killer`: the robot,
+  // or null for you; `victim` likewise.)
+  this.onKill?.(killer, victim);
  }
 
  // Rows for the stats panel (ui/stats-panel.js), in its shape.
+ // (`rowExtra(id)`: more for a row; SOLO Gun Game's place on the ladder, duel.js.)
  statsRows(main, youName = 'YOU') {
-  const team = this.bots.some(b => b.team !== 'ffa') ? YOU_TEAM : null, y = this.youStats;
-  return [{ id: 'you', name: youName, slot: main.slot ?? 0, team, robot: false, kills: y.kills, deaths: y.deaths, dealt: Math.round(y.dealt), taken: Math.round(y.taken), weapon: main.weapon, present: true },
-   ...this.bots.map(b => ({ id: b.id, name: b.name, slot: b.slot, team: b.team === 'ffa' ? null : b.team, robot: !b.human, kills: b.stats.kills, deaths: b.stats.deaths, dealt: Math.round(b.stats.dealt), taken: Math.round(b.stats.taken), weapon: b.sim.weapon, present: true }))];
+  const team = this.bots.some(b => b.team !== 'ffa') ? YOU_TEAM : null, y = this.youStats, more = id => this.rowExtra?.(id) || null;
+  return [{ id: 'you', name: youName, slot: main.slot ?? 0, team, robot: false, kills: y.kills, deaths: y.deaths, dealt: Math.round(y.dealt), taken: Math.round(y.taken), weapon: main.weapon, present: true, ...more('you') },
+   ...this.bots.map(b => ({ id: b.id, name: b.name, slot: b.slot, team: b.team === 'ffa' ? null : b.team, robot: !b.human, kills: b.stats.kills, deaths: b.stats.deaths, dealt: Math.round(b.stats.dealt), taken: Math.round(b.stats.taken), weapon: b.sim.weapon, present: true, ...more(b.id) }))];
  }
 
  // Every living hex (yours and the robots'), into one list kept from tick to tick.
@@ -294,7 +308,7 @@ export class BotMatch {
   for (const bot of this.living()) {
    const foe = hostile(bot.team, YOU_TEAM); if (!foe && !this.friendlyFire) continue;
    const p = bot.sim.player;
-   const proxy = { ...ichorGuardFor(bot.sim), id: bot.id, kind: bot.human?'player':'robot', team: bot.team, friendly: !foe, share: foe ? 1 : this.friendlyFire, x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false, ...(p.below ? { below: true } : {}) };
+   const proxy = { ...ichorGuardFor(bot.sim), ...guardFlag(p), id: bot.id, kind: bot.human?'player':'robot', team: bot.team, friendly: !foe, share: foe ? 1 : this.friendlyFire, x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false, ...(p.below ? { below: true } : {}) };
    this.proxies.set(bot.id, { proxy, before: p.hp, bot, scale: 1 });
    main.targets.push(proxy);
   }
@@ -348,7 +362,7 @@ export class BotMatch {
   const you = main.player, youHere = you.hp > 0 && !you.dead && !main.dev.ghost && !this.youOut;
   // (Stats: your death, once, to whoever hurt you in the last few seconds.)
   this.youId = you.id;
-  if (you.dead && !this.youDown) { this.youDown = true; this.youStats.deaths++; const by = this.youHurtBy; if (by && this.clock - by.at < STAT_CREDIT) this.credit(by.id, YOU_TEAM); } else if (!you.dead) this.youDown = false;
+  if (you.dead && !this.youDown) { this.youDown = true; this.youStats.deaths++; const by = this.youHurtBy; this.noteDeath(you.id, by && this.clock - by.at < STAT_CREDIT ? by.id : null); if (by && this.clock - by.at < STAT_CREDIT) this.credit(by.id, YOU_TEAM); } else if (!you.dead) this.youDown = false;
   const dev = main.dev || {}, passive = !!dev.robotPassive;
   // Who is already after whom: a target others are on is less tempting.
   const targeting = new Map();
@@ -368,7 +382,7 @@ export class BotMatch {
     // (SOLO 1V1/2V2/3V3, v0.999a: nobody comes back until a side is out, duel.js.)
     if (dev.robotStayDead || this.holdRespawns) continue;
     bot.respawnIn -= dt;
-    if (bot.respawnIn <= 0) this.respawnAt(bot, main);
+    if (bot.respawnIn <= 0) { this.respawnAt(bot, main); grantSpawnGuard(bot.sim.player); }
     continue;
    }
    bot.prev = { x: p.x, z: p.z };
@@ -379,7 +393,7 @@ export class BotMatch {
    if (youHere) {
     bodies.push(you);
     if (hostile(bot.team, YOU_TEAM) && !passive) {
-     const proxy = { ...ichorGuardFor(main), id: you.id, kind: 'player', team: main.player.team, x: you.x, z: you.z, baseX: you.x, spawnX: you.x, spawnZ: you.z, hp: you.hp, maxHp: you.maxHp, respawn: 0, flash: 0, moving: false, ...(you.below ? { below: true } : {}) };
+     const proxy = { ...ichorGuardFor(main), ...guardFlag(you), id: you.id, kind: 'player', team: main.player.team, x: you.x, z: you.z, baseX: you.x, spawnX: you.x, spawnZ: you.z, hp: you.hp, maxHp: you.maxHp, respawn: 0, flash: 0, moving: false, ...(you.below ? { below: true } : {}) };
      proxies.set(you.id, { proxy, before: you.hp, you: true });
      enemies.push({ id: you.id, human: true, aspect: this.viewAspect || 0, x: you.x, z: you.z, vx: you.vx, vz: you.vz, hp: you.hp, maxHp: you.maxHp, weapon: main.weapon, ...(you.sightline?{sightline:you.sightline,below:!!you.below}:{}), aimX: you.aimX, aimZ: you.aimZ, loud: this.loud.has(you.id), reloading: reloading(main), spent: abilitySpent(main), big: abilityBig(main) });
     } else if (!hostile(bot.team, YOU_TEAM)) {
@@ -396,7 +410,7 @@ export class BotMatch {
      if (this.friendlyFire) proxies.set(other.id, { proxy: { ...ichorGuardFor(other.sim), id: other.id, kind: other.human?'player':'robot', team: other.team, friendly: true, share: this.friendlyFire, x: o.x, z: o.z, baseX: o.x, spawnX: o.x, spawnZ: o.z, hp: o.hp, maxHp: o.maxHp, respawn: 0, flash: 0, moving: false, ...(o.below ? { below: true } : {}) }, before: o.hp, bot: other, scale: 1 });
      continue;
     }
-    const proxy = { ...ichorGuardFor(other.sim), id: other.id, kind: other.human?'player':'robot', team: other.team, x: o.x, z: o.z, baseX: o.x, spawnX: o.x, spawnZ: o.z, hp: o.hp, maxHp: o.maxHp, respawn: 0, flash: 0, moving: false, ...(o.below ? { below: true } : {}) };
+    const proxy = { ...ichorGuardFor(other.sim), ...guardFlag(o), id: other.id, kind: other.human?'player':'robot', team: other.team, x: o.x, z: o.z, baseX: o.x, spawnX: o.x, spawnZ: o.z, hp: o.hp, maxHp: o.maxHp, respawn: 0, flash: 0, moving: false, ...(o.below ? { below: true } : {}) };
     proxies.set(other.id, { proxy, before: o.hp, bot: other });
     enemies.push({ id: other.id, x: o.x, z: o.z, vx: o.vx, vz: o.vz, hp: o.hp, maxHp: o.maxHp, weapon: other.sim.weapon, ...(o.sightline?{sightline:o.sightline,below:!!o.below}:{}), aimX: o.aimX, aimZ: o.aimZ, loud: this.loud.has(other.id), reloading: reloading(other.sim), spent: abilitySpent(other.sim), big: abilityBig(other.sim) });
    }
@@ -487,7 +501,7 @@ export class BotMatch {
    const p = b.sim.player, prev = b.prev || p;
    const k = alpha;
    return { id: b.id, slot: b.slot, robot: !b.human, ...this.sideOf(b), hp: b.sim.player.hp, maxHp: b.sim.player.maxHp, ally: b.team === YOU_TEAM, x: prev.x + (p.x - prev.x) * k, z: prev.z + (p.z - prev.z) * k, vx: p.vx, vz: p.vz,
-    aimX: p.aimX, aimZ: p.aimZ, dodgeRemaining: p.dodgeRemaining, weapon: b.sim.weapon, ...(p.ichor?{ichor:{...p.ichor}}:{}),...(p.sidekick?{sidekick:{...p.sidekick}}:{}), ...(p.sightline?{sightline:{...p.sightline}}:{}),...(p.sheath?{sheath:{...p.sheath}}:{}), ...(p.below ? { below: true } : {}) };
+    aimX: p.aimX, aimZ: p.aimZ, dodgeRemaining: p.dodgeRemaining, weapon: b.sim.weapon, ...(p.ichor?{ichor:{...p.ichor}}:{}),...(p.sidekick?{sidekick:{...p.sidekick}}:{}), ...(p.sightline?{sightline:{...p.sightline}}:{}),...(p.sheath?{sheath:{...p.sheath}}:{}), ...(p.below ? { below: true } : {}), ...(p.guard > 0 ? { guard: p.guard } : null) };
   });
  }
 

@@ -16,15 +16,22 @@ export const MODES = Object.freeze([
  { id: '3v3', name: '3V3', ready: true, teams: 2, per: 3, size: 6, fillTo: 6 },
  // 4V4 (owner, 2026-09-29): two teams of four, the same rules as the other team modes.
  { id: '4v4', name: '4V4', ready: true, teams: 2, per: 4, size: 8, fillTo: 8 },
+ // Gun Game (owner, 2026-10-01: "Add the Gun Game as a multiplayer mode";
+ // "each kill moves you to the next weapon, first through all of them wins"):
+ // everyone for themselves like FFA, robots fill to four. Rules: GUNGAME below.
+ { id: 'gungame', name: 'GUN GAME', ready: true, teams: 0, size: null, fillTo: 4 },
 ]);
 // The most seats a room holds (4V4's eight; NETWORK.maxPlayers matches).
 export const MAX_SEATS = 8;
 export const modeById = id => MODES.find(m => m.id === id) || null;
 // Every mode but practice keeps score (kills, clock, kill limit, respawn wait).
 export const COUNTED = Object.freeze(MODES.filter(m => m.id !== 'practice').map(m => m.id));
+// Everyone for themselves on a match clock, coming back after a death: FFA
+// and Gun Game (net/arena.js: not elimination).
+export const FREE_FOR_ALL = Object.freeze(['ffa', 'gungame']);
 // Played in rounds (elimination: a side out, the other scores, everyone back):
-// every counted mode but FFA.
-export const ROUNDED = Object.freeze(COUNTED.filter(id => id !== 'ffa'));
+// every counted mode but FFA and Gun Game.
+export const ROUNDED = Object.freeze(COUNTED.filter(id => !FREE_FOR_ALL.includes(id)));
 // The sides, in order (2V2 and 3V3 use the first two). Owner, v138: not plain
 // red and blue but three short, loud, contrasting colours. The ids stay
 // red/blue/gold (protocol, URLs); only the names and looks changed. Each
@@ -63,7 +70,7 @@ export const SETTINGS = Object.freeze({
  rounds: { label: 'rounds', values: [3, 5, 10, 0], names: ['3', '5', '10', '∞'], default: 5, modes: ROUNDED },
  // FFA only (owner: "when the game timer ends the match should end. The host
  // can select this as either 5 mins or 10 mins"); most kills wins.
- roundLength: { label: 'match length', values: [300, 600], names: ['5 MIN', '10 MIN'], default: 600, modes: ['ffa'] },
+ roundLength: { label: 'match length', values: [300, 600], names: ['5 MIN', '10 MIN'], default: 600, modes: ['ffa', 'gungame'] },
  // Spawns (owner, v0.9b): scattered, nobody within SPAWN_APART of anyone
  // else; or, in team modes, each side together in its own building (never
  // everyone together any more).
@@ -74,10 +81,10 @@ export const SETTINGS = Object.freeze({
  // (FFA only: in the other modes everyone comes back together, arena.js.)
  // FFA respawns as quickly as a 1V1 round turns over (owner, 2026-09-29:
  // "ffa should have same respawn system"): 6 s by default.
- respawn: { label: 'respawn wait', values: [6, 8, 12, 16], names: ['6 S', '8 S', '12 S', '16 S'], default: 6, modes: ['ffa'], dev: true },
+ respawn: { label: 'respawn wait', values: [6, 8, 12, 16], names: ['6 S', '8 S', '12 S', '16 S'], default: 6, modes: ['ffa', 'gungame'], dev: true },
  // The storm (storm.js; owner, 2026-09-29: on in every mode but practice and
  // 1V1, "no option to turn it off besides dev menu").
- storm: { label: 'storm', values: ['on', 'off'], names: ['on', 'off'], default: 'on', modes: ['ffa', '2v2', '2v2v2', '3v3', '4v4'], dev: true },
+ storm: { label: 'storm', values: ['on', 'off'], names: ['on', 'off'], default: 'on', modes: ['ffa', 'gungame', '2v2', '2v2v2', '3v3', '4v4'], dev: true },
  // Syphon: a kill gives the killer health back (syphonAmount).
  syphon: { label: 'syphon', values: ['on', 'off'], names: ['on', 'off'], default: 'on', modes: COUNTED, dev: true },
  // (No friendly fire, owner 2026-09-29: "make friendly fire not count anymore
@@ -162,8 +169,37 @@ export function respawnFate(mode, timeLeft, respawnIn = 0) {
 // siphon off each kill ... other gamemodes with siphon should do 25"): the
 // health a kill gives its killer, up to their full health. FFA online and
 // SOLO; the other modes online (the host's `syphon` setting).
-export const SYPHON = Object.freeze({ ffa: 50, other: 25 });
+// (Gun Game is FFA-style: 50, so a kill streak up the ladder can carry on.)
+export const SYPHON = Object.freeze({ ffa: 50, gungame: 50, other: 25 });
 export function syphonAmount(mode, hp, maxHp, step = .2) {
- const room = Math.max(0, maxHp - hp), give = Math.min(mode === 'ffa' ? SYPHON.ffa : SYPHON.other, room);
+ const room = Math.max(0, maxHp - hp), give = Math.min(SYPHON[mode] ?? SYPHON.other, room);
  return Math.floor(give / step + 1e-9) * step;
 }
+
+// Gun Game (owner, 2026-10-01: "Add the Gun Game as a multiplayer mode."
+// Described to him, and approved: "Gun Game: each kill moves you to the next
+// weapon, first through all of them wins. It shows off every weapon you've
+// built."). The rules live in src/gungame.js and net/arena.js; the numbers
+// and the order here.
+//  - ladder: every weapon in the game, easiest first, ending on the two
+//    blades so the winning kill is a melee one (the classic knife finish).
+//    A weapon under maintenance (weapon-maintenance.js) is skipped; a weapon
+//    added to items.js but not listed here joins just before the blades
+//    (gungame.js gunLadder), so the ladder always holds every weapon.
+//  - Everyone starts on the first weapon (no weapon pick) and comes back
+//    after a death on the weapon they have reached. Each kill swaps the
+//    killer's weapon in place at once. A kill with the last weapon wins.
+//  - meleeDemotes: a kill with a blade (`melee`) also knocks the victim
+//    back one weapon (the classic humiliation rule; false turns it off).
+//  - The match clock is the host's MATCH LENGTH (5 or 10 min); when it runs
+//    out the furthest along the ladder wins (then most kills, fewest
+//    deaths). No respawn cutoff (NO_RESPAWN_LEFT has no entry: the ladder,
+//    not the last one standing, decides it). Storm as in FFA.
+//  - Late joiners start on the lowest weapon anyone in the match holds.
+export const GUNGAME = Object.freeze({
+ ladder: Object.freeze(['rifle', 'sidekick', 'shotgun', 'omen', 'static', 'sightline', 'ichor', 'sheath']),
+ melee: Object.freeze(['ichor', 'sheath']),
+ meleeDemotes: true,
+ // Seconds the "next weapon" cue stays up in the middle of the screen.
+ cue: 1.6,
+});

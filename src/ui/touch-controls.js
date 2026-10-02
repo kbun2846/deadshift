@@ -12,6 +12,24 @@ export function isTap(start, x, y, now = performance.now()) {
   return !!start && !start.dragged && Math.hypot(x - start.x, y - start.y) < TOUCH_TAP.slop && now - start.time < TOUCH_TAP.time * 1000;
 }
 
+// How fast a pull walks: `length` px from the stick's centre with a pull of
+// `radius` px for its rim. Nothing inside the dead zone, then an ease-in curve
+// from its edge, full speed from MOVE_STICK.full of the radius out. The walk
+// keeps the pull's exact direction (only its length is shaped), and there is
+// no delay in here: the same pull always gives the same speed at once.
+export function stickSpeed(length, radius, stick = MOVE_STICK) {
+  if (!(radius > 0) || !(length > 0)) return 0;
+  const tilt = Math.min(1, length / radius);
+  if (tilt <= stick.dead) return 0;
+  const t = Math.min(1, (tilt - stick.dead) / Math.max(1e-6, stick.full - stick.dead));
+  return t ** stick.curve;
+}
+// The walking vector for a pull of (dx, dy) px: x right, z down the screen.
+export function stickResponse(dx, dy, radius, stick = MOVE_STICK) {
+  const length = Math.hypot(dx, dy), speed = stickSpeed(length, radius, stick);
+  return speed ? { x: dx / length * speed, z: dy / length * speed, speed } : { x: 0, z: 0, speed: 0 };
+}
+
 // Movement works like a phone game: no fixed stick. Touch the walking side and
 // drag: the spot where the drag began becomes the stick's fixed centre, and
 // the knob pulls out from it. Lift and drag again somewhere else and that
@@ -19,11 +37,16 @@ export function isTap(start, x, y, now = performance.now()) {
 // The walking vector is written to `output.moveX/moveZ` (-1..1, curved).
 export function bindFloatingStick(zone, element, { isRunning, onWalkStart, onTap, output }) {
   const knob = element.querySelector('.stick-knob');
-  const stick = { element, knob, pointer: null, x: 0, y: 0, dragging: false, down: 0, shown: null };
-  const radius = () => element.offsetWidth * MOVE_STICK.travel || 46;
+  const stick = { element, knob, pointer: null, x: 0, y: 0, dragging: false, down: 0, shown: null, r: 0 };
+  // The drawn size comes from the config; the pull's reach is measured once
+  // each time the stick appears (not on every move: a read after the knob's
+  // last write would force a layout per touch event).
+  element.style.setProperty('--stick-size', MOVE_STICK.size + 'px');
+  const radius = () => stick.r || MOVE_STICK.size * MOVE_STICK.travel;
   const show = () => {
     clearTimeout(stick.shown); stick.shown = null;
     element.style.left = stick.x + 'px'; element.style.top = stick.y + 'px'; element.classList.add('engaged');
+    stick.r = (element.offsetWidth || MOVE_STICK.size) * MOVE_STICK.travel;
   };
   function move(e) {
     if (e.pointerId !== stick.pointer) return;
@@ -37,9 +60,11 @@ export function bindFloatingStick(zone, element, { isRunning, onWalkStart, onTap
     }
     const r = radius(), scale = length > r ? r / length : 1, x = dx * scale / r, z = dy * scale / r;
     knob.style.transform = 'translate(' + (x * r) + 'px, ' + (z * r) + 'px)';
-    // A dead zone, then a gentle curve: small pulls creep, full pulls run.
-    const tilt = Math.min(1, length / r), speed = tilt < MOVE_STICK.dead ? 0 : ((tilt - MOVE_STICK.dead) / (1 - MOVE_STICK.dead)) ** MOVE_STICK.curve;
-    output.moveX = length ? dx / length * speed : 0; output.moveZ = length ? dy / length * speed : 0;
+    // A dead zone, then an ease-in curve: small pulls creep, full pulls run.
+    const speed = stickSpeed(length, r);
+    output.moveX = speed ? dx / length * speed : 0; output.moveZ = speed ? dy / length * speed : 0;
+    // The knob lights up at full speed, so the thumb can feel where the run starts.
+    const full = speed >= .999; if (full !== stick.full) { stick.full = full; element.classList.toggle('full', full); }
   }
   zone.addEventListener('pointerdown', e => {
     if (!isRunning() || stick.pointer !== null) return;
@@ -53,7 +78,7 @@ export function bindFloatingStick(zone, element, { isRunning, onWalkStart, onTap
     if (e.pointerId !== stick.pointer) return;
     const tap = !stick.dragging && performance.now() - stick.down < TOUCH_TAP.time * 1000 && e.type === 'pointerup';
     clearTimeout(stick.shown); stick.shown = null;
-    stick.pointer = null; stick.dragging = false; knob.style.transform = ''; element.classList.remove('engaged');
+    stick.pointer = null; stick.dragging = false; knob.style.transform = ''; element.classList.remove('engaged', 'full'); stick.full = false;
     output.moveX = output.moveZ = 0;
     if (tap && isRunning()) onTap(stick.x, stick.y);
   };
@@ -67,7 +92,7 @@ export function bindFloatingStick(zone, element, { isRunning, onWalkStart, onTap
   const letGo = () => {
    if (stick.pointer === null) return;
    clearTimeout(stick.shown); stick.shown = null;
-   stick.pointer = null; stick.dragging = false; knob.style.transform = ''; element.classList.remove('engaged');
+   stick.pointer = null; stick.dragging = false; knob.style.transform = ''; element.classList.remove('engaged', 'full'); stick.full = false;
    output.moveX = output.moveZ = 0;
   };
   for (const name of ['pointerup', 'pointercancel']) window.addEventListener(name, e => { if (e.pointerId === stick.pointer) release(e); }, true);

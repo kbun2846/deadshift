@@ -1,0 +1,66 @@
+/* Dodge charges (ui/dodge-hud.js; owner, 2026-10-01: "The dodge thing should
+   be better"). One colour for every weapon, mint, apart from the weapon
+   accents and the ability states (pink / yellow / blue / red):
+   ready = solid bright cell with a glow; refilling = the fill sliding in from
+   the left with a bright leading edge; waiting = an empty outlined track.
+   A charge coming back pops; a dodge pressed with none ready shakes red. */
+#game{--dodge:#e4fff0;--dodge-glow:#8ff0c0;/* (glows below spell it out at 75%: no color-mix, for Safari before 15.4) */--dodge-fill:#5fc493;--dodge-edge:#f4fffa;--dodge-track:#0e1916eb;--dodge-line:#a7cdb9;--dodge-line-dim:#6f8c7e;--dodge-deny:#ff5b5b}
+
+/* The row on the weapon panel: "dodge" then the cells, on the panel's left
+   edge like the weapon name under it. */
+#game #weapon .dodge-stamina{display:flex;align-items:center;gap:8px;width:max-content;max-width:100%;height:18px;margin:0 0 9px;padding:0;filter:none}
+#game #weapon .dodge-stamina .dodge-word{font-size:10px;font-weight:800;line-height:1;letter-spacing:.14em;color:#d3eee0;text-shadow:0 1px 3px #0b1411,0 0 2px #0b1411}
+#game #weapon .dodge-cells,#game .touch-dodge-charges{display:flex;align-items:center;gap:5px;padding:0 3px}
+#game .dodge-cell{position:relative;display:block;flex:none;width:32px;height:13px;border-radius:2px;transform:skewX(-18deg);overflow:hidden;
+ background:var(--dodge-track);box-shadow:inset 0 0 0 1.5px var(--dodge-line-dim),0 1px 3px #000b;transition:box-shadow .15s}
+#game .dodge-fill{position:absolute;inset:0;display:block;transform:translateX(-100%);background:var(--dodge-fill);transition:transform .09s linear}
+#game .dodge-cell[data-state=ready]{box-shadow:inset 0 0 0 1.5px #fff,0 0 7px #8ff0c0bf,0 1px 3px #000b}
+#game .dodge-cell[data-state=ready] .dodge-fill{background:var(--dodge)}
+#game .dodge-cell[data-state=filling]{box-shadow:inset 0 0 0 1.5px var(--dodge-line),0 1px 3px #000b}
+/* The edge of the refill: a bright line where it has got to. */
+#game .dodge-cell[data-state=filling] .dodge-fill{box-shadow:inset -2.5px 0 0 var(--dodge-edge)}
+#game .dodge-cell[data-pop=on]{animation:dodge-pop .5s cubic-bezier(.2,.8,.3,1)}
+@keyframes dodge-pop{0%{transform:skewX(-18deg) scale(1.55);box-shadow:inset 0 0 0 2px #fff,0 0 0 2px #fff,0 0 18px 4px var(--dodge-glow)}55%{transform:skewX(-18deg) scale(.94)}100%{transform:skewX(-18deg) scale(1)}}
+
+/* None ready and dodge pressed: the row shakes and goes red for a moment. */
+#game #weapon .dodge-stamina[data-deny=a]{animation:dodge-deny-a .4s ease-out}
+#game #weapon .dodge-stamina[data-deny=b]{animation:dodge-deny-b .4s ease-out}
+#game #weapon .dodge-stamina:is([data-deny=a],[data-deny=b]) .dodge-word{color:var(--dodge-deny)}
+#game :is(#weapon .dodge-stamina,#touch-dodge):is([data-deny=a],[data-deny=b]) .dodge-cell{background:#3b1217;box-shadow:inset 0 0 0 1.5px var(--dodge-deny),0 0 8px #ff5b5b99;transition:none}
+@keyframes dodge-deny-a{0%,100%{translate:0}15%{translate:-5px}35%{translate:5px}55%{translate:-3px}75%{translate:2px}}
+@keyframes dodge-deny-b{0%,100%{translate:0}15%{translate:-5px}35%{translate:5px}55%{translate:-3px}75%{translate:2px}}
+
+/* Phones: the same row, a touch bigger (the panel is not scaled up there). */
+body[data-controls=touch] #game #weapon .dodge-stamina{height:19px;margin:0 0 8px;gap:9px}
+body[data-controls=touch] #game #weapon .dodge-stamina .dodge-word{font-size:11px}
+body[data-controls=touch] #game #weapon .dodge-cell{width:33px;height:14px}
+
+/* Inside the touch DODGE button: small cells under the word, the word dimmed
+   while none is ready, the pad flashing mint when one comes back and red
+   (with a shake) on a press with none. */
+body[data-controls=touch] #game #touch-controls #touch-dodge .touch-dodge-charges{gap:4px;padding:0;pointer-events:none}
+body[data-controls=touch] #game #touch-controls #touch-dodge .dodge-cell{width:20px;height:9px;border-radius:1.5px;box-shadow:inset 0 0 0 1px var(--dodge-line-dim),0 1px 2px #000b}
+body[data-controls=touch] #game #touch-controls #touch-dodge .dodge-cell[data-state=ready]{box-shadow:inset 0 0 0 1px #fff,0 0 5px #8ff0c0bf}
+body[data-controls=touch] #game #touch-controls #touch-dodge .dodge-cell[data-state=filling]{box-shadow:inset 0 0 0 1px var(--dodge-line),0 1px 2px #000b}
+body[data-controls=touch] #game #touch-controls #touch-dodge .dodge-cell[data-state=filling] .dodge-fill{box-shadow:inset -1.5px 0 0 var(--dodge-edge)}
+body[data-controls=touch] #game #touch-controls #touch-dodge.touch-shaped>.button-label{top:calc(var(--ly) - 6px)}
+body[data-controls=touch] #game #touch-controls #touch-dodge.touch-shaped>.touch-dodge-charges{top:calc(var(--ly) + 10px)}
+body[data-controls=touch] #game #touch-controls #touch-dodge[data-dodge=empty]>.button-label{opacity:.55}
+/* The flashes are a layer over the pad (::before, under the words), not the
+   pad's own colour: easing a background from a flat colour into the pad's
+   color-mix() drew garbage (bright yellow) in Chromium. */
+body[data-controls=touch] #game #touch-controls #touch-dodge{isolation:isolate}
+body[data-controls=touch] #game #touch-controls #touch-dodge::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:0;background:#6fd3a2}
+body[data-controls=touch] #game #touch-controls #touch-dodge:is([data-deny=a],[data-deny=b])::before{background:#b02a39}
+body[data-controls=touch] #game #touch-controls #touch-dodge[data-dodge-pop=on]::before{animation:dodge-touch-flash .5s ease-out}
+body[data-controls=touch] #game #touch-controls #touch-dodge[data-deny=a]::before{animation:dodge-touch-flash-a .4s ease-out}
+body[data-controls=touch] #game #touch-controls #touch-dodge[data-deny=b]::before{animation:dodge-touch-flash-b .4s ease-out}
+body[data-controls=touch] #game #touch-controls #touch-dodge[data-deny=a]{animation:dodge-touch-shake-a .4s ease-out}
+body[data-controls=touch] #game #touch-controls #touch-dodge[data-deny=b]{animation:dodge-touch-shake-b .4s ease-out}
+@keyframes dodge-touch-flash{0%{opacity:.85}100%{opacity:0}}
+@keyframes dodge-touch-flash-a{0%{opacity:.9}100%{opacity:0}}
+@keyframes dodge-touch-flash-b{0%{opacity:.9}100%{opacity:0}}
+@keyframes dodge-touch-shake-a{0%,100%{translate:0}20%{translate:-4px}40%{translate:4px}60%{translate:-2px}}
+@keyframes dodge-touch-shake-b{0%,100%{translate:0}20%{translate:-4px}40%{translate:4px}60%{translate:-2px}}
+
+@media (prefers-reduced-motion:reduce){#game .dodge-cell,#game #weapon .dodge-stamina,#game #touch-dodge,#game #touch-dodge::before{animation:none!important}}

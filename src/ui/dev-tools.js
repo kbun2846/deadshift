@@ -4,6 +4,7 @@
 // themselves come from dev-options.js, shared with the floating window on O.
 import { buildDevOptions, refill, toggleDevOverrides } from './dev-options.js';
 import { RULES } from '../config/gameplay.js';
+import { buildMediaPanel } from './media-panel.js';
 export { toggleDevOverrides };
 
 // Stands in for the panel when the markup it needs is not there. Every caller
@@ -20,13 +21,15 @@ export function installDevTools(sim, panel, changed, hooks = {}) {
   root.innerHTML = '<div id="dev-options" hidden><p class="small">P switches the everyday overrides on or off together · O opens the floating window</p><div class="dev-option-list"></div><button type="button" id="dev-lock" class="secondary plain-text">DISABLE & LOCK TOOLS</button></div>';
   panel.append(root);
   const options = root.querySelector('#dev-options');
-  let unlocked = false, built = null;
+  let unlocked = false, built = null, mediaBuilt = null;
 
   // (The check is made before this, by the caller.)
   function unlock() {
     unlocked = true; options.hidden = false;
     // Built on unlock, not at startup: until then the page holds no trace of the tools.
     built ||= buildDevOptions(root.querySelector('.dev-option-list'), { sim, where: 'settings', hooks: { refill: () => refill(sim), ...hooks }, changed });
+    // Media mode (media-mode.js), first, as in the floating window.
+    if (hooks.media) mediaBuilt ||= buildMediaPanel(root.querySelector('.dev-option-list'), hooks.media);
     built.sync(); hooks.onUnlock?.();
     return true;
   }

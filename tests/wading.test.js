@@ -118,6 +118,7 @@ test('online: a body wading under a deck is hit along the stream, not from the d
   const pa = A.sim.player, pb = B.sim.player;
   Object.assign(pa, { x: ax, z: az, vx: 0, vz: 0, aimX, aimZ });
   Object.assign(pb, { x: -14, z: 22.1, vx: 0, vz: 0, aimX: -1, aimZ: 0, below: true });
+  delete pb.guard; // (not about spawn protection: B is hit from its first tick)
   const hp0 = pb.hp;
   for (let i = 0; i < 120; i++) {
    arena.stepSeat(A, { aimX, aimZ, fire: i % 30 < 2, moveX: 0, moveZ: 0 });

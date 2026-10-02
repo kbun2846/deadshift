@@ -169,7 +169,7 @@ test('the preset steps: tagged parts leave the props for one mesh per cell (the 
 });
 
 test('placement: many pieces of many types, each keeping the rules on the live map (outline, buildings, solids, other pieces, doorways, crosswalks, vents, drains, poles, the sidewalks\' building-side 1.4 m)', () => {
-  assert.ok(LUMEN_DETAIL_PROPS.length >= 250, `${LUMEN_DETAIL_PROPS.length} pieces`);
+  assert.ok(LUMEN_DETAIL_PROPS.length >= 230, `${LUMEN_DETAIL_PROPS.length} pieces`); // (280 before the owner's second clutter cut, 2026-10-01: 245 after)
   const placedTypes = new Set(LUMEN_DETAIL_PROPS.map(p => p.type));
   assert.ok(placedTypes.size >= 60, `${placedTypes.size} types placed`);
   LUMEN_DETAIL_PROPS.forEach((p, i) => { assert.equal(p.id, `ld${i}`); assert.ok(LUMEN_DETAIL_TYPES[p.type], p.type); assert.ok([p.x, p.z, p.angle].every(Number.isFinite)); });

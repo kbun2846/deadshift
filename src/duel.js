@@ -23,6 +23,7 @@ import { rollHTML } from './ui/score-flash.js';
 import { pickDuelCircle } from './duel-circle.js';
 import { stormMode, stormPlan as stormPlan_, stormAt, stormSafe, stormSafeSpot } from './storm.js';
 import { SPAWN_APART, TEAMS, roundsDecided, syphonAmount, respawnsClosed } from './config/match.js';
+import { gunLadder, ladderWeapon, afterKill, afterDeath } from './gungame.js';
 
 export const DUEL_MODES = Object.freeze({
  '1v1': { name: '1V1', allies: 0, enemies: 1 },
@@ -35,6 +36,12 @@ export const DUEL_MODES = Object.freeze({
  // wins. Everyone comes back FFA_RESPAWN s after a death, inside the storm's
  // safe circle; every kill gives its killer 50 health (syphon).
  ffa: { name: 'FFA', allies: 0, enemies: 5, ffa: true },
+ // Gun Game (2026-10-01, config/match.js GUNGAME, gungame.js): FFA's five
+ // robots, clock, respawns, storm and syphon, but no weapon of your choosing:
+ // everyone starts on the ladder's first weapon and each kill swaps in the
+ // next; a kill with the last weapon wins (the clock: the furthest along). A
+ // robot uses whatever weapon it is on. No respawn cutoff.
+ gungame: { name: 'GUN GAME', allies: 0, enemies: 5, ffa: true, gungame: true },
 });
 export const DUEL_LENGTHS = Object.freeze([300, 600]);
 export const FFA_RESPAWN = 6;
@@ -137,8 +144,44 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
  const team = () => DUEL_MODES[cfg?.mode]?.allies > 0;
  const ffa = () => !!DUEL_MODES[cfg?.mode]?.ffa;
  // FFA's last NO_RESPAWN_LEFT seconds (config/match.js, the same rule as
- // online): nobody comes back, you or a robot.
- const closed = () => !!cfg && ffa() && respawnsClosed('ffa', ffaLeft);
+ // online): nobody comes back, you or a robot. (Not Gun Game: no cutoff.)
+ const closed = () => !!cfg && ffa() && !gun && respawnsClosed('ffa', ffaLeft);
+ // Gun Game: the ladder, everyone's place on it ('you' or a robot's id:
+ // { level, prev, at }: `prev` the weapon held before the last swap, `at`
+ // the robots' clock then) and who finished it.
+ let gun = null;
+ const gunOf = id => { let st = gun.levels.get(id); if (!st) gun.levels.set(id, st = { level: 0, prev: null, at: -1 }); return st; };
+ // A new weapon from the ladder: now (alive) or from the next life. Yours
+ // through main.js (hooks.gunWeapon: the HUD and touch buttons follow);
+ // a robot's in place (it keeps what it knows, Robot.retool), or at its
+ // respawn (bots.respawnSpot below).
+ const gunGive = (id, now) => {
+  const w = ladderWeapon(gun.ladder, gunOf(id).level);
+  if (id === 'you') { hooks.gunWeapon?.(w, now && !sim.player.dead && sim.player.hp > 0); return; }
+  const bot = robots.find(b => b.id === id);
+  if (bot && now && bot.alive && bot.sim.weapon !== w) { bot.sim.swapWeapon(w); bot.brain.retool?.(); }
+ };
+ // A kill (bots.onKill: `killer`/`victim` a robot or null for you): syphon,
+ // then the ladder. The weapon a kill was made with is the one held as the
+ // robots' tick began (a second kill on the tick of a swap: the old one).
+ const onKill = (killer, victim) => {
+  syphon(killer);
+  if (!gun || gun.winner || tally.winner) return;
+  const kid = killer ? killer.id : 'you', vid = victim ? victim.id : 'you', ks = gunOf(kid), vs = gunOf(vid);
+  const held = ks.at === bots.clock ? ks.prev : ladderWeapon(gun.ladder, ks.level);
+  const was = vs.level; vs.level = afterDeath(vs.level, held);
+  if (vs.level !== was) gunGive(vid, false);
+  const next = afterKill(gun.ladder, ks.level, held);
+  if (next.won) { gun.winner = kid; return; }
+  if (next.moved) { ks.prev = ladderWeapon(gun.ladder, ks.level); ks.at = bots.clock; ks.level = next.level; gunGive(kid, true); }
+ };
+ // Everyone back on the first weapon (a new match or a restart).
+ const gunStart = () => {
+  gun = { ladder: gunLadder(), levels: new Map(), winner: null };
+  for (const b of robots) { if (b.sim.weapon !== gun.ladder[0]) b.sim.swapWeapon(gun.ladder[0]); b.brain.retool?.(); }
+  hooks.gunWeapon?.(gun.ladder[0], true);
+  bots.rowExtra = id => gun ? { gun: gunOf(id).level, of: gun.ladder.length, weapon: ladderWeapon(gun.ladder, gunOf(id).level), ...(gun.winner === id ? { finished: true } : {}) } : null;
+ };
  const names = () => (team() ? ['YOUR TEAM', 'ENEMIES'] : ffa() ? ['YOU', 'TOP BOT'] : ['YOU', 'BOT']);
  const clockText = t => { const n = Math.max(0, Math.ceil(t)); return Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0'); };
  // FFA's syphon (owner: "50 siphon off each kill"): the killer (a robot, or
@@ -247,17 +290,20 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
    const isFfa = !!mode.ffa;
    bots.holdRespawns = !isFfa;
    // FFA: robots come back on their own, inside the storm, and kills syphon.
-   if (isFfa) { bots.respawnWait = FFA_RESPAWN; bots.onKill = syphon; bots.respawnSpot = bot => safeSpot(bot.sim.player); bots.baseSpawn = false; }
+   if (isFfa) { bots.respawnWait = FFA_RESPAWN; bots.onKill = onKill; bots.respawnSpot = bot => { if (gun) bot.sim.weapon = ladderWeapon(gun.ladder, gunOf(bot.id).level); return safeSpot(bot.sim.player); }; bots.baseSpawn = false; }
+   // (Gun Game: the ladder's first weapon for everyone, set up below.)
+   gun = null;
    robots = [];
    for (let i = 0; i < mode.allies; i++) {
     const b = bots.spawn(sim, playableOr(cfg.allyWeapon, null) || randomWeapon(random), { team: 'blue', skill: cfg.allySkill, style: 'blend', temper: cfg.allyTemper, aim: DUEL_AIMS[cfg.allyAim] });
     if (b) robots.push(b);
    }
    for (let i = 0; i < mode.enemies; i++) {
-    const b = bots.spawn(sim, playableOr(cfg.botWeapon, null) || randomWeapon(random), { team: isFfa ? 'ffa' : 'red', skill: cfg.skill, style: 'blend', temper: cfg.temper, aim: DUEL_AIMS[cfg.aim] });
+    const b = bots.spawn(sim, mode.gungame ? gunLadder()[0] : playableOr(cfg.botWeapon, null) || randomWeapon(random), { team: isFfa ? 'ffa' : 'red', skill: cfg.skill, style: 'blend', temper: cfg.temper, aim: DUEL_AIMS[cfg.aim] });
     if (b) { b.brain.hunch = .6; robots.push(b); }
    }
    cfg.weapon = api.bot?.sim.weapon;
+   if (mode.gungame) gunStart();
    newStorm(true);
    ffaLeft = cfg.length;
    matchId++;
@@ -282,6 +328,19 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
    // top is a draw).
    if (ffa()) {
     ffaLeft = Math.max(0, ffaLeft - dt);
+    // Gun Game: the score line is each side's place on the ladder (you, the
+    // furthest robot); over at a kill with the last weapon, or on the clock
+    // (furthest along, then most kills; level: a draw).
+    if (gun) {
+     const lead = robots.reduce((m, b) => { const l = gunOf(b.id).level, k = b.stats?.kills || 0; return !m || l > m.l || (l === m.l && k > m.k) ? { l, k } : m; }, null) || { l: 0, k: 0 };
+     const mine = { l: gunOf('you').level, k: bots.youStats?.kills || 0 };
+     tally.you = mine.l + 1; tally.robot = lead.l + 1;
+     if (gun.winner || ffaLeft <= 0) {
+      tally.winner = gun.winner ? (gun.winner === 'you' ? 'you' : 'robot') : mine.l > lead.l || (mine.l === lead.l && mine.k > lead.k) ? 'you' : mine.l < lead.l || mine.k < lead.k ? 'robot' : 'draw';
+      overIn = DUEL_RESULT_DELAY;
+     }
+     render(); return;
+    }
     const mine = bots.youStats?.kills || 0, top = robots.reduce((m, b) => Math.max(m, b.stats?.kills || 0), 0);
     tally.you = mine; tally.robot = top;
     // Respawns closed: the robots down stay down (you: main.js), and with
@@ -343,15 +402,19 @@ export function createDuel(parent, { sim, bots, hooks = {}, random = Math.random
    hooks.over?.(api.outcome);
   },
   // How it ended, for the end card (ui/match-end.js soloOutcome).
-  get outcome() { return { winner: tally.winner, you: tally.you, robot: tally.robot, forfeited, team: team(), ffa: ffa(), mode: cfg?.mode || null, survivor }; },
+  get outcome() { return { winner: tally.winner, you: tally.you, robot: tally.robot, forfeited, team: team(), ffa: ffa(), mode: cfg?.mode || null, survivor, ...(gun ? { gungame: { of: gun.ladder.length, finished: gun.winner } } : {}) }; },
+  // Gun Game: the ladder and everyone's level ({ ladder, levels }, as the
+  // online match state has it; ui/gungame-hud.js), or null.
+  gunState() { return gun ? { ladder: gun.ladder, levels: Object.fromEntries([['you', gunOf('you').level], ...robots.map(b => [b.id, gunOf(b.id).level])]) } : null; },
+  get gunGame() { return !!gun; },
   // A restart (pause menu or START on the end card): the score back to nothing.
-  reset() { if (!cfg) return; matchId++; survivor = null; bots.holdRespawns = !ffa(); tally.reset(); ffaLeft = cfg.length; alive = new Map(robots.map(b => [b, true])); overIn = -1; breakIn = -1; lastPoint = null; round = 1; shownKey = ''; forfeited = false; ended = false; held = roll = null; newStorm(); render(); },
+  reset() { if (!cfg) return; if (gun) gunStart(); matchId++; survivor = null; bots.holdRespawns = !ffa(); tally.reset(); ffaLeft = cfg.length; alive = new Map(robots.map(b => [b, true])); overIn = -1; breakIn = -1; lastPoint = null; round = 1; shownKey = ''; forfeited = false; ended = false; held = roll = null; newStorm(); render(); },
   // The match is over and its end card is up (until a restart or leaving).
   get resultOpen() { return ended; },
   // Leaving: targets come back with the next reset. (The score goes too: a
   // finished match left behind held practice's death screen, main.js.)
   stop() {
-   stormPlan = null; setStormClock(0);
+   stormPlan = null; setStormClock(0); gun = null; bots.rowExtra = null;
    cfg = null; robots = []; sim.noTargets = false; circle = null; sim.boundary = null; score.hidden = true; tally = new DuelScore(); overIn = breakIn = -1; ended = false; held = roll = null; forfeited = false;
    bots.enemyRange = [22, 60]; bots.friendlyFire = 0; bots.apart = 0; bots.teamSpawn = false; bots.holdRespawns = false; bots.onKill = bots.respawnSpot = bots.respawnWait = null; breakIn = -1; lastPoint = null; globalThis.document?.body?.classList.remove('duel-on');
   },

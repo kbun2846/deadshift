@@ -27,6 +27,15 @@ export function feedLine(line, myId) {
  return `${who(line.killer, line.killerName)} <span class="feed-verb${line.oneShot ? ' feed-oneshot' : ''}">${line.oneShot ? 'one shot' : 'killed'}</span> ${victims}`;
 }
 
+// A streak or shutdown line for the kill feed (streaks.js streakNews; the
+// feel pass, owner 2026-10-01): "NAME is on a 5 kill streak", "A ended B's
+// 5 kill streak". Same colours as the kill lines.
+export function feedNote(news, myId) {
+ const who = (id, name) => `<span class="${id === myId ? 'feed-you' : 'feed-enemy'}">${esc(name)}</span>`;
+ if (news.kind === 'shutdown') return `${who(news.killer, news.killerName)} <span class="feed-verb feed-streak">ended</span> ${who(news.victim, news.victimName)}<span class="feed-verb feed-streak">'s ${news.n} kill streak</span>`;
+ return `${who(news.killer, news.killerName)} <span class="feed-verb feed-streak">is on a ${news.n} kill streak</span>`;
+}
+
 export const pingText = ping => (ping === null || ping === undefined ? '…' : Math.round(ping) + ' ms');
 export const swatch = slot => `<i class="player-swatch" style="--swatch:${playerColour(slot).swatch}" aria-hidden="true"></i>`;
 
@@ -72,14 +81,18 @@ export function createMultiplayerHud(root) {
  scores.type = 'button'; scores.id = 'scores-toggle'; scores.className = 'icon-button plain-text'; scores.textContent = 'SCORES'; scores.hidden = true;
  root.append(feed, clock);
  document.querySelector('.top-actions')?.prepend(scores);
- let lines = [], boardOpen = false, rows = [], myId = null, clockText = '';
+ let lines = [], boardOpen = false, rows = [], myId = null, clockText = '', activeNow = false;
  // What the panel shows besides the rows: from the last setMatch (elimination: the sides' points).
  let boardMode = null, boardRound = 0, boardSides = null, boardFinal = false, boardFlip = null;
  const boardOpts = () => ({ rows, myId, mode: boardMode, sides: boardSides, round: boardRound, final: boardFinal, flip: boardFlip });
  const paint = () => { if (!boardOpen) return; panel.update(boardOpts()); };
 
  const api = {
-  set active(on) { feed.hidden = !on; scores.hidden = !on; clock.hidden = !on; if (!on) { api.hideBoard(); lines = []; feed.replaceChildren(); } },
+  set active(on) { activeNow = !!on; feed.hidden = !on; scores.hidden = !on; clock.hidden = !on; if (!on) { api.hideBoard(); lines = []; feed.replaceChildren(); } },
+  // A line that is not a kill, already HTML (feel/feel-layer.js: streaks and
+  // shutdowns, feedNote); and BOTS FFA's feed, shown for those alone.
+  addNote(html, now) { lines.push({ html, at: now }); lines = lines.slice(-FEED_MAX); api.renderFeed(now, true); },
+  set feedShown(on) { if (activeNow) return; if (feed.hidden === !on) return; feed.hidden = !on; if (!on) { lines = []; feed.replaceChildren(); } },
   // match: { phase, left, number, results } from the host.
   setMatch(match, me) {
    if (!match) return;

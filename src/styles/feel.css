@@ -1,0 +1,77 @@
+/* The feel pass (feel/*.js; owner, 2026-10-01: "Make the kills feel amazing
+   ... then do all the feel and feedback things"). Hit markers, the streak
+   banner, the low-health edge. Every element is inside #game and carries a
+   data-media hook (media-mode.css): markers with the crosshair, the banner
+   with the round banners, the edge with the vignette. */
+
+/* Hit markers (feel/hit-markers.js) in the old #hit-marker element: four
+   ticks round the hit for a hit, a red X for a kill, a one-shot's X in a
+   bursting ring, a grey ring for a shot spawn protection took. */
+#game .hit-markers{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:3;opacity:1;border:0;transform:none}
+#game .hm{position:absolute;left:0;top:0;width:0;height:0;display:none;--len:8px;--gap:6px;--thick:2.5px;--ink:#fff4dc;--edge:#140d0bcc}
+#game .hm[data-play=a],#game .hm[data-play=b]{display:block}
+#game .hm i{position:absolute;left:0;top:0;width:var(--len);height:var(--thick);margin-top:calc(var(--thick) / -2);background:var(--ink);border-radius:var(--thick);transform-origin:0 50%;box-shadow:0 0 0 1px var(--edge),0 0 4px #0008}
+#game .hm i:nth-child(1){transform:rotate(45deg) translateX(var(--gap))}
+#game .hm i:nth-child(2){transform:rotate(135deg) translateX(var(--gap))}
+#game .hm i:nth-child(3){transform:rotate(225deg) translateX(var(--gap))}
+#game .hm i:nth-child(4){transform:rotate(315deg) translateX(var(--gap))}
+#game .hm b{display:none;position:absolute;left:-14px;top:-14px;width:28px;height:28px;border-radius:50%;border:2px solid var(--ink);box-sizing:border-box}
+/* A graze: short, fine ticks close in. A hit: longer with its weight. A big hit: long, thick, warm. */
+#game .hm[data-kind=tick]{--len:5px;--gap:5px;--thick:2px;--ink:#efe4cf}
+#game .hm[data-kind=hit]{--len:calc(7px + 4px * var(--hw,.5));--gap:6px;--thick:2.6px}
+#game .hm[data-kind=big]{--len:calc(11px + 5px * var(--hw,.5));--gap:7px;--thick:4px;--ink:#ffd58c}
+/* A kill: a red X from the middle out. */
+#game .hm[data-kind=kill]{--len:19px;--gap:1px;--thick:4.4px;--ink:#ff2e45;--edge:#250910e6}
+/* A one-shot: a white-hot X with a red edge, in a red ring that bursts out. */
+#game .hm[data-kind=oneshot]{--len:22px;--gap:1px;--thick:5px;--ink:#fff7f2;--edge:#ff2e45}
+#game .hm[data-kind=oneshot] i{box-shadow:0 0 0 1.5px #ff2e45,0 0 10px #ff2e45cc}
+#game .hm[data-kind=oneshot] b{display:block;border:3px solid #ff2e45;box-shadow:0 0 8px #ff2e4599}
+/* Spawn protection took it: no ticks, a small pale ring. */
+#game .hm[data-kind=blocked] i{display:none}
+#game .hm[data-kind=blocked] b{display:block;left:-9px;top:-9px;width:18px;height:18px;border:2px solid #cdeefc;opacity:.85}
+/* Played by flipping between two identical animations (a / b). */
+#game .hm[data-play=a]>*{animation:hm-hit-a .26s ease-out both}
+#game .hm[data-play=b]>*{animation:hm-hit-b .26s ease-out both}
+#game .hm:is([data-kind=kill],[data-kind=oneshot])[data-play=a]>i{animation:hm-kill-a .5s cubic-bezier(.2,.8,.3,1) both}
+#game .hm:is([data-kind=kill],[data-kind=oneshot])[data-play=b]>i{animation:hm-kill-b .5s cubic-bezier(.2,.8,.3,1) both}
+#game .hm[data-kind=oneshot]>i{animation-duration:.75s!important}
+#game .hm[data-kind=oneshot][data-play=a]>b{animation:hm-ring-a .7s ease-out both}
+#game .hm[data-kind=oneshot][data-play=b]>b{animation:hm-ring-b .7s ease-out both}
+@keyframes hm-hit-a{0%{opacity:1;scale:.55}30%{opacity:1;scale:1.08}100%{opacity:0;scale:1}}
+@keyframes hm-hit-b{0%{opacity:1;scale:.55}30%{opacity:1;scale:1.08}100%{opacity:0;scale:1}}
+@keyframes hm-kill-a{0%{opacity:1;scale:1.9}18%{opacity:1;scale:.92}30%{scale:1}70%{opacity:1}100%{opacity:0;scale:1.04}}
+@keyframes hm-kill-b{0%{opacity:1;scale:1.9}18%{opacity:1;scale:.92}30%{scale:1}70%{opacity:1}100%{opacity:0;scale:1.04}}
+@keyframes hm-ring-a{0%{opacity:1;scale:.4}100%{opacity:0;scale:2.6}}
+@keyframes hm-ring-b{0%{opacity:1;scale:.4}100%{opacity:0;scale:2.6}}
+@media(prefers-reduced-motion:reduce){#game .hm>*{animation-name:hm-fade!important}@keyframes hm-fade{0%,60%{opacity:1}100%{opacity:0}}}
+
+/* Kill streak callouts and shutdowns (feel/streak-banner.js): high in the
+   middle under the health bar and the clock, small, the HUD's dark panel
+   with a pink edge; a small pink line over the word in stretched lettering. */
+#game .streak-banner{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 186px);z-index:44;display:none;pointer-events:none;transform:translateX(-50%);
+ padding:6px 20px 7px;background:#232827e8;border-radius:4px;box-shadow:inset 3px 0 0 var(--ui-accent),inset -3px 0 0 var(--ui-accent),0 6px 18px #0007;text-align:center;white-space:nowrap}
+#game .streak-banner[data-play=a],#game .streak-banner[data-play=b]{display:block}
+#game .streak-banner[data-play=a]{animation:streak-a var(--life,1.9s) cubic-bezier(.2,.7,.2,1) both}
+#game .streak-banner[data-play=b]{animation:streak-b var(--life,1.9s) cubic-bezier(.2,.7,.2,1) both}
+#game .streak-banner small{display:block;font:800 11px/1.2 var(--hud-font,Arial),Arial,sans-serif;letter-spacing:.2em;color:var(--ui-accent);text-transform:none!important}
+/* The word: Arial Black drawn .86 wide by 1.7 tall, as the fitted buttons' lettering. */
+#game .streak-word{--fs:28px;--sy:1.7;display:block;height:calc(var(--fs) * var(--sy) * .8);margin-top:3px;font-size:var(--fs)}
+#game .streak-word b{display:inline-block;font:900 var(--fs)/1 'Arial Black',Arial,sans-serif;letter-spacing:.05em;color:#fff;transform-origin:50% 0;transform:scale(.86,var(--sy));text-shadow:0 1px 0 #0009;text-transform:uppercase!important}
+#game .streak-banner[data-kind=shutdown]{box-shadow:inset 3px 0 0 #ff4056,inset -3px 0 0 #ff4056,0 6px 18px #0007}
+#game .streak-banner[data-kind=shutdown] .streak-word b{color:#ffe3e7}
+@keyframes streak-a{0%{opacity:0;transform:translateX(-50%) translateY(-6px) scale(1.18)}9%{opacity:1;transform:translateX(-50%) scale(1)}84%{opacity:1;transform:translateX(-50%) scale(1)}100%{opacity:0;transform:translateX(-50%) translateY(-4px) scale(.98)}}
+@keyframes streak-b{0%{opacity:0;transform:translateX(-50%) translateY(-6px) scale(1.18)}9%{opacity:1;transform:translateX(-50%) scale(1)}84%{opacity:1;transform:translateX(-50%) scale(1)}100%{opacity:0;transform:translateX(-50%) translateY(-4px) scale(.98)}}
+@media(prefers-reduced-motion:reduce){#game .streak-banner[data-play]{animation-name:streak-plain}@keyframes streak-plain{0%,100%{opacity:0;transform:translateX(-50%)}8%,86%{opacity:1;transform:translateX(-50%)}}}
+/* Phones: a little smaller, under the health bar (portrait: under the clock too). */
+@media(max-width:700px),(max-height:520px){#game .streak-banner{top:calc(env(safe-area-inset-top,0px) + 160px);padding:5px 14px 6px}#game .streak-word{--fs:22px}#game .streak-banner small{font-size:10px}}
+@media(max-height:520px) and (orientation:landscape){#game .streak-banner{top:calc(env(safe-area-inset-top,0px) + 98px)}}
+body:not(.playing) #game .streak-banner{display:none!important}
+
+/* Low health (feel/low-health-edge.js): a red glow in from the screen's edge,
+   its opacity set each beat. Under the HUD, over the world. */
+#game .low-health-edge{position:absolute;inset:0;z-index:2;display:none;opacity:0;pointer-events:none;
+ background:radial-gradient(ellipse farthest-corner at 50% 50%,transparent 50%,#a8102a30 62%,#8a0a2096 82%,#6e0618d0 100%);box-shadow:inset 0 0 70px 10px #9c0d2599}
+body:is(.dying,.paused) #game .low-health-edge,body:not(.playing) #game .low-health-edge{display:none!important}
+
+/* The kill feed's streak lines (multiplayer-hud.js feedNote). */
+#game .kill-feed .feed-streak{color:var(--ui-accent)}

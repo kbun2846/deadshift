@@ -3,15 +3,20 @@ import { makeSightline,poseSightline } from './sightline-model.js';
 import { SIGHTLINE as S,sightlineRange,sightlineCanScope } from './sightline.js';
 import { segmentBox } from '../simulation.js';
 import { sightlineFlight,sightlineY,sightlineGuideEnd } from './sightline-flight.js';
-const WHITE=new THREE.Color('#d9e1ce'),AMBER=new THREE.Color('#ffb854'),RED=new THREE.Color('#ee4851'),RED_HALO=new THREE.Color('#80202d'),HOT=new THREE.Color('#ff263c'),HOT_CORE=new THREE.Color('#ffc5a9'),VAPOR=new THREE.Color('#c6c6b9');
+import { POP } from '../render/shot-pop.js';
+const WHITE=new THREE.Color('#d9e1ce'),AMBER=new THREE.Color('#ffb854'),HOT=new THREE.Color('#ff263c'),HOT_CORE=new THREE.Color('#ffc5a9'),VAPOR=new THREE.Color('#c6c6b9');
 const YELLOW=new THREE.Color('#ffe449'),YELLOW_CORE=new THREE.Color('#fff8bf');
+// The pop pass (render/shot-pop.js): a round is a white core over a dark
+// line with a brighter, wider head; the laser a bright red core over a dark
+// band (its halo was a mid red at .65, muddy on sand and lost at night).
+const ROUND=new THREE.Color(POP.sightline.round),ROUND_RIM=new THREE.Color(POP.sightline.roundRim),LASER_HALO=new THREE.Color(POP.sightline.laserHalo),LASER_CORE=new THREE.Color(POP.sightline.laserCore);
 const YELLOW_SPARKS=[YELLOW_CORE,YELLOW,new THREE.Color('#d5a51d'),new THREE.Color('#6c4712')];
 const noise=n=>{const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(v);};
 export class SightlineView{
  constructor(view){
   this.view=view;this.time=0;this.recoil=0;this.wakes=[];this.crackles=[];this.vapor=0;this.laserPaths=new Map();this.frame=0;this.model=makeSightline();this.model.visible=false;view.player.userData.gun.add(this.model);
   this.dummy=new THREE.Object3D();this.a=new THREE.Vector3();this.b=new THREE.Vector3();this.muzzle=new THREE.Vector3();this.up=new THREE.Vector3(0,1,0);
-  this.lines=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshBasicMaterial({color:'#ffffff',transparent:true,opacity:.65,depthWrite:false,toneMapped:false}),2048);
+  this.lines=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshBasicMaterial({color:'#ffffff',transparent:true,opacity:POP.sightline.opacity,depthWrite:false,toneMapped:false}),2048);
   const guideMaterial=this.lines.material.clone();guideMaterial.userData.ownSightlineGuide=true;guideMaterial.depthTest=false;
   this.guideLines=new THREE.InstancedMesh(this.lines.geometry,guideMaterial,320);
   this.meshes=[this.lines,this.guideLines];
@@ -101,8 +106,8 @@ export class SightlineView{
    const sx=this.muzzle.x,sy=this.muzzle.y,sz=this.muzzle.z,ex=points.at(-3),ey=points.at(-2),ez=points.at(-1);
    // Continuous core/halo avoids seams and spends only two instances on the
    // normal beam. Breach's traveling highlights stay on that same straight line.
-   this.line(sx,sy,sz,ex,ey,ez,(hot?.26:.13)*scale,hot?HOT:RED_HALO,mesh);
-   this.line(sx,sy+.005,sz,ex,ey+.005,ez,(hot?.11:.065)*scale,hot?HOT_CORE:RED,mesh);
+   this.line(sx,sy,sz,ex,ey,ez,(hot?.26:.15)*scale,hot?HOT:LASER_HALO,mesh);
+   this.line(sx,sy+.005,sz,ex,ey+.005,ez,(hot?.11:.07)*scale,hot?HOT_CORE:LASER_CORE,mesh);
    if(hot)for(let i=0;i<pieces;i++){
     const a=i/pieces,b=(i+1)/pieces,ax=sx+(ex-sx)*a,ay=sy+(ey-sy)*a,az=sz+(ez-sz)*a,bx=sx+(ex-sx)*b,by=sy+(ey-sy)*b,bz=sz+(ez-sz)*b;
     if(((a*length-this.time*9)%4+4)%4<.8)this.line(ax,ay+.045,az,bx,by+.045,bz,.045*scale,AMBER,mesh);
@@ -119,8 +124,10 @@ export class SightlineView{
   for(const [key,path] of this.laserPaths)if(path.frame!==this.frame)this.laserPaths.delete(key);
   if(this.vapor>.16)this.vapor=0;
   for(const b of sim.sightlineRounds||[]){
-   const length=b.pistol?.4:1.05,y=b.y??.76,rise=b.flight?.slope||b.rise||0;
-   this.line(b.x-b.dx*length,y-rise*length,b.z-b.dz*length,b.x,y,b.z,.048,b.special?AMBER:WHITE);
+   const P=POP.sightline,length=b.pistol?P.pistolLength:P.length,y=b.y??.76,rise=b.flight?.slope||b.rise||0,k=b.pistol?.8:1,head=Math.min(length,.22);
+   this.line(b.x-b.dx*length,y-rise*length,b.z-b.dz*length,b.x+b.dx*.04,y,b.z+b.dz*.04,P.rimWidth*k,ROUND_RIM);
+   this.line(b.x-b.dx*length,y-rise*length+.004,b.z-b.dz*length,b.x,y+.004,b.z,P.roundWidth*k,b.special?AMBER:ROUND);
+   this.line(b.x-b.dx*head,y-rise*head+.008,b.z-b.dz*head,b.x,y+.008,b.z,P.roundWidth*k*1.5,b.special?YELLOW_CORE:ROUND);
    if(!b.pistol&&dt>0&&this.wakes.length<480)this.wakes.push({x:b.x,z:b.z,y,dx:b.dx,dz:b.dz,t:0,life:.48,special:b.special});
   }
   for(const w of this.wakes){w.t+=dt;const f=1-w.t/w.life;if(f<=0)continue;

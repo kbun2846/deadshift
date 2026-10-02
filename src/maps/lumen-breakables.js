@@ -3,10 +3,15 @@
 // { type, x, z, angle } (angle in radians about y; a prop's local x runs along
 // world (cos a, -sin a)), the types from world/lumen-breakables.js, spread into
 // `lumen.props` by lumen.js after the cover and the bases' screens (ids `lb<n>`
-// by position, so new ones go at the end). 80 and the trees: 117 until the
+// by position, so new ones go at the end). 41 and the trees: 117 until the
 // owner's clutter cut (2026-10-01, AGENTS.md > Lumen) took most parking meters
 // and mesh bins (thin posts a body ran into unseen) and the doubled stools,
-// crates, chairs and scooters of the busiest corners; every type still stands.
+// crates, chairs and scooters of the busiest corners (80 left); the second cut
+// the same day ("the streets should be more empty") took the rest of the
+// small seats, crates and bins scattered along the sidewalks and kept the
+// readable groups (a cart, a locker, bins by a wall, a rack, a windbreak);
+// every type still stands somewhere. More of the street breaks now from the
+// set pieces (world/lumen-setpieces.js SETPIECE_BREAKS).
 //
 // Grouped the way a street collects them: bins and bags by a wall, crates and
 // stools where the market sells, parcel lockers and terminals where people
@@ -40,73 +45,47 @@ const PLACED = [
   B('cityTreeStacks', -46, -28, 0),
   B('cityTreeMetro', 29, 37.5, 0),
   // Night Market and North Lane
-  B('cityFoodCart', 0, -45.53, 1.571), B('cityCrate', -0.15, -47.03, 1.632), B('cityStool', -0.2, -44.23, 1.332), // a stall
-  // a stall
-  B('cityCrate', -18.13, -32, 3.119), B('cityStool', -18.98, -32, 2.798), // a crate table and its seats
-  B('cityCrate', -3.49, -32, 3.124), B('cityPlasticChair', -3.49, -32.85, -0.283), // a crate table and its seats
+  B('cityFoodCart', 0, -45.53, 1.571), // a stall
   B('cityRecycleBin', -4.74, -41, 0), B('cityTrashBags', -6.14, -41, 0.04), // bins
-  // Stacks and West Street north
-  B('cityCrate', -25.85, -49.96, -1.582), // crates
-  B('cityPlasticChair', -25.8, -43.97, -1.398), // chairs
-  B('cityCrate', -34.15, -16.26, 1.594), // crates
-  B('cityCrate', -34.15, -35.3, 1.549), // crates
-  B('cityStool', -34, -42.18, 1.482), B('cityPlasticChair', -33.15, -41.33, -1.319), // a crate table and its seats
+  // West Street
   B('cityCableReel', -34.1, -46.44, 1.673), // cable reels
   B('cityWaterBarrier', -34.05, -29.68, -1.534), // roadworks
-  B('cityMeshBin', -34.15, -18.45, 1.695), // a litter bin
   // North frontage
   B('cityWaterBarrier', 0.45, -20.45, -1.32), // roadworks
   // The Boulevard
-  B('cityCrate', -44.02, -8.5, 0.028), // a crate table and its seats
-  B('cityRecycleBin', -49.07, -8.5, 0), // bins
-  B('cityBikeRack', -53.75, -8.02, 0), B('cityScooter', -52, -8.7, -0.016), // a bike rack and its bikes
-  B('cityBikeRack', 34.66, -8.02, 0), // a bike rack and its bikes
-  B('cityInfoTerminal', -41.6, 8.7, -3.141), // a terminal
-  B('cityInfoTerminal', 52.18, 8.7, -3.141), B('cityMeshBin', 53.38, 8.7, -2.946), // a terminal
+  B('cityBikeRack', -53.75, -8.02, 0), // a bike rack and its bikes
+  B('cityInfoTerminal', 52.18, 8.7, -3.141), // a terminal
   B('cityRecycleBin', -44.56, 8.5, -3.141), B('cityTrashBags', -43.16, 8.5, -3.116), // bins
   B('cityBicycle', 36.92, -8.65, 0.149), // a bike
-  B('cityCrate', 39.88, 8.65, 3.098), // crates
   // Uptown
   B('cityParcelLocker', 39.85, -28.13, 1.571), B('cityDeliveryBox', 39.85, -26.93, 1.48), // a parcel locker
   B('cityParcelLocker', 47.87, -54.85, -3.141), B('cityDeliveryBox', 46.57, -54.9, -3.064), // a parcel locker
-  B('cityInfoTerminal', 35.17, -35.8, -3.141), B('cityMeshBin', 36.37, -35.8, 3.103), // a terminal
-  B('cityBikeRack', 34.48, -38.35, 1.571), B('cityScooter', 33.8, -40.1, 1.587), // a bike rack and its bikes
+  B('cityInfoTerminal', 35.17, -35.8, -3.141), // a terminal
+  B('cityScooter', 33.8, -40.1, 1.587), // a parked scooter
   B('cityShopGlass', 57.7, -52.34, 1.571), B('cityShopGlass', 57.7, -54.24, 1.571), // a glass windbreak
   B('cityShopGlass', 33.7, -41.51, 1.571), B('cityShopGlass', 33.7, -43.41, 1.571), // a glass windbreak
-  B('cityRecycleBin', 38.63, -38, 0), // bins
   B('cityBicycle', 52.87, -54.85, -3.139), // a bike
   B('cityFoodCart', 12, -27.2, -1.571), // a food cart
   // The Avenue, north
-  B('cityParkingMeter', 11.43, -21.47, 1.571), B('cityParkingMeter', 11.43, -24.67, 1.571), // meters
+  B('cityParkingMeter', 11.43, -21.47, 1.571), // a meter
   // Garage and South Street
-  // cable reels
   B('cityWaterBarrier', -40.1, 34.05, -0.023), // roadworks
-  B('cityCrate', -34.15, 12.59, 1.532), // crates
   B('cityScooterHeap', -48.21, 26.15, 0.011), // a scooter dump
   B('cityRecycleBin', -55.68, 34, -3.141), B('cityMeshBin', -56.93, 34.05, -3.125), // bins
   // South frontage and the Avenue, south
   B('cityWaterBarrier', -8.16, 25.95, -2.88), // roadworks
-  B('cityInfoTerminal', 16.26, 28.2, -3.141), B('cityMeshBin', 17.46, 28.2, -2.973), // a terminal
-  B('cityParcelLocker', 21.2, 28.15, -3.141), B('cityDeliveryBox', 19.9, 28.1, -3.008), // a parcel locker
-  B('cityWaterBarrier', -25.95, 31.03, 1.568), // roadworks
+  B('cityParcelLocker', 21.2, 28.15, -3.141), // a parcel locker
   // Charging lot
-  B('cityScooter', -3.75, 43.2, -3.102), // parked scooters
-  B('cityScooter', -0.2, 51.7, 1.557), // parked scooters
+  B('cityScooter', -0.2, 51.7, 1.557), // a parked scooter
   B('cityCableReel', -2.37, 43.1, -2.977), B('cityCrate', -1.07, 43.15, 3.078), // cable reels
   // Velvet Row
-  B('cityScooter', -25.22, 48.2, 2.944), // parked scooters
-  B('cityPlasticChair', -31.9, 34.2, 3.042), // chairs
-  B('cityPlasticChair', -26.13, 47.8, -0.056), // chairs
-  B('cityCrate', -35.62, 48, -0.04), B('cityStool', -36.47, 48.05, 0.353), // a crate table and its seats
-  B('cityStool', -31.75, 47.75, -0.207), B('cityPlasticChair', -32.55, 47.8, 0.073), // stools
-  B('cityStool', -39.04, 48.25, 2.842), // stools
-  B('cityScooter', -24.13, 34.2, -3.006), // parked scooters
+  B('cityPlasticChair', -26.13, 47.8, -0.056), // a chair
+  B('cityCrate', -35.62, 48, -0.04), B('cityStool', -36.47, 48.05, 0.353), // a crate table and its seat
   // Metro Plaza
-  B('cityParcelLocker', 12.15, 39.45, -1.571), B('cityDeliveryBox', 12.1, 40.75, -1.614), // a parcel locker
+  B('cityParcelLocker', 12.15, 39.45, -1.571), // a parcel locker
   B('cityBikeRack', 44.69, 30.3, -0.785), // a bike rack and its bikes
-  B('cityScooterHeap', 32.73, 41.85, -3.106), B('cityScooter', 34.38, 42.2, 2.665), // a scooter dump
-  B('cityFoodCart', 16.44, 46, 0), B('cityCrate', 17.94, 45.85, 0.006), B('cityPlasticChair', 14.94, 46.55, -2.883), // a stall
-  // Along West Street, the Avenue and South Street
+  B('cityScooterHeap', 32.73, 41.85, -3.106), // a scooter dump
+  B('cityFoodCart', 16.44, 46, 0), B('cityCrate', 17.94, 45.85, 0.006), // a stall
 ];
 
 export const LUMEN_BREAKABLE_PROPS = Object.freeze(PLACED.map((p, i) => Object.freeze({ id: `lb${i}`, ...p })));

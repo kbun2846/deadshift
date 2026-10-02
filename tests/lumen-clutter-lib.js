@@ -11,6 +11,13 @@
 // and area (the Crossroads, Back Alley, the road whose corridor it stands
 // in, else its district).
 //
+// Small street obstacles (the second cut, 2026-10-01: "the obstacles all over
+// the map ... blend in too much and there's kind of just too many of them"):
+// a street object that is not a vehicle and not one of the big readable set
+// pieces (BIG: 3 m or longer, 2.4 m² or more of footprint, or 2.5 m or taller:
+// a hoarding, a dumpster, a tall planter, a shelter, a stall, a kiosk); a
+// crate, a bin, a barrier, a bench, a machine. `breakable`: it has health.
+//
 // A thin vertical collider is a box a body bumps into that the top-down
 // camera barely shows: narrower than THIN.width both ways and THIN.height
 // or taller (a pole, a post, a bollard, a meter, a bin on a stick), not inside
@@ -26,6 +33,7 @@ import { ROADS, CROSSROADS, BACK_ALLEY, DISTRICTS } from '../src/maps/lumen-layo
 import { PROP_TYPES } from '../src/map-kit.js';
 
 export const THIN = Object.freeze({ width: .5, height: .75 });
+export const BIG = Object.freeze({ length: 3, area: 2.4, height: 2.5 });
 export const VEHICLES = Object.freeze(['cityCompact', 'citySedan', 'citySuv', 'cityTaxi', 'citySports', 'cityVan', 'cityTruck', 'cityWreck', 'cityPileup', 'cityMotorbike']);
 
 const sources = () => [
@@ -63,6 +71,12 @@ export function thinBoxes(t) {
   return boxes.filter(b => Math.max(b[2], b[3]) < THIN.width &&(b[4] ?? 1.2) >= THIN.height && !boxes.some(o => inside(b, o)));
 }
 
+// A big readable set piece (see the header).
+export function isBig(t) {
+  const h = Math.max(0, ...(t.collisionBoxes || []).map(b => b[4]));
+  return Math.max(t.w, t.d) >= BIG.length || t.w * t.d >= BIG.area || h >= BIG.height;
+}
+
 const tally = (list, key) => {
   const n = {};
   for (const x of list) n[key(x)] = (n[key(x)] || 0) + 1;
@@ -76,15 +90,20 @@ export function lumenClutter() {
     const solid = solidBoxes(t).length > 0;
     // (standing without a collider: the masts, and the cones a body kicks over)
     const standing = !solid && (!!t.pole || p.type === 'cityCone');
-    all.push({ type: p.type, x: p.x, z: p.z, kind: kindOf(p, source), area: areaOf(p.x, p.z), street: solid || standing, solid, thin: thinBoxes(t).length > 0 });
+    const kind = kindOf(p, source), street = solid || standing;
+    all.push({ type: p.type, x: p.x, z: p.z, kind, area: areaOf(p.x, p.z), street, solid, thin: thinBoxes(t).length > 0,
+      breakable: Number.isInteger(t.health), small: street && kind !== 'vehicle' && !isBig(t) });
   }
   const street = all.filter(p => p.street), thin = all.filter(p => p.thin);
+  const small = all.filter(p => p.small);
   return {
     total: all.length, street: street.length, flat: all.length - street.length, solid: all.filter(p => p.solid).length,
     byKind: tally(all, p => p.kind), streetByKind: tally(street, p => p.kind), streetByArea: tally(street, p => p.area),
     streetByType: tally(street, p => p.type), thinRule: `under ${THIN.width} m across, >= ${THIN.height} m tall`,
     thin: thin.map(p => ({ type: p.type, x: p.x, z: p.z, area: p.area })), thinByType: tally(thin, p => p.type),
     poles: all.filter(p => p.street && !p.solid && p.type !== 'cityCone').length,
+    small: small.length, smallBreakable: small.filter(p => p.breakable).length, streetBreakable: street.filter(p => p.breakable).length,
+    smallByType: tally(small, p => p.type + (p.breakable ? ' (breaks)' : '')),
     detailByArea: tally(all.filter(p => p.kind === 'detail'), p => p.area),
     mapProps: lumen.props.length,
   };

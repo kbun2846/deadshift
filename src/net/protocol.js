@@ -13,6 +13,7 @@
 //   input     client -> host   { t, inputs: [ {seq, ...playerInput}, ... ], ack, aspect? }
 //             (aspect: the joiner's screen, width / height, for the robots' off-screen rule)
 //   choose    client -> host   { t, weapon, go }        (weapon picked; go: into the world now)
+//             { t, weapon, next: true }  the weapon for the next life, from the death card (arena chooseNext)
 //   pick      client -> host   { t }                    (dead: pick a weapon again)
 //   respawn   client -> host   { t }                    (practice: back in now)
 //   snapshot  host -> client   { t, tick, players, you, proj, ev, feed, board? }
@@ -24,7 +25,7 @@
 // The channel may drop or reorder packets. Inputs repeat the last few, and
 // events are numbered and resent until the client acknowledges them, so
 // shots, deaths and kill-feed lines are never lost.
-import { weaponOrDefault } from '../items.js';
+import { weaponOrDefault, isWeapon } from '../items.js';
 // 10: hills (terrain maps: slopes, retaining walls, rounds ending in the
 // ground with `stop` in snapshots, grenade heights above the ground, the map
 // fingerprint in welcome).
@@ -65,7 +66,38 @@ import { weaponOrDefault } from '../items.js';
 // clock comes from the snapshots' ticks), but a page without Lumen can't join
 // a Lumen room and would be refused with a confusing map error; the bump tells
 // it to reload instead.
-export const PROTOCOL_VERSION = 27;
+// 28 (2026-10-01, Gun Game): the 'gungame' mode; its match state carries
+// `gun` ({ ladder: [weapon ids], levels: { seatId: level } }), its scoreboard
+// and results rows `gun` (level) and `of` (the ladder's length), its results
+// `gungame` ({ ladder, finished }); a joiner's weapon can change mid-life
+// (`you.weapon`, swapped in place: Simulation.swapWeapon), and 'choose' /
+// 'pick' are refused in it. An older page would show a pick and the wrong
+// standings, so the builds do not mix.
+// Also 28 (same release, v0.1.8, QUICK PLAY): a new first message on the game server's
+// socket, { t:'quick', pid, version, name } (the matchmaking line, server/quick.js),
+// answered with { t:'match', code, map, mode } or { t:'queued', waiting };
+// `room` messages and the room info carry `quick` (a quick play room: no
+// leader, runs itself; the end card offers QUICK PLAY AGAIN).
+// Also 28 (same release, v0.1.8, the feel pass: "make the kills feel amazing ... and the
+// spawn protection"): player states carry `guard` (seconds of spawn
+// protection left, only while it runs: every screen draws the shimmer, a
+// joiner's own sim takes it), kill-feed lines carry `streak` (the killer's
+// kill streak after the line) and `ended` / `endedBy` (the longest streak its
+// victims lost, and whose: shutdowns), and three more events are shared:
+// `guardBlock` (a shot that met spawn protection), `shotgunReloaded` and
+// `omenReloaded` (each weapon's reload-finished sound, audio-feel.js). An
+// older build would never see protection or streaks and would count damage
+// the host refuses, so the builds do not mix.
+// Also 28 (same unreleased version, 2026-10-02, the killcam, NEXT LIFE and
+// the match summary): `{ t:'choose', weapon, next: true }` picks the weapon
+// for the next life from the death card (arena.js chooseNext: refused in Gun
+// Game, the round modes, once respawns close, with a pick open, or for a
+// weapon under maintenance), the joiner's `you` carries `next` (the host's
+// record of it), and a kill-feed line's `weapon` is the one the killer held
+// as the tick began (`held`: Gun Game names the weapon the kill was made
+// with). Nothing else changed: the killcam and the summary are worked out on
+// each screen from what it already gets.
+export const PROTOCOL_VERSION = 28;
 
 const n = v => (Number.isFinite(v) ? v : 0);
 const point = v => (Number.isFinite(v) && Math.abs(v) < 1000 ? v : undefined);
@@ -154,6 +186,8 @@ export function playerState(id, p, lastSeq = 0) {
   hp: Math.round(p.hp * 50) / 50, maxHp: p.maxHp, // (a tenth of a point at 500 health: a fiftieth now)
   // (Hills: wading under a deck. Only sent when so.)
   ...(p.below ? { below: 1 } : {}),
+  // (Spawn protection, seconds left: only while it runs, protocol 28.)
+  ...(p.guard > 0 ? { guard: round(p.guard, 2) } : {}),
  };
 }
 
@@ -202,6 +236,8 @@ export function readMessage(data) {
   const aspect = Number.isFinite(data.aspect) && data.aspect > 0 ? Math.min(3.6, Math.max(.42, data.aspect)) : 0;
   return { t: 'input', inputs, ack: Number.isInteger(data.ack) ? data.ack : 0, ...(aspect ? { aspect } : {}) };
  }
+ // (`next`: the death card's NEXT LIFE pick; anything that is not a weapon is null, refused.)
+ if (data.t === 'choose' && data.next === true) return { t: 'choose', next: true, weapon: isWeapon(data.weapon) ? data.weapon : null };
  if (data.t === 'choose') return { t: 'choose', weapon: weaponOrDefault(data.weapon), go: data.go !== false };
  // A side picked in the lobby (team modes): a known team id, or null.
  if (data.t === 'team') return { t: 'team', team: ['red', 'blue', 'gold'].includes(data.team) ? data.team : null };

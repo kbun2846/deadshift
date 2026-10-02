@@ -317,19 +317,26 @@ function puddle(rand, puddles) {
 // screen fill last). The owner's clutter cut (2026-10-01: "too much clutter")
 // took about a fifth of the ground litter: the stampede's belongings, the
 // litter drifts (two mates a seed, was three), the shop backs' and the crashes'.
+// The second cut (2026-10-01: "the detail and stuff on the streets themselves
+// is kind of just too much"; obstacles blended into it) took the standing junk
+// that reads as one more thing in the way from above: half the shop backs'
+// bags, boxes, crates, pallets, tarps and coils, two bike rails, two of the
+// open umbrellas, the crashes' glass and median debris, the puddles' junk,
+// and the litter drifts down to one mate a seed. The fittings, the wall
+// pieces and the stampede's belongings stay.
 export const RECIPE = Object.freeze([
   ['cityDManholeRound', 5], ['cityDManholeSquare', 4], ['cityDManholeVent', 4], ['cityDHatch', 4], ['cityDValveLid', 4], ['cityDExhaustVent', 5],
   ['cityDStuds', 4], ['cityDStudsLemon', 3], ['cityDStudsRed', 3], ['cityDDrainKerb', 6],
-  ['cityDBikeRailCut', 1], ['cityDBikeRail', 4],
+  ['cityDBikeRailCut', 1], ['cityDBikeRail', 2],
   ['cityDConduit', 7], ['cityDCableTray', 4], ['cityDStandpipe', 4], ['cityDGasMeter', 5], ['cityDMeterBank', 3], ['cityDVentGrille', 4],
   ['cityDPoster', 6], ['cityDPosterRow', 4], ['cityDPosterTorn', 4], ['cityDStickers', 5], ['cityDPasteUp', 4],
-  ['cityDBinBagSplit', 4], ['cityDBinBagFlat', 4], ['cityDBoxesFlat', 3], ['cityDBoxesWet', 3], ['cityDCrateTipped', 3], ['cityDBottleCrate', 3], ['cityDPallet', 2], ['cityDTarpScrap', 2], ['cityDCableCoil', 2],
+  ['cityDBinBagSplit', 2], ['cityDBinBagFlat', 3], ['cityDBoxesFlat', 2], ['cityDBoxesWet', 1], ['cityDCrateTipped', 1], ['cityDBottleCrate', 1], ['cityDPallet', 1], ['cityDTarpScrap', 1], ['cityDCableCoil', 1],
   // (Stage 5 review: the smallest belongings read as 1-3 px specks from the camera: few of them; the
   // bags, cases and umbrellas carry the run.)
-  ['cityDUmbrellaOpen', 6], ['cityDUmbrellaClosed', 7], ['cityDUmbrellaBroken', 4], ['cityDShoe', 2], ['cityDShoeHeel', 2], ['cityDShoeWork', 1], ['cityDPhone', 2], ['cityDPhoneCracked', 1],
+  ['cityDUmbrellaOpen', 4], ['cityDUmbrellaClosed', 7], ['cityDUmbrellaBroken', 4], ['cityDShoe', 2], ['cityDShoeHeel', 2], ['cityDShoeWork', 1], ['cityDPhone', 2], ['cityDPhoneCracked', 1],
   ['cityDBagBurst', 3], ['cityDBagBoxes', 2], ['cityDBackpack', 2], ['cityDHandbag', 2], ['cityDBriefcase', 2], ['cityDJacket', 2], ['cityDToy', 1], ['cityDGlasses', 1], ['cityDKeys', 1], ['cityDTickets', 2],
-  ['cityDGlassFan', 5], ['cityDGlass', 5], ['cityDMedianDebris', 3],
-  ['cityDPuddleJunk', 4], ['cityDPaperWet', 4], ['cityDFlierDrift', 5], ['cityDCanCrushed', 2],
+  ['cityDGlassFan', 3], ['cityDGlass', 3], ['cityDMedianDebris', 1],
+  ['cityDPuddleJunk', 2], ['cityDPaperWet', 4], ['cityDFlierDrift', 5], ['cityDCanCrushed', 2],
   // Velvet Row's lit touches: a frame round each club door the camera sees, neon strips beside them, wet glints.
   ['cityDDoorGlow', 3], ['cityDNeonSide', 3], ['cityDPuddleGlint', 6],
   // The litter: each piece the seed of a cluster at a kerb or in a gutter (LITTER_CLUSTER), so it reads
@@ -338,7 +345,7 @@ export const RECIPE = Object.freeze([
 ]);
 // A litter cluster: round each litter seed, up to `mates` more small pieces
 // `from`-`to` m off it along the kerb (its local x) and a little across.
-export const LITTER_CLUSTER = Object.freeze({ mates: 2, from: .45, to: 1.1, across: .35,
+export const LITTER_CLUSTER = Object.freeze({ mates: 1, from: .45, to: 1.1, across: .35,
   kinds: Object.freeze(['cityDPaper', 'cityDFlier', 'cityDCans', 'cityDCup', 'cityDButts', 'cityDWrappers', 'cityDBottle', 'cityDCanCrushed', 'cityDNoodleBox', 'cityDPaperWet']) });
 // What the screen fill adds where a screen is sparse (small, anywhere open).
 const FILL = Object.freeze(['cityDPaper', 'cityDFlier', 'cityDCans', 'cityDCup', 'cityDButts', 'cityDWrappers', 'cityDBottle', 'cityDPaperWet', 'cityDCanCrushed', 'cityDBagTipped', 'cityDValveLid', 'cityDHatch', 'cityDBinBagFlat', 'cityDBoxesFlat', 'cityDConduit', 'cityDGasMeter', 'cityDPoster', 'cityDStickers', 'cityDVentGrille']);

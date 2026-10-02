@@ -9,6 +9,13 @@
 //   - the street objects stay under the budget (409 before the cut);
 //   - the streets stay one walk: no open ground sealed off, every spawn
 //     point reached by a robot from the Crossroads.
+// The second cut (owner, 2026-10-01: "the obstacles all over the map kind of
+// just blend in too much and there's kind of just too many of them and it's
+// hard to move around. I feel like the streets should be more empty. They
+// should still have the cars and all sorts of stuff ... And make more of the
+// obstacles breakable too"): the small street obstacles (not a car, not a big
+// set piece) 178 -> 105, more than half of what is left breaks, every car
+// stays, and the line moved down with it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { maps, mapColliders, PROP_TYPES } from '../src/maps.js';
@@ -19,8 +26,9 @@ import { walkGrid } from '../tools/lumen-walk-lib.mjs';
 import { lumenClutter, thinBoxes } from './lumen-clutter-lib.js';
 
 const map = maps.lumen;
-// The line the cut drew (15 thin colliders and 327 street objects when it landed).
-const CLUTTER = Object.freeze({ thin: 15, street: 330, before: 409 });
+// The line the cuts drew (the first: 15 thin colliders and 327 street objects when it landed; the second: 5 thin,
+// 249 street objects, 105 small obstacles, 63 of them breakable).
+const CLUTTER = Object.freeze({ thin: 6, street: 255, before: 409, small: 110, smallBefore: 178, breakShare: .55 });
 
 test('lumen clutter: thin upright colliders a body runs into unseen stay few (a mast is a pole)', () => {
   const r = lumenClutter();
@@ -37,16 +45,19 @@ test('lumen clutter: thin upright colliders a body runs into unseen stay few (a 
   for (const t of ['cityBollard', 'cityParkingMeter', 'cityHydrant', 'cityMeshBin']) assert.ok(thinBoxes(PROP_TYPES[t]).length, `${t} counts as thin`);
 });
 
-test('lumen clutter: the street objects stay under the budget the cut set (a fifth fewer), cars and cover kept', () => {
+test('lumen clutter: the street objects stay under the budget the cuts set, cars and cover kept, and most small obstacles break', () => {
   const r = lumenClutter();
-  assert.ok(r.street <= CLUTTER.street, `${r.street} street objects (${CLUTTER.street} at most; ${CLUTTER.before} before the cut): take one out for each one put in`);
-  assert.ok(r.street <= CLUTTER.before * .82, `${r.street} of ${CLUTTER.before}`);
+  assert.ok(r.street <= CLUTTER.street, `${r.street} street objects (${CLUTTER.street} at most; ${CLUTTER.before} before the cuts): take one out for each one put in`);
+  assert.ok(r.street <= CLUTTER.before * .65, `${r.street} of ${CLUTTER.before}`);
+  assert.ok(r.small <= CLUTTER.small && r.small <= CLUTTER.smallBefore * .62, `${r.small} small street obstacles (${CLUTTER.small} at most; ${CLUTTER.smallBefore} before the second cut)`);
+  assert.ok(r.smallBreakable >= r.small * CLUTTER.breakShare, `${r.smallBreakable} of ${r.small} small obstacles break (${CLUTTER.breakShare * 100}% at least: a new one is a breakable where a person could smash it)`);
   // The cut took no car (the density zones are lumen-cover.test.js's) and left every kind of thing standing.
   assert.equal(r.streetByKind.vehicle, 48, 'vehicles');
   for (const k of ['cover', 'breakable', 'setpiece', 'screen']) assert.ok(r.streetByKind[k] > 0, k);
-  // Every area keeps something to hide behind or break.
-  for (const a of ['boulevard', 'avenue', 'west-street', 'north-lane', 'south-street', 'the-cut', 'crossroads', 'uptown', 'stacks', 'charging', 'metro', 'velvet-row', 'flatiron'])
+  // Every area keeps something to hide behind or break (the small districts' pieces are mostly the streets' round them).
+  for (const a of ['boulevard', 'avenue', 'west-street', 'north-lane', 'south-street', 'the-cut', 'crossroads', 'uptown', 'stacks', 'charging', 'metro'])
     assert.ok((r.streetByArea[a] || 0) >= 5, `${a}: ${r.streetByArea[a] || 0}`);
+  for (const a of ['velvet-row', 'flatiron']) assert.ok((r.streetByArea[a] || 0) >= 3, `${a}: ${r.streetByArea[a] || 0}`);
 });
 
 test('lumen clutter: the streets stay one walk (no open ground sealed off) and a robot reaches every spawn point', () => {

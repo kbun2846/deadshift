@@ -180,8 +180,11 @@ export class ClientSession {
  // Your health, weapon state, life and whereabouts, as the host has them.
  own(you, me) {
   const newLife = you.life !== this.mine.life;
-  this.mine = { life: you.life, present: !!you.present, dead: !!you.dead, respawnIn: you.respawnIn || 0, picking: you.picking || null, weapon: you.weapon || null };
-  if (you.weapon) this.local.weapon = you.weapon;
+  this.mine = { life: you.life, present: !!you.present, dead: !!you.dead, respawnIn: you.respawnIn || 0, picking: you.picking || null, weapon: you.weapon || null, next: you.next || null };
+  // (Gun Game: a kill swaps the weapon in hand mid-life; this sim's copy
+  // swaps with it, Simulation.swapWeapon, so nothing of the old one lingers.)
+  if (you.weapon && you.weapon !== this.local.weapon && !newLife && you.present && !you.dead && this.local.swapWeapon) this.local.swapWeapon(you.weapon);
+  else if (you.weapon) this.local.weapon = you.weapon;
   if (newLife && you.present && me) {
    // A new life: a fresh body where the host put it.
    this.local.respawn({ x: me.x, z: me.z }, this.id);
@@ -189,7 +192,7 @@ export class ClientSession {
   }
   applyLoadout(this.local, you);
   const p = this.local.player;
-  if (me) { p.hp = me.hp; p.maxHp = me.maxHp; }
+  if (me) { p.hp = me.hp; p.maxHp = me.maxHp; if (me.guard > 0) p.guard = me.guard; else if ('guard' in p) delete p.guard; } // (spawn protection, as the host has it)
   // Dead or out of the world: the body stays down (and never plays a second,
   // local death: the host's playerDeath event is the one that counts).
   if (!you.present || you.dead) { p.hp = 0; p.dead = true; }
@@ -246,6 +249,8 @@ export class ClientSession {
  // Team modes: the side you want (the host's lobby decides if there is room).
  chooseTeam(team) { this.transport.send('host', { t: 'team', team }); }
  pickAgain() { this.transport.send('host', { t: 'pick' }); }
+ // The death card's NEXT LIFE pick (arena.js chooseNext decides).
+ chooseNext(weapon) { this.transport.send('host', { t: 'choose', weapon, next: true }); }
  respawnNow() { this.transport.send('host', { t: 'respawn' }); }
  forfeit(on = true) { this.transport.send('host', { t: 'forfeit', on }); }
  setReady(on = true) { this.transport.send('host', { t: 'ready', on }); }

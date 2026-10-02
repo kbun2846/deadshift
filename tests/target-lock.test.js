@@ -41,12 +41,13 @@ test('locked, arrows move to the next target that way; none that way goes idle',
  lock.select(row, me, 1, 0, aim); lock.swap(row, 0, -1); assert.equal(lock.id, 'up');
 });
 
-test('a target that dies or leaves hands over to the nearest other one, or goes idle', () => {
+test('a target that dies goes idle: the lock never jumps to whoever is next (only a new press picks one)', () => {
  const lock = createTargetLock();
  lock.select(row, me, 1, 0, aim);
- assert.equal(lock.update([row[1], row[2]], player, 1 / 60).id, 'left', 'the nearest remaining');
- assert.equal(lock.update([], player, 1 / 60), null);
- assert.equal(lock.id, null, 'none left: idle');
+ assert.equal(lock.update([row[1], row[2]], player, 1 / 60, () => null), null, 'dead: idle, not the nearest remaining');
+ assert.equal(lock.id, null);
+ for (let i = 0; i < 60; i++) assert.equal(lock.update([row[1], row[2]], player, 1 / 60, () => null), null, 'and stays idle');
+ assert.equal(lock.remembered, null, 'a dead target is not waited for');
 });
 
 import { Simulation } from '../src/simulation.js';
@@ -82,7 +83,8 @@ test('a moment out of sight keeps the lock; a longer one or a death lets it go',
  for (let i = 0; i < 20; i++) lock.update([row[1]], player, 1 / 60, alive);
  assert.equal(lock.id, 'near', 'a third of a second behind cover: still locked');
  for (let i = 0; i < 40; i++) lock.update([row[1]], player, 1 / 60, alive);
- assert.equal(lock.id, 'right', 'too long: the one in sight takes over');
+ assert.equal(lock.id, null, 'too long: it lets go (the one in sight is not taken for you)');
+ assert.equal(lock.remembered, 'near', 'but the lost one is remembered');
  lock.select(row, me, -1, 0, aim);
  assert.equal(lock.update([], player, 1 / 60, () => null), null, 'dead: no grace');
 });

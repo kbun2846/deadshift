@@ -73,6 +73,7 @@ const K = {
   wood: c(CITY.woodPale), woodDark: c(CITY.wood), cable: c('#15171c'), copper: c('#a0622f'), coin: c('#b8a85a'), coinDark: c('#8a7a3c'),
   sauce: c('#8a2a34'), noodle: c('#d9c48a'), greens: c('#3f6a3f'), broth: c('#5a3a24'), awning: c('#8a2f3a'),
   board: c('#2f5a3f'), flame: c(BREAK_GLOW.flame), warm: c('#f4b088'), cool: c('#dfe8ff'),
+  neon: c('#ff5c9e'), // (the club's heart: its tubes' pink)
 };
 // The ramps as colours, made once (nothing is allocated as they burn).
 const COOL_SPARKS = BREAK_GLOW.coolSparks.stops.map(c), HOT_SPARKS = BREAK_GLOW.hotSparks.stops.map(c);
@@ -489,7 +490,78 @@ const RECIPES = {
     litter(fx, e.x, e.z, fx.n(6), .9, [K.coin, K.coinDark], { size: .022, height: .006, stretch: 1 });
     sparks(fx, e.x, 1, e.z, 6, { stops: HOT_SPARKS, speed: 2 });
   },
+  // --- The set pieces that break (owner, 2026-10-01: "make more of the obstacles breakable too"; world/lumen-setpieces.js SETPIECE_BREAKS) ---
+  // A wooden stand: splinters and boards, the top's lamp popping; planks stay.
+  cityValetPodium(fx, e) { podium(fx, e); },
+  cityDoormanPodium(fx, e) { podium(fx, e); },
+  // A clothes rack: the washing flutters down and lies about, the rails clatter off.
+  cityDryingRack(fx, e) {
+    fx.pieces(e, fx.n(6), { colours: [K.steel, K.steelMid], size: .08, y: 1, yJitter: .5, speed: 2.2, up: 2.4, stretch: 3.4, sound: 'clay' });
+    drifters(fx, e, fx.n(7), [K.white, K.awning, K.blue, K.paper], { y: 1.1, size: .2, life: 2.8, fall: 1.1, stretch: 1.3 });
+    for (let i = 0; i < 2; i++) { const v = throwFrom(e, 1.5); fx.roll(e.x + (i - .5) * .8, e.z, { form: 'log', r: .015, length: .8, color: K.steelMid.clone(), ...v, vy: 1.4, y: .9, friction: 1.6, axis: Math.random() * 6, sound: 'clay' }); }
+    for (let i = 0, n = fx.n(3); i < n; i++) fx.leave(e.x + (Math.random() - .5) * 1.4, e.z + (Math.random() - .5) * .8, { shape: 'flat', size: .3, height: .015, stretch: 1.6, yaw: Math.random() * 6, color: jitter(pick([K.white, K.awning, K.blue])), grow: .1 });
+  },
+  // A crate table: the crates fly apart and the board cracks in two.
+  cityCrateTable(fx, e) {
+    RECIPES.cityCrate(fx, e);
+    fx.pieces(e, fx.n(4), { colours: [K.wood, K.woodDark], size: .22, y: .75, speed: 2, up: 2.2, stretch: 2.6, sound: 'wood' });
+  },
+  // A plastic rain drum: a blue boom and the water out of it.
+  cityWaterDrum(fx, e) {
+    fx.pieces(e, fx.n(9), { colours: [K.blue, c(CITY.plasticBlue).multiplyScalar(.7), K.graphite], size: .16, y: .55, speed: 2.4, up: 2.6, stretch: 1.8 });
+    const dir = e.hasDir ? e.dir : Math.random() * 6.28;
+    spray(fx, 1.4, { x: e.x, z: e.z, y: .4, rate: 30, up: 2, spread: 1, lean: .8, dir, size: .07, ttl: .7 });
+    smear(fx, e.x, e.z, 1 * e.s, K.water, { reach: .7, grow: 2.2 });
+    smear(fx, e.x, e.z, .45 * e.s, K.waterDark, { grow: 1.1 });
+  },
+  // Crates of produce: the crates go and the fruit rolls off down the street.
+  cityProduceStack(fx, e) {
+    RECIPES.cityCrate(fx, e);
+    for (let i = 0, n = fx.n(6); i < n; i++) { const v = throwFrom(e, 2, 2.4); fx.roll(e.x + (Math.random() - .5) * .6, e.z, { form: 'log', r: .045, length: .07, color: jitter(pick([K.sauce, K.greens, K.noodle, c('#c9672a')])), ...v, vy: 1.6, y: .6, friction: .9, axis: Math.random() * 6, sound: 'plant' }); }
+    litter(fx, e.x, e.z, fx.n(6), .9, [K.greens, K.sauce, K.noodle], { size: .07, height: .03, stretch: 1.3 });
+  },
+  // A fish tank: the glass goes all at once, the water floods out over the street.
+  cityFishTank(fx, e) {
+    glassShards(fx, e, fx.n(22), { y: .9, yJitter: .6, size: .055, colours: [K.glass, K.glassDim, K.spray] });
+    const dir = e.hasDir ? e.dir : Math.random() * 6.28;
+    spray(fx, 1.2, { x: e.x, z: e.z, y: .7, rate: 40, up: 1.8, spread: 1.3, lean: 1.2, dir, size: .07, ttl: .6 });
+    smear(fx, e.x, e.z, 1.3 * e.s, K.water, { reach: .8, grow: 2.6 });
+    litter(fx, e.x, e.z, fx.n(10), 1.4, [K.glass, K.glassDim, K.white], { size: .035, height: .012, stretch: 1.3 });
+    fx.pieces(e, fx.n(4), { colours: [K.steelDark, K.graphite], size: .12, y: .6, speed: 1.6, up: 1.8, stretch: 3, sound: 'clay' });
+  },
+  // A price board: the board splits, its slips of card drift down.
+  cityPriceBoard(fx, e) {
+    fx.pieces(e, fx.n(7), { colours: [K.board, K.wood, K.woodDark], size: .2, y: 1.2, yJitter: .4, speed: 2.2, up: 2.4, stretch: 2, sound: 'wood' });
+    drifters(fx, e, fx.n(5), [K.paper, K.white, K.cardboard], { y: 1.3, size: .1, life: 2.6, fall: .7 });
+    fx.leave(e.x, e.z, { shape: 'flat', size: .4, height: .015, stretch: 2, color: K.board.clone(), grow: .1 });
+  },
+  // The neon heart: the tubes burst in a pink flash, glass crumbs, the transformer fizzing out.
+  cityHeartStand(fx, e) {
+    glassShards(fx, e, fx.n(16), { y: 1.2, yJitter: .4, size: .05, colours: [K.neon, K.white, K.glassDim] });
+    fx.pieces(e, fx.n(4), { colours: [K.graphite, K.steelDark], size: .12, y: .6, speed: 1.8, up: 2, stretch: 2.4, sound: 'clay' });
+    sparks(fx, e.x, 1.3, e.z, 12, { stops: WHITE_SPARKS, speed: 3 }); flash(fx, e.x, 1.3, e.z, '#ffe9f2', 6);
+    fizz(fx, e.x, .4, e.z, 1.4, { every: .12, n: 2 });
+    litter(fx, e.x, e.z, fx.n(6), .9, [K.neon, K.glassDim], { size: .035, height: .01, stretch: 1.4 });
+  },
+  // A drinks cooler and a ticket machine come apart as a vending machine does (glass, cans, a dying screen).
+  cityDrinksCooler(fx, e) { RECIPES.cityVending(fx, e); },
+  cityTicketMachine(fx, e) { RECIPES.cityVending(fx, e); },
+  // A fast charger as its little kin, the charging post.
+  cityFastCharger(fx, e) { RECIPES.cityChargePost(fx, e); },
+  // The metro map's lit glass panel: a sheet of glass and the light behind it going out.
+  cityMetroMap(fx, e) {
+    glassShards(fx, e, fx.n(22), { y: 1.3, yJitter: 1, size: .055 });
+    RECIPES.cityInfoTerminal(fx, e);
+  },
 };
+// The wooden stands (valet, doorman): splinters, boards, the top lamp popping.
+function podium(fx, e) {
+  fx.pieces(e, fx.n(10), { colours: [K.wood, K.woodDark, K.graphite], size: .16, y: .7, yJitter: .4, speed: 2.4, up: 2.6, stretch: 2.6, sound: 'wood' });
+  litter(fx, e.x, e.z, fx.n(4), .8, [K.wood, K.woodDark], { size: .14, height: .03, stretch: 2.6 });
+  drifters(fx, e, fx.n(3), [K.paper, K.white], { y: 1.1, size: .1, life: 2.4, fall: .7 });
+  sparks(fx, e.x, 1.1, e.z, 5, { stops: WHITE_SPARKS, speed: 2 });
+  fx.leave(e.x, e.z, { shape: 'lump', size: .24, height: .05, stretch: 1.3, color: K.woodDark.clone(), grow: .1, sink: -.005 });
+}
 export const LUMEN_BREAK_RECIPES = Object.freeze(Object.keys(RECIPES));
 
 // ---- the effect ----------------------------------------------------------------

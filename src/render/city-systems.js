@@ -6,6 +6,7 @@
 // (lumen-ambience.js).
 import '../effects/rain.js';
 import './city-signs.js';
+import './city-entrances.js'; // (the doorways' light on the street, 2026-10-01)
 import './light-pool.js';
 import '../effects/steam-vents.js'; // (the steam vents' clouds; before the mirror, which reflects them)
 import '../effects/lumen-water.js'; // (the water on the ground: prints, rings, gutters, drips, steam)

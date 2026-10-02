@@ -45,7 +45,8 @@ export const STORM_ROUND = STORM.close + STORM.hold;
 
 // Which modes have it: every counted mode but 1V1 (its duel circle); never
 // practice. (SOLO vs robots: its team modes.)
-export const stormMode = mode => ['ffa', '2v2', '3v3', '4v4', '2v2v2'].includes(mode);
+// (Gun Game too, as FFA: one storm over the match's length.)
+export const stormMode = mode => ['ffa', 'gungame', '2v2', '3v3', '4v4', '2v2v2'].includes(mode);
 
 // The team rounds' final zone radius on a map.
 export function stormFinalRadius(map) {

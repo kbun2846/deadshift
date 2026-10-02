@@ -65,7 +65,13 @@ export const lumen = {
   // colours and the coats still clear their floors (15, 15, 8) on every
   // ground and light pool, dry and wet, in the moon and in shade: the tints
   // the pools are painted with are in tools/contrast-lib.mjs POOLS.
-  look: { sky: '#d0d2d8', bounce: '#262833', skyIntensity: 5.2, sun: '#8fa3c8', sunIntensity: 2.4, sunOffset: { x: -34, y: 30, z: 12 },
+  // A little more lit (owner, 2026-10-01: "make it like a little bit more lit
+  // up. So it's a little bit more contrasting to the obstacles"): hemisphere
+  // x 5.2 -> 6, moon x 2.4 -> 2.8, about a sixth more light on everything
+  // (still night: the street reads about #242a39 in the moon, was #1f2532),
+  // and the obstacles' own colours a step lighter than the ground's
+  // (world/lumen-kit.js OBSTACLE_LIFT). No light added: the same two lights.
+  look: { sky: '#d0d2d8', bounce: '#262833', skyIntensity: 6, sun: '#8fa3c8', sunIntensity: 2.8, sunOffset: { x: -34, y: 30, z: 12 },
     haze: '#10131f', fogNear: 62, fogFar: 150, exposure: 1, fog: { colour: '#1a162b', opacity: .12 },
     grade: { warmth: -.02, shade: .07, contrast: .07, saturation: 1 } },
   playableArea: OUTLINE.map(p => [p[0], p[1]]),

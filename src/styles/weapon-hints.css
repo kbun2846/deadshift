@@ -1,0 +1,37 @@
+/* The first-time weapon tip card (ui/weapon-hint-card.js; lines in
+   weapon-tips.js). The quick-play prompt's card look: slate, an edge in the
+   weapon's accent, a small lowercase label, the weapon's name, then its
+   three lines with keycaps. On a computer it sits on the left side a third
+   of the way down (the kill feed has the bottom left, the title and map line
+   the top left); on a phone top left under the health bar like the lesson
+   card (top, full width less the edges, upright). Only its X takes the
+   pointer: the card covers nothing you can press or drag. A thin line runs
+   down while it shows. */
+#game .weapon-hint{position:absolute;z-index:7;left:calc(env(safe-area-inset-left,0px) + 24px);top:34%;width:min(300px,calc(100vw - 48px));padding:10px 12px 12px 16px;background:#232827eb;border:1px solid #ffffff14;border-left:0;border-radius:8px;box-shadow:0 10px 28px #0a0f0e73;color:#e6efea;text-align:left;pointer-events:none;animation:weapon-hint-in .26s ease-out both;--weapon-hint-accent:var(--ui-accent)}
+#game .weapon-hint[hidden]{display:none}
+#game .weapon-hint::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:8px 0 0 8px;background:var(--weapon-hint-accent)}
+#game .weapon-hint header{display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:10px}
+#game .weapon-hint small{grid-column:1;font:800 10px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.2em;color:var(--ui-accent);text-transform:lowercase}
+#game .weapon-hint strong{grid-column:1;margin-top:3px;font:900 19px/1.1 var(--hud-font,Arial),sans-serif;letter-spacing:.02em;color:var(--weapon-hint-accent);text-transform:lowercase}
+#game .weapon-hint .weapon-hint-close{grid-column:2;grid-row:1 / span 2;display:grid;place-items:center;width:32px;height:32px;min-height:32px;margin:0;padding:0;border:0;border-radius:5px;background:#ffffff12;color:#cfd8d4;cursor:pointer;pointer-events:auto;-webkit-tap-highlight-color:transparent}
+/* (The X's touch target reaches 44 px round it.) */
+#game .weapon-hint .weapon-hint-close::after{content:"";position:absolute;inset:-6px}
+#game .weapon-hint .weapon-hint-close:is(:hover,:focus-visible){background:#ffffff22;color:#fff}
+#game .weapon-hint .weapon-hint-close svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round}
+#game .weapon-hint ol{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:5px}
+#game .weapon-hint li{position:relative;padding-left:14px;font:400 13.5px/1.42 Arial,Helvetica,sans-serif;color:#dce4df;text-transform:none}
+#game .weapon-hint li::before{content:"";position:absolute;left:1px;top:.62em;width:5px;height:5px;border-radius:1px;background:var(--weapon-hint-accent);opacity:.8}
+#game .weapon-hint kbd{display:inline-block;min-width:1.8em;margin:0 1px;padding:0 .42em;border:1px solid #6d7a74;border-bottom-width:2px;border-radius:4px;background:#2d3632;color:#fff;font:700 11.5px/1.5 Arial,Helvetica,sans-serif;letter-spacing:.02em;text-align:center;white-space:nowrap;text-transform:uppercase!important;vertical-align:1px}
+/* A touch button's name, in capitals as on the button (the page lowercases
+   everything else: style.css). */
+#game .weapon-hint .weapon-hint-button{font-weight:700;color:#fff;letter-spacing:.03em;text-transform:uppercase!important}
+#game .weapon-hint-time{position:absolute;left:4px;right:0;bottom:0;height:2px;background:color-mix(in srgb,var(--weapon-hint-accent) 55%,transparent);transform-origin:left}
+@keyframes weapon-hint-in{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+/* Touch: the lesson card's place, top left under the health bar. */
+body[data-controls=touch] #game .weapon-hint{left:max(14px,env(safe-area-inset-left));top:calc(58px + env(safe-area-inset-top,0px));width:min(280px,46vw);padding:8px 10px 10px 14px}
+body[data-controls=touch] #game .weapon-hint strong{font-size:16px}
+body[data-controls=touch] #game .weapon-hint li{font-size:12.5px;line-height:1.35}
+@media(orientation:portrait){body[data-controls=touch] #game .weapon-hint{right:max(12px,env(safe-area-inset-right));width:auto;top:calc(138px + env(safe-area-inset-top,0px))}}
+@media(prefers-reduced-motion:reduce){#game .weapon-hint{animation:none}}
+/* Not over the menus, the pause card or the death screen. */
+body:not(.playing) #game .weapon-hint,body.paused #game .weapon-hint,body.dying #game .weapon-hint{display:none}

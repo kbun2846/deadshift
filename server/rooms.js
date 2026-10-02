@@ -20,7 +20,8 @@ export class Rooms {
 
  find(code) { const clean = cleanRoomCode(code); return clean ? this.rooms.get(clean) || null : null; }
 
- get privateCount() { return [...this.rooms.values()].filter(r => !r.isPublic).length; }
+ get privateCount() { return [...this.rooms.values()].filter(r => !r.isPublic && !r.quick).length; }
+ get quickCount() { return [...this.rooms.values()].filter(r => r.quick).length; }
 
  // A code no room has.
  newCode() {
@@ -47,6 +48,20 @@ export class Rooms {
   return { room };
  }
 
+ // QUICK PLAY (server/quick.js): a room for the queue's players, FFA (`mode`)
+ // on a random map from the map vote's pool, run like a listed room. At most
+ // `max` at once.
+ createQuick({ mode = 'ffa', random = Math.random, max = Infinity } = {}) {
+  if (this.quickCount >= max) return { error: 'The servers are full right now.' };
+  const pool = multiplayerMaps();
+  const map = pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
+  const code = this.newCode();
+  if (!map || !code) return { error: 'Could not make a room. Try again.' };
+  const room = new Room({ code, name: 'Quick play', quick: true, map: map.id, mode: modeById(mode)?.id || 'ffa', config: this.config, now: this.now });
+  this.rooms.set(code, room);
+  return { room };
+ }
+
  // One tick for every room, then the housekeeping.
  step() {
   const t = this.now();
@@ -59,7 +74,7 @@ export class Rooms {
    else if (empty > this.config.privateIdle) { room.close(); this.rooms.delete(room.code); }
   }
   // Every kind of listed room keeps one with space; spare empty ones close.
-  if (this.tickCount = (this.tickCount || 0) + 1, this.tickCount % 30 === 0) this.balance(t);
+  if (this.tickCount = (this.tickCount || 0) + 1, this.tickCount % 30 === 0) { this.balance(t); this.quick?.step(); }
  }
 
  balance(t) {

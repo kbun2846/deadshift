@@ -1,0 +1,58 @@
+/* Media mode (ui/media-mode.js): a clean screen for recording clips.
+   body.media-mode is on while it is; body.media-hide-<element> for each
+   element switched off in the Media section. Hidden things keep their place
+   (visibility, so a part can be shown inside a hidden panel); controls that
+   must stay usable are made invisible instead (opacity), never removed.
+   A new HUD element joins a toggle with data-media="<element id>". */
+
+/* Never in a clip: the title, map · mode and room badge, the map and sound
+   buttons, the scores button, ping and fps. */
+body.media-mode #game :is(.masthead .brand,#online-badge,#map-toggle,#audio,#scores-toggle,.perf-readout,.footer,[data-media~=always]){visibility:hidden!important}
+/* The pause button stays where it was, unseen but pressable (a phone has no Esc). */
+body.media-mode #game #pause{opacity:0!important}
+
+body.media-hide-health #game :is(.health-hud,[data-media~=health]){visibility:hidden!important}
+body.media-hide-weapon #game :is(#weapon,#sightline-ammo,.sightline-ammo,.ichor-blood,.sidekick-mines,[data-media~=weapon]){visibility:hidden!important}
+body.media-hide-dodge #game :is(#dodge-stamina,.dodge-stamina,[data-media~=dodge]){visibility:hidden!important}
+/* The crosshair is the mouse pointer in play: back while the dev window is
+   open, so its controls can be reached, and in every menu. */
+body.media-mode.media-hide-crosshair:not(.dev-window-open):not(.menu-pointer):not(.paused) #game :is(#reticle,#hit-marker,.omen-cursor-timer,[data-media~=crosshair]),body.media-mode.media-hide-crosshair .fps-crosshair{visibility:hidden!important}
+body.media-hide-aim #game :is(.aim-cone,.rifle-spread,[data-media~=aim]){visibility:hidden!important}
+body.media-hide-damage #game :is(.damage-feedback,[data-media~=damage]){visibility:hidden!important}
+body.media-hide-hits #game :is(.fire-indicator,.damage-indicator,[data-media~=hits]){visibility:hidden!important}
+body.media-hide-feed #game :is(#kill-feed,.kill-feed,[data-media~=feed]){visibility:hidden!important}
+body.media-hide-score #game :is(.duel-score,#match-clock,.match-clock,.score-flash,[data-media~=score]){visibility:hidden!important}
+/* (Not while down or paused: VIEW STATS on the death card opens it on purpose.) */
+body.media-hide-scoreboard:not(.dying):not(.paused) #game :is(#stats-panel,#scoreboard,.stats-panel,[data-media~=scoreboard]){visibility:hidden!important}
+body.media-hide-storm #game :is(.storm-hud,[data-media~=storm]){visibility:hidden!important}
+body.media-hide-killcam #game :is(.killcam,[data-media~=killcam]){visibility:hidden!important}
+body.media-hide-banners #game :is(.round-popup,.cutoff-popup,[data-media~=banners]){visibility:hidden!important}
+body.media-hide-notices #game :is(.toast,.admin-messages,#tutorial-guide,[data-media~=notices]){visibility:hidden!important}
+body.media-hide-labels #game :is(.robot-mind,.lab-overlay,[data-media~=labels]){visibility:hidden!important}
+/* Touch controls: unseen, still working (the stick and buttons answer as before). */
+body.media-hide-touch:not(.editing-touch-layout) #game :is(#touch-controls,.touch-controls,[data-media~=touch]){opacity:0!important}
+body.media-hide-vignette #game :is(.vignette,.storm-vignette,[data-media~=vignette]){visibility:hidden!important}
+
+/* A part shown inside a panel that is hidden (dodge charges without the
+   weapon panel, the storm readout without the health bar). */
+body.media-mode.media-hide-weapon:not(.media-hide-dodge):not(.dying) #game #weapon:not(.hidden) :is(#dodge-stamina,.dodge-stamina){visibility:visible!important}
+body.media-mode.media-hide-health:not(.media-hide-storm):not(.dying) #game .health-hud .storm-hud{visibility:visible!important}
+
+/* 9:16 guide: a centred frame at the window's height; outside it is dimmed,
+   for cropping in OBS. Under the pause menu and dialogs (z-index 10 and up). */
+#game .media-frame{display:none;position:absolute;top:0;left:50%;height:100%;aspect-ratio:9/16;max-width:100%;transform:translateX(-50%);z-index:9;pointer-events:none;box-shadow:0 0 0 200vmax #000000a6;outline:1px solid #ffffff59}
+body.media-mode.media-frame-guide #game .media-frame{display:block}
+/* The kill feed moves inside the frame. */
+body.media-mode.media-frame-guide #game .kill-feed{left:max(16px,calc(50% - min(50%,100dvh * 9 / 32) + 16px));right:auto;align-items:flex-start}
+
+/* The Media section in the developer tools (ui/media-panel.js). */
+#game :is(.dev-tools,.dev-window) .dev-media .media-switch{display:block;width:calc(100% - 20px);margin:8px 10px 4px;text-align:center;background:#272e2c;color:#dfe4df;border:1px solid #444d4a;border-radius:4px}
+#game :is(.dev-tools,.dev-window) .dev-media .media-switch[aria-pressed=true]{background:var(--ui-accent);color:#151718;border-color:var(--ui-accent)}
+#game :is(.dev-tools,.dev-window) .dev-media .media-hint{margin:0;padding:2px 10px 6px;font:600 10.5px/1.4 var(--hud-font);color:#8a9893;text-transform:none!important}
+#game :is(.dev-tools,.dev-window) .dev-media .media-presets{display:flex;gap:4px}
+#game :is(.dev-tools,.dev-window) .dev-media .media-presets button[aria-pressed=true]{background:var(--ui-accent);color:#151718;border-color:var(--ui-accent)}
+/* Online, where the rest of the tools are the host's: only the Media section. */
+#game .dev-window.media-only :is(.dev-window-quick,.dev-window-filter){display:none}
+#game .dev-window.media-only .dev-window-body>:not(.dev-media):not(.dev-window-note){display:none}
+#game .dev-window .dev-window-note{margin:0;padding:4px 2px 2px;font:600 10.5px/1.4 var(--hud-font);color:#9fb0aa;text-transform:none!important}
+#game .dev-window .dev-window-note[hidden]{display:none}

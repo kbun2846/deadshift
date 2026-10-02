@@ -51,7 +51,7 @@ export function createLobbyPanel(parent, { back, kick, setSetting, resetMap, end
       isHost = !!host;
       const players = lobby.players || [];
       const modeName = MODES.find(m => m.id === (match?.mode || lobby.mode))?.name || '';
-      const left = match?.phase === 'playing' ? (match.mode === 'ffa' ? formatTime(Math.ceil(match.left)) + ' left' : '') : match?.phase || '';
+      const left = match?.phase === 'playing' ? (match.timed ? formatTime(Math.ceil(match.left)) + ' left' : '') : match?.phase || '';
       $('.lobby-room').textContent = ['room ' + (code || ''), modeName, players.length + '/' + max + ' players', left].filter(Boolean).join(' · ');
       // The rows are rebuilt only when who is here changes, so focus survives;
       // pings are updated in place.

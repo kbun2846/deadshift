@@ -1,4 +1,4 @@
-deadstab v0.1.7-alpha is a minimalist top down arena shooter with distinct weapons, explosive combat and gore, playable in the browser on mobile or pc
+deadstab v0.1.8-alpha is a minimalist top down arena shooter with distinct weapons, explosive combat and gore, playable in the browser on mobile or pc
 
 - eight distinct weapons, each with its own E and X abilities: static, nominal, ballast, omen, sightline, sidekick, ichor (a blood-fed katana) and sheath (a broadsword)
 - three maps: lumen, a deserted neon city at night where every building can be entered; deadwater outpost, a desert town with enterable buildings, destructible props and a crop field that burns, and hollow wick, a foggy autumn village with hills, a stream and a graveyard
@@ -9,6 +9,12 @@ deadstab v0.1.7-alpha is a minimalist top down arena shooter with distinct weapo
   - the host picks the map and settings, with pings, kill feed and scoreboard
 - matches against bots (1v1, 2v2, 3v3, 4v4 and free-for-all; easy, normal or hard), solo practice and a tutorial for every weapon
 - touch controls with an editable layout, keyboard and mouse with rebindable keys, and graphics presets from potato to extreme (auto picks one for your device)
+
+## what's new in v0.1.8-alpha
+
+- quick play, gun game, a killcam, kill streaks, punchier kills, spawn protection and a match summary
+- lumen: emptier, brighter streets, more things to smash, and lit doorways so you can see where to go in
+- smoother arrow-key aiming, clearer dodge charges, a steadier mobile joystick, ichor's guard blocks more, and gun bots are fairer against blades
 
 ## what's new in v0.1.7-alpha
 

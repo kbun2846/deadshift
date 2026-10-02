@@ -33,7 +33,9 @@ const IDLE = Object.freeze(playerInput({}));
 export const SHARED_EVENTS = new Set(['sheathSwing','sheathHit','sheathClang','sheathSheathe','sheathRush','sheathRushEnd','sheathDrawBack','sheathDrawTell','sheathDrawDash','sheathDrawCut','ichorGuardStart','ichorDeflect','ichorSwing','ichorWave','ichorFrenzyStart','ichorDrip','sidekickImpact','sidekickShot','sidekickRush','sidekickMine','sidekickReload','sidekickReloaded','sightlineShot','sightlineImpact','sightlineReload','sightlineReloaded','omenShot','omenPrime','omenPrimeExpired','omenVolley','omenMark','omenCurseBeat','omenFade','omenImpact','omenBurst','explosion', 'grenadeExplosion', 'propBreak', 'propHit', 'propRestore', 'impactMark', 'rifleImpact',
  'rifleShot', 'shotgunShot', 'launch', 'sprayArc', 'hexPulse', 'hexZap', 'hexFizzle', 'pointImpact', 'wall', 'trailEnd', 'hit', 'kill',
  'cropDust', 'cropCut', 'cropAsh', 'syphon', 'surgeCharge', 'surgeStart', 'surgeEnd', 'scatterArm', 'scatterPrimed', 'scatterFire', 'scatterSplit', 'scatterHit', 'scatterBurst', 'dodge', 'seed', 'playerDeath', 'playerDamage', 'outgoingDamage', 'rifleReloaded', 'shotgunReload', 'grenadeThrow', 'sprayStart',
- 'hexBlock', 'mapReset', 'matchStart', 'matchEnd', 'roundEnd', 'respawn']);
+ 'hexBlock', 'mapReset', 'matchStart', 'matchEnd', 'roundEnd', 'respawn',
+ // (Protocol 28, the feel pass: spawn protection's blocked shots, every weapon's reload-finished sound.)
+ 'guardBlock', 'shotgunReloaded', 'omenReloaded']);
 // Seconds between pings to each joiner (their round trip shows in the lobby
 // and on the scoreboard).
 const PING_EVERY = 1;
@@ -115,7 +117,7 @@ export class HostSession {
    // A client that races ahead (or a flood) cannot build an endless backlog.
    if (remote.queue.length > 30) remote.queue.splice(0, remote.queue.length - 30);
   }
-  if (message.t === 'choose') this.arena.choose(from, message.weapon, message.go);
+  if (message.t === 'choose') { if (message.next) this.arena.chooseNext(from, message.weapon); else this.arena.choose(from, message.weapon, message.go); }
   if (message.t === 'pick') this.arena.pickAgain(from);
   if (message.t === 'respawn') this.arena.respawnNow(from);
   if (message.t === 'team') this.arena.chooseTeam(from, message.team);
@@ -282,6 +284,7 @@ export class HostSession {
  // dying, and practice's instant respawn.
  choose(weapon, go = true) { return this.arena.choose('host', weapon, go); }
  pickAgain() { return this.arena.pickAgain('host'); }
+ chooseNext(weapon) { return this.arena.chooseNext('host', weapon); }
  respawnNow() { return this.arena.respawnNow('host'); }
  chooseTeam(team) { return this.arena.chooseTeam('host', team); }
  forfeit(on = true) { return this.arena.forfeit('host', on); }
@@ -404,7 +407,7 @@ export class HostSession {
   this.sentTick = this.tick; this.folds.clear();
   for (const remote of this.remotes.values()) {
    const snapshot = { t: 'snapshot', tick: this.tick, players, you: { ...loadout(remote.sim), life: remote.seat.life, present: remote.seat.present, dead: remote.seat.dead, respawnIn: remote.seat.respawnIn,
-     weapon: remote.seat.weapon, picking: pickState(remote.seat.picking) },
+     weapon: remote.seat.weapon, picking: pickState(remote.seat.picking), ...(remote.seat.next ? { next: remote.seat.next } : null) },
     proj, ev: [], feed, board, world, match, lobby, targets, vote, ...(critters ? { critters } : null) };
    // As many waiting events, oldest first, as fit the message (WIRE_BUDGET).
    // (One too big for any message is skipped, not left to block the rest.)
@@ -503,5 +506,7 @@ export function blend(id, name, a, b, alpha) {
   ...(b.ichor?{ichor:{...b.ichor}}:{}),...(b.sidekick?{sidekick:{...b.sidekick}}:{}), ...(b.sightline?{sightline:{...b.sightline}}:{}),...(b.sheath?{sheath:{...b.sheath}}:{}),
   // (Hills: wading under a deck.)
   ...(b.below ? { below: true } : {}),
+  // (Spawn protection: the shimmer, render/spawn-shimmer.js.)
+  ...(b.guard > 0 ? { guard: b.guard } : null),
  };
 }

@@ -12,9 +12,9 @@ test('holding RMB or Shift raises the sword without enabling aim-in, blocks atta
  assert.equal(weaponGuarding('ichor',true,new Set()),true);assert.equal(weaponGuarding('ichor',false,new Set(['ShiftLeft'])),true);assert.equal(weaponGuarding('rifle',true,new Set()),false);assert.equal(weaponAiming('ichor',true,new Set(['ShiftLeft'])),false);
  const s=raised();run(s,30,{ichorGuard:true,fire:true});assert.equal(s.ichor.guarding,true);assert.equal(s.ichor.serial,0);assert.equal(s.ichor.guardCooldown,0);assert.equal(playerInput({ichorGuard:1}).ichorGuard,true);assert.equal(playerState('defender',s.player).ichor.guarding,true);const other=make();applyLoadout(other,loadout(s));assert.equal(other.ichor.guarding,true);
 });
-test('each fresh guard charge rolls 14–18 capacity once; smaller bullets spend it and a large shot breaks through',t=>{
- // (14–18 since the 2026-09-30 balance pass, 8–12 before: bullets hit ~1.5x harder.)
- for(const [roll,expected]of [[0,14],[.5,16],[.9999,18]]){t.mock.method(Math,'random',()=>roll);const s=make();run(s,1,{ichorGuard:true});assert.equal(s.ichor.guardStrength,expected);run(s,600,{ichorGuard:true});assert.equal(s.ichor.guardStrength,expected);assert.equal(s.ichor.guarding,true);assert.equal(s.ichor.guardCooldown,0);t.mock.restoreAll();}
+test('each fresh guard charge rolls 28–32 capacity once; smaller bullets spend it and a large shot breaks through',t=>{
+ // (28–32 since 2026-10-01, owner: block "a noticeable amount" more; about 5 close Nominal bullets, was 14–18, ~2.7.)
+ for(const [roll,expected]of [[0,28],[.5,30],[.9999,32]]){t.mock.method(Math,'random',()=>roll);const s=make();run(s,1,{ichorGuard:true});assert.equal(s.ichor.guardStrength,expected);run(s,600,{ichorGuard:true});assert.equal(s.ichor.guardStrength,expected);assert.equal(s.ichor.guarding,true);assert.equal(s.ichor.guardCooldown,0);t.mock.restoreAll();}
  const d=raised(),s=new Simulation(map);s.player.id='shooter';const target=proxy(d);s.hit(target,{...bullet,damage:4});assert.equal(target.hp,100);assert.equal(d.ichor.guardStrength,6);s.hit(target,{...bullet,damage:16});assert.equal(target.hp,90);assert.equal(d.ichor.guardStrength,0);assert.equal(d.ichor.guarding,false);assert.equal(d.ichor.guardCooldown,20);assert.deepEqual(s.drainEvents().filter(e=>e.type==='ichorDeflect').map(e=>e.blocked),[4,6]);
 });
 test('only guard exhaustion starts twenty seconds, held input cannot re-arm, full blood does not speed this cooldown',()=>{
@@ -70,5 +70,5 @@ test('releasing and re-raising never rerolls or refills a partly spent charge; o
  const s=raised();tryIchorDeflect(proxy(s),{...bullet,damage:3.4});near(s.ichor.guardStrength,6.6);
  for(let i=0;i<5;i++){run(s);assert.equal(s.ichor.guardCooldown,0);run(s,1,{ichorGuard:true});near(s.ichor.guardStrength,6.6);assert.equal(s.ichor.guarding,true);}
  const restored=make();applyLoadout(restored,loadout(s));near(restored.ichor.guardStrength,6.6);
- tryIchorDeflect(proxy(s),{...bullet,damage:6.6});assert.equal(s.ichor.guardCooldown,20);run(s);run(s,1,{ichorGuard:true});assert.equal(s.ichor.guarding,false);run(s,1200);run(s,1,{ichorGuard:true});assert.ok(s.ichor.guardStrength>=14&&s.ichor.guardStrength<=18);assert.equal(s.ichor.guarding,true);
+ tryIchorDeflect(proxy(s),{...bullet,damage:6.6});assert.equal(s.ichor.guardCooldown,20);run(s);run(s,1,{ichorGuard:true});assert.equal(s.ichor.guarding,false);run(s,1200);run(s,1,{ichorGuard:true});assert.ok(s.ichor.guardStrength>=28&&s.ichor.guardStrength<=32);assert.equal(s.ichor.guarding,true);
 });

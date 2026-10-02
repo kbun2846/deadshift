@@ -53,7 +53,6 @@ body[data-controls=touch].playing #game #weapon{
  padding:8px 136px 0 0;transform:translateX(-50%);transform-origin:center bottom;
 }
 body[data-controls=touch] #game #weapon .weapon-controls{display:none}
-body[data-controls=touch] #game #weapon .dodge-stamina{margin:0 0 7px;width:60px}
 body[data-controls=touch] #game #weapon .weapon-status{margin-bottom:0;font-size:10px}
 body[data-controls=touch] #game #weapon .hex-recharge{left:auto;right:72px;top:10px;width:54px;height:54px}
 body[data-controls=touch] #game #weapon .secondary-cooldown{right:8px;top:10px}
@@ -101,9 +100,11 @@ body[data-controls=touch].playing:not(.paused):not(.editing-touch-layout) #game 
 /* A light ring and a soft knob: present enough to read, clear enough to see
    the ground through. Larger than the old fixed stick so a full pull is a
    comfortable thumb stretch rather than a twitch. */
-body[data-controls=touch] #game #move-stick.floating-stick{position:fixed;left:0;top:0;margin:0;width:124px;height:124px;transform:translate(-50%,-50%);display:none;pointer-events:none;z-index:4;opacity:1;background:radial-gradient(circle,#18252214 0 55%,#1825222e 100%);border:2px solid #ecede680;box-shadow:none}
+body[data-controls=touch] #game #move-stick.floating-stick{position:fixed;left:0;top:0;margin:0;width:var(--stick-size,148px);height:var(--stick-size,148px);transform:translate(-50%,-50%);display:none;pointer-events:none;z-index:4;opacity:1;background:radial-gradient(circle,#18252214 0 55%,#1825222e 100%);border:2px solid #ecede680;box-shadow:none}
 body[data-controls=touch] #game #move-stick.floating-stick.engaged{display:grid;border-color:#ecede699}
-body[data-controls=touch] #game #move-stick .stick-knob{width:50px;height:50px;border-radius:50%;background:#ecede659;border:1.5px solid #ffffffb3;box-shadow:0 1px 4px #0004;transition:none}
+body[data-controls=touch] #game #move-stick .stick-knob{width:58px;height:58px;border-radius:50%;background:#ecede659;border:1.5px solid #ffffffb3;box-shadow:0 1px 4px #0004;transition:none}
+/* Full speed (MOVE_STICK.full of the pull and beyond): the knob firms up. */
+body[data-controls=touch] #game #move-stick.full .stick-knob{background:#f4f1eaa6;border-color:#fff}
 /* On touch the lesson card lets drags through to the movement zone. */
 body[data-controls=touch] #game #tutorial-guide{pointer-events:none}
 body[data-controls=touch] #game #tutorial-guide #tutorial-finish{pointer-events:auto}

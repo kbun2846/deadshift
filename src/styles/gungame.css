@@ -1,0 +1,31 @@
+/* Gun Game (ui/gungame-hud.js): the ladder line under the health bar (after
+   the storm's line), and the next-weapon cue in the middle (the ROUND
+   popup's look, menu-theme.css .round-popup). */
+#game .gun-ladder{display:grid;justify-items:center;row-gap:5px;margin:7px auto 0;width:max-content;max-width:min(92vw,460px);color:#eee9df;font:800 11px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.14em;text-transform:uppercase;text-shadow:0 1px 3px #15201bc0;pointer-events:none}
+#game .gun-ladder[hidden]{display:none}
+#game .gun-ladder-head{display:flex;align-items:baseline;justify-content:center;gap:9px;white-space:nowrap}
+#game .gun-ladder-step{color:var(--ui-accent)}
+#game .gun-ladder-step b{font:900 15px/1 'Arial Black',Arial,sans-serif;letter-spacing:.04em;font-variant-numeric:tabular-nums;color:#fff}
+#game .gun-ladder-name{font:900 14px/1 'Arial Black',Arial,sans-serif;letter-spacing:.08em;color:#fff}
+#game .gun-ladder-next{color:#b9c3bf;font-size:10px}
+#game .gun-ladder-next b{color:#eee9df}
+#game .gun-ladder[data-last="1"] .gun-ladder-next{color:var(--ui-accent)}
+#game .gun-ladder-pips{display:flex;gap:3px}
+#game .gun-ladder-pips i{display:block;width:clamp(16px,2.6vw,26px);height:4px;background:#ffffff26;border-radius:1px}
+#game .gun-ladder-pips i.done{background:#eee9dfb0}
+#game .gun-ladder-pips i.here{background:var(--ui-accent);box-shadow:0 0 6px #e8afb980}
+#game .gun-ladder-pips i.lead{outline:1px solid #ffb020;outline-offset:1px}
+body.mp-between #game .gun-ladder,body.dying #game .gun-ladder{visibility:hidden}
+#game .round-popup.gun-cue{top:30%;font-size:clamp(34px,6vw,72px)}
+#game .round-popup.gun-cue small{color:var(--ui-accent)}
+#game .round-popup.gun-cue.gun-cue-last{color:#ffd27a}
+#game .round-popup.gun-cue.gun-cue-down{color:#ff8a94}
+#game .round-popup.gun-cue.gun-cue-down small{color:#ff5a66}
+body.media-hide-banners #game .gun-cue{visibility:hidden!important}
+#game .gun-ladder-word{font-style:normal}
+/* Phones upright: the kill feed sits top right at this height, so the line
+   stays narrow: "2/7 SIDEKICK" and short segments. */
+@media(max-width:560px){#game .gun-ladder{letter-spacing:.08em;max-width:56vw}#game .gun-ladder-head{gap:6px}#game .gun-ladder-word,#game .gun-ladder-next{display:none}#game .gun-ladder-step b{font-size:13px}#game .gun-ladder-name{font-size:12px}#game .gun-ladder-pips{gap:2px}#game .gun-ladder-pips i{width:11px;height:3px}}
+/* Eight modes since Gun Game: the mode picker four over four (it was four
+   over three: menu-theme.css), on the host page and in the lobby. */
+#game .lobby-modes:has(>.choice-button:nth-child(8))>button.choice-button:nth-child(n+5),#game .host-mode-row .round-choices:has(>.choice-button:nth-child(8))>button.choice-button:nth-child(n+5){grid-column:span 3}

@@ -4,6 +4,10 @@ import { makeIchor,poseIchor,applyIchorBody } from './ichor-model.js';
 import { BloodDrops } from '../effects/blood-drops.js';
 import {castToWall} from '../effects/blood-surfaces.js';
 import { floorY } from '../render/ground-lift.js';
+// The pop pass (render/shot-pop.js): a white slash's edge band, under it and
+// along its inside, is dark (it was a pale grey, which left the arc washed
+// out on sand); the blood-red slash keeps its own dark red edge.
+import { POP } from '../render/shot-pop.js';
 export const ICHOR_FX_ORDER=3;
 import { ichorCutSign,ichorCutArc,ichorSpin,ichorCoverMeets } from './ichor-cut.js';
 import { segmentBox } from '../simulation.js';
@@ -24,7 +28,7 @@ export function ichorCutCover(sim,x,z,y){
 }
 const coverReach=(mask,a)=>{if(!mask)return Infinity;const at=((a/(Math.PI*2)%1)+1)%1*COVER_SAMPLES,i=Math.floor(at);return Math.min(mask[i],mask[(i+1)%COVER_SAMPLES]);};
 const SOFT=new THREE.Color('#b87275'),DULL=new THREE.Color('#813b40'),BLUSH=new THREE.Color('#ecd7c8'),MUTED=new THREE.Color('#78111e'),HOT=new THREE.Color('#bd2534');
-const WHITE=new THREE.Color('#fffdf3'),RED=new THREE.Color('#991827'),DARK=new THREE.Color('#541018'),PALE=new THREE.Color('#c7c7bf'),YELLOW=new THREE.Color('#ffe466'),BLUE=new THREE.Color('#55bfff');
+const WHITE=new THREE.Color('#fffdf3'),RED=new THREE.Color('#991827'),DARK=new THREE.Color('#541018'),EDGE=new THREE.Color(POP.ichor.edge),YELLOW=new THREE.Color('#ffe466'),BLUE=new THREE.Color('#55bfff');
 export class IchorView{
  constructor(view){this.view=view;this.model=makeIchor();this.model.visible=false;view.player.userData.gun.add(this.model);this.clock=0;this.cuts=[];this.sparks=[];this.pools=[];this.footTime=new Map();this.waveTrail=new Map();this.bloodMotes=[];this.ricochets=[];this.frenzyBursts=[];this.ribbonRing=new Float32Array(97*6);this.ribbonOpen=new Uint8Array(97);this.palette=[new THREE.Color(),new THREE.Color(),new THREE.Color()];this.dummy=new THREE.Object3D();this.a=new THREE.Vector3();this.b=new THREE.Vector3();this.up=new THREE.Vector3(0,1,0);
  const batch=(geo,cap,opacity)=>{const mesh=new THREE.InstancedMesh(geo,new THREE.MeshBasicMaterial({color:'#ffffff',transparent:true,opacity,depthWrite:false,toneMapped:false}),cap);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.count=0;mesh.frustumCulled=false;mesh.setColorAt(0,WHITE);view.scene.add(mesh);return mesh;};
@@ -82,14 +86,14 @@ export class IchorView{
   for(let i=0;i<n&&m.count+6<=pos.count;i++){if(!this.ribbonOpen[i]||!this.ribbonOpen[i+1])continue;put(i,0);put(i,1);put(i+1,1);put(i,0);put(i+1,1);put(i+1,0);}
  }
  arc(x,z,y,dir,start,sweep,radius,width,power,spin=false,color=RED,style={}){
-  const detail=['quality','extreme'].includes(this.view.qualityName)?28:16,n=spin?detail+16:detail,edge=style.edge|| (color===RED?DARK:PALE);
+  const detail=['quality','extreme'].includes(this.view.qualityName)?28:16,n=spin?detail+16:detail,edge=style.edge|| (color===RED?DARK:EDGE);
   this.ribbon(x,z,y-.02,dir,start,sweep,radius-.055,width*1.18,edge,n,{...style,alt:null});
   this.ribbon(x,z,y+.012,dir,start,sweep,radius,width,color,n,style);
   this.ribbon(x,z,y-.05,dir,start,sweep*.92,radius-.22,width*(.13+power*.13),edge,n,{...style,alt:null});
  }
  colours(power,serial=0){const [fill,edge,vein]=this.palette,variation=(serial*.381966)%1;
   if(power>=.6){fill.copy(RED).lerp(MUTED,variation*.48);edge.copy(DARK);vein.copy(HOT).lerp(MUTED,variation*.32);}
-  else{const q=Math.max(0,power/.6);fill.copy(WHITE).lerp(SOFT,q*(.65+variation*.25));edge.copy(PALE).lerp(DULL,q);vein.copy(WHITE).lerp(BLUSH,q*.38);}
+  else{const q=Math.max(0,power/.6);fill.copy(WHITE).lerp(SOFT,q*(.65+variation*.25));edge.copy(EDGE).lerp(DULL,q);vein.copy(WHITE).lerp(BLUSH,q*.38);}
   return this.palette;
  }
  cut(c,age){

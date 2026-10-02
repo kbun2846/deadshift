@@ -102,7 +102,14 @@ import { ClientSession } from '../src/net/client-session.js';
 //     in cover sometimes or in the open" (2026-10-01): normal robots now hold
 //     their ground some of the time (engagement.js HOLD). With NORMAL_HOLD 0
 //     both give the old hashes again; static, rifle and shotgun unchanged.
-export const GOLDEN = { static: '17d0bb9e', rifle: 'a9f85eb2', shotgun: '632d6dc5', robots: '1967664c', hosted: 'f1d2f89' };
+//   - robots and hosted: re-recorded, 1967664c -> 1a0c0dff and f1d2f89 ->
+//     703ef965, for the owner's spawn protection (2026-10-01: "... and the
+//     spawn protection", ~1.5 s after a respawn, ended by any attack;
+//     spawn-protection.js): robots come back from their wait protected and
+//     the hosted FFA's seats come in protected. With SPAWN_PROTECTION.time 0
+//     all five give the old hashes again; static, rifle and shotgun unchanged
+//     (they never respawn, and `player.guard` exists only while it runs).
+export const GOLDEN = { static: '17d0bb9e', rifle: 'a9f85eb2', shotgun: '632d6dc5', robots: '1a0c0dff', hosted: '703ef965' };
 
 const map = maps.deadwater;
 function seeded(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }

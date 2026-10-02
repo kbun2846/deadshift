@@ -21,10 +21,15 @@ import { makeSheath, poseSheath, applySheathBody, releaseSheathBody, BLADE_LENGT
 import { sheathSwingPose, sheathStrike, sheathDrawStrikePose } from './sheath-motion.js';
 import { SHEATH } from '../config/gameplay.js';
 import { floorY } from '../render/ground-lift.js';
+import { POP } from '../render/shot-pop.js';
 export const SHEATH_FX_ORDER = 3;
 
 const WHITE = new THREE.Color('#ffffff'), IVORY = new THREE.Color('#f4f0e6'), STEEL = new THREE.Color('#dfe6ea'), GOLD = new THREE.Color('#ffc93a'), DEEP_GOLD = new THREE.Color('#e39a1c');
 const RED = new THREE.Color('#9b1726'), DARK = new THREE.Color('#5a0d16'), YELLOW = new THREE.Color('#ffe27a'), BLUE = new THREE.Color('#62c4ff'), SPARK = new THREE.Color('#fff4c2');
+// The pop pass (render/shot-pop.js): a dark line just outside the white edge
+// and a dark band along the inside of the ivory, so a cut reads on pale sand
+// as well as on the night street (it was ivory and white only).
+const INK = new THREE.Color(POP.sheath.ink);
 const RIBBON_VERTS = 24000;
 // How long a point of the trail stays (s), and how much of the swing's arc
 // is shown behind the blade.
@@ -366,6 +371,11 @@ export class SheathView {
   const bloody = (sw.blood || 0) > .45, heavy = sw.variant === 5 || sw.variant === 4, body = sw.rush ? this.scratch.copy(IVORY).lerp(GOLD, .7) : bloody ? this.scratch.copy(IVORY).lerp(RED, .28) : IVORY;
   // (With Gold Rush's extension the arc is twice as long and gold, with a
   // white edge and a second gold band where the steel blade ends.)
+  // Under it, first: the dark rim outside the point's path and the dark band
+  // inside the body (same ribbon, drawn before the bright layers).
+  const reach = sw.rush ? .5 : 1;
+  this.strip(n, POP.sheath.rim * reach, INK, .85, -POP.sheath.rim * reach, 1);
+  this.strip(n, POP.sheath.band, INK, .55, (heavy ? .6 : .5) - .1, .05);
   this.strip(n, heavy ? .6 : .5, body, .92, 0, .42);
   // The bright, solid edge along the point's own path.
   this.strip(n, sw.rush ? .05 : .09, WHITE, 1, 0, .85);
@@ -561,8 +571,13 @@ export class SheathView {
   const pts = path.band; pts.length = 0;
   for (let i = 0; i < path.points.length; i++) {
    const q = path.points[i], f = 1 - (this.clock - q.born) / .7, u = i / Math.max(1, path.points.length - 1);
-   if (this.seen(q.x, q.z)) pts.push([q.x, floorY(v, q.x, q.z, q.below) + .07, q.z, .15 * f * Math.min(1, u * 3), .58 * f * f]);
+   if (this.seen(q.x, q.z)) pts.push([q.x, floorY(v, q.x, q.z, q.below) + .07, q.z, .15 * f * Math.min(1, u * 3), POP.sheath.rushGold * f * f]);
   }
+  // (The pop pass: a dark band a little wider under the gold, .58 before
+  // and alone, so the ribbon reads on sand as well as on the street.)
+  const ink = path.ink ||= []; ink.length = 0;
+  for (const q of pts) ink.push([q[0], q[1] - .002, q[2], q[3] + .05 * Math.min(1, q[3] / .05), q[4] * .6]);
+  this.band(ink, INK);
   this.band(pts, GOLD);
   // Motes rising off the ribbon.
   if (rushing && Math.random() < .5 * this.detail && path.points.length > 2) { const q = path.points[path.points.length - 2]; this.spark(q.x + (Math.random() - .5) * .4, floorY(v, q.x, q.z, q.below) + .1, q.z + (Math.random() - .5) * .4, (Math.random() - .5) * .4, .9 + Math.random() * .8, (Math.random() - .5) * .4, .45, Math.random() < .5 ? GOLD : YELLOW, .02); }

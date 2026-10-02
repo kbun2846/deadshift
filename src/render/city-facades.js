@@ -100,17 +100,25 @@ export const NIGHT = Object.freeze({
 // made subtly more apparent"): every outer doorway of a playable building
 // gets a frame a step lighter than its wall, in the look's trim colour (two
 // jambs and a lintel bar, flat against the wall beside the opening, never in
-// it), and a small dim strip light over it (its own glow, cityGlow: no light
+// it), and a lit header strip over it (its own glow, cityGlow: no light
 // cast). The ground's threshold strip is the ground's (world/lumen-ground.js
-// thresholdShapes). The ring's sealed doors get none (they are not doorways).
+// thresholdShapes), and the light each doorway spills onto the street is
+// render/city-entrances.js's (2026-10-01), in the header's colour
+// (doorwayLight). The ring's sealed doors get none (they are not doorways).
 export const DOORWAY = Object.freeze({
   jamb: .1, depth: .06,        // m wide and proud of the wall
   lintel: .1,                  // m tall, over the opening's 2.5 m
   trim: 1.6,                   // the frame's light (linear) against its wall's: a step lighter, never bright
-  strip: Object.freeze({ inset: .12, h: .05, gap: .03, depth: .05, colour: .3, glow: 1 }),
+  // (2026-10-01, owner: "a little bit more prominent so you can tell where you
+  // can enter": the strip was .05 tall, 5 cm proud, .3 lit x glow 1, inset
+  // .12 m from each jamb. Now a lit header across the whole opening, standing
+  // out far enough that its lit top shows from the camera above.)
+  strip: Object.freeze({ inset: 0, h: .07, gap: .03, depth: .16, colour: .7, glow: 1.6 }),
   // (by recipe; the industrial west's is a warm bulb, not sodium: sodium this dim reads amber, a team colour)
   stripColour: Object.freeze({ 'velvet-row': 'rose', club: 'rose', garage: 'bulb', charging: 'bulb', stacks: 'bulb', 'night-market': 'bulb', uptown: 'coldWhite', flatiron: 'coldWhite', 'metro-entrance': 'coldWhite', 'body-mod': 'coldWhite', clinic: 'coldWhite' }),
 });
+// A doorway's light (its header strip's, and its spill's on the street: render/city-entrances.js).
+export const doorwayLight = look => { const name = DOORWAY.stripColour[look?.recipe] || 'warmWhite'; return FACADE_NEON[name] || WINDOW_LIGHT[name]; };
 export const nightColour = hex => darkHex(hex, NIGHT.surface); // (a look's colour as the night dresses it)
 const darkHex = (hex, k) => '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
 // Every '#rrggbb' a look names, darkened (the lit colours are names: 'warm', 'coldWhite'...).
@@ -1040,8 +1048,7 @@ function dressDoorway(d, cell, owner, input) {
   // The strip, unless a lit sign already hangs there (maps/lumen-signs.js's door strips).
   const S = D.strip, y0 = top + D.lintel + S.gap, s0 = a + S.inset, s1 = b - S.inset;
   if (s1 - s0 < .3 || !kit.clear(s0, s1, y0, y0 + .35)) return;
-  const name = D.stripColour[look.recipe] || 'warmWhite', light = FACADE_NEON[name] || WINDOW_LIGHT[name];
-  kit.box(s0, s1, y0, y0 + S.h, .01, S.depth, lit(light, S.colour), { glow: shine(S.glow), bottom: false });
+  kit.box(s0, s1, y0, y0 + S.h, .01, S.depth, lit(doorwayLight(look), S.colour), { glow: shine(S.glow), bottom: false });
 }
 
 // A canopy over a doorway (over the door's 2.5 m, from 3 m: under 3 m

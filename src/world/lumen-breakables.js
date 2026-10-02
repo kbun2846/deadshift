@@ -22,6 +22,7 @@
 import * as THREE from 'three';
 import { registerLumenModel } from './lumen-props.js';
 import { kit, tone, CITY as C } from './lumen-kit.js';
+import { SETPIECE_BREAKS } from './lumen-setpieces.js';
 
 const PI = Math.PI;
 
@@ -57,8 +58,10 @@ export const LUMEN_BREAKABLES = Object.freeze({
 
 // The types that come apart (everything with health): the stage-2 breakables
 // plus the new ones. Order is the doc's.
+// The set pieces a person could smash (world/lumen-setpieces.js SETPIECE_BREAKS,
+// 2026-10-01) come after.
 export const LUMEN_BREAK_TYPES = Object.freeze(['cityVending', 'cityTrashBags', 'cityHydrant', 'cityChargePost', 'cityCone',
-  ...Object.keys(LUMEN_BREAKABLES).filter(t => LUMEN_BREAKABLES[t].health !== null)]);
+  ...Object.keys(LUMEN_BREAKABLES).filter(t => LUMEN_BREAKABLES[t].health !== null), ...SETPIECE_BREAKS]);
 export const LUMEN_TREES = Object.freeze(Object.keys(LUMEN_BREAKABLES).filter(t => LUMEN_BREAKABLES[t].health === null));
 
 // --- The hydrant's jet (design 9): a broken hydrant sprays for 6 s and, for

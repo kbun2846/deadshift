@@ -127,6 +127,7 @@ import { graveBreak } from '../world/graveyard.js'; // s2-graveyard
 import { installUploadUsed } from './upload-used.js';
 import { setPlayerSkin, skinOfDev } from './player-skin.js';
 import { makeLumenStreetPieces } from '../world/lumen-vehicles.js'; // Lumen stage 4
+import { POP, hullGeometry } from './shot-pop.js'; // the pop pass (2026-10-01)
 
 const UP = new THREE.Vector3(0, 1, 0);
 // A flat marker lying down (layFlat): a quarter turn about x.
@@ -333,13 +334,19 @@ export class WorldView {
     // Static's launched orbs leave a short beam where they flew.
     this.orbBeams = new OrbBeams(this);
     this.shotGeo = new THREE.SphereGeometry(.125, 7, 5);
-    this.shotMaterial = new THREE.MeshBasicMaterial({ color: '#d6fff0' });
+    // A launched orb pops (render/shot-pop.js): its core inside a dark rim in
+    // the same geometry; yours pale mint, an enemy's a deeper, saturated blue
+    // (owner, v0.9b: enemy orbs a deeper blue; a launched orb used to take the
+    // pale mint whoever threw it, and a parked one your blue).
+    { const S = POP.static; this.shotPopGeo = hullGeometry(this.shotGeo, { scale: S.rimScale, core: S.core, rim: S.rim }); this.enemyShotPopGeo = hullGeometry(this.shotGeo, { scale: S.rimScale, core: S.enemyCore, rim: this.readable ? S.nightRim : S.enemyRim }); }
+    this.shotMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
     this.seedMaterial = new THREE.MeshStandardMaterial({ color: '#b8e4ff', emissive: '#548eb7', emissiveIntensity: .7, roughness: .38 });
     this.enemySeedMaterial = new THREE.MeshStandardMaterial({ color: '#2d4f9e', emissive: '#1a3a8f', emissiveIntensity: .8, roughness: .38 });
     // Lumen's readability: an enemy's orbs glow brighter, your ring a touch emissive.
     if (this.readable) { this.enemySeedMaterial.emissiveIntensity *= this.readable.orbGlow; const ring = this.player.userData.ring; if (ring) this.ringGlow(ring.material); }
     this.trailGeo = new THREE.CylinderGeometry(.032, .07, 1, 5); this.trailGeo.rotateX(Math.PI / 2);
-    this.trailMaterial = new THREE.MeshBasicMaterial({ color: '#a1ffe0', transparent: true, opacity: .75 });
+    this.trailMaterial = new THREE.MeshBasicMaterial({ color: POP.static.trail, transparent: true, opacity: POP.static.trailOpacity, toneMapped: false });
+    this.enemyTrailMaterial = new THREE.MeshBasicMaterial({ color: POP.static.enemyTrail, transparent: true, opacity: POP.static.trailOpacity, toneMapped: false });
     this.orbElectricMaterial = new THREE.LineBasicMaterial({ color: '#e0fff5', transparent: true, opacity: .8, depthWrite: false, toneMapped: false });
     this.particleGeo = new THREE.BoxGeometry(1, 1, 1);
     // Not transparent: particles fade by scaling to zero, never by writing
@@ -1752,8 +1759,10 @@ export class WorldView {
       const progress = Math.min(1, b.age / .32);
       b.ring.scale.setScalar(b.radius * (1 - (1 - progress) ** 3));
       b.ring.material.opacity = .9 * (1 - progress);
-      b.core.scale.setScalar(b.radius * (.4 + Math.min(1, b.age / .1) * .35));
-      b.core.material.opacity = Math.max(0, 1 - b.age / .18); b.core.visible = b.age < .18;
+      // (The first frames pop: the white core starts bigger and holds a
+      // little longer, .4 and .18 s before.)
+      b.core.scale.setScalar(b.radius * (.5 + Math.min(1, b.age / .1) * .3));
+      b.core.material.opacity = Math.max(0, 1 - b.age / .21); b.core.visible = b.age < .21;
       // Opacity is a property of the blast, not of each puff, so it is written
       // to the four shared materials once instead of once per puff per frame.
       const fire = Math.min(1, b.age / .09), fade = Math.max(0, 1 - Math.max(0, b.age - .14) / .32);
@@ -1784,7 +1793,8 @@ export class WorldView {
     this.blastRingGeo ||= new THREE.RingGeometry(.88, 1, 40);
     return {
       kind: Smoke,
-      ring: new THREE.Mesh(this.blastRingGeo, new THREE.MeshBasicMaterial({ color: '#ffe2a0', transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false })),
+      // (The pop pass: a hotter, untone-mapped ring, #ffe2a0 before, which went pale on sand.)
+      ring: new THREE.Mesh(this.blastRingGeo, new THREE.MeshBasicMaterial({ color: '#ffb347', transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false, toneMapped: false })),
       core: new THREE.Mesh(this.smokeGeo, new THREE.MeshBasicMaterial({ color: '#fff3c3', transparent: true, opacity: 1, depthWrite: false, toneMapped: false })),
       materials: [...['#484640', '#81786b'].map(color => new Smoke({ color, transparent: true, opacity: .65, depthWrite: false })),
         ...['#ffbd42', '#ff731b'].map(color => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1, depthWrite: false, toneMapped: false }))],
@@ -1888,7 +1898,9 @@ export class WorldView {
     this.effectTime = elapsed;
     // Dev "freeze game": every effect holds still where it is (sparks,
     // smoke, blasts, blood, shells in the air); you and the camera still move.
-    const fdt = sim.dev?.freeze ? 0 : dt;
+    // (The feel pass's hitstop and slow motion, feel/time-feel.js: only the
+    // effects' clock; the camera and the simulation are never touched here.)
+    const fdt = sim.dev?.freeze ? 0 : dt * (this.timeScale ?? 1);
     if (this.qualityName === 'extreme') tickExtremeSurfaces(elapsed);
     const p = sim.player, speed = Math.hypot(p.vx, p.vz);
     const renderX = lerp(previousPlayer.x, p.x, alpha), renderZ = lerp(previousPlayer.z, p.z, alpha);
@@ -1970,7 +1982,11 @@ export class WorldView {
     // Shared live endpoint keeps short-lived stream arcs attached during recoil and aiming.
     this.staticMuzzle.set(0,0,-.333);
     this.player.userData.gun.localToWorld(this.staticMuzzle);
-    const cameraRate = this.motion ? 5.7 : 16;
+    // Media mode (ui/media-mode.js, set by dev-wiring.js): the camera a little
+    // closer or wider (`zoom` on its height; never wider online) and trailing
+    // more softly (`follow` on its rate). Only this screen's camera.
+    const media = this.mediaCamera?.() || null, mediaZoom = media?.zoom || 1;
+    const cameraRate = (this.motion ? 5.7 : 16) * (media?.follow || 1);
     const cut = this.cameraCut; this.cameraCut = false;
     // (A cut, a respawn: the shadows are redrawn for the new place this very
     // frame, not up to a shadow tick later over the old one.)
@@ -1988,7 +2004,8 @@ export class WorldView {
     // set by main.js for the round's break: killCamFrame.)
     const after = this.aftermath;
     if (after && after.fromX === undefined) { after.fromX = this.focus.x; after.fromZ = this.focus.z; after.fromHeight = this.cameraHeight || OUTDOOR_CAMERA_HEIGHT; }
-    const deathCamera=this.deathView?.active&&!this.spectating?this.deathView.cameraFrame(this.camera.aspect,this.deathAside!==false):after?killCamFrame(after,elapsed-after.start,this.killCam||={x:0,z:0,height:0}):null;
+    // (The killcam, killcam.js via ui/killcam-hud.js: its own frame while it runs, else the plain shot's.)
+    const deathCamera=this.deathView?.active&&!this.spectating?(this.deathKillcam?this.deathKillcam.camera(this.deathView,this.camera.aspect,this.deathAside!==false):this.deathView.cameraFrame(this.camera.aspect,this.deathAside!==false)):after?killCamFrame(after,elapsed-after.start,this.killCam||={x:0,z:0,height:0}):null;
     // Online weapon pick: straight down on the pick spot from high above
     // (setPickView), before the death or room camera.
     const pick = this.pickCamera;
@@ -2005,7 +2022,7 @@ export class WorldView {
     const followX = this.cityCamera && !cameraRoom && !scoped && !this.spectating ? this.cityCamera.focusX(renderX, renderZ) : renderX;
     const goalX = deathCamera ? deathCamera.x : (cameraRoom && !cameraRoom.followCamera ? cameraRoom.x : followX+(scoped?scopeAim.x*scopeFrame.lead:0)) + asideX;
     const goalZ = deathCamera ? deathCamera.z : (cameraRoom && !cameraRoom.followCamera ? cameraRoom.z : renderZ+(scoped?scopeAim.z*scopeFrame.lead:0)) + asideZ;
-    const goalH = deathCamera ? deathCamera.height : cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT*(scoped?scopeFrame.scale:1);
+    const goalH = deathCamera ? deathCamera.height : (cameraRoom ? this.roomHeight(cameraRoom) : OUTDOOR_CAMERA_HEIGHT*(scoped?scopeFrame.scale:1)) * mediaZoom;
     this.focus.x = deathCamera?goalX:lerp(this.focus.x, goalX, blend);
     this.focus.z = deathCamera?goalZ:lerp(this.focus.z, goalZ, blend);
     this.cameraHeight = deathCamera?goalH:lerp(this.cameraHeight, goalH, cut ? 1 : 1 - Math.exp(-5.7 * dt));
@@ -2015,7 +2032,8 @@ export class WorldView {
     if (pick && this.cameraGoal) { this.cameraGoal.x = pick.x; this.cameraGoal.y = pick.height + (this.focus.y || 0); this.cameraGoal.z = pick.z + pick.height * CAMERA_TILT; }
     // Zoom height must not count as travel through the map's ground haze.
     // Preserve horizontal fog while removing the extra vertical camera distance.
-    const scopeFogLift=sim.weapon==='sightline'?Math.max(0,this.cameraHeight-OUTDOOR_CAMERA_HEIGHT)*Math.hypot(1,CAMERA_TILT):0;
+    // (A wider media camera is lifted out of the haze the same way.)
+    const scopeFogLift=sim.weapon==='sightline'||mediaZoom>1?Math.max(0,this.cameraHeight-OUTDOOR_CAMERA_HEIGHT)*Math.hypot(1,CAMERA_TILT):0;
     this.scene.fog.near=this.look.fogNear+scopeFogLift;this.scene.fog.far=this.look.fogFar+scopeFogLift;
     // Hills: the camera rides the ground under what it follows, smoothed
     // (about 4/s) so it glides over bumps instead of bobbing on them. Over a
@@ -2216,7 +2234,9 @@ export class WorldView {
       g.userData.aura.visible = s.hex || (!s.launched&&s.age<.23) || isDemanding(this.qualityName);
       g.userData.aura.material.opacity = s.hex ? .3+Math.sin(elapsed*45+s.id)*.12 : .09 + Math.sin(elapsed * 16 + s.id) * .035+(!s.launched?Math.max(0,1-s.age/.23)*.4:0);
       if(s.hex)g.userData.aura.scale.setScalar(2.2+Math.sin(elapsed*34+s.id)*.35);
-      g.userData.orb.material = s.launched ? this.shotMaterial : this.seedMaterial;
+      g.userData.orb.material = s.launched ? this.shotMaterial : s.enemy ? this.enemySeedMaterial : this.seedMaterial;
+      g.userData.orb.geometry = s.launched ? (s.enemy ? this.enemyShotPopGeo : this.shotPopGeo) : this.shotGeo;
+      g.userData.trail.material = s.enemy ? this.enemyTrailMaterial : this.trailMaterial;
       const lifeScale = !sim.dev.orbs && !s.launched && s.age > 7.5 ? Math.max(.2, (9 - s.age) / 1.5) : 1;
       g.userData.orb.scale.setScalar((1 + Math.sin(elapsed * 5 + s.id) * .06) * lifeScale);
       g.userData.trail.visible = !!s.launched;

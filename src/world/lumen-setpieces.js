@@ -37,8 +37,16 @@
 // (`collisionBoxes: []`, as the graveyard's flat graves): they hang above or
 // beside where a body goes, and nor do the thin masts (`pole`: the stop flag,
 // camera, banner, dish and lantern poles, the bulb strings' and tarps' posts),
-// as the street lamps. Nothing is a breakable (health null): the
-// districts' dressing is the static batch's, merged per cell with the rest.
+// as the street lamps. Most stand (health null: the static batch's, merged
+// per cell with the rest); what a person could smash with rounds, a blade or
+// a blast is a breakable (owner, 2026-10-01: "make more of the obstacles
+// breakable too ... logically, don't make, like, a car breakable"):
+// SETPIECE_BREAKS below (wood podiums, a clothes rack, crates, a plastic
+// drum, a fish tank, a price board, the neon heart, a drinks cooler, a fast
+// charger, the metro map's lit panel, a ticket machine). They come apart in
+// effects/lumen-breaks.js, sound in effects/lumen-break-sounds.js and are
+// drawn by the props' batches (render/prop-instances.js) as every breakable.
+// Steel, stone, concrete and anything car-sized stays standing.
 // No lettering (price boards are tally marks and pictograms) and no team
 // colours; anything that glows is a lit part (litBox) in the city's pinks,
 // blues, greens, reds, lemon and whites.
@@ -50,7 +58,7 @@ const PI = Math.PI;
 
 // A type: footprint, its boxes [x, z, w, d, height] in the prop's frame (local x
 // runs along world (cos a, -sin a)), and how rounds meet it.
-const solid = (w, d, boxes, extra = {}) => ({ w, d, health: null, collisionBoxes: boxes, ...extra });
+const solid = (w, d, boxes, extra = {}) => ({ w, d, health: null, collisionBoxes: boxes, ...extra }); // (`extra.health`: a breakable, see SETPIECE_BREAKS)
 const low = (w, d, boxes, extra = {}) => solid(w, d, boxes, { lowTop: true, ...extra });
 // (Walk-over: no collider. A collider, even a walkOver one, stops every round
 // on a flat map, where rounds have no flight path: weapons/rifle.js roundMeets.
@@ -72,13 +80,13 @@ export const LUMEN_SETPIECE_TYPES = Object.freeze({
   // --- Uptown ---
   cityDryFountain: low(4.4, 4.4, [[0, 0, 4.2, 4.2, .55], [0, 0, .6, .6, 1.6]]),
   citySculptBollard: low(.5, .5, [[0, 0, .36, .36, 1]]),
-  cityValetPodium: solid(1, .8, [[0, 0, .8, .6, 1.15]]),
+  cityValetPodium: solid(1, .8, [[0, 0, .8, .6, 1.15]], { health: 5 }), // (a wooden stand: breaks)
   cityCameraPole: pole(.9, .9), // a security camera on an arm
   cityPaverInlay: flat(3.4, 2.2), // light strips let into the paving
   cityBannerPole: pole(1.6, .5),
   // --- The Stacks ---
-  cityDryingRack: solid(1.8, .8, [[0, 0, 1.7, .6, 1.55]]),
-  cityCrateTable: low(1.1, 1.1, [[0, 0, .95, .95, .78]]),
+  cityDryingRack: solid(1.8, .8, [[0, 0, 1.7, .6, 1.55]], { health: 4 }), // (a clothes rack: breaks)
+  cityCrateTable: low(1.1, 1.1, [[0, 0, .95, .95, .78]], { health: 4, walkBreak: true }), // (crates and a board: break)
   cityCableSpanShort: hung(3.8, .6), // over Back Alley
   cityCableSpanLong: hung(12.4, .6), // over the courtyard and West Street
   cityJunctionBox: solid(.9, .9, [[0, 0, .85, .85, 1.25]]),
@@ -86,25 +94,25 @@ export const LUMEN_SETPIECE_TYPES = Object.freeze({
   cityShrineNiche: solid(1.4, .8, [[0, 0, 1.2, .6, 1.3]]),
   cityBagSpill: flat(1.9, 1.2),
   cityScooterFrame: low(1.5, .7, [[0, 0, 1.4, .6, .5]]),
-  cityWaterDrum: low(1, 1, [[0, 0, .9, .8, 1]]),
+  cityWaterDrum: low(1, 1, [[0, 0, .9, .8, 1]], { health: 6 }), // (a plastic rain drum: breaks)
   // --- Night Market ---
   cityTarpCanopy: pole(3.6, 2.6), // (four slim posts under the sheet)
-  cityProduceStack: low(1.3, .8, [[0, 0, 1.2, .7, .75]]),
-  cityFishTank: solid(1.8, .8, [[0, 0, 1.7, .7, 1.3]]),
+  cityProduceStack: low(1.3, .8, [[0, 0, 1.2, .7, .75]], { health: 4, walkBreak: true }), // (crates of produce: break)
+  cityFishTank: solid(1.8, .8, [[0, 0, 1.7, .7, 1.3]], { health: 4 }), // (glass: breaks)
   cityMeatRail: solid(2.4, .8, [[0, 0, 2.3, .6, 2.05]]),
   cityGasBottles: low(1.1, .7, [[0, 0, 1, .6, .7]]),
-  cityPriceBoard: solid(1.3, .4, [[0, 0, 1.2, .3, 1.65]]),
+  cityPriceBoard: solid(1.3, .4, [[0, 0, 1.2, .3, 1.65]], { health: 4 }), // (a board on legs: breaks)
   cityMarketScale: low(.8, .6, [[0, 0, .7, .4, 1.1]]),
   cityLanternPole: pole(1.6, .5),
   cityBulbString: pole(5.2, .4), // (a post at each end)
   // --- Velvet Row ---
   cityRopeStanchions: flat(2.9, .9),
-  cityDoormanPodium: solid(.9, .7, [[0, 0, .8, .6, 1.15]]),
-  cityHeartStand: solid(1.3, .5, [[0, 0, 1.1, .3, 1.6]]), // the club's neon heart, half dead, on a floor stand
+  cityDoormanPodium: solid(.9, .7, [[0, 0, .8, .6, 1.15]], { health: 5 }), // (a wooden stand: breaks)
+  cityHeartStand: solid(1.3, .5, [[0, 0, 1.1, .3, 1.6]], { health: 5 }), // the club's neon heart, half dead, on a floor stand (glass tubes: breaks)
   cityBeadCurtain: hung(1.2, .3),
   cityHighHeel: flat(.4, .4),
   cityGlitterSpill: flat(1.6, 1.1),
-  cityDrinksCooler: solid(1.6, .9, [[0, 0, 1.5, .8, 1.95]]),
+  cityDrinksCooler: solid(1.6, .9, [[0, 0, 1.5, .8, 1.95]], { health: 8 }), // (a glass-fronted fridge: breaks as a vending machine)
   cityKaraokeMat: flat(2.2, 1.1),
   // --- Garage and Charging ---
   cityTyreStack: solid(1.5, 1.1, [[0, 0, 1.45, 1.05, .98]]),
@@ -113,14 +121,14 @@ export const LUMEN_SETPIECE_TYPES = Object.freeze({
   cityEngineBlock: low(1.5, 1.1, [[0, 0, 1.4, 1, .8]]),
   cityCreeperBoard: flat(1.3, .7),
   cityHazardPost: low(.4, .4, [[0, 0, .24, .24, 1]]),
-  cityFastCharger: solid(1, .7, [[0, 0, .8, .55, 1.75]]),
+  cityFastCharger: solid(1, .7, [[0, 0, .8, .55, 1.75]], { health: 6 }), // (a charging post's bigger kin: breaks)
   cityPlugCable: flat(1, .4),
   cityToolCart: solid(1.2, 1, [[0, .05, 1.1, .9, 1.05]]),
   cityCarLift: solid(4.4, 1.6, [[-1.95, 0, .34, .6, 2.15], [1.95, 0, .34, .6, 2.15]]),
   citySpillKit: low(1, .7, [[0, 0, .9, .6, .7]]),
   // --- Flatiron and Metro Plaza ---
-  cityMetroMap: solid(2.2, .4, [[0, 0, 2, .3, 2.3]]),
-  cityTicketMachine: solid(1, .8, [[0, 0, .85, .6, 1.55]]),
+  cityMetroMap: solid(2.2, .4, [[0, 0, 2, .3, 2.3]], { health: 6 }), // (a lit glass panel: breaks)
+  cityTicketMachine: solid(1, .8, [[0, 0, .85, .6, 1.55]], { health: 8 }), // (a machine with a screen: breaks as a vending machine)
   cityTurnstileBank: solid(3.2, 1, [[0, 0, 3, .8, 1.1]]),
   cityCommBooth: solid(1.3, 1.3, [[0, 0, 1.1, 1, 2.25]]),
   cityQueueCorral: flat(3.2, 1.6),
@@ -1121,3 +1129,5 @@ const MODELS = {
 };
 for (const [type, make] of Object.entries(MODELS)) registerLumenModel(type, make);
 export const SETPIECE_MODELS = Object.freeze(Object.keys(MODELS));
+// The set pieces that break (health 3-12; world/lumen-breakables.js LUMEN_BREAK_TYPES lists them with the rest).
+export const SETPIECE_BREAKS = Object.freeze(Object.keys(LUMEN_SETPIECE_TYPES).filter(t => LUMEN_SETPIECE_TYPES[t].health !== null));

@@ -42,7 +42,8 @@ export class GrenadeView{
    const floor=groundY(this.view, g.x,g.z),landed=g.y<=.241+floor;
    model.position.set(g.x,g.y,g.z);const spin=Math.min(g.age-GRENADE.windup,g.flight)*7;model.rotation.set(landed?.15:spin,spin*.4,.3);
    const blink=landed&&Math.floor((g.age-GRENADE.windup)*10)%2===0;
-   model.userData.indicator.material.color.set(blink?'#ff3020':'#611c16');model.userData.indicator.scale.setScalar(blink?1.5:1);
+   // (The pop pass: the fuse's light bigger, 1.5 / 1 before, so a landed grenade's blink reads from above.)
+   model.userData.indicator.material.color.set(blink?'#ff3020':'#611c16');model.userData.indicator.scale.setScalar(blink?2.5:1.5);
    model.visible=sim.canSeeEntity(g.x,g.z,.14);
    // A lit fuse: sparks spitting off the cap and a thin smoke trail in the
    // air; once it lands, the blink throws a small red glow on the ground.

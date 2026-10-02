@@ -47,6 +47,11 @@ function zap(s, weight = 1, crackle = 6) {
 }
 // A motor winding down.
 function whine(s, from, to, dur, vol, delay = 0) { s.tone(from, to, dur, vol, 'sawtooth', delay); s.tone(from * 2, to * 2, dur * .8, vol * .4, 'square', delay + .01); }
+// A wooden thing cracking: a dry knock, its body, boards clattering down.
+function woodCrack(s, weight = 1, pitch = 1) {
+  s.impact(.07, .2 * weight, 900 * pitch); s.tone(210 * pitch, 110 * pitch, .12, .09 * weight, 'triangle');
+  ticks(s, 5, { delay: .1, spacing: .06, freq: 1300 * pitch, volume: .045 * weight, body: 190 * pitch });
+}
 // Things rolling: knocks that come further apart as they slow.
 function roll(s, n, { delay = .2, gap = .05, freq = 1500, volume = .03 } = {}) {
   let at = delay;
@@ -58,6 +63,38 @@ function tin(s, base, vol = .04, delay = 0) {
 }
 
 const SOUNDS = {
+  // --- The set pieces that break (world/lumen-setpieces.js SETPIECE_BREAKS) ---
+  // A wooden stand: a hollow wooden crack, boards clattering.
+  cityValetPodium(s) { woodCrack(s); },
+  cityDoormanPodium(s) { woodCrack(s, .9, 1.1); },
+  // Rails clanging down, the washing a soft rustle.
+  cityDryingRack(s) {
+    s.impact(.06, .14, 1600); s.ring(520, .45, .04, .002, [1, 1.8, 2.9]); s.whoosh(.4, .05, 1800, 900, .02, .3);
+    ticks(s, 4, { delay: .15, spacing: .08, freq: 1700, volume: .035, body: 280 });
+  },
+  // Crates cracking apart and the board landing flat.
+  cityCrateTable(s) { SOUNDS.cityCrate(s); s.impact(.08, .1, 420, 'effects', .14); s.tone(170, 90, .1, .05, 'triangle', .14); },
+  // A plastic drum: a hollow boom, then water.
+  cityWaterDrum(s) { SOUNDS.cityWaterBarrier(s); },
+  // Crates and fruit: the crack, soft thuds as it lands and rolls.
+  cityProduceStack(s) {
+    SOUNDS.cityCrate(s);
+    for (let i = 0; i < 5; i++) s.impact(.04, .05, rnd(300, 600), 'effects', .15 + i * .07 + Math.random() * .03);
+  },
+  // A tank of water: the glass crash and a rush.
+  cityFishTank(s) {
+    glass(s, 1.2, 12); s.whoosh(1.2, .1, 800, 3200, .03, .2, .8); s.noise(.8, .045, 3000);
+  },
+  // A board snapping, card fluttering.
+  cityPriceBoard(s) { woodCrack(s, .8, 1.25); s.whoosh(.3, .035, 3000, 1600, .08, .3); },
+  // Neon tubes: a bright pop of glass, the transformer buzzing out.
+  cityHeartStand(s) { glass(s, .9, 9); zap(s, .8, 5); s.tone(120, 118, .45, .03, 'sawtooth', .05); },
+  // A cooler and a ticket machine sound as a vending machine; a fast charger as a charging post.
+  cityDrinksCooler(s) { SOUNDS.cityVending(s); },
+  cityTicketMachine(s) { SOUNDS.cityVending(s); },
+  cityFastCharger(s) { SOUNDS.cityChargePost(s); },
+  // A lit glass panel: the sheet crashes, the lamp behind it zaps.
+  cityMetroMap(s) { glass(s, 1.2, 12); zap(s, .7, 4); },
   // A steel shell struck, the glass window crashing, cans dropping out and clattering, the screen zapping.
   cityVending(s) {
     boom(s, .9, 130); glass(s, .8, 6); zap(s, .7, 4);

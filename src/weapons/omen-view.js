@@ -3,11 +3,16 @@ import { makeOmen } from './omen-model.js';
 import { floorY } from '../render/ground-lift.js';
 import { OMEN } from '../config/gameplay.js';
 import { puffMaterial } from '../effects/effects-detail.js';
+import { POP } from '../render/shot-pop.js';
 const UP=new THREE.Vector3(0,1,0),TAU=Math.PI*2,CURSE_SCALE=1.25;
 const RED=new THREE.Color('#f02e4e'),HOT=new THREE.Color('#ffc0a4'),ORANGE=new THREE.Color('#ffa33e');
 const EMBER=new THREE.Color('#a93c26'),PALE=new THREE.Color('#ffdc9a'),CRIMSON=new THREE.Color('#931d3a');
 const INK=new THREE.Color('#380e24'),SMOKE=new THREE.Color('#352331'),ASH=new THREE.Color('#75505c');
 const PURPLE=new THREE.Color('#a949f5'),LILAC=new THREE.Color('#dfa2ff');
+// A round in flight pops (render/shot-pop.js): its body bright (the base
+// round's was a dull ember brown, near the colour of sand) inside a dark ink
+// diamond drawn just before it in the same batch.
+const ROUND_BODY=new THREE.Color(POP.omen.body),PRIMED_BODY=new THREE.Color(POP.omen.primeBody),ROUND_INK=new THREE.Color(POP.omen.ink);
 // Every preset keeps the muzzle burst, faceted rounds, red wake and prime seal.
 // Higher presets spend instances on finer facets, chips and split wake strands.
 const LOOK=Object.freeze({
@@ -234,7 +239,8 @@ export class OmenView{
  projectile(b,look){
   const red=b.kind!=='base',size=red?.19:.135,y=b.y??floorY(this.view,b.x,b.z,b.below)+.75;
   const norm=Math.hypot(b.dx,b.dz)||1,dx=b.dx/norm,dz=b.dz/norm,spin=this.time*(red?9:13)+b.id*2.4;
-  const rim=red?HOT:ORANGE,tip=red?HOT:PALE,body=red?CRIMSON:EMBER,length=size*2.35;
+  const rim=red?HOT:ORANGE,tip=red?HOT:PALE,body=red?PRIMED_BODY:ROUND_BODY,length=size*2.35;
+  this.diamond(b.x,y,b.z,dx,dz,size*POP.omen.inkScale,length*1.28,ROUND_INK,spin);
   this.diamond(b.x,y,b.z,dx,dz,size,length,body,spin);
   this.diamond(b.x+dx*length*.60,y,b.z+dz*length*.60,dx,dz,size*.42,length*.46,tip,spin);
   // The bright cage defines individual facets over both pale ground and shadow.

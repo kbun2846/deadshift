@@ -105,7 +105,7 @@ export async function handleAdmin(req, res, ctx) {
    json(res, 200, playerSheet(ctx, conn, conn ? conn.pid : pid)); return true;
   }
   if (req.method === 'GET' && url.pathname === '/admin/api/state') {
-   const state = { you: who, owner, overview: ctx.overview?.() || null, rooms: rooms.adminState(), bans: bans.active, maintenance: ctx.maintenance?.state || { on: false } };
+   const state = { you: who, owner, overview: ctx.overview?.() || null, rooms: rooms.adminState(), quick: ctx.quick?.adminState() || [], bans: bans.active, maintenance: ctx.maintenance?.state || { on: false } };
    const extra = url.searchParams.get('with');
    if (extra === 'recent') {
     // The player log by day and week (player-log.js grouped): today's visits,

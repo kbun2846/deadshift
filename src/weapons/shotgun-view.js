@@ -8,11 +8,14 @@ import {segmentBox} from '../simulation.js';
 import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { NO_FX } from '../effects/effects-detail.js';
 import { groundY, floorY, hilly, glide, roundFlight } from '../render/ground-lift.js';
+import { POP, hullGeometry } from '../render/shot-pop.js';
 const SHELL_SMOKE=new THREE.Color('#c9c0ae'),PELLET_TRAIL=new THREE.Color('#ffe6b0');
 const SHELL_REST=.058;
 export class ShotgunView{
  constructor(view){this.view=view;this.gun=view.player.userData.gun;this.pressure=new ShotgunPressure(view.scene,this.gun);this.model=makeShotgun();this.gun.add(this.model);this.model.visible=false;this.shells=[];this.particles=[];this.lastShot=-10;this.lastReload=-10;
-  this.pellets=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(.045,0),new THREE.MeshBasicMaterial({color:'#fff3cb',toneMapped:false}),72);this.pellets.count=0;this.pellets.frustumCulled=false;view.scene.add(this.pellets);this.dummy=new THREE.Object3D();this.up=new THREE.Vector3(0,1,0);this.direction=new THREE.Vector3();
+  // Pellets pop (render/shot-pop.js): bigger and hotter, each with a black
+  // rim in the same geometry (one draw), spent ones too.
+  {const P=POP.ballast,core=new THREE.IcosahedronGeometry(P.radius,0);this.pellets=new THREE.InstancedMesh(hullGeometry(core,{scale:P.rimScale,core:P.core,rim:P.rim}),new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false}),72);core.dispose();}this.pellets.count=0;this.pellets.frustumCulled=false;view.scene.add(this.pellets);this.dummy=new THREE.Object3D();this.up=new THREE.Vector3(0,1,0);this.direction=new THREE.Vector3();
   this.casings=new THREE.InstancedMesh(new THREE.CylinderGeometry(.052,.052,.19,6),new THREE.MeshLambertMaterial({color:'#d74643',emissive:'#39100c'}),60);this.casings.count=0;this.casings.frustumCulled=false;view.scene.add(this.casings);
   this.shellCaps=new THREE.InstancedMesh(new THREE.CylinderGeometry(.058,.058,.038,6).translate(0,-.076,0),new THREE.MeshBasicMaterial({color:'#ffe3a2',toneMapped:false}),60);this.shellCaps.count=0;this.shellCaps.frustumCulled=false;view.scene.add(this.shellCaps);
   this.shellTrails=new THREE.InstancedMesh(new THREE.CylinderGeometry(.013,.006,1,4),new THREE.MeshBasicMaterial({color:'#ffe4b7',transparent:true,opacity:.45,depthWrite:false,toneMapped:false}),60);this.shellTrails.count=0;this.shellTrails.frustumCulled=false;view.scene.add(this.shellTrails);
@@ -50,7 +53,7 @@ export class ShotgunView{
    this.model.userData.barrels.rotation.x=-open*.65;
    this.model.userData.shells.forEach((shell,i)=>{shell.visible=!s.reload||reload<.20||reload>.40+i*.18;shell.position.z=.112+(s.reload&&reload>.40&&reload<.8?Math.max(0,.16-(reload-.40-i*.18)*.7):0);});
    this.view.rifleView.pose.update(sim,s.aiming?1:0,0,kick);
-   this.flash.visible=sim.time-this.lastShot<.10+(this.charge||0)*.055;this.flash.scale.setScalar(1.2+(this.charge||0)*1.25);
+   this.flash.visible=sim.time-this.lastShot<.10+(this.charge||0)*.055;this.flash.scale.setScalar((1.2+(this.charge||0)*1.25)*POP.ballast.flash);
    if(reload>.18&&!this.ejected){this.ejected=true;for(let i=0;i<this.toEject;i++)this.shells.push({born:sim.time,under:!!sim.player.below,x:sim.player.x,y:.8,z:sim.player.z,vy:1.6+Math.random()*.5,vx:-sim.player.aimX*(1+Math.random())+sim.player.aimZ*(i?1:-1),vz:-sim.player.aimZ*(1+Math.random())-sim.player.aimX*(i?1:-1),angle:Math.random()*6.28,tumble:0,tumbleRate:9+Math.random()*8,roll:0,resting:false,bounced:0,smokeClock:0});}
   }
   this.pressure.update(sim,dt,this.view.qualityName);
@@ -87,7 +90,7 @@ export class ShotgunView{
     if(length>.001){this.dummy.position.addScaledVector(this.direction,-.5);this.dummy.quaternion.setFromUnitVectors(this.up,this.direction.normalize());this.dummy.scale.set(1,length,1);this.dummy.updateMatrix();this.shellTrails.setMatrixAt(trailCount++,this.dummy.matrix);}
    }
   }
-  this.casings.count=this.shellCaps.count=i;this.shellTrails.count=trailCount;
+  this.casings.count=this.shellCaps.count=i;this.shellTrails.count=trailCount;this.shellTrails.visible=trailCount>0;
   this.casings.instanceMatrix.needsUpdate=this.shellCaps.instanceMatrix.needsUpdate=this.shellTrails.instanceMatrix.needsUpdate=true;
   // Past the red zone the pellets are spent: they do no damage and break
   // nothing, but they do not just vanish either. A cosmetic copy flies on at
@@ -102,19 +105,21 @@ export class ShotgunView{
    const travel=Math.min(85*step,g.left),ex=g.x+g.dx*travel,ez=g.z+g.dz*travel;let first=1;
    for(const c of collidersAlong(sim.colliders,g.x,g.z,ex,ez,.1)){if(c.playerOnly||flatRoundPasses(sim,c))continue;const t=segmentBox(g.x,g.z,ex,ez,c,.025);if(t!==null&&t<first)first=t;} // (a city's knee-high pieces: the pellets fly over, rifle.js roundMeets)
    const fromX=g.x,fromZ=g.z;g.x+=(ex-g.x)*first;g.z+=(ez-g.z)*first;g.left-=travel*first;
-   if(fx.on)fx.streak({x:g.x,z:g.z,fromX,fromZ,y:.77,life:.07,width:.018,color:PELLET_TRAIL,glow:.6});
+   if(fx.on)fx.streak({x:g.x,z:g.z,fromX,fromZ,y:.77,life:.07,width:.026,color:PELLET_TRAIL,glow:.75});
    if(first<1){if(fx.on)fx.impact(g.x,g.z,this.view.kickedDustColor(g.x,g.z),{dx:g.dx,dz:g.dz});return false;}
    const ghostGround=g.glide?glide(this.view,g.glide,g.x,g.z):groundY(this.view, g.x,g.z);
-   if(ghostCount<24&&sim.canSeeEntity(g.x,g.z,.05)){this.dummy.position.set(g.x,.77+ghostGround,g.z);this.dummy.rotation.set(0,0,0);this.dummy.scale.setScalar(.8);this.dummy.updateMatrix();this.pellets.setMatrixAt(48+ghostCount++,this.dummy.matrix);}
+   if(ghostCount<24&&sim.canSeeEntity(g.x,g.z,.05)){this.dummy.position.set(g.x,.77+ghostGround,g.z);this.dummy.rotation.set(0,0,0);this.dummy.scale.setScalar(.9);this.dummy.updateMatrix();this.pellets.setMatrixAt(48+ghostCount++,this.dummy.matrix);}
    return g.left>.01;
   });
   const hills=hilly(this.view);i=0;for(const b of sim.shotgunPellets){
    // Each pellet leaves a hot streak back along the way it came.
    const last=this.lastPellets.get(b);this.lastPellets.set(b,{x:b.x,z:b.z});
-   if(last&&fx.on&&(last.x!==b.x||last.z!==b.z))fx.streak({x:b.x,z:b.z,fromX:last.x,fromZ:last.z,y:.77,life:.07,width:.02,color:PELLET_TRAIL,glow:.8});
+   if(last&&fx.on&&(last.x!==b.x||last.z!==b.z))fx.streak({x:b.x,z:b.z,fromX:last.x,fromZ:last.z,y:.77,life:.08,width:.03,color:PELLET_TRAIL,glow:1});
    // Hills: on its flight over the ground, as rifle rounds are (rifle-view.js).
    const under=hills?this.view.ground.flightAt(roundFlight(this.view,this.glides,b,b.x-b.dx*b.travel,b.z-b.dz*b.travel,b.oy??(b.ox!==undefined?groundY(this.view,b.ox,b.oz):groundY(this.view,b.x-b.dx*(b.travel+.9),b.z-b.dz*(b.travel+.9))),b.range,.9),b.travel):0;
    if(i>=48||!sim.canSeeEntity(b.x,b.z,.05))continue;this.dummy.position.set(b.x,.77+under,b.z);this.dummy.rotation.set(0,0,0);this.dummy.scale.setScalar(1);this.dummy.updateMatrix();this.pellets.setMatrixAt(i++,this.dummy.matrix);}if(ghostCount&&i<48)for(let k=0;k<ghostCount;k++){const m=new THREE.Matrix4();this.pellets.getMatrixAt(48+k,m);this.pellets.setMatrixAt(i+k,m);}this.pellets.count=i+ghostCount;this.pellets.instanceMatrix.needsUpdate=true;
+  // (Shown only while there is something to draw: the warm-up leaves them hidden.)
+  this.pellets.visible=this.pellets.count>0;
   let smokeCount=0,sparkCount=0,flameCount=0;this.particles=this.particles.filter(p=>sim.time>=p.born&&sim.time-p.born<p.life);
   for(const p of this.particles){const age=sim.time-p.born,progress=age/p.life;if(!sim.canSeeEntity(p.x,p.z,.1))continue;
    const batch=p.flame?this.flames:p.smoke?this.smoke:this.sparks,index=p.flame?flameCount:p.smoke?smokeCount:sparkCount;if(index>=48)continue;

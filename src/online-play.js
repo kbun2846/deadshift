@@ -31,7 +31,7 @@ export const takeCarry = () => { try { const raw = sessionStorage.getItem(CARRY_
 // after its page has gone; joiners wait for it the same way.
 const RETRY = Object.freeze({ host: 15000, join: 25000, every: 1500 });
 export const savedName = () => { try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; } };
-const saveName = name => { try { localStorage.setItem(NAME_KEY, name); } catch {} };
+export const saveName = name => { try { localStorage.setItem(NAME_KEY, name); } catch {} };
 
 export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, server, gameServer = null, pickWeapon, adminCard = null }) {
  // The game server's address (a development build may point at another: ?server=).
@@ -42,7 +42,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
  // (This page's own animals, critters.js: back when the room closes.)
  const ownCritters = sim.critters || null;
  let teamCache = { tick: null, map: new Map() };
- let session = null, code = null, lastLife = 0;
+ let session = null, code = null, lastLife = 0, lastWeapon = null;
  // After a map vote moved a peer-to-peer room: start the round once everyone
  // is back ({ mode, expect, until }).
  let pendingStart = null;
@@ -146,7 +146,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
  // peer-to-peer room's robots.)
  async function enter(joined, role, carry, status) {
   const hosting = joined.role === 'host';
-  session = joined; shownCount = 0; lastLife = 0;
+  session = joined; shownCount = 0; lastLife = 0; lastWeapon = null;
   // A moved room's robots come back (the ones the host added; fill seats refill themselves).
   if (hosting) for (const setup of carry?.robots || []) { const seat = joined.addRobot?.(); if (seat?.id && setup) joined.tuneRobot?.(seat.id, setup); }
   // The map vote brought the room here: the round starts once everyone is back.
@@ -200,7 +200,7 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   // In the world and alive: the same question for host and joiner.
   get me() {
    if (!session) return null;
-   if (session.role === 'host') { const s = session.hostSeat; return { present: s.present, dead: s.dead, life: s.life, respawnIn: s.respawnIn, name: s.name, weapon: s.weapon, picking: pickState(s.picking) }; }
+   if (session.role === 'host') { const s = session.hostSeat; return { present: s.present, dead: s.dead, life: s.life, respawnIn: s.respawnIn, name: s.name, weapon: s.weapon, picking: pickState(s.picking), next: s.next || null }; }
    return session.me;
   },
   // The input the local simulation runs this tick.
@@ -214,6 +214,8 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   // practice's instant respawn.
   choose(weapon, go = true) { session?.choose(weapon, go); },
   pickAgain() { session?.pickAgain(); },
+  // The death card's NEXT LIFE pick: the weapon you come back with (FFA, practice).
+  chooseNext(weapon) { session?.chooseNext?.(weapon); },
   respawnNow() { session?.respawnNow(); },
   // FORFEIT (round modes; a team vote) and READY on the end-of-match card.
   forfeit(on = true) { session?.forfeit(on); },
@@ -293,6 +295,9 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
   },
   // Once per frame: messages for the player, ending if the link is gone, and
   // whether we just came back to life.
+  // (Gun Game: `onSwap`, set by main.js, when a kill swaps the weapon in
+  // hand mid-life.)
+  onSwap: null,
   frame({ onRespawn } = {}) {
    if (!session) return;
    for (const notice of session.drainNotices()) toast(notice.toUpperCase());
@@ -311,7 +316,10 @@ export function createOnlinePlay({ $, map, sim, createSim, start, toast, leave, 
    if (session.moveTo) { const to = '?map=' + encodeURIComponent(session.moveTo) + '&join=' + code + '&autojoin=1' + p2pFlag(); toast('MOVING TO ' + (multiplayerMaps(session.moveTo).find(m => m.id === session.moveTo)?.name || 'THE NEW MAP').toUpperCase(), 3000); api.close(); showBusy(); location.href = to + devFlags; return; }
    if (session.ended) { const why = session.ended; api.close(); toast(why.toUpperCase()); leave(); return; }
    const me = api.me;
-   if (me && me.life !== lastLife) { lastLife = me.life; if (me.present) onRespawn?.(); }
+   if (me && me.life !== lastLife) { lastLife = me.life; lastWeapon = me.weapon; if (me.present) onRespawn?.(); }
+   // (Gun Game: a kill swapped the weapon in hand, mid-life: the HUD and the
+   // touch buttons follow it.)
+   else if (me && me.present && !me.dead && me.weapon && me.weapon !== lastWeapon) { lastWeapon = me.weapon; api.onSwap?.(me.weapon); }
    syncBadge();
   },
   close() {

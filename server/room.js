@@ -23,6 +23,12 @@
 //    after a match the next one starts by itself (RESULTS_GAP). They go back
 //    to a fresh match a while after the last player leaves. Players can't be
 //    removed there except by the owner's admin page.
+//  - Quick play rooms (`quick`: server/quick.js): made by the quick play
+//    queue, FFA on a random map, joined by code like a player-made room but
+//    run like a listed one (`runsItself`): no leader, the house rules, a
+//    countdown, the next match by itself. Not on the JOIN list. Seats promised
+//    to matched pages are held a moment (`hold`), so a burst of quick players
+//    never overfills one.
 //  - A connection counts once the session has let it in (`admitted`, right
 //    after its hello). One that never gets that far is closed after ADMIT
 //    seconds, and never leads: silent sockets cannot hold a room full.
@@ -55,8 +61,12 @@ export const AUTO_START = 8, RESULTS_GAP = 15;
 const WAIT_BACK = 20;
 
 export class Room {
- constructor({ code, name = null, isPublic = false, map, mode = 'ffa', settings = null, ownerPid = null, config, now = () => performance.now() / 1000 }) {
-  Object.assign(this, { code, name, isPublic, config, now, ownerPid });
+ constructor({ code, name = null, isPublic = false, quick = false, map, mode = 'ffa', settings = null, ownerPid = null, config, now = () => performance.now() / 1000 }) {
+  Object.assign(this, { code, name, isPublic, quick, config, now, ownerPid });
+  // Quick play: seats promised to pages on their way in (pid -> until).
+  this.holds = new Map();
+  // When the current match began (quick play takes newcomers early in one).
+  this.playingSince = null;
   this.home = { map, mode };
   // How many people fit: the listed room's mode's seats (1V1: 2), else 8.
   this.capacity = isPublic ? (modeById(mode)?.size || NETWORK.maxPlayers) : NETWORK.maxPlayers;
@@ -83,11 +93,11 @@ export class Room {
   // Listed rooms play the house rules: every developer row at its default,
   // and robots always fill the seats (owner: the robots switch "doesnt apply
   // to the server list").
-  if (this.isPublic) { const base = defaultSettings(); for (const key of Object.keys(SETTINGS)) if (SETTINGS[key].dev) clean[key] = base[key]; clean.robots = 'fill'; }
+  if (this.runsItself) { const base = defaultSettings(); for (const key of Object.keys(SETTINGS)) if (SETTINGS[key].dev) clean[key] = base[key]; clean.robots = 'fill'; }
   this.session = new HostSession({ transport: this.transport, map, local: null, createSim, now: this.now, settings: clean, mode: modeById(mode)?.id || 'ffa' });
   this.session.leader = this.leaderId;
-  this.session.lobbyExtra = this.isPublic ? { listed: true, startsIn: null, capacity: this.capacity } : {};
-  this.autoAt = null; this.resultsSince = null;
+  this.session.lobbyExtra = this.runsItself ? { listed: true, startsIn: null, capacity: this.capacity } : {};
+  this.autoAt = null; this.resultsSince = null; this.playingSince = null;
   for (const setup of robots) { const seat = this.session.addRobot(); if (seat) this.session.tuneRobot(seat.id, setup); }
  }
 
@@ -98,30 +108,37 @@ export class Room {
   this.fresh = true;
  }
 
+ // A room nobody leads: listed rooms and quick play's.
+ get runsItself() { return this.isPublic || this.quick; }
+ // Quick play: hold a seat for a matched page until `until`; seats held now.
+ hold(pid, until) { if (pid) this.holds.set(pid, until); }
+ held(t = this.now()) { let n = 0; for (const [pid, until] of this.holds) { if (until < t || this.players.some(c => c.pid === pid)) this.holds.delete(pid); else n++; } return n; }
+
  get players() { return [...this.conns.values()].filter(c => c.generation === this.generation); }
  get humanCount() { return this.players.length; }
 
  // What the JOIN page's list shows.
  info() {
   const lobby = this.session.lobby(), robots = lobby.players.filter(p => p.robot).length;
-  return { code: this.code, name: this.name, public: this.isPublic, map: this.mapId, mapName: serverMap(this.mapId)?.name || this.mapId, mode: this.session.arena.mode, modeName: modeById(this.session.arena.mode)?.name || '', phase: this.session.arena.phase, players: this.humanCount, robots, max: this.capacity };
+  return { code: this.code, name: this.name, public: this.isPublic, quick: this.quick, map: this.mapId, mapName: serverMap(this.mapId)?.name || this.mapId, mode: this.session.arena.mode, modeName: modeById(this.session.arena.mode)?.name || '', phase: this.session.arena.phase, players: this.humanCount, robots, max: this.capacity };
  }
 
  // What a player's page needs to know about the room (sent on joining and
  // whenever the leader changes).
  roomMessage(conn) {
-  return { t: 'room', code: this.code, name: this.name, public: this.isPublic, map: this.mapId, id: conn.id, lead: conn.id === this.leaderId };
+  return { t: 'room', code: this.code, name: this.name, public: this.isPublic, quick: this.quick, map: this.mapId, id: conn.id, lead: conn.id === this.leaderId };
  }
 
  // Can this player come in? (null: yes; else the reason.)
  refuse(conn) {
   if (this.removedPids.has(conn.pid)) return 'You were removed from this game.';
-  if (this.humanCount >= this.capacity) return 'That game is full.';
+  // (Quick play: a seat held for this very player counts as theirs.)
+  if (this.humanCount + this.held() - (this.holds.has(conn.pid) ? 1 : 0) >= this.capacity) return 'That game is full.';
   return null;
  }
 
  join(conn) {
-  conn.generation = this.generation; conn.room = this; conn.joinedAt = this.now();
+  conn.generation = this.generation; conn.room = this; conn.joinedAt = this.now(); this.holds.delete(conn.pid);
   this.conns.set(conn.id, conn);
   this.fresh = false; this.emptySince = null;
   this.transport.onJoin(conn.id);
@@ -140,8 +157,8 @@ export class Room {
  // The leader: the room's maker while they are here, else whoever has been
  // here longest. Everyone hears when it changes.
  chooseLeader(force = false) {
-  // (A listed room has no leader: it runs itself.)
-  const here = this.isPublic ? [] : this.players.filter(c => c.admitted).sort((a, b) => a.joinedAt - b.joinedAt);
+  // (A listed or quick room has no leader: it runs itself.)
+  const here = this.runsItself ? [] : this.players.filter(c => c.admitted).sort((a, b) => a.joinedAt - b.joinedAt);
   const next = (this.ownerPid && here.find(c => c.pid === this.ownerPid)) || here[0] || null, id = next?.id || null;
   if (id === this.leaderId && !force) return;
   const changed = id !== this.leaderId;
@@ -170,7 +187,7 @@ export class Room {
 
  // The leader's lobby controls (the host's, in a player-hosted room).
  lead(conn, m) {
-  if (this.isPublic) return this.note(conn, 'This room starts by itself.');
+  if (this.runsItself) return this.note(conn, 'This room starts by itself.');
   if (conn.id !== this.leaderId) return this.note(conn, 'Only the host can change that.');
   const t = this.now();
   if (t - (conn.leadWindow ?? -1) >= 1) { conn.leadWindow = t; conn.leads = 0; }
@@ -219,7 +236,7 @@ export class Room {
  // (`autoStart`: the vote's mode, started once everyone is back.)
  moveMap(id, { autoStart = null } = {}) {
   const map = serverMap(id), s = this.session;
-  if (this.isPublic || !map || map.id === this.mapId || s.arena.phase !== 'lobby' || !this.canMove()) return false;
+  if (this.runsItself || !map || map.id === this.mapId || s.arena.phase !== 'lobby' || !this.canMove()) return false;
   this.movedAt = this.now();
   const expect = this.players.filter(c => c.admitted).length;
   const lobby = s.lobby(), robots = lobby.players.filter(p => p.robot && !p.auto).map(p => p.setup || {});
@@ -283,7 +300,7 @@ export class Room {
    if (this.session.remotes.has(conn.id)) { if (!conn.admitted) { conn.admitted = true; admittedNow = true; conn.name = this.session.remotes.get(conn.id).name; } }
    else if (!conn.closing && (conn.admitted || t - conn.joinedAt > ADMIT)) { conn.closing = true; conn.close(4000, conn.admitted ? 'dropped by the game' : 'never said hello'); }
   }
-  if (admittedNow || (!this.leaderId && !this.isPublic)) this.chooseLeader();
+  if (admittedNow || (!this.leaderId && !this.runsItself)) this.chooseLeader();
   // The vote chose another map: move there, and start once everyone is back.
   // (Too soon after the last move: it waits here until it may.)
   const move = this.session.pendingMove;
@@ -299,7 +316,10 @@ export class Room {
    this.pendingStart = null;
    if (!this.session.startRound(back.mode)) this.tellLeader(this.session.startError);
   }
-  if (this.isPublic) this.runItself(t);
+  // (When this match began: quick play takes newcomers early in one.)
+  const phase = this.session.arena.phase;
+  if (phase === 'playing') this.playingSince ??= t; else if (phase !== 'results') this.playingSince = null;
+  if (this.runsItself) this.runItself(t);
  }
 
  // A listed room: the round starts AUTO_START s after someone is in, and the
@@ -342,7 +362,7 @@ export class Room {
   const board = arena.phase === 'lobby' ? [] : arena.scoreboard();
   const rank = seat ? board.findIndex(r => r.id === conn.id) + 1 || null : null;
   return {
-   room: { code: this.code, name: this.name, public: this.isPublic, map: this.mapId, mapName: serverMap(this.mapId)?.name || this.mapId, mode: arena.mode, modeName: modeById(arena.mode)?.name || arena.mode, phase: arena.phase, matchNumber: arena.matchNumber, round: match.elimination ? match.round : null, rounds: match.elimination ? match.rounds : null, left: match.phase === 'lobby' ? null : match.left, leader: conn.id === this.leaderId, inRoom: Math.round(this.now() - conn.joinedAt), stale: !here },
+   room: { code: this.code, name: this.name, public: this.isPublic, quick: this.quick, map: this.mapId, mapName: serverMap(this.mapId)?.name || this.mapId, mode: arena.mode, modeName: modeById(arena.mode)?.name || arena.mode, phase: arena.phase, matchNumber: arena.matchNumber, round: match.elimination ? match.round : null, rounds: match.elimination ? match.rounds : null, left: match.phase === 'lobby' ? null : match.left, leader: conn.id === this.leaderId, inRoom: Math.round(this.now() - conn.joinedAt), stale: !here },
    ping: remote?.ping == null ? null : Math.round(remote.ping),
    seat: seat ? {
     team: seat.team || null, weapon: seat.weapon || null, present: !!seat.present, dead: !!seat.dead, alive: !!seat.present && !seat.dead, bench: !!seat.bench, picking: !!seat.picking,
@@ -356,6 +376,7 @@ export class Room {
  }
 
  close() {
+  this.closed = true;
   for (const conn of this.conns.values()) conn.close(4004, 'room closed');
   // (Their sockets close after this; leave() then finds nothing to do.)
   this.conns.clear();

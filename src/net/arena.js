@@ -1,4 +1,6 @@
 import {ichorGuardFor} from '../weapons/ichor-deflect.js';
+import { grantSpawnGuard, guardFlag } from '../spawn-protection.js';
+import { createStreaks, recordDeath } from '../streaks.js';
 import { clearOmen } from '../weapons/omen.js';
 // The multiplayer rules on the host: rounds of a mode in one shared world.
 //
@@ -56,13 +58,14 @@ import { segmentBox } from '../simulation.js';
 import { RULES, HP_STEP } from '../config/gameplay.js';
 import { stormMode, stormPlan, stormAt, stormState, stormStart, stormSafeSpot } from '../storm.js';
 import { Critters } from '../critters.js';
-import { weaponOrDefault, WEAPONS } from '../items.js';
-import { playableOr, randomPlayableWeapon } from '../weapon-maintenance.js';
+import { weaponOrDefault, WEAPONS, isWeapon } from '../items.js';
+import { playableOr, randomPlayableWeapon, underMaintenance } from '../weapon-maintenance.js';
 import { mapColliders } from '../maps.js';
 import { pickArea, inPickArea } from '../render/pick-view.js';
 import { pickDuelCircle, circleState } from '../duel-circle.js';
 
-import { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS, TEAMS, modeById, SPAWN_APART, MAX_SEATS, roundsDecided, syphonAmount, respawnsClosed } from '../config/match.js';
+import { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS, TEAMS, modeById, SPAWN_APART, MAX_SEATS, roundsDecided, syphonAmount, respawnsClosed, FREE_FOR_ALL } from '../config/match.js';
+import { gunLadder, ladderWeapon, afterKill, afterDeath, gunStandings } from '../gungame.js';
 import { ArenaRobots, ROBOT_SETUP } from './arena-robots.js';
 export { MODES, SETTINGS, defaultSettings, cleanSettings, PICK, RESULTS, TEAMS };
 // Kept for older callers and tests: the defaults.
@@ -80,8 +83,8 @@ export const DUEL_BREAK = 5.6;
 // The end-of-match card (owner, 2026-09-29): everyone READY starts the next
 // match under the same settings; nobody deciding for this long, the lobby.
 export const READY_WAIT = 90;
-// Every counted mode but FFA is played by elimination.
-export const eliminationMode = mode => mode !== 'ffa' && mode !== 'practice' && !!modeById(mode);
+// Every counted mode but FFA and Gun Game is played by elimination.
+export const eliminationMode = mode => !FREE_FOR_ALL.includes(mode) && mode !== 'practice' && !!modeById(mode);
 const IDLE = Object.freeze({ moveX: 0, moveZ: 0, aimX: 0, aimZ: 0 });
 const newStats = () => ({ kills: 0, deaths: 0, dealt: 0, taken: 0, time: 0, weaponTime: {} });
 
@@ -100,6 +103,8 @@ export class Arena {
    .map(room => ({ ...room, points: room.points.filter(p => !inPickArea(this.noSpawn, p.x, p.z)) })).filter(room => room.points.length);
   this.seats = new Map(); this.time = 0;
   this.feed = []; this.feedSerial = 0; this.pendingKills = new Map();
+  // Kill streaks (streaks.js): counted here, carried on the feed lines.
+  this.streaks = createStreaks(); this.pendingStreaks = new Map();
   this.settings = cleanSettings(settings); this.togetherRoom = null;
   this.mode = 'ffa'; this.mapId = map.id; this.targets = [];
   this.phase = 'lobby'; this.clock = 0; this.resultsLeft = 0; this.results = null; this.matchNumber = 0;
@@ -123,7 +128,9 @@ export class Arena {
   sim.worldAuthority = false; sim.targets = []; sim.otherPlayers = []; sim.dev = { speed: 1 }; sim.critters = this.critters;
   sim.player.id = id; sim.player.hp = 0; sim.player.dead = true;
   const seat = { id, name, sim, present: false, dead: false, respawnIn: 0, life: 0, weapon: null, picking: null,
-   stats: newStats(), proxies: null, mark: 0, team: null, robot: null, bench: false };
+   stats: newStats(), proxies: null, mark: 0, team: null, robot: null, bench: false, gun: 0 };
+  // Gun Game mid-match: in on the lowest weapon anyone in the match holds.
+  if (this.phase === 'playing' && this.gunGame && this.seats.size) seat.gun = Math.min(...[...this.seats.values()].map(s => s.gun || 0));
   this.seats.set(id, seat);
   if (this.phase === 'playing' && !robot) {
    const entry = modeById(this.mode);
@@ -163,6 +170,8 @@ export class Arena {
  get counting() { return this.mode !== 'practice'; }
  get elimination() { return eliminationMode(this.mode); }
  get teamMode() { return !!modeById(this.mode)?.teams; }
+ // Gun Game (config/match.js GUNGAME, gungame.js): the ladder decides every weapon.
+ get gunGame() { return this.mode === 'gungame'; }
  // No respawns for the rest of the match (config/match.js NO_RESPAWN_LEFT):
  // the clock is down to the mode's cutoff. Only a finite clock can get there,
  // so it is only ever true in FFA today (the round modes' clock is Infinity).
@@ -255,10 +264,10 @@ export class Arena {
    for (const seat of [...people, ...bots]) if (!seat.team) seat.team = [...sides].sort((a, b) => count(a) - count(b))[0];
   }
   this.teamRooms.clear(); this.teamKills = new Map(); this.points = new Map(); this.roundBreak = 0; this.roundWinner = null; this.round = 1; this.played = 0; this.decided = false; this.forfeited = null; this.ready = new Set();
-  for (const seat of this.seats.values()) seat.forfeit = false;
+  for (const seat of this.seats.values()) { seat.forfeit = false; seat.next = null; }
   this.mode = mode;
   this.resetWorld();
-  this.feed = []; this.pendingKills.clear(); this.togetherRoom = null;
+  this.feed = []; this.pendingKills.clear(); this.streaks.reset(); this.pendingStreaks.clear(); this.togetherRoom = null;
   this.targets = mode === 'practice' ? this.createSim(this.map).targets : [];
   // 1V1: the duel circle, a new place each round (duel-circle.js); none otherwise.
   this.duelCircle = mode === '1v1' ? this.newDuelCircle() : null;
@@ -267,7 +276,9 @@ export class Arena {
   // Set before the picks, so a restart late in a match is not taken for
   // one past its no-respawn cutoff.)
   this.clock = eliminationMode(mode) ? Infinity : this.settings.roundLength;
-  for (const seat of this.seats.values()) { seat.stats = newStats(); this.out(seat); this.startPick(seat); }
+  // Gun Game: the ladder for this match, everyone on its first weapon.
+  this.ladder = mode === 'gungame' ? gunLadder() : null; this.gunWinner = null;
+  for (const seat of this.seats.values()) { seat.stats = newStats(); seat.gun = 0; this.out(seat); this.startPick(seat); }
   this.phase = 'playing'; this.resultsLeft = 0; this.results = null; this.matchNumber++;
   this.pendingEvents.push({ type: 'matchStart', number: this.matchNumber, mode });
   return true;
@@ -306,6 +317,8 @@ export class Arena {
   if (seat.bench) return;
   // Respawns closed: nobody comes (back) in, robots included; they watch.
   if (this.noRespawns) return this.sitOut(seat);
+  // Gun Game: no pick, in at once on the weapon the ladder gives (enter).
+  if (this.gunGame) { seat.picking = { left: 0, weapon: ladderWeapon(this.ladder, seat.gun), go: true }; return; }
   // A robot picks at once: its setup's weapon, or one at random.
   if (seat.robot) { seat.picking = { left: 0, weapon: playableOr(seat.robot.setup?.weapon, null) || randomPlayableWeapon(this.random), go: true }; return; }
   seat.picking = { left: PICK.time, weapon: keep, go: false };
@@ -314,6 +327,8 @@ export class Arena {
  // A weapon picked (or changed) on the pick screen; `go` sends them in now.
  choose(id, weapon, go = true) {
   const seat = this.seats.get(id); if (!seat || this.phase !== 'playing') return false;
+  // (Gun Game: the ladder picks, never the player.)
+  if (this.gunGame) return false;
   if (!seat.picking) {
    // FFA: only after dying (the death screen's CHANGE WEAPON). Practice: any
    // time (the pause menu's CHANGE WEAPON), out of the world while picking.
@@ -329,11 +344,29 @@ export class Arena {
   return true;
  }
 
+ // The weapon for the next life, from the death card's NEXT LIFE row (owner,
+ // 2026-10-02: "Allow for weapon swaps at each respawn"). Only while down and
+ // waiting to come back on your own: FFA (and quick play's rooms) and
+ // practice. Refused in Gun Game (the ladder decides), in the round modes
+ // (nobody comes back alone; the match's pick stands), once respawns have
+ // closed, with a pick open (the pick decides), for robots and the bench, and
+ // for anything that is not a weapon anyone may use (maintenance). Kept on
+ // the seat (`next`) and put in hand as it enters (enter): the respawn wait is
+ // untouched. Returns whether it was taken.
+ chooseNext(id, weapon) {
+  const seat = this.seats.get(id);
+  if (!seat || seat.robot || seat.bench || this.phase !== 'playing' || this.gunGame || this.elimination || this.noRespawns) return false;
+  if (!seat.present || !seat.dead || seat.picking) return false;
+  if (!isWeapon(weapon) || underMaintenance(weapon)) return false;
+  seat.next = weapon;
+  return true;
+ }
+
  // Open the weapon pick again. FFA: only when dead (the respawn then waits for
  // it). Practice: any time; a living player leaves the world while picking.
  pickAgain(id) {
   const seat = this.seats.get(id);
-  if (!seat || this.phase !== 'playing') return false;
+  if (!seat || this.phase !== 'playing' || this.gunGame) return false;
   const alive = seat.present && !seat.dead;
   if (alive && this.mode !== 'practice') return false;
   if (alive) this.out(seat);
@@ -395,7 +428,7 @@ export class Arena {
   if (done && seat.dead && seat.respawnIn > 0) { if (this.elimination) pick.go = true; return; }
   if (!done) return;
   seat.weapon = playableOr(pick.weapon, null) || randomPlayableWeapon(this.random);
-  seat.picking = null;
+  seat.picking = null; seat.next = null;
   this.spawn(seat);
  }
 
@@ -494,9 +527,17 @@ export class Arena {
  }
 
  enter(seat, at) {
+  // Gun Game: whatever was picked, the weapon the seat has reached.
+  // (The death card's NEXT LIFE pick, chooseNext; never in Gun Game.)
+  if (seat.next && !this.gunGame) seat.weapon = seat.next;
+  seat.next = null;
+  if (this.gunGame && this.ladder) seat.weapon = ladderWeapon(this.ladder, seat.gun);
   seat.sim.weapon = seat.weapon || weaponOrDefault(null);
   seat.sim.respawn(at, seat.id);
   seat.sim.player.hp = seat.sim.player.maxHp = this.settings.health;
+  // Spawn protection (spawn-protection.js): every way back in but an
+  // elimination round's, where everyone comes in together.
+  if (!this.elimination) grantSpawnGuard(seat.sim.player);
   // The host's own sim keeps its developer settings (host-only dev tools).
   if (seat.id !== 'host') seat.sim.dev = { speed: 1 };
   this.handWorld(seat.sim);
@@ -532,6 +573,8 @@ export class Arena {
  // Right before a seat's sim steps.
  before(seat) {
   const sim = seat.sim; sim.viewAspect=seat.aspect||16/9;
+  // (Gun Game: the weapon this tick began with, whatever a kill swaps in.)
+  seat.held = sim.weapon;
   this.handWorld(sim);
   seat.proxies = new Map();
   // Every hex in the round shields whoever is inside it from outside fire
@@ -545,7 +588,7 @@ export class Arena {
   const players = living.filter(other => this.hostile(seat, other)).map(other => {
    const p = other.sim.player;
    const friend = !this.hostile(seat, other);
-   const proxy = { ...ichorGuardFor(other.sim), id: other.id, kind: other.robot ? 'robot' : 'player', team: other.team, friendly: friend, share: friend ? FRIENDLY_SHARE : 1, x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false, ...(p.below ? { below: true } : {}) };
+   const proxy = { ...ichorGuardFor(other.sim), ...guardFlag(p), id: other.id, kind: other.robot ? 'robot' : 'player', team: other.team, friendly: friend, share: friend ? FRIENDLY_SHARE : 1, x: p.x, z: p.z, baseX: p.x, spawnX: p.x, spawnZ: p.z, hp: p.hp, maxHp: p.maxHp, respawn: 0, flash: 0, moving: false, ...(p.below ? { below: true } : {}) };
    seat.proxies.set(other.id, { proxy, before: p.hp, seat: other, x0: p.x, z0: p.z });
    return proxy;
   });
@@ -623,19 +666,42 @@ export class Arena {
   victim.respawnIn = this.elimination || this.noRespawns ? Infinity : this.counting ? this.settings.respawn : 0;
   if (!this.counting) return;
   victim.stats.deaths++;
+  // Streaks: the victim's ends (a shutdown when it was long), the killer's grows.
+  const streak = recordDeath(this.streaks, victim.id, killer && killer !== victim ? killer.id : null);
   if (killer && killer !== victim) {
    killer.stats.kills++;
    // The side's tally lives on the round, not on the seats (a seat that
    // leaves mid-round takes its kills with it otherwise).
    if (killer.team) this.teamKills.set(killer.team, (this.teamKills.get(killer.team) || 0) + 1);
    this.syphon(killer);
+   if (this.gunGame) this.gunKill(killer, victim);
    // Everyone this attacker killed in this tick is one kill-feed line.
    // One-shots get a line of their own ("X one shot Y").
    const key = killer.id + (oneShot ? '|one' : ''), list = this.pendingKills.get(key) || [];
    list.push(victim.id); this.pendingKills.set(key, list);
+   // The line's streak: the killer's after its last kill this tick; `ended`:
+   // the longest streak its victims lost (and whose).
+   const was = this.pendingStreaks.get(key);
+   this.pendingStreaks.set(key, { streak: streak.streak, ended: Math.max(was?.ended || 0, streak.ended), endedBy: streak.ended > (was?.ended || 0) ? victim.id : was?.endedBy ?? null });
   } else {
    this.pushFeed({ killer: null, victims: [victim.id], weapon: victim.weapon, ...(victim.sim.lastDamageType === 'storm' ? { storm: true } : null) });
   }
+ }
+
+ // Gun Game (gungame.js): a blade kill knocks the victim down one weapon
+ // (from their next life); the killer goes up one, swapped in place now if
+ // standing (else from their next life). A kill made with the last weapon
+ // wins: endTick ends the match on this tick.
+ gunKill(killer, victim) {
+  const held = killer.held || killer.weapon;
+  victim.gun = afterDeath(victim.gun || 0, held);
+  if (this.gunWinner || !this.ladder) return;
+  const next = afterKill(this.ladder, killer.gun || 0, held);
+  killer.gun = next.level;
+  if (next.won) { this.gunWinner = killer.id; return; }
+  if (!next.moved) return;
+  killer.weapon = ladderWeapon(this.ladder, killer.gun);
+  if (killer.present && !killer.dead && killer.sim.player.hp > 0) { killer.sim.swapWeapon(killer.weapon); this.robots.swapped(killer); }
  }
 
  pushFeed(entry) {
@@ -662,7 +728,9 @@ export class Arena {
   const timed = this.counting && !this.elimination;
   const left = this.phase === 'playing' ? (timed ? this.clock : 0) : this.phase === 'results' ? this.resultsLeft : 0;
   return { phase: this.phase, mode: this.mode, map: this.mapId, left: Math.max(0, Math.round(left * 10) / 10), number: this.matchNumber, timed,
-   killLimit: timed ? this.settings.killLimit : 0, results: this.results, teams: this.phase === 'playing' ? this.teamScores() : null,
+   killLimit: timed && !this.gunGame ? this.settings.killLimit : 0, results: this.results, teams: this.phase === 'playing' ? this.teamScores() : null,
+   // Gun Game: the ladder and where everyone is on it (protocol 28).
+   ...(this.gunGame && this.ladder && this.phase !== 'lobby' ? { gun: { ladder: this.ladder, levels: Object.fromEntries([...this.seats.values()].map(s => [s.id, s.gun || 0])) } } : {}),
    ...(this.phase === 'results' ? { ready: [...(this.ready || [])] } : {}),
    ...(this.duelCircle && this.phase === 'playing' ? { circle: circleState(this.duelCircle) } : {}),
    ...(this.stormPlan && this.phase === 'playing' ? { storm: stormState(this.stormPlan), stormT: Math.round(this.stormClock * 20) / 20 } : {}),
@@ -719,8 +787,15 @@ export class Arena {
   // match's (from its length and time left).
   if (this.phase === 'playing' && this.stormPlan) this.setStormClock(this.elimination ? this.stormClock + (this.roundBreak > 0 ? 0 : dt) : this.settings.roundLength - Math.max(0, this.clock - dt));
   const lines = [];
-  for (const [key, victims] of this.pendingKills) { const [killer, one] = key.split('|'); lines.push(this.pushFeed({ killer, victims, oneShot: one === 'one', weapon: this.seats.get(killer)?.weapon })); }
-  this.pendingKills.clear();
+  for (const [key, victims] of this.pendingKills) {
+   const [killer, one] = key.split('|'), st = this.pendingStreaks.get(key);
+   // (`streak`, `ended`, `endedBy`: protocol 28, the feel layer's streak callouts and shutdowns.)
+   // (`weapon`: the one in the killer's hand as the tick began, `held`, so a
+   // Gun Game kill names the weapon it was made with, not the one it handed over.)
+   const by = this.seats.get(killer);
+   lines.push(this.pushFeed({ killer, victims, oneShot: one === 'one', weapon: by?.held || by?.weapon, ...(st ? { streak: st.streak, ...(st.ended ? { ended: st.ended, endedBy: st.endedBy } : null) } : null) }));
+  }
+  this.pendingKills.clear(); this.pendingStreaks.clear();
   // The round clock (ffa). At zero, or at the kill limit: the standings for a
   // few seconds (everyone stands still), then the lobby.
   if (this.phase === 'playing' && this.counting) {
@@ -730,7 +805,7 @@ export class Arena {
    const sides = this.elimination ? this.sideScores() : null;
    const leader = sides ? Math.max(0, ...sides.map(t => t.points)) : teams ? Math.max(0, ...teams.map(t => t.kills)) : Math.max(0, ...[...this.seats.values()].map(s => s.stats.kills));
    const lastStanding = this.clock > 0 && this.lastStanding;
-   if (this.clock <= 0 || this.matchOver || lastStanding || (!this.elimination && this.settings.killLimit && leader >= this.settings.killLimit)) {
+   if (this.clock <= 0 || this.matchOver || lastStanding || (this.gunGame && this.gunWinner) || (!this.elimination && !this.gunGame && this.settings.killLimit && leader >= this.settings.killLimit)) {
     const board = this.scoreboard();
     // Ended early with one left standing (respawns closed): a tie on kills
     // goes to them, not to fewer deaths or the name (a clock end keeps those).
@@ -745,7 +820,9 @@ export class Arena {
     // (A side that forfeited is last whatever its points: FORFEIT.)
     if (sides && this.forfeited) sides.sort((a, b) => (a.id === this.forfeited) - (b.id === this.forfeited) || b.points - a.points);
     const topSide = sides && (sides[0].points > 0 || this.forfeited) && (sides.length < 2 || sides[0].points > sides[1].points || (this.forfeited && sides[1].id === this.forfeited)) ? sides[0] : null;
-    this.results = sides
+    this.results = this.gunGame
+     ? this.gunResults(board)
+     : sides
      ? { winner: topSide ? (topSide.team ? { team: topSide.id, name: topSide.name + ' TEAM', points: topSide.points } : { id: topSide.id, name: topSide.name, points: topSide.points }) : null, board, teams, sides, points: true, draw: !!sides[0]?.points && !topSide, ...(this.forfeited ? { forfeit: this.forfeited } : {}) }
      : teams
      ? { winner: topTeam ? { team: topTeam.id, name: topTeam.name + ' TEAM', kills: topTeam.kills } : null, board, teams, draw: !!teams[0]?.kills && !topTeam }
@@ -828,12 +905,25 @@ export class Arena {
    kills: this.teamKills?.get(t.id) || 0 })).sort((a, b) => b.kills - a.kills);
  }
 
- // Ranked by kills, then fewer deaths.
+ // Ranked by kills, then fewer deaths. Gun Game: by the ladder (gungame.js
+ // gunStandings); each row's `gun` is its level and `of` the ladder's length,
+ // `weapon` the one it has reached.
  scoreboard() {
-  return [...this.seats.values()].map(s => {
+  const gun = this.gunGame && this.ladder;
+  const rows = [...this.seats.values()].map(s => {
    const used = Object.entries(s.stats.weaponTime).sort((a, b) => b[1] - a[1])[0]?.[0] || s.weapon || null;
    return { id: s.id, name: s.name, kills: s.stats.kills, deaths: s.stats.deaths, dealt: Math.round(s.stats.dealt), taken: Math.round(s.stats.taken),
-    time: Math.round(s.stats.time), weapon: used, present: s.present, team: s.team, robot: !!s.robot };
-  }).sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.name.localeCompare(b.name));
+    time: Math.round(s.stats.time), weapon: gun ? ladderWeapon(this.ladder, s.gun) : used, present: s.present, team: s.team, robot: !!s.robot,
+    ...(gun ? { gun: s.gun || 0, of: this.ladder.length, ...(this.gunWinner === s.id ? { finished: true } : {}) } : {}) };
+  });
+  return gun ? gunStandings(rows, this.gunWinner) : rows.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.name.localeCompare(b.name));
+ }
+ // Gun Game's end card: whoever finished the ladder; on the clock, the
+ // furthest along (then most kills), or a draw when the top two are level.
+ gunResults(board) {
+  const finished = this.gunWinner, top = board[0], next = board[1];
+  const ahead = !!top && (!next || top.gun > next.gun || (top.gun === next.gun && top.kills > next.kills));
+  const winner = top && (finished || (ahead && (top.gun > 0 || top.kills > 0))) ? { id: top.id, name: top.name, kills: top.kills, gun: top.gun } : null;
+  return { winner, board, gungame: { ladder: [...this.ladder], finished: finished || null }, draw: !winner && !!top && (top.gun > 0 || top.kills > 0) };
  }
 }

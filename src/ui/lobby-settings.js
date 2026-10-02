@@ -19,7 +19,8 @@ export const ROBOT_ONLY = Object.freeze(['robotSkill']);
 export const DEV_SETTINGS = Object.freeze(Object.keys(SETTINGS).filter(key => SETTINGS[key].dev));
 // The order the modes are offered in (owner, 2026-09-29): the round modes
 // smallest first, then FFA and PRACTICE (host page and lobby).
-export const MODE_ORDER = Object.freeze(['1v1', '2v2', '3v3', '4v4', '2v2v2', 'ffa', 'practice']);
+// (Gun Game, 2026-10-01: after FFA, the other everyone-for-themselves mode.)
+export const MODE_ORDER = Object.freeze(['1v1', '2v2', '3v3', '4v4', '2v2v2', 'ffa', 'gungame', 'practice']);
 export const orderedModes = () => [...MODES].sort((a, b) => MODE_ORDER.indexOf(a.id) - MODE_ORDER.indexOf(b.id));
 // The rows a mode shows: its plain rows, and (unlocked) its developer rows.
 export const rowsFor = (mode, { dev = false } = {}) => Object.keys(SETTINGS).filter(key => (dev || !SETTINGS[key].dev) && (!mode || SETTINGS[key].modes.includes(mode)));

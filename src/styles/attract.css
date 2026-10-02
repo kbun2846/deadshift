@@ -1,0 +1,14 @@
+/* The living menu (attract-wiring.js): while its match is drawn
+   (body.attract-live) the menu's own dark backdrop steps aside and a copy of
+   it (#intro::before, behind every page's content) lies over the world
+   instead, part see-through: the title lets a little more of the fight show
+   (.62), the other pages less (.84), so text and pictures read as before.
+   The copy is always there (fully covering, so nothing changes without the
+   match) and eases to see-through over a second and a half, so nothing pops;
+   a game starting takes it all away at once (#intro is hidden).
+   Without the match (Potato, reduced motion, a slow device...) none of this
+   applies: the menu looks exactly as it did. */
+#game #intro::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 50% 38%,#212525 0%,#191c1c 55%,#101212 100%);transition:opacity 1.6s ease-out}
+body.attract-live #game #intro.menu-shell,body.attract-live #game #intro.menu-shell:has(>[data-page=home]:not([hidden])){background:transparent}
+body.attract-live #game #intro::before{opacity:.84}
+body.attract-live #game #intro:has(>[data-page=home]:not([hidden]))::before{opacity:.62}

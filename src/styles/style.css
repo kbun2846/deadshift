@@ -46,8 +46,7 @@
 @media(max-width:480px){.hex-recharge.secondary-cooldown{top:53px}}
 #weapon.hide-control-hints .weapon-controls{visibility:hidden}
 #weapon .seed-pips[data-capacity="36"]{gap:2px}
-
-.dodge-stamina{display:flex;gap:5px;width:55px;margin:0 auto 9px;filter:drop-shadow(0 1px 2px #14251e)}.dodge-stamina i{height:4px;flex:1;border-radius:2px;background:linear-gradient(to right,#b8d5c2 var(--stamina-fill,100%),#20352ed9 var(--stamina-fill,100%));box-shadow:0 0 0 1px #10251fa6;}
+/* Dodge charges: styles/dodge.css. */
 
 #map-toggle{display:none}.playing #map-toggle{display:inline-flex}#map-panel{z-index:50;background:#111b19c9;cursor:default}.overhead-card{width:min(90vw,650px);max-height:94dvh;display:flex;flex-direction:column;background:#302d26;border:1px solid #b9a98255;border-radius:12px;padding:16px;color:#ddcfaf;box-shadow:0 20px 70px #0007}.overhead-card header{display:flex;align-items:center;justify-content:space-between;gap:20px;font-size:11px;letter-spacing:2px}.overhead-card button{background:#ffffff0b;border:1px solid #ffffff20;border-radius:6px;color:#ddd3ba;padding:12px;cursor:pointer;font-size:10px}.overhead-card kbd{margin-left:8px;opacity:.6}#overhead-image{min-height:0;flex:1;display:flex;justify-content:center;margin:14px 0}#overhead-image svg{display:block;width:100%;max-height:74dvh}.overhead-card footer{display:flex;align-items:center;justify-content:center;gap:8px;font-size:9px;letter-spacing:2px}.overhead-card footer i{height:7px;width:7px;border-radius:50%;background:#c7efff}@media(max-width:600px){.overhead-card{padding:12px;width:94vw}.overhead-card kbd{display:none}.top-actions{gap:8px}}
 

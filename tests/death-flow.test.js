@@ -30,9 +30,10 @@ test('each mode has its own buttons: no CHANGE WEAPON in counted modes, FORFEIT 
  assert.deepEqual(DEATH_BUTTONS.team, ['death-stats', 'death-forfeit', 'death-menu']);
  assert.deepEqual(DEATH_BUTTONS.ffa, ['death-menu']);
  for (const mode of ['duel', 'team', 'ffa']) assert.ok(!DEATH_BUTTONS[mode].includes('death-change-weapon') && !DEATH_BUTTONS[mode].includes('death-respawn-now'), mode);
- // Practice (solo and online) is as it was.
- assert.deepEqual(DEATH_BUTTONS.practice, ['death-respawn-now', 'death-change-weapon', 'death-restart', 'death-menu']);
- assert.deepEqual(DEATH_BUTTONS['online-practice'], ['death-respawn-now', 'death-change-weapon', 'death-lobby', 'death-menu']);
+ // Practice (solo and online): CHANGE WEAPON gave way to the NEXT LIFE row
+ // (2026-10-02, tests/death-card.test.js), in every card with a respawn.
+ assert.deepEqual(DEATH_BUTTONS.practice, ['death-respawn-now', 'death-restart', 'death-menu']);
+ assert.deepEqual(DEATH_BUTTONS['online-practice'], ['death-respawn-now', 'death-lobby', 'death-menu']);
  assert.deepEqual([...COUNTDOWN_MODES].sort(), ['ffa', 'practice']);
 });
 

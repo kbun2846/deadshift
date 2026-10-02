@@ -1,5 +1,7 @@
 import {createIchorAbilityBlood} from './ichor-blood-hud.js';
-// The ability readouts beside the ammo: dodge stamina pips, the main ability
+import { createDodgeHUD } from './dodge-hud.js';
+// The ability readouts beside the ammo: dodge charges (dodge-hud.js, also
+// inside the touch DODGE button), the main ability
 // dial (Static's hex, Nominal's grenade, Ballast's blast), Nominal's
 // nova dial (the X abilities: hex, nova, blast; a ready one shows its name), and the (visually retired, still announced) charge meter.
 import { SHEATH, ICHOR, SIDEKICK, SIGHTLINE, RULES, GRENADE, SURGE, SCATTER } from '../config/gameplay.js';
@@ -14,17 +16,14 @@ export function createAbilityHUD() {
  const updatePrimaryCooldown = bindAbilityCooldown(byId('hex-recharge'));
  const extendedCooldownUI = addAbilityCooldown(byId('weapon'), 'extended-recharge');
  const deflectCooldownUI=addAbilityCooldown(byId('weapon'),'ichor-deflect-recharge');
+ const dodgeHUD=createDodgeHUD(byId('dodge-stamina'),byId('touch-dodge'));
  const updateBloodEffects=createIchorAbilityBlood(['hex-recharge','extended-recharge','touch-grenade','touch-extended'].map(byId));
  return { update(sim) {
   updateBloodEffects(sim);
   const isIchor=sim.weapon==='ichor';deflectCooldownUI.root.classList.toggle('hidden',!isIchor);
   if(isIchor){const s=sim.ichor;deflectCooldownUI.update({remaining:s.guardCooldown||0,duration:ICHOR.guardCooldown,binding:'RMB /\nLEFT SHIFT',text:s.guardCooldown>0?undefined:'',label:'deflect'});setAttr(deflectCooldownUI.root,'data-state',s.guardCooldown>0?'cooldown':s.guarding?'active':'ready');}
   const rifle = sim.weapon === 'rifle';
-  const stamina = sim.player.stamina;
-  if(byId('dodge-stamina').children.length!==sim.maxStamina){byId('dodge-stamina').replaceChildren(...Array.from({length:sim.maxStamina},()=>document.createElement('i')));}
-  setAttr(byId('dodge-stamina'), 'aria-label', Math.floor(stamina + 1e-8) + ' dodges available');
-  const pips = byId('dodge-stamina').children;
-  for (let i = 0; i < pips.length; i++) setStyle(pips[i], '--stamina-fill', (Math.max(0, Math.min(1, stamina - i)) * 100) + '%');
+  dodgeHUD.update(sim);
   for(const id of ['hex-recharge','extended-recharge','touch-grenade','touch-extended'])if(byId(id))setAttr(byId(id),'data-ichor-full',String(sim.weapon==='ichor'&&sim.ichor.blood>=ICHOR.meterMax));
   for(const id of ['hex-recharge','touch-grenade'])if(byId(id)){const locked=String(sim.weapon==='ichor'&&sim.ichor.blood<ICHOR.eBlood);setAttr(byId(id),'data-ichor-locked',locked);if(id==='touch-grenade')setAttr(byId(id),'aria-disabled',locked);}
   if(sim.weapon==='ichor'){

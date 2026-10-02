@@ -49,12 +49,12 @@ test('the modes and settings the rounds are built on', () => {
  assert.ok(!ROUNDED.includes('ffa') && !ROUNDED.includes('practice') && COUNTED.includes('ffa'));
  assert.deepEqual(SETTINGS.rounds.values, [3, 5, 10, 0]); assert.equal(SETTINGS.rounds.default, 5); assert.deepEqual(SETTINGS.rounds.modes, ROUNDED);
  assert.equal(SETTINGS.rounds.names[3], '∞', 'endless is the infinity sign');
- assert.deepEqual(SETTINGS.roundLength.values, [300, 600]); assert.equal(SETTINGS.roundLength.default, 600); assert.deepEqual(SETTINGS.roundLength.modes, ['ffa']);
+ assert.deepEqual(SETTINGS.roundLength.values, [300, 600]); assert.equal(SETTINGS.roundLength.default, 600); assert.deepEqual(SETTINGS.roundLength.modes, ['ffa', 'gungame'], 'FFA and Gun Game (2026-10-01) play to the match length');
  assert.deepEqual(PLAIN_SETTINGS, ['rounds', 'roundLength', 'robots'], 'rounds, the FFA match length and the robots ON/OFF switch show without the developer tools');
  assert.deepEqual([SETTINGS.robots.values, SETTINGS.robots.names, SETTINGS.robots.default], [['fill', 'off'], ['ON', 'OFF'], 'fill'], 'robots fill the seats unless the host turns them OFF');
  assert.ok(!SETTINGS.rounds.dev && !SETTINGS.roundLength.dev);
  assert.deepEqual([SETTINGS.killLimit.default, SETTINGS.killLimit.dev, SETTINGS.killLimit.modes], [0, true, ['ffa']], 'a kill limit is FFA only, and off');
- assert.deepEqual([SETTINGS.respawn.default, SETTINGS.respawn.values, SETTINGS.respawn.modes], [6, [6, 8, 12, 16], ['ffa']]);
+ assert.deepEqual([SETTINGS.respawn.default, SETTINGS.respawn.values, SETTINGS.respawn.modes], [6, [6, 8, 12, 16], ['ffa', 'gungame']]);
  for (const key of Object.keys(SETTINGS)) if (!PLAIN_SETTINGS.includes(key)) assert.equal(SETTINGS[key].dev, true, key + ' is a developer setting');
  assert.equal(cleanSettings({ rounds: 7 }).rounds, 5, 'a value not in the list falls back'); assert.equal(cleanSettings({ rounds: 0 }).rounds, 0);
  assert.equal(cleanSettings({ roundLength: 123 }).roundLength, 600);

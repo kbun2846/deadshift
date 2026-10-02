@@ -1,6 +1,7 @@
 import { confineToCircle } from './duel-circle.js';
 import {tryIchorDeflect,ichorGuardFor,endIchorGuard} from './weapons/ichor-deflect.js';
 import {recordBallastDamage} from './weapons/ballast-damage.js';
+import {stepSpawnGuard} from './spawn-protection.js'; // (spawn protection: `player.guard`)
 import {isPlayable,confinePlayableMovement} from './playable-area.js';
 import {resetShotgun,stepShotgun,SHOTGUN} from './weapons/shotgun.js';
 import { mapColliders, mapProps, buildingContains, buildingWalls, groundFor } from './maps.js';
@@ -261,6 +262,23 @@ export class Simulation {
     return this.freshPlayer(id, at);
   }
 
+  // Gun Game (gungame.js): another weapon in hand where you stand, at once.
+  // The body keeps its place and health; the old weapon goes completely
+  // (everything it had in the air, its curses, its cooldowns) and the new
+  // one comes fully loaded, with its own dodges full.
+  swapWeapon(id) {
+    clearOmen(this);
+    this.weapon = id;
+    resetRifle(this); resetShotgun(this); resetGrenades(this); resetSurge(this); resetScatter(this); resetOmen(this); resetSightline(this); resetSidekick(this); resetIchor(this); resetSheath(this);
+    this.shots = []; this.hexOrbs = []; this.hexSpin = null; this.hexCooldown = 0;
+    this.volleyKills = new Map(); this.volleys = new Map(); this.seedCooldown = 0;
+    this.ammo = RULES.maxSeeds; this.rechargeProgress = 0; this.rechargeWait = 0; this.firstRefill = false;
+    this.spray = { active: false, warmup: 0, credit: 0, exhausted: false, effectClock: 0, volley: 0 };
+    // (The old weapon's pose the others draw: a crouch, a guard, a rush.)
+    const p = this.player; delete p.ichor; delete p.sightline; delete p.sidekick; delete p.sheath;
+    p.stamina = this.maxStamina; p.staminaWait = 0;
+  }
+
   get seeds() { return this.shots.filter(s => !s.launched); }
   // The parked orbs a launch commands: on hills only those the caster can see
   // (a retaining wall hides the ledge above them); every one on a flat map.
@@ -459,6 +477,8 @@ export class Simulation {
     if(frozen)input={moveX:input.moveX,moveZ:input.moveZ,aimX:input.aimX,aimZ:input.aimZ,aimPointX:input.aimPointX,aimPointZ:input.aimPointZ,autoRange:input.autoRange,smoothAim:input.smoothAim,dodge:input.dodge};
     if(usesTrigger(this.weapon))input={...input,spray:false,hex:false,seed:false,launch:false};
     if(['omen','ichor','sheath'].includes(this.weapon)&&input.aiming)input={...input,aiming:false};
+    // Spawn protection runs down, or ends at once on any attack (spawn-protection.js).
+    if(this.player.guard!==undefined)stepSpawnGuard(this.player,input,dt);
     if (this.worldAuthority && !frozen) stepCrops(this, dt, (a, b) => !this.colliders.some(c => !c.playerOnly && segmentBox(a.x, a.z, b.x, b.z, c) !== null));
     if(!frozen)stepSidekickMines(this,dt,segmentBox);
     // Dead: what you already fired keeps flying and landing (blast shells,
@@ -1430,6 +1450,8 @@ export class Simulation {
 
   hit(target, shot) {
     if (target.hp <= 0 || shot.owner === target.id) return;
+    // Spawn protection (a stand-in carrying `guard`): nothing lands but the world's own.
+    if (target.guard && !shot.environmental) { this.events.push({ type: 'guardBlock', x: target.x, z: target.z, id: target.id }); return; }
     // Inside someone's hex, and this came from outside it: nothing lands.
     if (!shot.environmental && this.shields?.length && this.shieldedFrom(target.x, target.z)) { this.events.push({ type: 'hexBlock', x: target.x, z: target.z }); return; }
     if(!shot.deflectChecked){const blocked=this.deflect(target,shot);if(blocked){if(blocked>=shot.damage)return;shot={...shot,damage:shot.damage-blocked};}}
@@ -1475,6 +1497,8 @@ export class Simulation {
 
   damagePlayer(damage, owner, environmental = false, selfBlast = false, impact = null, damageType = environmental?'fire':selfBlast?'explosion':'gunshot', source = null) {
     if (this.dev.invulnerable || this.dev.ghost || !owner || owner === this.player.id && !selfBlast || this.player.hp <= 0 || !Number.isFinite(damage) || damage <= 0) return 0;
+    // Spawn protection: only the world (the storm, fire) and your own blasts get through.
+    if (this.player.guard > 0 && !environmental && !selfBlast) return 0;
     // Surge takes the edge off everything (not your own blasts' push, just damage).
     if (this.surge?.active) damage *= SURGE.taken;
     // Dev damage taken (a multiplier; 0 is off).
@@ -1519,6 +1543,7 @@ export class Simulation {
     // A nova ends (its cooldown runs) and a readied blast is dropped.
     if(this.surge&&this.surge.phase!=='idle'&&!this.predictOnly)endSurge(this,false);
     if(this.scatter)this.scatter.armed=false;
+    delete p.guard;
     p.hp=0;p.dead=true;p.ballastLaunch=false;p.vx=p.vz=p.dodgeRemaining=p.blastVX=p.blastVZ=0;
     this.spray.active=false;this.rifle.triggerHeld=false;this.rifle.aiming=false;
     const length=impact?Math.hypot(impact.x,impact.z):0;

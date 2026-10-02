@@ -20,6 +20,7 @@ import { MENU_SKILLS } from '../bots/robot-profile.js';
 import { DUEL_DEFAULTS, DUEL_ROUNDS, DUEL_MODES, DUEL_LENGTHS } from '../duel.js';
 import { weaponGridHTML, mapGridHTML, weaponFromChoice, pickerHTML, wirePicker } from './weapon-grid.js';
 import { choiceLabel, choiceName } from './lobby-settings.js';
+import { readLastWeapon } from './remembered-choices.js';
 
 const KEY = 'deadstab.duel';
 const esc = text => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -35,7 +36,7 @@ const robotRows = (prefix, label) => [
 // Rows: key, label, [value, text] choices, and a note for the picked choice.
 export const DUEL_ROWS = Object.freeze([
  { key: 'mode', label: 'mode', choices: Object.entries(DUEL_MODES).map(([id, m]) => [id, m.name]),
-  notes: { '1v1': 'you against a bot', '2v2': 'you and a bot vs two', '3v3': 'you and two bots vs three', '4v4': 'you and three bots vs four', ffa: 'everyone for themselves' } },
+  notes: { '1v1': 'you against a bot', '2v2': 'you and a bot vs two', '3v3': 'you and two bots vs three', '4v4': 'you and three bots vs four', ffa: 'everyone for themselves', gungame: 'every kill, the next weapon · first through all of them wins' } },
  ...robotRows('', 'difficulty'),
  ...robotRows('ally', 'your bots\' difficulty'),
  // Rounds (the picks' `firstTo` holds the number; 0: endless, the ∞ sign).
@@ -52,8 +53,9 @@ export function readDuelChoices(storage = globalThis.localStorage) {
  const ids = WEAPONS.map(w => w.id);
  const out = {
   map: typeof saved.map === 'string' ? saved.map : null,
-  // null: random (rolled at START).
-  weapon: saved.weapon === null ? null : ids.includes(saved.weapon) ? saved.weapon : DEFAULT_WEAPON,
+  // null: random (rolled at START). Never picked here: the weapon of the last
+  // game played (remembered-choices.js), else the default.
+  weapon: saved.weapon === null ? null : ids.includes(saved.weapon) ? saved.weapon : readLastWeapon(storage) || DEFAULT_WEAPON,
   botWeapon: ids.includes(saved.botWeapon) ? saved.botWeapon : null,
   allyWeapon: ids.includes(saved.allyWeapon) ? saved.allyWeapon : null,
   firstTo: DUEL_ROUNDS.includes(saved.firstTo) ? saved.firstTo : DUEL_DEFAULTS.firstTo,
@@ -117,6 +119,9 @@ export function buildDuelMenu(container, { maps, start, storage = globalThis.loc
   const ffa = !!DUEL_MODES[picks.mode]?.ffa;
   for (const box of container.querySelectorAll('[data-duel="firstTo"]')) box.hidden = ffa;
   for (const box of container.querySelectorAll('[data-duel="length"]')) box.hidden = !ffa;
+  // Gun Game: the ladder gives every weapon (yours and the bots').
+  const gun = !!DUEL_MODES[picks.mode]?.gungame;
+  for (const box of container.querySelectorAll('[data-duel="weapon"],[data-duel="botWeapon"]')) box.hidden = gun;
  };
  container.onclick = event => {
   const button = event.target.closest('[data-choice]'); if (!button || button.disabled) return;

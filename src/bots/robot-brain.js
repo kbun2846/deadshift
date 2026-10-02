@@ -75,6 +75,28 @@ export const WEAPON_AIM = Object.freeze({ omen: 1.7, sightline: 1.35, static: 1,
 // Weapons whose bullets Ichor's guard stops (not blasts, pellets or orbs).
 const GUN_WEAPONS = new Set(['rifle', 'sidekick', 'sightline', 'omen']);
 export const MELEE_WHIFF = Object.freeze({ early: [.7, 1.6], wide: .35, wideFor: .32, recover: [.25, .6] });
+// A gun robot against a person with a blade (owner, 2026-10-01: "The bots, like
+// when I'm using a melee weapon and they're using a ranged weapon, it's like a
+// lot more difficult ... make it a little bit more balanced there"). A person
+// with a gun is caught out by a blade the same ways: slow to start backing off
+// when it comes in, not walking backwards at full tilt while shooting, now and
+// then standing its ground instead, losing its aim (and holding the trigger a
+// beat) when the blade dashes at it, and only now and then dodging clear. How
+// much of that it shows is its `slack` (bladeSlack): (`top` - tech) / `span`,
+// 0-1: easy all of it, normal about half, hard and up none (they read a blade
+// as before). Only against a person (`human`; robots fighting robots, and
+// every robot whose slack is 0, draw no extra random numbers: as before).
+//  dash      their speed over this (m/s) is a dash (walking 7.2, Gold Rush ~10.4)
+//  shock     the aim error a dash at it throws in (× slack; newError scale)
+//  shockIn   only a dash within this (m)
+//  wait      s it holds the trigger after one (× slack × 2)
+//  inside    a blade within its THREAT + this (m) has come in on it (bladeNerve)
+//  again     s out of that before another coming-in counts as new
+//  backDelay s before it starts backing off as they come in (× slack × 2)
+//  stand     the chance (× slack) it stands its ground instead, for `standFor` s
+//  backSlow  how much of its backing-off speed it loses (× slack) while they are within `near` m
+//  breakAway how much less often it dodges clear of them (× slack)
+export const VS_BLADE = Object.freeze({ top: .9, span: .8, dash: 11.5, shock: 1.6, shockIn: 10, wait: [.12, .3], inside: 1.5, again: 1, backDelay: [.25, .55], stand: .5, standFor: [1.2, 2.4], backSlow: .55, near: 8, breakAway: .8 });
 // Each weapon's band (near-far, metres: where it holds a fight, engagement.js
 // `engage`), its projectile's speed (for leading) and its longest reach.
 // (Robot behaviour pass 2026-09-30, owner-requested: Nominal holds 8-15 m
@@ -180,6 +202,15 @@ export class RobotBrain {
   const counts = this.eng?.counts; this.eng = newEngagement(this.random); if (counts) this.eng.counts = counts; this.backoff = false; this.approach = null; this.flankSpot = null;
  }
 
+ // A new weapon in hand mid-fight (Gun Game: Simulation.swapWeapon): what it
+ // knows of the others stays, every plan made for the old weapon's range and
+ // tricks goes (it reads the weapon afresh each tick from here).
+ retool() {
+  this.path = null; this.goal = null; this.watch = null; this.shotSpot = null; this.peekSpot = null; this.coverUntil = 0;
+  this.roomPlan = null; this.roomBurstUntil = this.roomPauseUntil = 0; this.sniper = null; this.laserResponse = null;
+  this.backoff = false; this.approach = null; this.flankSpot = null; this.burstUntil = 0;
+ }
+
  // One tick. `world`: { enemies: [{ id, x, z, vx, vz, hp, maxHp }], noises:
  // [{ x, z }] (gunfire and blasts this tick), grenades: [{ x, z }] (landing
  // spots of live grenades), bodies: [{ x, z }] (everyone else, to keep apart) }.
@@ -237,6 +268,8 @@ export class RobotBrain {
     }
     // Velocity smoothed from what it sees.
     m.vx += ((e.vx || 0) - m.vx) * .35; m.vz += ((e.vz || 0) - m.vz) * .35;
+    // (A dash seen starting: VS_BLADE, aim.)
+    const raw = Math.hypot(e.vx || 0, e.vz || 0); if (raw > VS_BLADE.dash && !(m.raw > VS_BLADE.dash)) m.dashAt = this.time; m.raw = raw;
     // (What it sees its enemy lose while it fights them: the trades, engagement.js.)
     if (e.id === this.targetId && m.visible && e.hp < m.hp) this.eng.dealt += m.hp - e.hp;
     m.x = e.x; m.z = e.z; m.seen = this.time; m.hp = e.hp; m.maxHp = e.maxHp;
@@ -354,6 +387,33 @@ export class RobotBrain {
 
  // The aim's scale: the 1V1 page's / dev tools' aim and how hard the weapon is to aim.
  hand() { return (this.aimScale || 1) * (1 + ((WEAPON_AIM[this.sim.weapon] ?? 1) - 1) * (this.pf.feel ?? 1)); }
+
+ // A blade come within a dash or so of it (their THREAT + `inside`): once per
+ // time they come in (out again `again` s and it is a new one), it takes a
+ // moment before it starts backing off, or now and then stands its ground a
+ // while (VS_BLADE). Whether it is holding still (`bladeBack.hold`); read
+ // each think (situation) and by move.
+ bladeNerve(known, d, threat) {
+  const slack = known?.visible && d < threat + VS_BLADE.inside ? this.bladeSlack(known) : 0;
+  if (slack > 0) {
+   let bk = this.bladeBack;
+   if (!bk || this.time - bk.at > VS_BLADE.again) {
+    const delay = slack * 2 * (VS_BLADE.backDelay[0] + this.random() * (VS_BLADE.backDelay[1] - VS_BLADE.backDelay[0]));
+    const stand = this.random() < slack * VS_BLADE.stand ? VS_BLADE.standFor[0] + this.random() * (VS_BLADE.standFor[1] - VS_BLADE.standFor[0]) : 0;
+    bk = this.bladeBack = { hold: this.time + Math.max(delay, stand) };
+   }
+   bk.at = this.time;
+  }
+  return this.time < (this.bladeBack?.hold ?? 0);
+ }
+
+ // How much a gun robot is caught out by `target`'s blade (VS_BLADE): 0 (not a
+ // person with a blade, or it carries one itself, or a skill that reads a
+ // blade well) to 1.
+ bladeSlack(target) {
+  if (!target?.human || !MELEE.has(target.weapon) || MELEE.has(this.sim.weapon)) return 0;
+  return clamp((VS_BLADE.top - (this.pf.tech ?? .5)) / VS_BLADE.span, 0, 1);
+ }
 
  // Whether to swing a melee weapon now (Ichor, Sheath). Most swings wait for
  // `reach`; a misjudged one (profile `whiff`, rolled once per swing) goes
@@ -586,6 +646,8 @@ export class RobotBrain {
   s.near = base.near * pf.range; s.far = Math.min(base.reach, base.far * pf.range); s.reach = base.reach;
   s.threat = THREAT[known.weapon] ?? 8; s.melee = MELEE.has(this.sim.weapon);
   s.inThreat = !s.melee && s.near > s.threat && s.d < s.threat + 1;
+  // (A blade come in on it, VS_BLADE: not backing off for it yet.)
+  if (this.bladeNerve(known, s.d, s.threat) && s.inThreat) s.inThreat = false;
   s.my = hpShare; s.their = (known.hp ?? RULES.playerHealth) / (known.maxHp || RULES.playerHealth);
   s.empty = empty;
   // (How near they must be for a reload to send it back: Static's orbs come
@@ -899,6 +961,9 @@ export class RobotBrain {
    if (d >= style.near && d <= style.far) radial += Math.sin(this.time * 1.9 + this.slotIndex * 2.1) * .22 * (.4 + this.pf.tech * .6);
    // Off a player's screen it may not shoot (openFire), so it closes in.
    if (offScreen(p.x, p.z, target.x, target.z, 1, this.rise(target), target.aspect)) radial = 1;
+   // A blade come in on it (VS_BLADE, bladeNerve): it stands where it is a
+   // moment before it starts backing off, or a while when it stands its ground.
+   if (radial < 0 && this.time < (this.bladeBack?.hold ?? 0)) radial = 0;
    const wv = weave * this.weaveAmp;
    mx = ux * radial - uz * this.strafe * wv; mz = uz * radial + ux * this.strafe * wv;
    // Would that step leave open ground? Try the other side, then just the radial.
@@ -954,6 +1019,11 @@ export class RobotBrain {
    const dx = p.x - b.x, dz = p.z - b.z, d = Math.hypot(dx, dz);
    if (d > .01 && d < 1.3) { mx += dx / d * (1.3 - d) * 1.2; mz += dz / d * (1.3 - d) * 1.2; }
   }
+  // Backing off from a blade close by (VS_BLADE): not at full tilt.
+  if (target?.visible && (mx || mz)) {
+   const dx = target.x - p.x, dz = target.z - p.z, d = Math.hypot(dx, dz) || 1, along = (mx * dx + mz * dz) / d;
+   if (along < 0 && d < VS_BLADE.near) { const k = this.bladeSlack(target) * VS_BLADE.backSlow; if (k > 0) { mx -= dx / d * along * k; mz -= dz / d * along * k; } }
+  }
   const len = Math.hypot(mx, mz);
   if (len > 1) { mx /= len; mz /= len; }
   // Eased (owner, v146: natural, not jittery): the stick moves toward what
@@ -1001,6 +1071,16 @@ export class RobotBrain {
    const jink = Math.hypot(target.vx - (this.lastVX ?? target.vx), target.vz - (this.lastVZ ?? target.vz));
    if (jink > 2.5) { const e = this.newError(d, .5); this.aimError.x += e.x; this.aimError.z += e.z; }
    this.lastVX = target.vx; this.lastVZ = target.vz;
+   // A blade dashing close by (VS_BLADE): its aim thrown off, and a beat
+   // before it pulls the trigger again (a person re-finds them too).
+   if (target.dashAt != null && target.dashAt > (this.dashSeen ?? -9)) {
+    this.dashSeen = target.dashAt;
+    const slack = d < VS_BLADE.shockIn ? this.bladeSlack(target) : 0;
+    if (slack > 0) {
+     const e = this.newError(d, VS_BLADE.shock * slack); this.aimError.x += e.x; this.aimError.z += e.z;
+     this.dashWait = this.time + slack * 2 * (VS_BLADE.wait[0] + this.random() * (VS_BLADE.wait[1] - VS_BLADE.wait[0]));
+    }
+   }
    // Now and then a shot goes wide: the hand pulls off to one side for a
    // moment (settles like any aim error). Often for an easy robot, rarely
    // for a hard one (profile `miss`: the chance each half-second or so).
@@ -1060,6 +1140,8 @@ export class RobotBrain {
   const open = this.openFire(target, d);
   this.holding = !!target && visible && !open;
   let shoot = (visible||probe) && lined && ready && onTarget && open;
+  // (A blade just dashed at it: VS_BLADE.)
+  if (t < (this.dashWait ?? -1)) shoot = false;
   // An easier robot rests its trigger now and then (profile `rest`): after
   // every ~1.6 s of firing, a pause while it re-aims, as a person hesitates.
   // (Not Static: its fire is placing orbs, already paced by the orbs.)
@@ -1138,7 +1220,7 @@ export class RobotBrain {
   const p = this.sim.player, t = this.time;
   if (!visible || this.eng.state !== 'disengage' || p.stamina < RULES.dodgeStaminaCost || t - (this.dodgedAt ?? -9) < 1.5 || d > (THREAT[target.weapon] ?? 8) + 2) return false;
   const closing = ((p.x - target.x) * target.vx + (p.z - target.z) * target.vz) / (d || 1) > 2.5;
-  if (!closing || this.random() >= this.pf.tech * .06) return false;
+  if (!closing || this.random() >= this.pf.tech * .06 * (1 - this.bladeSlack(target) * VS_BLADE.breakAway)) return false;
   const ux = (p.x - target.x) / (d || 1), uz = (p.z - target.z) / (d || 1), mx = ux * .8 - uz * .6 * this.strafe, mz = uz * .8 + ux * .6 * this.strafe;
   if (!this.dashable(mx, mz)) return false;
   input.dodge = true; input.moveX = mx; input.moveZ = mz; this.dodgedAt = t;
@@ -1371,7 +1453,7 @@ export class RobotBrain {
   // Against a blade or Ballast (whose whole game is getting close) it fights
   // as it always did: its bar kept for the stream and the hex (below).
   const short = !!target && (THREAT[target.weapon] ?? 9) <= RULES.sprayRange;
-  if (visible && lined && !this.holding && (d < 4.5 || (short && d < RULES.sprayRange - 1.5) || (closing && d < RULES.sprayRange - 1.5 && seeds < 3)) && sim.ammo >= 2 && this.aimOff < .35) { input.spray = true; return; }
+  if (visible && lined && !this.holding && !(t < (this.dashWait ?? -1)) && (d < 4.5 || (short && d < RULES.sprayRange - 1.5) || (closing && d < RULES.sprayRange - 1.5 && seeds < 3)) && sim.ammo >= 2 && this.aimOff < .35) { input.spray = true; return; }
   // A quick shot (Static's press with no orbs placed: one orb at once) to
   // finish someone nearly dead, by a robot that knows the game.
   if (shoot && !seeds && sim.ammo > 0 && sim.seedCooldown <= 0 && this.pf.tech >= .4 && target?.hp != null && target.hp <= 4 && d < 14) {

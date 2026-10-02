@@ -26,7 +26,8 @@ const kill = (a, seat, by = null) => { seat.sim.player.hp = 0; a.died(seat, by);
 test('the cutoff table: FFA, 2V2, 2V2V2 45 s; 3V3 and 4V4 a minute; none in 1V1 or practice', () => {
  assert.deepEqual({ ...NO_RESPAWN_LEFT }, { ffa: 45, '2v2': 45, '2v2v2': 45, '3v3': 60, '4v4': 60 });
  assert.ok(Object.isFrozen(NO_RESPAWN_LEFT));
- const want = { ffa: 45, practice: 0, '1v1': 0, '2v2': 45, '2v2v2': 45, '3v3': 60, '4v4': 60 };
+ // (Gun Game, 2026-10-01: none; the ladder decides it, not the last one standing.)
+ const want = { ffa: 45, practice: 0, '1v1': 0, '2v2': 45, '2v2v2': 45, '3v3': 60, '4v4': 60, gungame: 0 };
  for (const { id } of MODES) {
   const cut = want[id];
   assert.equal(respawnCutoff(id), cut, id);

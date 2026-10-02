@@ -15,6 +15,10 @@
 //                   { t:'room', ... } or { t:'nope', reason }; then the game's
 //                   own messages (src/net/protocol.js) and the leader's
 //                   { t:'lead', op, ... } controls (room.js).
+//                   Or QUICK PLAY's matchmaking line (quick.js): first
+//                   message { t:'quick', pid, name }, answered with
+//                   { t:'match', code, map, mode } (join that code) or
+//                   { t:'queued', waiting } (a match may follow later).
 //   /admin          the owner's page (admin.js), with ADMIN_TOKEN set
 //
 // One process, one 60 Hz loop stepping every room. A full 4V4 room with
@@ -35,7 +39,8 @@ import { AdminLog } from './admin-log.js';
 import { PlayerLog } from './player-log.js';
 import { PlayerStats } from './player-stats.js';
 import { ServerStats, readVersion, SAMPLE_SECONDS } from './stats.js';
-import { PROTOCOL_VERSION } from '../src/net/protocol.js';
+import { PROTOCOL_VERSION, cleanName } from '../src/net/protocol.js';
+import { QuickQueue, QUICK } from './quick.js';
 import { cleanRoomCode } from '../src/net/transport.js';
 
 const TICK = 1000 / 60;
@@ -56,6 +61,8 @@ const REPO_DIR = new URL('..', import.meta.url).pathname;
 
 export function startServer(config = SERVER, { log = console, exit = code => process.exit(code), restartDelay = 3000 } = {}) {
  const rooms = new Rooms({ config, now });
+ // QUICK PLAY's queue (quick.js); stepped with the rooms' housekeeping.
+ const quick = rooms.quick = new QuickQueue({ rooms, now });
  const bans = new Bans(config.dataDir);
  const admins = new Admins({ dir: config.dataDir, ownerToken: config.adminToken, now });
  const devcode = new DevCode({ dir: config.dataDir, now, log });
@@ -65,18 +72,18 @@ export function startServer(config = SERVER, { log = console, exit = code => pro
  const playerStats = new PlayerStats();
  const stats = new ServerStats({ dir: config.dataDir, planBytes: config.monthlyTransferBytes, version: readVersion(REPO_DIR) });
  let serial = 0, tickMs = 0;
- const conns = new Set(), perIp = new Map(), creates = new Map(), connects = new Map();
+ const conns = new Set(), perIp = new Map(), creates = new Map(), connects = new Map(), quickAsks = new Map();
  const load = () => ({ tickMs: Math.round(tickMs * 100) / 100, players: conns.size, rooms: rooms.rooms.size, maintenance: maintenance.on });
  // Players in a room (a connection still choosing one isn't playing yet).
  const online = () => { let n = 0; for (const c of conns) if (c.room) n++; return n; };
- const overview = () => stats.overview({ tickMs, players: online(), rooms: rooms.rooms.size, activeRooms: [...rooms.rooms.values()].filter(r => r.humanCount).length });
+ const overview = () => ({ ...stats.overview({ tickMs, players: online(), rooms: rooms.rooms.size, activeRooms: [...rooms.rooms.values()].filter(r => r.humanCount).length }), quickWaiting: quick.size, quickRooms: rooms.quickCount });
 
  const http = createServer(async (req, res) => {
   const url = pathOf(req);
   if (!url) { res.writeHead(400); res.end(); return; }
   try {
    if (await handleDevUnlock(req, res, { devcode, url, ip: addressOf(req), config, log, adminLog })) return;
-   if (await handleAdmin(req, res, { admins, rooms, bans, devcode, maintenance, adminLog, recent, playerStats, findConn, overview, announce, restart, gameUrl: config.gameUrl || 'https://deadstab.com/', url, ip: addressOf(req), log })) return;
+   if (await handleAdmin(req, res, { admins, rooms, quick, bans, devcode, maintenance, adminLog, recent, playerStats, findConn, overview, announce, restart, gameUrl: config.gameUrl || 'https://deadstab.com/', url, ip: addressOf(req), log })) return;
    if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET' }); res.end(); return; }
    if (req.method === 'GET' && url.pathname === '/rooms') {
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store' });
@@ -128,6 +135,8 @@ export function startServer(config = SERVER, { log = console, exit = code => pro
    // connection, never the server (every other room carries on).
    try {
     if (conn.room) { conn.room.receive(conn, message); return; }
+    // (A quick play line says nothing more; it only listens.)
+    if (conn.quick) return;
     clearTimeout(hello);
     enter(conn, message);
    } catch (error) { log.error(new Date().toISOString(), 'message from', conn.ip, 'failed:', error); conn.close(1011, 'error'); }
@@ -138,6 +147,7 @@ export function startServer(config = SERVER, { log = console, exit = code => pro
    try { playerStats.end(conn); } catch (error) { log.error('player stats failed:', error); }
    const left = (perIp.get(ip) || 1) - 1; if (left > 0) perIp.set(ip, left); else perIp.delete(ip);
    try { conn.room?.leave(conn); } catch (error) { log.error('leave failed:', error); }
+   if (conn.quick) quick.leave(conn);
   });
   ws.on('error', () => {});
  }
@@ -148,11 +158,25 @@ export function startServer(config = SERVER, { log = console, exit = code => pro
   conn.pid = cleanPid(message.pid);
   // (A page that shows the admin page's messages as cards says so: `cards`.)
   conn.cards = message.cards === 1;
-  conn.entry = recent.start(conn, message.t === 'join' ? cleanRoomCode(message.code) || '' : '');
+  // (A quick play line is in the player log as 'quick play' until it is matched.)
+  if (message.t === 'quick') conn.name = cleanName(message.name) || '';
+  conn.entry = recent.start(conn, message.t === 'join' ? cleanRoomCode(message.code) || '' : message.t === 'quick' ? 'quick play' : '');
   playerStats.connect(conn);
   if (bans.find(conn)) return nope('You are banned from the Deadstab servers.');
   if (message.version !== undefined && message.version !== PROTOCOL_VERSION) return nope('The game was just updated. Reload the page to play online.');
   let room = null;
+  // QUICK PLAY: into the queue (quick.js), never a room on this socket.
+  if (message.t === 'quick') {
+   if (maintenance.on) return nope(maintenance.text);
+   const t = now(), recent = (quickAsks.get(conn.ip) || []).filter(at => t - at < 60);
+   if (recent.length >= QUICK.perMinutePerIp) return nope('Too many quick play requests at once. Wait a minute and try again.');
+   quickAsks.set(conn.ip, [...recent, t]);
+   conn.quick = true;
+   const how = quick.request(conn);
+   // Matched at once: the page joins that room on a new socket; this one is done.
+   if (how === 'matched') { conn.quick = false; conn.ended = 'quick play: matched'; conn.close(1000, 'matched'); }
+   return;
+  }
   if (message.t === 'join') {
    if (!cleanRoomCode(message.code)) return nope('Room codes are 5 numbers.');
    room = rooms.find(message.code);
@@ -217,7 +241,7 @@ export function startServer(config = SERVER, { log = console, exit = code => pro
  // (And the HOST rate limit forgets addresses that have gone quiet.)
  const heartbeat = setInterval(() => {
   for (const ws of wss.clients) { if (ws.isAlive === false) { if (ws.conn) ws.conn.ended ??= 'lost connection'; ws.terminate(); continue; } ws.isAlive = false; try { ws.ping(); } catch {} }
-  const t = now(); for (const list of [creates, connects]) for (const [ip, times] of list) if (!times.some(at => t - at < 60)) list.delete(ip);
+  const t = now(); for (const list of [creates, connects, quickAsks]) for (const [ip, times] of list) if (!times.some(at => t - at < 60)) list.delete(ip);
  }, 15000);
  // The admin page's overview: a load sample every 10 s, the month's data counter saved every minute.
  const sampler = setInterval(() => stats.sample(online()), SAMPLE_SECONDS * 1000);
@@ -238,7 +262,7 @@ export function startServer(config = SERVER, { log = console, exit = code => pro
   })();
   return closing;
  }
- return { http, wss, rooms, bans, devcode, maintenance, adminLog, recent, playerStats, findConn, stats, ready, close, load, announce, restart: () => restart(), cancelRestart: () => { clearTimeout(restarting); restarting = null; } };
+ return { http, wss, rooms, quick, bans, devcode, maintenance, adminLog, recent, playerStats, findConn, stats, ready, close, load, announce, restart: () => restart(), cancelRestart: () => { clearTimeout(restarting); restarting = null; } };
 }
 
 // Run directly (not imported by a test): start, and stop cleanly on SIGTERM

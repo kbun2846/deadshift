@@ -1,0 +1,26 @@
+/* QUICK PLAY's PLAYER FOUND prompt (ui/quick-prompt.js): the admins' card
+   look (menu-theme.css .admin-card): slate, a pink edge, a small lowercase
+   label, the HUD's type. Top left under the map and mode line (out of the
+   fight's way); on a narrow screen top centre under the score and health bar.
+   JOIN is the pink main action; the X keeps playing. A thin line runs down
+   while the offer stands. */
+#game .quick-prompt{position:absolute;z-index:59;left:calc(env(safe-area-inset-left,0px) + 20px);top:calc(env(safe-area-inset-top,0px) + 86px);width:min(290px,calc(100vw - 32px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));pointer-events:none}
+#game .quick-prompt[hidden]{display:none}
+#game .quick-prompt-card{position:relative;display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;padding:10px 12px 12px 17px;background:#232827;border:1px solid #ffffff14;border-left:0;border-radius:8px;box-shadow:0 12px 34px #0a0f0e8c;color:#eef1ef;text-align:left;pointer-events:auto;overflow:hidden;animation:quick-prompt-in .26s cubic-bezier(.2,.7,.2,1) both}
+#game .quick-prompt-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--ui-accent,#e8afb9)}
+#game .quick-prompt-label{grid-column:1;font:800 10px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.2em;color:var(--ui-accent,#e8afb9);text-transform:lowercase}
+#game .quick-prompt-title{grid-column:1;font:900 15px/1.15 var(--hud-font,Arial),sans-serif;letter-spacing:.05em;color:#f2f4f2;text-transform:uppercase!important;white-space:nowrap}
+#game .quick-prompt-note{grid-column:1;font:700 11px/1.3 var(--hud-font,Arial),sans-serif;letter-spacing:.04em;color:#9fb0aa;text-transform:lowercase}
+#game .quick-prompt-actions{grid-column:2;grid-row:1 / span 3;display:flex;gap:6px;align-items:center}
+#game .quick-prompt button{display:grid;place-items:center;width:auto;height:36px;min-height:36px;margin:0;padding:0 12px;border:0;border-radius:5px;font:900 15px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.08em;text-transform:uppercase!important;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#game .quick-prompt .quick-prompt-join{background:var(--ui-accent,#e8afb9);color:#151718}
+#game .quick-prompt .quick-prompt-join:hover,#game .quick-prompt .quick-prompt-join:focus-visible{background:#f3c7cf}
+#game .quick-prompt .quick-prompt-close{width:36px;padding:0;background:#ffffff12;color:#cfd8d4;font-size:15px}
+#game .quick-prompt .quick-prompt-close:hover,#game .quick-prompt .quick-prompt-close:focus-visible{background:#ffffff22;color:#fff}
+#game .quick-prompt-time{position:absolute;left:4px;right:0;bottom:0;height:2px;background:#e8afb966;transform-origin:left}
+#game .quick-prompt-card.run .quick-prompt-time{animation:quick-prompt-time linear both}
+@keyframes quick-prompt-in{from{transform:translateY(-10px) scale(.98)}to{transform:none}}
+@keyframes quick-prompt-time{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@media(max-width:760px){#game .quick-prompt{left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 158px)}}
+@media(max-height:520px) and (orientation:landscape){#game .quick-prompt{top:calc(env(safe-area-inset-top,0px) + 78px)}}
+@media(prefers-reduced-motion:reduce){#game .quick-prompt-card{animation:none}#game .quick-prompt-time{display:none}}

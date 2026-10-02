@@ -8,6 +8,7 @@
 import { GRAPHICS } from '../settings.js';
 import { DEV_OPTIONS, buildDevOptions, refill } from './dev-options.js';
 import { viewWidth, viewHeight } from '../viewport.js';
+import { buildMediaPanel } from './media-panel.js';
 export { refill };
 
 export const DEV_WINDOW_KEY = 'deadstab-dev-window';
@@ -40,7 +41,7 @@ export function readWindowPosition(storage) {
   } catch { return null; }
 }
 
-export function createDevWindow(root, { sim, hooks = {}, changed, setQuality, quality = () => 'balanced', storage = safeStorage(), document: doc = globalThis.document } = {}) {
+export function createDevWindow(root, { sim, hooks = {}, changed, setQuality, quality = () => 'balanced', media = null, storage = safeStorage(), document: doc = globalThis.document } = {}) {
   const panel = doc.createElement('section');
   panel.className = 'dev-window hidden';
   panel.setAttribute('aria-label', 'Developer window');
@@ -48,7 +49,7 @@ export function createDevWindow(root, { sim, hooks = {}, changed, setQuality, qu
   // the quick bar (the options marked `quick`) and a filter box, then the
   // sections. Large: a wide window, bigger text, sections laid out in columns
   // and all opened, so everything can be seen and hit at once.
-  panel.innerHTML = `<header class="dev-window-bar"><span>DEV · O</span><span class="dev-window-actions"><button type="button" class="dev-window-size plain-text" aria-label="Larger developer window" aria-pressed="false">⤢</button><button type="button" class="dev-window-close plain-text" aria-label="Close developer window">×</button></span></header><div class="dev-window-quick"></div><input class="dev-window-filter" type="search" placeholder="find an option" aria-label="Find a developer option"/><div class="dev-window-body"></div>`;
+  panel.innerHTML = `<header class="dev-window-bar"><span>DEV · O</span><span class="dev-window-actions"><button type="button" class="dev-window-size plain-text" aria-label="Larger developer window" aria-pressed="false">⤢</button><button type="button" class="dev-window-close plain-text" aria-label="Close developer window">×</button></span></header><div class="dev-window-quick"></div><input class="dev-window-filter" type="search" placeholder="find an option" aria-label="Find a developer option"/><div class="dev-window-body"><p class="dev-window-note" hidden></p></div>`;
   root.append(panel);
   const body = panel.querySelector('.dev-window-body'), quick = panel.querySelector('.dev-window-quick'), filter = panel.querySelector('.dev-window-filter');
   const sizeButton = panel.querySelector('.dev-window-size');
@@ -66,6 +67,10 @@ export function createDevWindow(root, { sim, hooks = {}, changed, setQuality, qu
   const allHooks = () => ({ refill: () => refill(sim), ...hooks });
   const quickItems = DEV_OPTIONS.filter(o => o.quick && (o.kind === 'toggle' || o.kind === 'action'));
   const syncQuick = () => { for (const b of quick.querySelectorAll('[data-quick-toggle]')) b.setAttribute('aria-pressed', String(!!sim.dev[b.dataset.quickToggle])); };
+  // Media mode (media-mode.js) has a quick switch too.
+  if (media) { const b = doc.createElement('button'); b.type = 'button'; b.className = 'dev-quick plain-text'; b.textContent = 'Media mode'; b.dataset.quickMedia = ''; quick.append(b); }
+  const syncMedia = () => quick.querySelector('[data-quick-media]')?.setAttribute('aria-pressed', String(!!media?.on));
+  media?.onChange(syncMedia);
   for (const o of quickItems) {
    const b = doc.createElement('button'); b.type = 'button'; b.className = 'dev-quick plain-text'; b.textContent = o.label.replace(/ \(.*\)$/, '');
    if (o.kind === 'toggle') b.dataset.quickToggle = o.key; else b.dataset.quickAction = o.key;
@@ -73,6 +78,7 @@ export function createDevWindow(root, { sim, hooks = {}, changed, setQuality, qu
   }
   quick.addEventListener('click', event => {
    const b = event.target.closest('button'); if (!b) return;
+   if (b.dataset.quickMedia !== undefined) { media.toggle(); b.blur(); return; }
    if (b.dataset.quickToggle) sim.dev[b.dataset.quickToggle] = !sim.dev[b.dataset.quickToggle];
    else allHooks()[b.dataset.quickAction]?.();
    built?.sync(); syncQuick(); changed?.();
@@ -90,10 +96,16 @@ export function createDevWindow(root, { sim, hooks = {}, changed, setQuality, qu
   });
   // Keys typed in the filter are not game keys.
   filter.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Escape') event.preventDefault(); if (event.key === 'Escape') { filter.value = ''; filter.dispatchEvent(new Event('input')); filter.blur(); } });
-  let built = null;
+  let built = null, mediaPanel = null;
   // Filled the first time it opens, which is only ever after the unlock.
-  const build = () => built ||= buildDevOptions(body, { sim, where: 'window', changed: () => changed?.(), doc,
-    hooks: { ...allHooks(), ...(setQuality ? { setQuality, quality, qualityOptions: () => Object.entries(GRAPHICS).map(([name, tier]) => [name, tier.label]) } : {}) } });
+  // Media first: the section used while recording.
+  const build = () => {
+    built ||= buildDevOptions(body, { sim, where: 'window', changed: () => changed?.(), doc,
+      hooks: { ...allHooks(), ...(setQuality ? { setQuality, quality, qualityOptions: () => Object.entries(GRAPHICS).map(([name, tier]) => [name, tier.label]) } : {}) } });
+    if (media && !mediaPanel) { mediaPanel = buildMediaPanel(body, media, { doc }); body.prepend(note); }
+    return built;
+  };
+  const note = body.querySelector('.dev-window-note');
 
   let open = false, position = clampWindowPosition(readWindowPosition(storage), { width: viewWidth(), height: viewHeight() }, { width: 232, height: 360 });
   const place = () => {
@@ -129,8 +141,15 @@ export function createDevWindow(root, { sim, hooks = {}, changed, setQuality, qu
   const api = {
     panel,
     get isOpen() { return open; },
-    show() { open = true; build(); setLarge(large, false); panel.classList.remove('hidden'); built.sync(); syncQuick(); place(); },
-    hide() { open = false; panel.classList.add('hidden'); },
+    // mediaOnly (online, where the rest of the tools are the host's): only the
+    // Media section shows, opened, with `note` saying why.
+    show({ mediaOnly = false, note: why = '' } = {}) {
+      open = true; build(); setLarge(large, false);
+      panel.classList.toggle('media-only', !!(mediaOnly && media)); note.hidden = !(mediaOnly && media && why); note.textContent = why;
+      if (mediaOnly && mediaPanel) mediaPanel.section.open = true;
+      panel.classList.remove('hidden'); doc.body?.classList.add('dev-window-open'); built.sync(); syncQuick(); syncMedia(); place();
+    },
+    hide() { open = false; panel.classList.add('hidden'); doc.body?.classList.remove('dev-window-open'); },
     toggle() { open ? api.hide() : api.show(); return open; },
     sync() { built?.sync(); syncQuick(); },
   };

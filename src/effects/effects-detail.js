@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { POP } from '../render/shot-pop.js';
 
 // Detail effects: the extra layer of sparks, embers, smoke, flashes, shock
 // rings and grit laid over every weapon, blast, fire and footstep. Everything
@@ -201,7 +202,8 @@ export class DetailFX {
  // 'ballast'; `charge` (0..1) scales the Ballast's blast.
  muzzle(kind, x, y, z, dx, dz, charge = 0) {
   if (!this.on) return;
-  const ballast = kind === 'ballast', power = ballast ? 1 + charge * 1.2 : .45;
+  // (A touch bigger since the pop pass, 2026-10-01: rifle .45, Ballast x1.)
+  const ballast = kind === 'ballast', power = ballast ? (1 + charge * 1.2) * POP.muzzle.ballast : POP.muzzle.rifle;
   const sx = -dz, sz = dx;
   // The bloom of the flash itself, a hot core and petals venting to the sides.
   this.glow({ x, y, z, size: 1.1 * power, grow: .5, life: ballast ? .11 + charge * .05 : .06, color: new THREE.Color('#ffc46b'), glow: 1.6 });

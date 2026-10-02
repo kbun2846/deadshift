@@ -141,4 +141,7 @@ export class ArenaRobots {
 
  // Back in the world: a blank mind (like a solo robot's respawn).
  spawned(seat) { seat.robot?.brain.reset(); }
+ // Gun Game: a new weapon in hand mid-fight (Simulation.swapWeapon). It
+ // keeps what it knows of the others; the old weapon's plans go.
+ swapped(seat) { seat.robot?.brain.retool(); }
 }

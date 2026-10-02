@@ -7,8 +7,9 @@
 // same kind of menu with 1 or 2 different buttons").
 //
 // One card for online and SOLO: a title line (who won), the score under it,
-// the stats table (stats-panel.js statsTableHTML, final) and a row of
-// buttons, which is all that differs:
+// your match (ui/summary-card.js: your numbers and one highlight, owner
+// 2026-10-02 "Do 4"), the stats table (stats-panel.js statsTableHTML, final)
+// and a row of buttons, which is all that differs:
 //  online  READY n/m (a switch: online.setReady; robots never hold it up),
 //          LEAVE, and for the host LOBBY (back to the lobby to change the
 //          mode or map). The card goes when the host's round leaves 'results'.
@@ -38,11 +39,16 @@ export function onlineOutcome(results, { myId = null, myTeam = null } = {}) {
   forfeit = results.forfeit === myTeam || results.forfeit === myId ? (side?.team ? 'your team forfeited' : 'you forfeited')
    : side ? `${side.team ? String(side.name).toLowerCase() + ' team' : esc(side.name)} forfeited` : 'forfeit';
  }
- return { title, detail: [score, forfeit].filter(Boolean).join(' <i>·</i> ') };
+ // Gun Game: how it was won (a kill with the last weapon, or the clock).
+ const ladder = results.gungame?.ladder?.length || 0;
+ const gun = results.gungame ? (results.gungame.finished ? `through all ${ladder} weapons` : 'time up · furthest along the ladder') : '';
+ return { title, detail: [score, forfeit, gun].filter(Boolean).join(' <i>·</i> ') };
 }
 
 // SOLO: `winner` 'you' / 'robot', the score, whether you forfeited, a team mode.
-export function soloOutcome({ winner, you = 0, robot = 0, forfeited = false, team = false, ffa = false }) {
+export function soloOutcome({ winner, you = 0, robot = 0, forfeited = false, team = false, ffa = false, gungame = null }) {
+ // Gun Game: the places on the ladder (`you`, `robot`: one-based), and how it ended.
+ if (gungame) return { title: winner === 'you' ? 'you win' : winner === 'draw' ? 'draw' : 'bots win', detail: `you <b>${you}/${gungame.of}</b> <i>·</i> <b>${robot}/${gungame.of}</b> top bot <i>·</i> ${gungame.finished ? 'through all ' + gungame.of + ' weapons' : 'time up · furthest along the ladder'}` };
  // FFA: most kills when the clock runs out (a tie at the top is a draw).
  if (ffa) return { title: winner === 'you' ? 'you win' : winner === 'draw' ? 'draw' : 'bots win', detail: `you <b>${you}</b> <i>·</i> <b>${robot}</b> top bot` };
  const title = winner === 'you' ? (team ? 'your team wins' : 'you win') : (team ? 'enemies win' : 'bot wins');
@@ -58,22 +64,24 @@ export const readyLabel = (ready, people) => (people > 1 ? `READY ${ready}/${peo
 export function createMatchEnd(parent, { act } = {}) {
  const root = document.createElement('section');
  root.id = 'match-end'; root.className = 'match-end hidden'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-labelledby', 'match-end-title');
- root.innerHTML = '<div class="match-end-card"><h2 id="match-end-title"></h2><p class="match-end-detail"></p><div class="match-end-table"></div><div class="match-end-actions"></div></div>';
+ root.innerHTML = '<div class="match-end-card"><h2 id="match-end-title"></h2><p class="match-end-detail"></p><div class="match-end-you"></div><div class="match-end-table"></div><div class="match-end-actions"></div></div>';
  parent.append(root);
  const $ = s => root.querySelector(s);
- let shown = { title: null, detail: null, table: null, buttons: null };
+ let shown = { title: null, detail: null, you: null, table: null, buttons: null };
  root.addEventListener('click', e => { const b = e.target.closest?.('button[data-act]'); if (b) act?.(b.dataset.act); });
  const put = (key, sel, html, prop = 'innerHTML') => { if (shown[key] === html) return false; shown[key] = html; $(sel)[prop] = html; return true; };
  const api = {
   root,
   get open() { return !root.classList.contains('hidden'); },
   // { title, detail (HTML), rows, myId, mode, buttons: [{ id, label, pressed }],
-  // first (the last one standing of an FFA ended early: stats-panel.js sortStatsRows) }.
+  // first (the last one standing of an FFA ended early: stats-panel.js sortStatsRows),
+  // summary (HTML: your match, ui/summary-card.js; '' for none) }.
   // Called again while open, only what changed is redrawn.
-  show({ title, detail = '', rows = [], myId = null, mode = null, buttons = [], first = null }) {
+  show({ title, detail = '', rows = [], myId = null, mode = null, buttons = [], first = null, summary = '' }) {
    const opening = !api.open;
    put('title', '#match-end-title', title);
    put('detail', '.match-end-detail', detail);
+   put('you', '.match-end-you', summary || '');
    put('table', '.match-end-table', statsTableHTML(rows, { myId, mode, final: true, first }));
    const html = buttons.map(b => `<button type="button" data-act="${esc(b.id)}"${b.pressed !== undefined ? ` aria-pressed="${!!b.pressed}"` : ''} class="${b.primary ? 'primary' : 'secondary'}">${esc(b.label)}</button>`).join('');
    const redrawn = put('buttons', '.match-end-actions', html);
@@ -83,7 +91,7 @@ export function createMatchEnd(parent, { act } = {}) {
     (root.querySelector(`button[data-act="${focused}"]`) || (opening ? root.querySelector('button') : null))?.focus();
    }
   },
-  hide() { if (!api.open) return; root.classList.add('hidden'); document.body.classList.remove('match-end-open'); shown = { title: null, detail: null, table: null, buttons: null }; },
+  hide() { if (!api.open) return; root.classList.add('hidden'); document.body.classList.remove('match-end-open'); shown = { title: null, detail: null, you: null, table: null, buttons: null }; },
  };
  return api;
 }

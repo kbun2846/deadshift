@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { SCATTER_RED } from '../effects/effects-detail.js';
 import { SCATTER } from '../config/gameplay.js';
 import { groundY, hilly, roundFlight } from '../render/ground-lift.js';
+import { POP, hullGeometry } from '../render/shot-pop.js';
 
 const CAPACITY = 64;
 const RED = new THREE.Color('#ff3a2a'), FIRE_GLOW = new THREE.Color('#ff3a22'), FIRE_RING = new THREE.Color('#ff6a4a'), SPLIT_FLASH = new THREE.Color('#ffd0b8');
@@ -27,7 +28,10 @@ const rich = fx => (fx?.level || 0) >= 1;
 export class ScatterView {
  constructor(view) {
   this.view = view;
-  this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: RED, toneMapped: false }), CAPACITY);
+  // The same red, with a near-black rim in the same geometry (one draw; render/shot-pop.js).
+  const box = new THREE.BoxGeometry(1, 1, 1);
+  this.mesh = new THREE.InstancedMesh(hullGeometry(box, { scale: POP.scatter.rimScale, core: '#' + RED.getHexString(), rim: POP.scatter.rim }), new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), CAPACITY);
+  box.dispose();
   this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   this.mesh.count = 0; this.mesh.visible = false; this.mesh.frustumCulled = false; this.mesh.castShadow = false;
   view.scene.add(this.mesh);
@@ -41,7 +45,8 @@ export class ScatterView {
   for (const b of list) {
    if (n >= CAPACITY) break;
    // A shell starts at the muzzle, not the body.
-   const lift = b.big ? .78 : .72, len = b.big ? .42 : .22, wide = b.big ? .15 : .09;
+   // (The pop pass: small shells a little bigger, .22 x .09 before; the look only.)
+   const lift = b.big ? .78 : .72, len = b.big ? .42 : .27, wide = b.big ? .15 : .11;
    // (Hills: on its flight over the ground, as rifle rounds are.)
    const under = hills ? this.view.ground.flightAt(roundFlight(this.view, this.glides, b, b.x - b.dx * b.travel, b.z - b.dz * b.travel, groundY(this.view, b.x - b.dx * b.travel, b.z - b.dz * b.travel), b.limit), b.travel) : 0;
    this.p.set(b.x, lift + under, b.z); this.q.setFromAxisAngle(this.up, -Math.atan2(b.dz, b.dx)); this.s.set(len, wide, wide);

@@ -1,0 +1,96 @@
+/* The killcam, the death card's NEXT LIFE row and countdown, and your match
+   summary on the end card (owner, 2026-10-02). killcam.js / ui/killcam-hud.js,
+   ui/death-screen.js, ui/summary-card.js. The HUD's own look: the health
+   bar's dark track and pink fill, the streak banner's dark panel with pink
+   edges, the stretched Arial Black lettering. */
+
+/* --- The killcam: a bar over your body and one over the killer, and the plaque. --- */
+#game .killcam{position:absolute;inset:0;z-index:39;display:none;pointer-events:none}
+#game .killcam[data-on="1"]{display:block}
+#game .killcam-bar{position:absolute;left:0;top:0;display:none;width:64px;margin:-22px 0 0 -32px;text-align:center;filter:drop-shadow(0 1px 2px #15201bc0);will-change:transform}
+#game .killcam-bar[data-show="1"]{display:block}
+#game .killcam-bar small{display:block;margin:0 0 3px;font:800 9px/1 var(--hud-font,Arial),Arial,sans-serif;letter-spacing:.2em;color:var(--ui-accent);text-transform:uppercase;text-shadow:0 1px 2px #000a}
+#game .killcam-track{position:relative;display:block;height:7px;background:#202827dc;border:1px solid #17231fcc;border-radius:1px;overflow:hidden}
+#game .killcam-fill{position:absolute;inset:0;display:block;background:var(--ui-accent);transform-origin:left;will-change:transform}
+/* The killer: the threat, a red edge round the same bar. */
+#game .killcam-bar[data-who=killer] small{color:#ff8e9b}
+#game .killcam-bar[data-who=killer] .killcam-track{border-color:#ff4056;box-shadow:0 0 0 1px #ff405644,0 0 10px #ff405655}
+/* The plaque, low in the middle: killed by NAME · WEAPON, and how to skip. */
+#game .killcam-plaque{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 92px);display:none;max-width:calc(100% - 32px);transform:translateX(-50%);padding:8px 22px 7px;
+ background:#232827e8;border-radius:4px;box-shadow:inset 3px 0 0 var(--ui-accent),inset -3px 0 0 var(--ui-accent),0 6px 18px #0007;text-align:center;white-space:nowrap}
+#game .killcam-plaque[data-show="1"]{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;column-gap:10px;row-gap:2px;animation:killcam-in .24s cubic-bezier(.2,.7,.2,1) both}
+#game .killcam-by{font:800 12px/1 var(--hud-font,Arial),Arial,sans-serif;letter-spacing:.2em;color:var(--ui-accent);text-transform:uppercase}
+#game .killcam-name{--fs:27px;display:block;min-width:0;max-width:min(52vw,440px);overflow:hidden;text-overflow:ellipsis;padding:7px 0 6px}
+#game .killcam-name b{display:inline-block;font:900 var(--fs)/1 'Arial Black',Arial,sans-serif;letter-spacing:.04em;color:#fff;transform:scale(.9,1.45);text-shadow:0 1px 0 #0009;text-transform:uppercase!important}
+#game .killcam-weapon{font:900 15px/1 'Arial Black',Arial,sans-serif;letter-spacing:.06em;color:#eee9df;text-transform:uppercase!important}
+#game .killcam-weapon i{font-style:normal;color:var(--ui-accent);margin-right:6px}
+#game .killcam-skip{flex-basis:100%;display:block;margin-top:2px;font:700 10px/1.2 var(--hud-font,Arial),Arial,sans-serif;letter-spacing:.14em;color:#9aa6a1;text-transform:lowercase;background:none;border:0;padding:0}
+/* (Entry animations move and scale, never fade: a starved page must not leave them at opacity 0.) */
+@keyframes killcam-in{from{transform:translateX(-50%) translateY(8px) scale(1.06)}to{transform:translateX(-50%)}}
+@media(prefers-reduced-motion:reduce){#game .killcam-plaque[data-show="1"]{animation:none}}
+@media(max-width:700px),(max-height:520px){#game .killcam-plaque{bottom:calc(env(safe-area-inset-bottom,0px) + 72px);padding:6px 14px 6px}#game .killcam-name{--fs:21px}#game .killcam-weapon{font-size:13px}}
+@media(max-height:520px) and (orientation:landscape){#game .killcam-plaque{bottom:calc(env(safe-area-inset-bottom,0px) + 18px)}}
+body:not(.dying) #game .killcam,body.dead-menu #game .killcam{display:none!important}
+
+/* --- The death card: RESPAWN IN and its number, popping as it ticks. --- */
+#game #death-screen .death-respawn-count b{display:inline-block;font:inherit;transform-origin:70% 60%}
+#game #death-screen .death-respawn-count[data-tick=a] b{animation:respawn-tick-a .32s cubic-bezier(.2,.8,.3,1.2) both}
+#game #death-screen .death-respawn-count[data-tick=b] b{animation:respawn-tick-b .32s cubic-bezier(.2,.8,.3,1.2) both}
+@keyframes respawn-tick-a{from{transform:scale(1.4);color:#fff}to{transform:none}}
+@keyframes respawn-tick-b{from{transform:scale(1.4);color:#fff}to{transform:none}}
+@media(prefers-reduced-motion:reduce){#game #death-screen .death-respawn-count b{animation:none!important}}
+
+/* --- NEXT LIFE: the weapon you come back with, one small tile per weapon. --- */
+#game #death-screen .death-next{margin:0 0 6px}
+#game #death-screen .death-next[hidden],#game #death-screen .death-next-row[hidden],#game #death-screen .death-next-ladder[hidden]{display:none}
+#game #death-screen .death-next-label{display:block;margin:0 0 6px;font:900 13px/1 Arial Black,Arial,sans-serif;letter-spacing:.18em;color:#090d0c;text-transform:uppercase}
+#game #death-screen .death-next-pick{margin-left:6px;color:#fff;letter-spacing:.1em;text-shadow:-1px 0 #090d0c,1px 0 #090d0c,0 -1px #090d0c,0 1px #090d0c}
+#game #death-screen .death-next-row{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px}
+#game #death-screen .death-next-tile{position:relative;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;align-content:start;justify-items:stretch;gap:2px;width:auto;height:auto;min-height:0;margin:0;padding:3px 2px 4px;
+ background:#090d0c2e;border:2px solid #090d0c55;border-radius:6px;color:#090d0c;font-size:inherit;text-align:center;cursor:pointer;transition:transform .12s ease}
+#game #death-screen .death-next-tile:hover,#game #death-screen .death-next-tile:focus-visible{background:#090d0c44;border-color:#090d0c;color:#090d0c;transform:translateY(-2px);text-shadow:none}
+#game #death-screen .death-next-tile.picked{background:#232827;border-color:var(--ui-accent);box-shadow:0 0 0 2px #090d0c,0 4px 12px #0006;transform:translateY(-2px)}
+#game #death-screen .death-next-tile.picked .death-next-name{color:var(--ui-accent)}
+#game #death-screen .death-next-art{position:relative;display:block;width:100%;aspect-ratio:1;overflow:hidden}
+#game #death-screen .death-next-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
+#game #death-screen .death-next-name{display:block;max-width:100%;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:800 10px/1.1 var(--hud-font,Arial),Arial,sans-serif;text-transform:none!important}
+#game #death-screen .death-next-key{position:absolute;left:3px;top:3px;z-index:3;min-width:13px;padding:1px 2px;border:1px solid #090d0c99;border-radius:3px;background:#eee9dfcc;font:900 9px/1 Arial,sans-serif;color:#090d0c}
+#game #death-screen .death-next-tile.picked .death-next-key{background:var(--ui-accent)}
+body[data-controls=touch] #game #death-screen .death-next-key{display:none}
+#game #death-screen .death-next-ladder{display:flex;align-items:baseline;gap:10px;margin:0;font:900 22px/1 Arial Black,Arial,sans-serif;color:#fff;text-transform:uppercase;text-shadow:-1px 0 #090d0c,1px 0 #090d0c,0 -1px #090d0c,0 1px #090d0c}
+#game #death-screen .death-next-ladder small{font:800 12px/1 var(--hud-font,Arial),Arial,sans-serif;color:#090d0c;text-shadow:none;text-transform:none}
+/* Phones: pictures only (the label names the one lit), a little tighter. */
+@media(max-width:700px),(max-aspect-ratio:1/1){#game #death-screen .death-next-row{gap:4px}#game #death-screen .death-next-name{display:none}#game #death-screen .death-next-tile{padding:2px}}
+@media(max-height:520px) and (orientation:landscape) and (min-aspect-ratio:1/1){#game #death-screen .death-next{margin-bottom:2px}#game #death-screen .death-next-label{margin-bottom:4px;font-size:11px}#game #death-screen .death-next-name{display:none}#game #death-screen .death-next-tile{padding:2px}}
+
+/* --- Your match (the end card): the highlight and your numbers. --- */
+#game .match-end-you:empty{display:none}
+#game .match-end-you{grid-column:1/-1;min-width:0;margin:0 0 12px}
+#game .summary-you{display:grid;gap:8px;padding:10px 12px 11px;background:#1b201f;border:1px solid #3c4543;border-radius:5px;box-shadow:inset 3px 0 0 var(--ui-accent)}
+#game .summary-highlight{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0;min-width:0}
+#game .summary-highlight small{font:800 11px/1 var(--hud-font,Arial),Arial,sans-serif;letter-spacing:.2em;color:#9aa6a1;text-transform:uppercase!important}
+#game .summary-highlight b{display:inline-block;padding:4px 0 3px;font:900 25px/1 'Arial Black',Arial,sans-serif;letter-spacing:.03em;color:var(--ui-accent);transform:scale(.92,1.3);transform-origin:0 60%;text-transform:uppercase!important;white-space:nowrap;animation:summary-pop .45s .12s cubic-bezier(.2,.8,.3,1.3) both}
+@keyframes summary-pop{from{transform:scale(1.25,1.6)}to{transform:scale(.92,1.3)}}
+@media(prefers-reduced-motion:reduce){#game .summary-highlight b{animation:none}}
+#game .summary-stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin:0}
+#game .summary-stat{min-width:0;padding:6px 8px;background:#232827;border-radius:4px}
+#game .summary-stat dt{font:800 10px/1.1 var(--hud-font,Arial),Arial,sans-serif;letter-spacing:.12em;color:#9aa6a1;text-transform:uppercase!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#game .summary-stat dd{margin:3px 0 0;font:900 20px/1 'Arial Black',Arial,sans-serif;color:#eee9df;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#game .summary-fav dd{display:flex;align-items:center;gap:5px;font-size:13px;line-height:20px;text-transform:uppercase!important}
+#game .summary-fav img{flex:none;width:24px;height:20px;object-fit:contain}
+#game .summary-fav span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* Phones: one compact row of six (the short labels), the favourite as its picture. */
+@media(max-width:620px){#game .match-end-you{margin-bottom:10px}#game .summary-you{padding:7px 8px 8px;gap:5px}#game .summary-highlight{gap:8px}#game .summary-highlight small{font-size:9px}#game .summary-highlight b{font-size:20px;padding:2px 0 1px}
+ #game .summary-stats{gap:3px}#game .summary-stat{padding:4px 3px 4px 5px}#game .summary-stat dt{font-size:8px;letter-spacing:.06em}#game .summary-stat dd{margin-top:2px;font-size:15px}
+ #game .summary-stat .summary-long{display:none}#game .summary-fav dd{font-size:0;line-height:15px}#game .summary-fav img{width:100%;height:15px}}
+#game .summary-stat dt *{text-transform:uppercase!important}
+/* A phone on its side: your match goes under the buttons in the card's right
+   column (three across, short labels), so the table keeps its whole height. */
+@media(max-height:520px) and (orientation:landscape){
+ #game .match-end-table{grid-column:1;grid-row:3 / span 2}
+ #game .match-end-actions{grid-column:2;grid-row:3}
+ #game .match-end-you{grid-column:2;grid-row:4;margin:10px 0 0;align-self:start}
+ #game .summary-you{padding:6px 7px 7px;gap:4px}#game .summary-highlight{display:grid;gap:2px}#game .summary-highlight small{font-size:8px}#game .summary-highlight b{font-size:15px;padding:2px 0 1px;white-space:normal}
+ #game .summary-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:3px}#game .summary-stat{padding:3px 3px 3px 5px}#game .summary-stat dt{font-size:7px;letter-spacing:.05em}#game .summary-stat dd{margin-top:1px;font-size:13px}
+ #game .summary-stat .summary-long{display:none}#game .summary-fav dd{font-size:0;line-height:13px}#game .summary-fav img{width:100%;height:13px}
+}

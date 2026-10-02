@@ -261,7 +261,7 @@ export const SIDEKICK=Object.freeze({magazine:12,damage:8.6,damageRoll:.4,reload
 // from half blood, ~1.67 s), blood
 // slash 14 -> 18 +/- 2 at .4 of it in health (.5: still ~7), guard 10 -> 16
 // (bullets hit ~1.5x harder).
-export const ICHOR=Object.freeze({damage:6,maxDamage:17,interval:.24,contact:.067,range:2.15,arc:2.9,meterMax:100,gain:7.5,gainRoll:1,waveGain:13,waveGainRoll:1.5,decayDelay:7,decay:3,bleedDuration:8,trailSpeed:1.20,trailLife:18,trailCap:160,dodges:2,dashRechargeScale:1.12,eCooldown:6,eBlood:50,waveDamage:18,waveRoll:2,waveCost:.4,waveSpeed:19,waveRange:17,xCooldown:50,hits:12,frenzyInterval:.20,frenzyDamage:78,frenzyMax:216,healthDrain:16/2.4,splash:.22,dashGrace:.24,dashDamage:1.15,dashReach:.3,frenzyMove:1.3,fullMove:1.05,fullRecharge:1.2,attackMove:.88,regenThreshold:90,regen:1.2,parryStart:.04,parryEnd:.095,parryRecovery:.28,parryFacing:.55,guardCooldown:20,guardCapacity:16,guardRoll:2,guardMove:.9,chainWindow:.85,chainStep:.07,chainMax:.21,shortArc:1.85,midArc:2.3});
+export const ICHOR=Object.freeze({damage:6,maxDamage:17,interval:.24,contact:.067,range:2.15,arc:2.9,meterMax:100,gain:7.5,gainRoll:1,waveGain:13,waveGainRoll:1.5,decayDelay:7,decay:3,bleedDuration:8,trailSpeed:1.20,trailLife:18,trailCap:160,dodges:2,dashRechargeScale:1.12,eCooldown:6,eBlood:50,waveDamage:18,waveRoll:2,waveCost:.4,waveSpeed:19,waveRange:17,xCooldown:50,hits:12,frenzyInterval:.20,frenzyDamage:78,frenzyMax:216,healthDrain:16/2.4,splash:.22,dashGrace:.24,dashDamage:1.15,dashReach:.3,frenzyMove:1.3,fullMove:1.05,fullRecharge:1.2,attackMove:.88,regenThreshold:90,regen:1.2,parryStart:.04,parryEnd:.095,parryRecovery:.28,parryFacing:.55,guardCooldown:20,guardCapacity:30,guardRoll:2,guardMove:.9,chainWindow:.85,chainStep:.07,chainMax:.21,shortArc:1.85,midArc:2.3});
 
 // Sheath: a white broadsword carried in a black sheath at the hip (owner's
 // brief, 2026-09-28). Heavier than Ichor: one slower, wider swing at a time.
@@ -298,3 +298,13 @@ export const SHEATH=Object.freeze({damage:16,damageRoll:1,interval:.46,windup:.1
  dodges:2,dashRechargeScale:1.12,sheatheDelay:1.5,bloodPerHit:1/8,
  rushDuration:3,rushSpeed:1.45,eCooldown:10,
  xRange:7.5,xWidth:.75,xDamage:60,xRoll:2,xBack:.12,xBackDist:1.5,xTell:.17,xDashSpeed:52,xLead:.6,xStrike:.3,xFlourish:.5,xFlourishMove:.6,xShort:.55,xCooldown:35,rushReach:2});
+
+// ---- Spawn protection (spawn-protection.js) ----
+// Owner, 2026-10-01: "Make the kills feel amazing and do that for FFA too,
+// and the spawn protection" (approved: "~1.5 s that ends early if you
+// shoot/attack/use an ability"). After a respawn (FFA, practice and BOTS
+// FFA; never at an elimination round's start, when everyone comes in
+// together) a body takes no damage from other players or robots for `time`
+// seconds. Pressing any attack or ability ends it at once (ATTACK_PRESSES);
+// moving, aiming, dodging and reloading do not. The storm and fire still hurt.
+export const SPAWN_PROTECTION = Object.freeze({ time: 1.5 });

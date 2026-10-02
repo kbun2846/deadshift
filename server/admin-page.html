@@ -682,7 +682,7 @@ function renderOverview() {
  const v = o.version;
  const cards = [
   '<div class="stat"><span class="k">players online</span><span class="v">' + o.players + '</span><span class="s">peak today ' + o.peakToday + ' <span class="faint">(UTC day)</span></span>' + spark(samples.map(s => s.players), { label: 'players over the last 15 minutes' }) + '</div>',
-  '<div class="stat"><span class="k">rooms</span><span class="v">' + o.activeRooms + '<small>with players</small></span><span class="s">' + plural(o.rooms, 'room') + ' open in total (listed rooms are always open)</span></div>',
+  '<div class="stat"><span class="k">rooms</span><span class="v">' + o.activeRooms + '<small>with players</small></span><span class="s">' + plural(o.rooms, 'room') + ' open in total (listed rooms are always open)' + (o.quickRooms ? ' · ' + plural(o.quickRooms, 'quick play room') : '') + (o.quickWaiting ? ' · <b>' + o.quickWaiting + '</b> waiting for quick play' : '') + '</span></div>',
   '<div class="stat wide"><span class="k">server load</span><span class="v' + (busy ? ' warn' : '') + '">' + load.now.toFixed(2) + '<small>ms a tick now</small></span><span class="s">last minute: avg ' + load.avg.toFixed(2) + ' ms · peak ' + load.peak.toFixed(1) + ' ms · budget ' + tick.toFixed(1) + ' ms' + (busy ? ' · <span class="warn">busy</span>' : '') + '</span>' + spark(samples.map(s => s.avg), { peaks: samples.map(s => s.peak), budget: tick, label: 'tick time over the last 15 minutes' }) + '</div>',
   '<div class="stat"><span class="k">data sent to players</span><span class="v">' + bytes(sent.total) + '</span><span class="s">since start · now ' + bytes(sent.rate) + '/s</span></div>',
   '<div class="stat wide"><span class="k">this month (' + esc(sent.monthKey) + ', UTC)</span><span class="v">' + bytes(sent.month) + '<small>of ' + bytes(sent.plan) + '</small></span>' +
@@ -731,18 +731,26 @@ function roomClock(r) {
  if (r.timed && r.left) parts.push(clockText(r.left) + ' left');
  return parts.join(' · ');
 }
+// QUICK PLAY's queue: pages playing their bot fight while they wait for
+// another player (server/quick.js); `offered`: a quick room they were offered.
+function quickWaiting() {
+ const list = state.quick || [];
+ if (!list.length) return '';
+ return '<article class="room idle"><div class="room-head"><div class="room-title"><h3>waiting for quick play <span class="tag">queue</span></h3><div class="room-meta">' +
+  list.map(w => '<span><b>' + esc(w.name || '(no name)') + '</b> · ' + span(w.waiting) + (w.offered ? ' · offered <code>' + esc(w.offered) + '</code>' : '') + ' · <code>' + esc(w.ip) + '</code></span>').join('') + '</div></div></div></article>';
+}
 function renderRooms() {
  const q = $('rooms-q').value.trim().toLowerCase(), showEmpty = $('rooms-empty').checked;
  const rooms = state.rooms.filter(r => (showEmpty || r.players.length || q) && matches(q, r.code, r.name, r.mapName, r.map, r.modeName, ...r.players.flatMap(p => [p.name, p.ip, p.pid])))
   .sort((a, b) => b.players.length - a.players.length || (a.public === b.public ? 0 : a.public ? 1 : -1) || String(a.name || '').localeCompare(String(b.name || '')));
  if (!rooms.length) {
   const total = state.rooms.length;
-  setHTML($('rooms-list'), '<div class="empty">' + (q ? 'No room matches “' + esc(q) + '”.' : 'Nobody is playing right now. ' + plural(total, 'room') + ' open and waiting; tick “show empty rooms” to see them.') + '</div>');
+  setHTML($('rooms-list'), quickWaiting() + '<div class="empty">' + (q ? 'No room matches “' + esc(q) + '”.' : 'Nobody is playing right now. ' + plural(total, 'room') + ' open and waiting; tick “show empty rooms” to see them.') + '</div>');
   return;
  }
- setHTML($('rooms-list'), rooms.map(r => {
+ setHTML($('rooms-list'), quickWaiting() + rooms.map(r => {
   const clock = roomClock(r), title = r.name || (r.public ? 'listed room' : 'player-made room');
-  const head = '<div class="room-head"><div class="room-title"><h3>' + esc(title) + ' <span class="room-code">' + esc(r.code) + copyBtn(r.code, 'room code') + '</span>' + (r.public ? '<span class="tag">listed</span>' : '<span class="tag pink">player-made</span>') + '</h3>' +
+  const head = '<div class="room-head"><div class="room-title"><h3>' + esc(title) + ' <span class="room-code">' + esc(r.code) + copyBtn(r.code, 'room code') + '</span>' + (r.public ? '<span class="tag">listed</span>' : r.quick ? '<span class="tag">quick play</span>' : '<span class="tag pink">player-made</span>') + '</h3>' +
    '<div class="room-meta"><span>' + esc(r.mapName) + '</span><span>' + esc(r.modeName || r.mode) + '</span><span><b>' + esc(r.phase) + '</b>' + (clock ? ' · ' + esc(clock) : '') + '</span><span><b>' + r.players.length + '</b>/' + r.max + ' players</span><span>' + plural(r.robots, 'bot') + '</span></div></div>' +
    '<div class="room-actions"><button class="btn small" type="button" data-act="room-message" data-code="' + esc(r.code) + '" data-players="' + r.players.length + '"' + (r.players.length ? '' : ' disabled') + '>message room</button>' +
    '<button class="btn small danger" type="button" data-act="room-close" data-code="' + esc(r.code) + '" data-listed="' + (r.public ? 1 : 0) + '" data-name="' + esc(title) + '"' + (r.public && !r.players.length ? ' disabled' : '') + '>' + (r.public ? 'reset room' : 'close room') + '</button></div></div>';

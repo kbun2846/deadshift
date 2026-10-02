@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeSidekick,poseSidekick } from './sidekick-model.js';
 import { SIDEKICK as S } from '../config/gameplay.js';
-const WHITE=new THREE.Color('#ecf2d9'),STEEL=new THREE.Color('#504e40'),RED=new THREE.Color('#ff3042'),GREEN=new THREE.Color('#65ed91'),RIM=new THREE.Color('#74705a'),FRIEND_RIM=new THREE.Color('#a7b69a'),GREEN_IDLE=new THREE.Color('#6bc185');
+import { POP, hullGeometry } from '../render/shot-pop.js';
+const PURE=new THREE.Color('#ffffff'),WHITE=new THREE.Color('#ecf2d9'),STEEL=new THREE.Color('#504e40'),RED=new THREE.Color('#ff3042'),GREEN=new THREE.Color('#65ed91'),RIM=new THREE.Color('#74705a'),FRIEND_RIM=new THREE.Color('#a7b69a'),GREEN_IDLE=new THREE.Color('#6bc185');
 // One merged silhouette per echo, instanced and faded. Never clone a body each frame.
 function silhouette(){
  const parts=[],part=(g,x,y,z)=>{g.translate(x,y,z);parts.push(g);};
@@ -15,7 +16,9 @@ export class SidekickView{
   this.view=view;this.model=makeSidekick();this.model.userData.local=true;this.model.visible=false;view.player.userData.gun.add(this.model);
   this.clock=0;this.echoes=[];this.lastEcho=new Map();this.dummy=new THREE.Object3D();this.axis=new THREE.Vector3();this.up=new THREE.Vector3(0,1,0);
   const batch=(geo,cap,opacity=1)=>{const mesh=new THREE.InstancedMesh(geo,new THREE.MeshBasicMaterial({color:'#ffffff',transparent:opacity<1,opacity,depthWrite:opacity===1,toneMapped:false}),cap);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.setColorAt(0,WHITE);mesh.frustumCulled=false;mesh.count=0;view.scene.add(mesh);return mesh;};
-  this.rounds=batch(new THREE.BoxGeometry(.035,1,.035),48,.85);
+  // Rounds pop (render/shot-pop.js): pale steel, solid (.85 see-through
+  // before), wider, with a dark rim in the same geometry.
+  {const K=POP.sidekick,box=new THREE.BoxGeometry(K.width,1,K.width);this.rounds=batch(hullGeometry(box,{scale:K.rimScale,core:K.round,rim:K.rim}),48);this.rounds.material.vertexColors=true;box.dispose();}
   this.discs=batch(new THREE.CylinderGeometry(.24,.27,.055,12),24);this.rims=batch(new THREE.TorusGeometry(.19,.012,3,12).rotateX(Math.PI/2),24);
   this.dots=batch(new THREE.OctahedronGeometry(.037),24);this.ghosts=batch(silhouette(),48,.20);
   this.fade=new THREE.InstancedBufferAttribute(new Float32Array(48),1);this.fade.setUsage(THREE.DynamicDrawUsage);this.ghosts.geometry.setAttribute('echoFade',this.fade);
@@ -45,7 +48,7 @@ export class SidekickView{
    const pulse=friendly?(armed?(flash?2:1.35):1.1):(armed?(flash?1:.12):.18);
    this.put(this.dots,m.x,y+.055,m.z,0,pulse,pulse,pulse,friendly?(flash?GREEN:GREEN_IDLE):RED);
   }
-  for(const b of sim.sidekickRounds||[]){if(!visible(b.x,b.z))continue;const length=Math.min(.9,b.travel+.1),d=this.dummy;d.position.set(b.x-b.dx*length/2,b.y,b.z-b.dz*length/2);d.quaternion.setFromUnitVectors(this.up,this.axis.set(b.dx,0,b.dz));d.scale.set(1,length,1);d.updateMatrix();const i=this.rounds.count;if(i<48){this.rounds.setMatrixAt(i,d.matrix);this.rounds.setColorAt(i,WHITE);this.rounds.count++;}}
+  for(const b of sim.sidekickRounds||[]){if(!visible(b.x,b.z))continue;const length=Math.min(.9,b.travel+.1),d=this.dummy;d.position.set(b.x-b.dx*length/2,b.y,b.z-b.dz*length/2);d.quaternion.setFromUnitVectors(this.up,this.axis.set(b.dx,0,b.dz));d.scale.set(1,length,1);d.updateMatrix();const i=this.rounds.count;if(i<48){this.rounds.setMatrixAt(i,d.matrix);this.rounds.setColorAt(i,PURE);this.rounds.count++;}}
   const people=[...v.remotePlayers||[]];if(this.model.visible)people.push({...p,sidekick:sim.sidekick});
   const spacing=['quality','extreme'].includes(v.qualityName)?.06:.10;
   for(const body of people){const own=body.id===p.id,avatar=own?v.player:v.remote?.avatars.get(body.id)?.root;

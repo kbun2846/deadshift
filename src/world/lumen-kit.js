@@ -19,6 +19,8 @@ import * as THREE from 'three';
 import { bakeColors } from '../render/bake-colors.js';
 import { litBox, litMaterial } from './lumen-glow.js';
 import { setLumenModelFinish } from './lumen-props.js';
+import { lab, hexRgb, deltaE2000 } from '../render/look-contrast.js';
+import { TEAMS } from '../config/match.js';
 
 // The city's colours (design section 15) and the lit set. Never Amber
 // #ffb020, Cyan #2ee6ff or Violet #b77bff.
@@ -54,6 +56,34 @@ export function tone(hex, amount, steps = STEPS) {
   const c = shift => Math.round(((n >> shift) & 255) * (1 - k) + f * k);
   return '#' + ((1 << 24) | c(16) << 16 | c(8) << 8 | c(0)).toString(16).slice(1);
 }
+
+// Obstacles read off the street (owner, 2026-10-01: "the obstacles all over
+// the map kind of just blend in too much ... make it like a little bit more
+// lit up. So it's a little bit more contrasting to the obstacles. So you can
+// kind of tell what's what"). Every plain part of a piece a body bumps into
+// (it has a collider and is not walk-over: the street furniture, the
+// breakables, the set pieces, the bike rails) is lifted a step: each sRGB
+// channel x `gain` + `add`, so the dark ones (bins, crates, graphite and
+// black parts) come up most and every colour keeps its hue. What a body walks
+// over (the street detail, ground dressing) and the lit parts are not, so the
+// ground and its litter stay a step under what blocks. Built once at load:
+// no cost a frame. (The cars are world/lumen-vehicles.js's own and keep
+// their paint: big, lit and already apart from the road.)
+// A lifted colour that would land within 16 (CIEDE2000) of a team colour
+// (Amber, Cyan, Violet) keeps its own.
+export const OBSTACLE_LIFT = Object.freeze({ gain: 1.1, add: .05 });
+const TEAM_LABS = TEAMS.map(t => lab(hexRgb(t.colour))), LIFTED = new Map();
+export function liftHex(hex) {
+  let out = LIFTED.get(hex);
+  if (out) return out;
+  const { gain, add } = OBSTACLE_LIFT, n = parseInt(hex.slice(1), 16), c = shift => Math.min(255, Math.round((((n >> shift) & 255) / 255 * gain + add) * 255));
+  out = '#' + ((1 << 24) | c(16) << 16 | c(8) << 8 | c(0)).toString(16).slice(1);
+  const at = lab(hexRgb(out));
+  if (TEAM_LABS.some(t => deltaE2000(at, t) < 16)) out = hex;
+  LIFTED.set(hex, out);
+  return out;
+}
+export const isObstacle = p => !p.walkOver && (p.collisionBoxes?.length ?? 0) > 0;
 
 // A part no thicker than FLAT_PART.height (a sheet, a stain, a mat, a grate's
 // bar lying flat, tipped no more than FLAT_PART.tilt) is drawn as its top face
@@ -210,7 +240,9 @@ export function kit(view, p, g) {
   // so two of a type never read as the same object. Its own stream, so the model's wear draws are unchanged.
   const age = (propStream(p, 7919)() - .5) * .5;
   // (a coloured part only ever darkens, so wear never drifts toward Amber, Cyan or Violet; greys go either way)
-  const dye = hex => { const n = parseInt(hex.slice(1), 16), r = n >> 16, gg = n >> 8 & 255, b = n & 255; return tone(hex, Math.max(r, gg, b) - Math.min(r, gg, b) > 40 ? -Math.abs(age) : age, 10); };
+  // (then an obstacle's colour lifted: OBSTACLE_LIFT)
+  const lift = isObstacle(p) ? liftHex : hex => hex;
+  const dye = hex => { const n = parseInt(hex.slice(1), 16), r = n >> 16, gg = n >> 8 & 255, b = n & 255; return lift(tone(hex, Math.max(r, gg, b) - Math.min(r, gg, b) > 40 ? -Math.abs(age) : age, 10)); };
   const put = (mesh, rot) => { if (rot) mesh.rotation.set(rot[0] || 0, rot[1] || 0, rot[2] || 0); return mesh; };
   const K = {
     g, view, p, rand, breakable,

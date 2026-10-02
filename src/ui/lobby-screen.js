@@ -36,6 +36,7 @@ const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;',
 // What each mode is, under the mode buttons (robots: SETTINGS.robots).
 export const MODE_NOTES = Object.freeze({
  ffa: 'everyone for themselves · bots fill up to 4',
+ gungame: 'every kill hands you the next weapon · first through all of them wins',
  practice: 'targets out, nothing counted · + bot to add sparring bots',
  '1v1': 'two players, one on one · a bot fills an empty seat',
  '2v2': 'two sides of two · bots fill empty seats',

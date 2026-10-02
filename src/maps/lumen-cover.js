@@ -43,7 +43,14 @@
 // streets... some objects are perfectly vertical and difficult to see with
 // camera so player just runs into them"): every bollard, three hydrants, two
 // charging posts, doubled cones, bags and planters at busy corners, a vending
-// machine and a utility box went (173 pieces, was 198); no car moved. New
+// machine and a utility box went (173 pieces, was 198); no car moved. Second
+// cut, the same day ("the streets should be more empty. They should still
+// have the cars ... but the detail and stuff on the streets themselves is
+// kind of just too much"): 173 -> 153. Every crash barrier the rules above do
+// not need went (7 of 28: each one taken out and the cover, spawn and
+// road-block tests run again; the 21 left each hold a line), and from the
+// street dressing three benches, three low planters, a hydrant, a bag heap,
+// three cones, a charging post and a utility box; every car stays. New
 // pieces keep tests/lumen-clutter.test.js: no thin upright collider (under
 // 0.5 m across, 0.75 m or taller) without a reason, and the street-object
 // budget.
@@ -100,11 +107,10 @@ export const LUMEN_PROPS = [
   { type: 'citySedan', x: -22.9, z: 8.15, angle: -1.571 },
   // --- The fallen signal pole, West Street x South Street (1)
   { type: 'cityFallenPole', x: -30.35, z: 29.75, angle: -0.785 },
-  // --- The abandoned checkpoint (4)
+  // --- The abandoned checkpoint (3)
   { type: 'cityCheckpointBarrier', x: 3.6, z: -44.6, angle: 0.35 },
   { type: 'cityCheckpointBarrier', x: 3.4, z: -51.4, angle: -0.3 },
   { type: 'cityCone', x: 5.8, z: -48.6, angle: 0 },
-  { type: 'cityCone', x: 4.4, z: -47.4, angle: 0 },
   // --- Night market stalls on North Lane (5)
   { type: 'cityStall', x: -19.8, z: -39.3, angle: 0 },
   { type: 'cityStall', x: -15.9, z: -39.3, angle: 0 },
@@ -123,8 +129,7 @@ export const LUMEN_PROPS = [
   { type: 'cityDumpster', x: -44.5, z: -28, angle: 0.359 },
   { type: 'cityDumpster', x: -41.5, z: -31.5, angle: 1.571 },
   { type: 'cityUtilityBox', x: -41.8, z: -24, angle: -0.125 },
-  // --- The charging lot (base C) (8)
-  { type: 'cityChargePost', x: -21.7, z: 41, angle: 1.571 },
+  // --- The charging lot (base C) (7)
   { type: 'cityChargePost', x: -21.7, z: 44.4, angle: 1.571 },
   { type: 'cityChargePost', x: -21.7, z: 46.6, angle: 1.571 },
   { type: 'cityCompact', x: -20.2, z: 44.9, angle: 1.571 },
@@ -171,7 +176,7 @@ export const LUMEN_PROPS = [
   { type: 'cityWreck', x: 2.44, z: 35.15, angle: -1.598 },
   // --- South Street, thinner (1)
   { type: 'cityCompact', x: -12.2, z: 28.27, angle: -0.012 },
-  // --- The Crossroads (hand-placed) (22)
+  // --- The Crossroads (hand-placed) (21)
   { type: 'cityTaxi', x: -10.5, z: -1.13, angle: 1.587 },
   { type: 'cityWreck', x: 9.6, z: 0.6, angle: 4.503 },
   { type: 'cityIsland', x: 6, z: -4.6, angle: 1.571 },
@@ -189,12 +194,11 @@ export const LUMEN_PROPS = [
   { type: 'cityWreck', x: -7.21, z: -7.66, angle: -1.042 },
   { type: 'cityCompact', x: 22.63, z: -8.44, angle: -0.265 },
   { type: 'citySedan', x: 14.01, z: 14.36, angle: -2.798 },
-  { type: 'cityJersey', x: -1.65, z: 14.37, angle: 2.618 },
   { type: 'cityJersey', x: 12.98, z: 1.31, angle: 2.622 },
   { type: 'cityJersey', x: 18.33, z: -6.47, angle: 0.521 },
   { type: 'citySedan', x: -5.17, z: 0.02, angle: -0.705 },
   { type: 'cityJersey', x: -6.75, z: 0.88, angle: -0.364 },
-  // --- Cover: The Boulevard (23)
+  // --- Cover: The Boulevard (21)
   { type: 'cityHoarding', x: -30.34, z: -3.66, angle: 1.478 },
   { type: 'cityHoarding', x: -34.6, z: -7.25, angle: -1.571 },
   { type: 'cityHoarding', x: -39.56, z: -2.4, angle: 1.916 },
@@ -208,17 +212,15 @@ export const LUMEN_PROPS = [
   { type: 'cityConstruction', x: -13.46, z: 4.98, angle: 0.884 },
   { type: 'cityPlanterTall', x: 34.75, z: 8.1, angle: 1.571 },
   { type: 'cityDumpster', x: -25.25, z: -7.85, angle: -0.228 },
-  { type: 'cityJersey', x: -18.03, z: -7.76, angle: 0.897 },
   { type: 'cityKiosk', x: -50.75, z: 7.85, angle: 1.571 },
   { type: 'cityJersey', x: -13.38, z: -4.63, angle: 1.315 },
   { type: 'cityDumpster', x: -35.6, z: 6.25, angle: 0 },
-  { type: 'cityJersey', x: -55.7, z: 6.5, angle: -0.092 },
   { type: 'cityJersey', x: 24.68, z: 3.64, angle: 1.658 },
   { type: 'cityJersey', x: -31.34, z: 6.4, angle: 0.09 },
   { type: 'cityJersey', x: -15.17, z: 1.98, angle: 1.366 },
   { type: 'cityScreenWall', x: 31.75, z: 7.85, angle: 1.571 },
   { type: 'cityPlanterTall', x: -17.75, z: 8.1, angle: -0.157 },
-  // --- Cover: The Avenue (17)
+  // --- Cover: The Avenue (14)
   { type: 'cityConstruction', x: 2.98, z: -37.38, angle: 0.308 },
   { type: 'cityHoarding', x: 0.15, z: 42.25, angle: -1.571 },
   { type: 'cityHoarding', x: 6.47, z: 40.02, angle: 0.136 },
@@ -228,22 +230,18 @@ export const LUMEN_PROPS = [
   { type: 'cityConstruction', x: 3.85, z: 28.04, angle: 0.159 },
   { type: 'cityConstruction', x: 6.04, z: -28.13, angle: 0.14 },
   { type: 'cityJersey', x: 8.71, z: 47.12, angle: -0.168 },
-  { type: 'cityJersey', x: 5, z:  -49.2, angle:  -0.9 },
   { type: 'cityJersey', x: 6.8, z: 27.25, angle: 0.244 },
   { type: 'cityPlanterTall', x: 11.35, z: 37.75, angle: 0.156 },
   { type: 'cityPlanterTall', x: 0.65, z: -25.25, angle: 0 },
-  { type: 'cityJersey', x: 7.81, z: -16.79, angle: 0.314 },
   { type: 'cityJersey', x: 2.75, z: -36.18, angle: -0.3 },
-  { type: 'cityJersey', x: 7.7, z: 44.61, angle: -0.218 },
   { type: 'cityJersey', x: 3.86, z: -17.25, angle: -0.342 },
-  // --- Cover: West Street (10)
+  // --- Cover: West Street (9)
   { type: 'cityDumpster', x: -26.15, z: -23.75, angle: 0.25 },
   { type: 'cityDumpster', x: -33.85, z: -31.25, angle: -0.152 },
   { type: 'cityHoarding', x: -27.05, z: -50.2, angle: 1.417 },
   { type: 'cityHoarding', x: -29.4, z:  -34.6, angle:  -0.5 },
   { type: 'cityHoarding', x: -30.87, z: 21.24, angle: 0.331 },
   { type: 'cityConstruction', x: -30.26, z: -12.17, angle: -0.153 },
-  { type: 'cityJersey', x: -27, z: -15.38, angle: 1.463 },
   { type: 'cityJersey', x: -27.65, z: -0.56, angle: 0.698 },
   { type: 'cityJersey', x: -30.85, z: 16.09, angle: 0.229 },
   { type: 'cityJersey', x: -33.49, z: -1.83, angle: 0.96 },
@@ -269,29 +267,18 @@ export const LUMEN_PROPS = [
   { type: 'cityHoarding', x: 27.96, z: 10.63, angle: 0.785 },
   { type: 'cityShelter', x: 31.53, z: 30.39, angle: 0.785 },
   { type: 'cityPlanterTall', x: 38.39, z: 23.53, angle: -0.639 },
-  // --- Street dressing (low or small: changes no rule) (24)
+  // --- Street dressing (low or small: changes no rule) (13)
   { type: 'cityHydrant', x: 44.71, z: 8.44, angle: 3.142 },
-  { type: 'cityHydrant', x: 38.51, z: 38.89, angle: -0.785 },
   { type: 'cityBench', x: 27.76, z: 26.57, angle: 2.592 },
-  { type: 'cityBench', x: 20.13, z: 19.93, angle: -0.568 },
-  { type: 'cityBench', x: 36.47, z: -7.35, angle: -0.158 },
   { type: 'cityBench', x: 49.8, z: -16.06, angle: -0.142 },
-  { type: 'cityBench', x: 45, z: -19.93, angle: 1.899 },
-  { type: 'cityPlanter', x: -34.2, z: 30.13, angle: -1.728 },
-  { type: 'cityPlanter', x: 12.99, z: 18.33, angle: 1.414 },
   { type: 'cityPlanter', x: 40.77, z: -33.66, angle: 1.728 },
-  { type: 'cityPlanter', x: 57.52, z: -32.49, angle: 1.728 },
   { type: 'cityVending', x: -25.1, z: -32.05, angle: 3.142 },
   { type: 'cityVending', x: -26.2, z: 19.65, angle: -1.571 },
   { type: 'cityTrashBags', x: 22.38, z: 21.82, angle: 2.356 },
-  { type: 'cityTrashBags', x: -48.44, z: 34.06, angle: 3.142 },
   { type: 'cityTrashBags', x: -31.27, z: -44.02, angle: 1.001 },
   { type: 'cityMotorbike', x: -15.79, z: -34.2, angle: 0.715 },
   { type: 'cityMotorbike', x: -43.7, z: -5.53, angle: 2.563 },
   { type: 'cityMotorbike', x: -50.01, z: 34.17, angle: 0 },
-  { type: 'cityCone', x: 25.8, z: -3.21, angle: 2.908 },
-  { type: 'cityCone', x: -31.98, z: 26.69, angle: 3.953 },
   { type: 'cityJersey', x: -12.5, z: -32.9, angle: 1.466 },
   { type: 'cityCone', x: 4.97, z: 35.76, angle: 2.87 },
-  { type: 'cityUtilityBox', x: -33.94, z: -23.83, angle: -1.728 },
 ];

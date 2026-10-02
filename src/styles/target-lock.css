@@ -1,0 +1,13 @@
+/* The target lock's marker (ui/lock-marker.js): four thin corner brackets in
+   the HUD's pink accent round the locked target, with a dark edge so they
+   read on sand and on snow alike. Moved by transform only. */
+#game .lock-marker{position:absolute;left:0;top:0;width:var(--lock-size,34px);height:var(--lock-size,34px);pointer-events:none;z-index:4;will-change:transform,opacity}
+#game .lock-marker i{position:absolute;width:30%;height:30%;max-width:11px;max-height:11px;min-width:6px;min-height:6px;border:0 solid var(--ui-accent,#e8afb9);filter:drop-shadow(0 0 1.5px #0a0f0de6)}
+#game .lock-marker i:nth-child(1){left:0;top:0;border-left-width:2px;border-top-width:2px;border-top-left-radius:3px}
+#game .lock-marker i:nth-child(2){right:0;top:0;border-right-width:2px;border-top-width:2px;border-top-right-radius:3px}
+#game .lock-marker i:nth-child(3){left:0;bottom:0;border-left-width:2px;border-bottom-width:2px;border-bottom-left-radius:3px}
+#game .lock-marker i:nth-child(4){right:0;bottom:0;border-right-width:2px;border-bottom-width:2px;border-bottom-right-radius:3px}
+/* Drifting (a dodge, cover): fainter (main.js also lowers its opacity). */
+#game .lock-marker[data-seen=false] i{border-color:#e8afb9b3}
+/* Not while down, paused or only watching the robot lab. */
+body.dying #game .lock-marker,body.paused #game .lock-marker,body.lab-watching #game .lock-marker{visibility:hidden!important}

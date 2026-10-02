@@ -11,11 +11,11 @@ import fs from 'node:fs';
 import * as THREE from 'three';
 import { PROP_TYPES } from '../src/maps.js';
 import { LUMEN_PROP_TYPES, LUMEN_MODELS } from '../src/world/lumen-props.js';
-import { LUMEN_SETPIECE_TYPES, SETPIECE_MODELS } from '../src/world/lumen-setpieces.js';
+import { LUMEN_SETPIECE_TYPES, SETPIECE_MODELS, SETPIECE_BREAKS } from '../src/world/lumen-setpieces.js';
 import { LUMEN_DETAIL_TYPES } from '../src/world/lumen-detail.js';
 import { LUMEN_BODY_TYPES } from '../src/world/lumen-bodies.js';
 import { LUMEN_BREAKABLES } from '../src/world/lumen-breakables.js';
-import { LUMEN_SETPIECE_PROPS } from '../src/maps/lumen-setpieces.js';
+import { LUMEN_SETPIECE_PROPS, RETIRED_SETPIECES } from '../src/maps/lumen-setpieces.js';
 import { LUMEN_VENTS } from '../src/maps/lumen-vents.js';
 import { CITY } from '../src/world/lumen-kit.js';
 import { litMaterial } from '../src/world/lumen-glow.js';
@@ -53,7 +53,9 @@ test('types: 40 or more, each solid, walk-over or hung, with a real model and no
     assert.ok(t, `${n} is in PROP_TYPES`);
     assert.equal(typeof LUMEN_MODELS.get(n), 'function', `${n} has a registered model`);
     assert.ok(!others.has(n) || LUMEN_PROP_TYPES[n] === LUMEN_SETPIECE_TYPES[n], `${n} is another set's type too`);
-    assert.equal(t.health, null, `${n}: set pieces stand (nothing breaks here)`);
+    // (Most stand; what a person could smash breaks, owner 2026-10-01: SETPIECE_BREAKS, never anything of steel, stone or car-sized.)
+    if (SETPIECE_BREAKS.includes(n)) assert.ok(Number.isInteger(t.health) && t.health >= 3 && t.health <= 12 && !t.walkOver, `${n}: health ${t.health}`);
+    else assert.equal(t.health, null, `${n}: set pieces stand`);
     assert.ok(t.w > 0 && t.d > 0, `${n}: no footprint`);
     for (const [x, z, w, d, h] of t.collisionBoxes) {
       assert.ok([x, z, w, d, h].every(Number.isFinite) && w > 0 && d > 0 && h > 0, `${n}: a bad box`);
@@ -165,10 +167,12 @@ test('static pieces are plain merged parts: nothing casts a shadow individually,
   }
 });
 
-test('placement: 60 to 110 pieces, every type placed, ids unique, spread over the seven districts', () => {
+// (102 placed at stage 5; the owner's two clutter cuts, 2026-10-01, left 82, then 65 and RETIRED_SETPIECES unplaced.)
+test('placement: 55 to 110 pieces, every type but the retired placed, ids unique, spread over the seven districts', () => {
   const n = LUMEN_SETPIECE_PROPS.length;
-  assert.ok(n >= 60 && n <= 110, `${n} placed`);
-  for (const t of NAMES) assert.ok(LUMEN_SETPIECE_PROPS.some(p => p.type === t), `${t} is never placed`);
+  assert.ok(n >= 55 && n <= 110, `${n} placed`);
+  for (const t of NAMES) assert.equal(LUMEN_SETPIECE_PROPS.some(p => p.type === t), !RETIRED_SETPIECES.includes(t), `${t} is ${RETIRED_SETPIECES.includes(t) ? 'retired but placed' : 'never placed'}`);
+  for (const t of SETPIECE_BREAKS) assert.ok(!RETIRED_SETPIECES.includes(t), `${t} breaks but is retired`);
   const ids = L.mapProps(hooked).map(p => p.id);
   assert.equal(new Set(ids).size, ids.length, 'prop ids repeat');
   for (const p of LUMEN_SETPIECE_PROPS) assert.ok(Number.isFinite(p.x + p.z + p.angle), `${p.id} has no angle`);
@@ -183,7 +187,7 @@ test('placement: 60 to 110 pieces, every type placed, ids unique, spread over th
 test('placement rules: inside the outline, 1.4 m off every building, no overlap, 2.4 m from outer doors, off zebras, 1 m from the sniper lane, gaps under 0.7 or 1.4 and over, the alley kept, spawns legal', () => {
   const mine = new Set(LUMEN_SETPIECE_PROPS.map(p => p.id));
   const all = L.piecePolys(hooked), pieces = all.filter(c => mine.has(c.propId)), byId = new Map(L.mapProps(hooked).map(p => [p.id, p]));
-  assert.ok(pieces.length >= 60, `${pieces.length} colliders`);
+  assert.ok(pieces.length >= 40, `${pieces.length} colliders`); // (79 before the second clutter cut, 2026-10-01; 46 after)
   const bad = [], f1 = v => v.toFixed(1), name = c => { const p = byId.get(c.propId); return `${p.id} ${p.type} (${f1(p.x)},${f1(p.z)})`; };
   const near = (a, b, m) => a.bb.x1 + m >= b.bb.x0 && a.bb.x0 - m <= b.bb.x1 && a.bb.z1 + m >= b.bb.z0 && a.bb.z0 - m <= b.bb.z1;
   const walls = [...L.footprints, ...L.solids.filter(s => s.kind !== 'barricade')];
@@ -251,7 +255,8 @@ test('knee-high pieces (lowTop, under a round\'s 0.74 m) let rounds fly over on 
       else { met++; if (r.withIt > r.far) bad.push(`${p.id} ${p.type} (${top} m): a round flew through`); }
     }
   }
-  assert.ok(over >= 5 && met >= 5, `${over} low, ${met} tall pieces shot across`);
+  // (Fewer since the second clutter cut, 2026-10-01: the median planter and the lit ledge low, the crates and drum tall.)
+  assert.ok(over >= 2 && met >= 3, `${over} low, ${met} tall pieces shot across`);
   assert.deepEqual(bad, []);
 });
 

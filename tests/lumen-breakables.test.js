@@ -66,9 +66,11 @@ test('types: 18 or more come apart with health 3-12, each with a model, a break 
   for (const t of LUMEN_BREAK_TYPES) if (t !== 'cityCone') assert.ok(!PROP_TYPES[t].walkOver, `${t} is walk-over`);
 });
 
-test('placement: 80 to 140 breakables, every new type placed, spread over the districts', () => {
+// (117 placed at stage 4; the owner's clutter cuts, 2026-10-01, left 80, then 41, while thirteen set piece types
+// started to break: tests/lumen-setpieces.test.js. The quarters count every breakable on the map.)
+test('placement: 35 to 140 breakables, every new type placed, the map\'s breakables spread over the districts', () => {
   const placed = LUMEN_BREAKABLE_PROPS.filter(p => !LUMEN_TREES.includes(p.type));
-  assert.ok(placed.length >= 80 && placed.length <= 140, `${placed.length} placed`);
+  assert.ok(placed.length >= 35 && placed.length <= 140, `${placed.length} placed`);
   assert.equal(Object.values(LUMEN_BREAKABLE_COUNTS).reduce((s, n) => s + n, 0), LUMEN_BREAKABLE_PROPS.length);
   for (const t of NEW_TYPES) assert.ok(placed.some(p => p.type === t), `${t} is never placed`);
   for (const t of STAGE2) assert.ok(hooked.props.some(p => p.type === t), `${t} (stage 2) stands somewhere`);
@@ -76,7 +78,8 @@ test('placement: 80 to 140 breakables, every new type placed, spread over the di
   assert.equal(new Set(ids).size, ids.length, 'prop ids repeat');
   for (const p of LUMEN_BREAKABLE_PROPS) assert.ok(Number.isFinite(p.x + p.z + p.angle), `${p.id} has no angle`);
   // Every quarter of the map has some, and no single spot hoards them.
-  for (const [name, f] of [['west', p => p.x < 0], ['east', p => p.x >= 0], ['north', p => p.z < 0], ['south', p => p.z >= 0]]) assert.ok(placed.filter(f).length >= 25, `${name}: ${placed.filter(f).length}`);
+  const breaking = hooked.props.filter(p => Number.isInteger(PROP_TYPES[p.type].health));
+  for (const [name, f] of [['west', p => p.x < 0], ['east', p => p.x >= 0], ['north', p => p.z < 0], ['south', p => p.z >= 0]]) assert.ok(breaking.filter(f).length >= 25, `${name}: ${breaking.filter(f).length}`);
   for (let cx = -80; cx < 80; cx += 20) for (let cz = -60; cz < 60; cz += 20) assert.ok(placed.filter(p => p.x >= cx && p.x < cx + 20 && p.z >= cz && p.z < cz + 20).length <= 22, `a 20 m cell at ${cx},${cz} is crowded`);
   // The trees are at the three named places.
   const at = t => LUMEN_BREAKABLE_PROPS.find(p => p.type === t);
@@ -88,7 +91,7 @@ test('placement: 80 to 140 breakables, every new type placed, spread over the di
 test('placement rules for the new pieces: inside the outline, no overlap, 2.4 m from outer doors, off zebras, 1 m from the sniper lane, gaps under 0.7 or 1.4 and over, the alley kept, spawns legal', () => {
   const mine = new Set(LUMEN_BREAKABLE_PROPS.map(p => p.id));
   const all = L.propPolys(hooked), pieces = all.filter(c => mine.has(c.propId)), byId = new Map(L.mapProps(hooked).map(p => [p.id, p]));
-  assert.ok(pieces.length >= 80, `${pieces.length} colliders`); // (120 before the owner's clutter cut, 2026-10-01)
+  assert.ok(pieces.length >= 40, `${pieces.length} colliders`); // (120 before the owner's clutter cuts, 2026-10-01; 81, then 46)
   const bad = [], f1 = v => v.toFixed(1), name = c => { const p = byId.get(c.propId); return `${p.id} ${p.type} (${f1(p.x)},${f1(p.z)})`; };
   const near = (a, b, m) => a.bb.x1 + m >= b.bb.x0 && a.bb.x0 - m <= b.bb.x1 && a.bb.z1 + m >= b.bb.z0 && a.bb.z0 - m <= b.bb.z1;
   const walls = [...L.footprints, ...L.solids.filter(s => s.kind !== 'barricade')];

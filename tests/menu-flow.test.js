@@ -40,10 +40,12 @@ test('JOIN has the username, room code and status but no HOST; HOST asks for the
 });
 
 test('host a game: every mode in order, its one row, and ROBOTS FILL SEATS', () => {
- assert.deepEqual(orderedModes().map(m => m.name), ['1V1', '2V2', '3V3', '4V4', '2V2V2', 'FFA', 'PRACTICE']);
+ assert.deepEqual(orderedModes().map(m => m.name), ['1V1', '2V2', '3V3', '4V4', '2V2V2', 'FFA', 'GUN GAME', 'PRACTICE']);
  assert.equal(orderedModes().length, MODES.length);
  for (const mode of ['1v1', '2v2', '3v3', '4v4', '2v2v2']) { assert.ok(ROUNDED.includes(mode)); assert.deepEqual(rowsFor(mode), ['rounds', 'robots'], mode); }
  assert.deepEqual(rowsFor('ffa'), ['roundLength', 'robots']);
+ // (Gun Game, 2026-10-01: FFA's row, its match length.)
+ assert.deepEqual(rowsFor('gungame'), ['roundLength', 'robots']);
  // (Owner, 2026-09-30: the host's ON / OFF switch for robots filling seats.)
  assert.deepEqual(SETTINGS.robots.names, ['ON', 'OFF']);
  assert.deepEqual(rowsFor('practice'), []);

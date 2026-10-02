@@ -12,6 +12,8 @@ import { MAINTENANCE, stickerHTML } from '../weapon-maintenance.js';
 let WEAPON_IMAGES = {}, MAP_IMAGES = {};
 export const registerWeaponImages = images => { WEAPON_IMAGES = images || {}; };
 export const registerMapImages = images => { MAP_IMAGES = images || {}; };
+// One weapon's shipped picture (or undefined), for markup built elsewhere (the death card's weapon row).
+export const weaponImage = id => WEAPON_IMAGES[id];
 
 const esc = text => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 

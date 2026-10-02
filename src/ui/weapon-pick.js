@@ -13,6 +13,7 @@ import { WEAPON_IMAGES } from './map-cards.js';
 import { staticPreview } from './weapon-preview.js';
 import { riflePreview } from '../weapons/rifle-model.js';
 import { shotgunPreview } from '../weapons/shotgun-model.js';
+import { readLastWeapon } from './remembered-choices.js';
 
 const PREVIEWS = { static: staticPreview, rifle: riflePreview, shotgun: shotgunPreview };
 const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -58,9 +59,15 @@ export function createWeaponPick(parent, { pick, go, back }) {
         const img = button.querySelector('img');
         if (!img.src) { try { const src = WEAPON_IMAGES[button.dataset.weapon] || PREVIEWS[button.dataset.weapon]?.(); if (src) img.src = src; } catch (error) { console.warn('Weapon preview unavailable:', error); } }
       }
-      mark(current && !underMaintenance(current) ? current : null);
+      // Nothing picked yet: the weapon of the last game played is picked
+      // (remembered-choices.js; owner, 2026-10-02: "Do remember choices"), and
+      // online it is told to the host as the pick, so the timer running out
+      // brings you in with it rather than a random one. GO still goes in.
+      const remembered = !current || underMaintenance(current) ? readLastWeapon() : null;
+      mark(remembered || (current && !underMaintenance(current) ? current : null));
+      if (remembered && timed) pick(remembered);
       root.classList.remove('hidden');
-      (choices.find(b => b.dataset.weapon === current) || choices[0])?.focus();
+      (choices.find(b => b.dataset.weapon === selected) || choices[0])?.focus();
     },
     hide() { root.classList.add('hidden'); },
     setTimer(left, total = 10) {

@@ -67,7 +67,7 @@ export function connectServer({ url, request, pid, timeout = 8000, WebSocketClas
     settled = true; clearTimeout(timer);
    }
    if (message.t === 'room') {
-    transport.room = { code: String(message.code || ''), name: message.name ? String(message.name) : null, public: !!message.public, map: String(message.map || ''), id: String(message.id || ''), lead: !!message.lead };
+    transport.room = { code: String(message.code || ''), name: message.name ? String(message.name) : null, public: !!message.public, quick: !!message.quick, map: String(message.map || ''), id: String(message.id || ''), lead: !!message.lead };
     transport.code = transport.room.code;
     if (!transport.resolved) { transport.resolved = true; resolve(transport); }
     return;

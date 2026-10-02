@@ -2,6 +2,7 @@ import { SURGE } from './config/gameplay.js';
 import { hasBreakSound, playBreakSound } from './effects/breakable-sounds.js'; // s2-breakables
 import { hasLumenBreakSound, playLumenBreakSound } from './effects/lumen-break-sounds.js'; // Lumen stage 4
 import { graveThud } from './world/graveyard.js'; // s2-graveyard
+import { reloadFamily, reloadDone } from './audio-feel.js'; // the feel pass: each weapon's reload finishing
 // Small synthesized sounds: no downloads, sample assets, or audio before a gesture.
 // How far sound carries. Full volume out to `near` metres (about half the
 // screen), then it fades, down to `far` of it at 3x that distance (barely
@@ -296,6 +297,8 @@ export class Soundscape {
   }
 
   dispatch(e) {
+    // Each weapon's reload finishing: its own short sound (audio-feel.js).
+    { const family = reloadFamily(e); if (family) { reloadDone(this, family); return; } }
     if(e.type==='ichorGuardStart'){this.tone(1700,950,.09,.025,'sine');this.noise(.06,.016,2600);return;}
     if(e.type==='ichorDeflect'){this.impact(.028,.14,3300);this.tone(2850,1900,.22,.08,'sine');this.tone(4350,3150,.14,.04,'triangle',.008);this.tone(870,530,.065,.035,'triangle');this.noise(.04,.05,6200);return;}
     if(e.type==='ichorSwing'){
@@ -470,7 +473,9 @@ export class Soundscape {
       const now = this.context?.currentTime ?? 0;
       if (now - this.lastHit > .025) { this.tone(950, 370, .09, .09, 'triangle'); this.noise(.055, .35, 1200); this.lastHit = now; }
     }
-    if (e.type === 'kill') {
+    // (Your own kill of a player or a robot plays the feel layer's sharp kill
+    // sound instead: feel/feel-layer.js marks it `felt`.)
+    if (e.type === 'kill' && !e.felt) {
       this.impact(.1, .13, 1100); this.tone(145, 70, .1, .06, 'triangle');
       // A soft consonant interval tucked under the wooden impact.
       this.tone(740, 735, .10, .040,'sine'); this.tone(1110, 1100, .15, .030, 'sine', .045);

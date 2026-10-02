@@ -2,6 +2,42 @@
 
 Deadstab, newest first. Every version is an alpha, playable in the browser on mobile or PC.
 
+## v0.1.8-alpha (2026-10-02)
+
+### New
+- **QUICK PLAY:** one button on the title screen. If someone else is looking for a game, you're put in an online FFA together. If not, you go straight into a 1v1 against a bot that quietly adjusts to how you're playing, and a "PLAYER FOUND — JOIN?" card pops up if someone turns up. PLAY and QUICK PLAY are now the big buttons.
+- **Gun Game** (online and BOTS): every kill moves you to the next weapon, ending on the blades. The first kill with the last weapon wins. A blade kill knocks the victim back a weapon.
+- **Killcam:** after you die, the camera shows who killed you and with what, with both of your health bars. It's quick and skippable and never adds to your respawn wait.
+- **Choose your next weapon on the death screen** in FFA and practice, with a clear respawn countdown.
+- **Your match:** every end screen shows your kills, best streak, damage, accuracy, favourite weapon and a highlight ("3 ONE SHOTS!").
+
+### Feel
+- **Kills hit harder:** a sharp kill sound, a tiny freeze and a screen kick; one-shot kills get their own boom and marker. The last kill of a round plays in brief slow motion.
+- **Hit markers** grow with damage, with a red X for a kill.
+- **Kill streaks:** SPREE at 3, RAMPAGE at 5, UNSTOPPABLE at 8, and SHUTDOWN when you end someone's streak.
+- **Low health** pulses the screen edge with a heartbeat.
+- **Reload sounds** for each weapon when the reload finishes.
+- **Spawn protection:** 1.5 s after you spawn, ending as soon as you attack.
+- **Shots pop:** every bullet, pellet, orb, round and slash has a bright core and a dark rim so it reads on every map. Fixed Nominal's rounds and Ballast's pellets not being drawn at all on fixed graphics presets.
+
+### Menus
+- **A live match plays behind the main menu** (off on slower devices).
+- **The game remembers** your last weapon, mode and practice map, so you're a tap or two from playing.
+- **New weapon tips:** the first time you use a weapon, a small card explains it in three lines.
+
+### Lumen
+- **Emptier streets:** about 40% of the small street obstacles are gone (crates, chairs, scooters, cones, bins, benches and more), so the streets are open lanes you can run through. Every car, bus and van is still there.
+- **Brighter, easier to read:** the city is a little more lit up (still night), and the things you bump into are a shade lighter than the street, so you can tell what's what.
+- **More things break:** podiums, crate tables, produce crates, rain drums, the fish tank, price boards, coolers, ticket machines, chargers and more can now be smashed. Cars, walls and other solid things still can't.
+- **Doorways you can see:** light spills out of every door you can walk into, and the light strip over each door is brighter, so entrances stand out from above.
+
+### Everywhere
+- **Dodge charges redesigned:** bigger, clearer cells next to the weapon panel show how many dodges you have and how far the next one has refilled. A charge pops when it comes back, and the row flashes red if you try to dodge with none. On phones the DODGE button shows the same charges.
+- **Arrow-key aiming is smoother:** a lock now stays right on a moving target instead of trailing it, switching targets glides, and an arrow picks the enemy you most likely mean (whoever just shot you, the one you were last on, never someone hidden in a building). Diagonals work, a target that ducks behind cover is picked back up when it reappears, and a kill no longer moves your lock to someone else. Tap an arrow twice to let go. Thin pink brackets show what you're locked onto.
+- **Mobile joystick:** a little bigger and steadier. Small pushes now move you more gently and full speed comes just before the edge, so it's easier to control while still instant.
+- **Ichor's guard blocks more:** each raise now soaks 28–32 damage (was 14–18), about five close Nominal bullets.
+- **Bots against blades:** gun bots on Easy and Normal are slower to back away from a sword, back up less efficiently and are thrown off for a moment when a blade dashes at them. Ballast bots, the hardest matchup for a blade, now lose to Ichor and Sheath more often. Hard bots are unchanged.
+
 ## v0.1.7-alpha (2026-10-01)
 
 ### Lumen

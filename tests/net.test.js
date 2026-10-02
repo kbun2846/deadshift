@@ -18,7 +18,9 @@ const createSim = m => new Simulation(m);
 
 // A room with a host and `clients` joiners. `weapons` picks what each chooses
 // (host first); null leaves that player on the weapon menu.
-function room({ clients = 1, clock, weapons = [], mode = 'ffa', settings = { robots: 'off' } } = {}) {
+// (`guard`: keep the spawn protection everyone comes in with in FFA and
+// practice; by default it is taken off, so a test can shoot straight away.)
+function room({ clients = 1, clock, weapons = [], mode = 'ffa', settings = { robots: 'off' }, guard = false } = {}) {
  const net = createLoopback();
  const hostSim = createSim(map);
  let time = 0;
@@ -47,6 +49,7 @@ function room({ clients = 1, clock, weapons = [], mode = 'ffa', settings = { rob
  joined.forEach((c, i) => { const w = weapons[i + 1] === undefined ? 'static' : weapons[i + 1]; if (w && c.session.welcomed) c.session.choose(w); });
  net.flush();
  for (let i = 0; i < 6; i++) tick();
+ if (!guard) { for (const seat of host.arena.seats.values()) delete seat.sim.player.guard; for (const c of joined) delete c.sim.player.guard; }
  return { net, host, hostSim, joined, tick, get time() { return time; } };
 }
 
@@ -633,4 +636,22 @@ test('respawns close at 45 s left in FFA: joiners see it from the clock, the fal
  for (let i = 0; i < 6; i++) r.tick();
  assert.equal(arena.phase, 'results');
  assert.equal(a.session.match().phase, 'results');
+});
+
+// Spawn protection (owner, 2026-10-01; spawn-protection.js) over the wire:
+// the host grants it on the way in, the joiner's own sim takes it from the
+// snapshots, everyone draws the others' (blend), and it ends on the host
+// when the joiner fires.
+test('spawn protection travels: a joiner sees its own and the host\'s, and firing ends it on the host', () => {
+ const r = room({ clients: 1, weapons: ['rifle', 'rifle'], guard: true });
+ const seat = [...r.host.remotes.values()][0].seat;
+ assert.ok(seat.sim.player.guard > 0, 'the host gave it');
+ r.tick(); r.tick(); r.tick();
+ assert.ok(r.joined[0].sim.player.guard > 0, 'the joiner\'s own sim has it from the snapshot');
+ const host = r.joined[0].session.snapshots.at(-1).players.find(p => p.id === r.host.hostSeat.id);
+ assert.ok(host?.guard > 0, 'and gets the host\'s (drawn through blend, tests/spawn-protection.test.js)');
+ for (let i = 0; i < 6; i++) r.tick([{ fire: true, aimX: 1, aimZ: 0 }]);
+ assert.equal(seat.sim.player.guard, undefined, 'its shot ended it on the host');
+ for (let i = 0; i < 6; i++) r.tick();
+ assert.equal(r.joined[0].sim.player.guard, undefined, 'and on its own screen');
 });

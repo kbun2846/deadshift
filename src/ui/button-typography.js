@@ -58,6 +58,9 @@ export function installButtonTypography(root){
   // narrowest any of them needs, so their letters are the same width; a
   // short label no longer comes out fatter than its long neighbour. A block
   // marked `data-fit-group` (the JOIN filters) is one group for every button in it.
+  // Buttons marked data-fit-with="name" are a group of their own, whatever
+  // their parent (the title's bigger PLAY and QUICK PLAY: their taller
+  // lettering would otherwise squeeze the smaller buttons beside them).
   const fits=[];
   for(const button of root.querySelectorAll('button:not(.map-choice):not(.plain-text):not(.dev-tools button):not(.dev-window button)')){
    if(!tracked.has(button)){tracked.add(button);resize.observe(button);}
@@ -79,7 +82,7 @@ export function installButtonTypography(root){
    // (A weapon card's name fits its own box, whose height the layout sets.)
    const height=button.classList.contains('weapon-choice')?(button.querySelector('.weapon-name')?.clientHeight||40):button.clientHeight-parseFloat(css.paddingBottom);
    const sx=Math.min(.86,available/Math.max(1,inkWidth,m.width)),sy=height*1.08/(ascent+descent);
-   fits.push({button,label,css,m,top,inkWidth,available,height,sx,sy,group:button.closest('#touch-controls')?button:button.closest('[data-fit-group]')||button.parentElement});
+   fits.push({button,label,css,m,top,inkWidth,available,height,sx,sy,group:button.closest('#touch-controls')?button:button.dataset.fitWith?'with:'+button.dataset.fitWith:button.closest('[data-fit-group]')||button.parentElement});
   }
   const shared=new Map();
   for(const f of fits)shared.set(f.group,Math.min(shared.get(f.group)??Infinity,f.sx/f.sy));

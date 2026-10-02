@@ -46,6 +46,22 @@ test('all presets keep projectiles and casings while scaling model and cosmetic 
   if(q.detail>previousDetail)assert.ok(triangles>previous,`${name} did not add geometry`);
   else assert.equal(triangles,previous,`${name} should share the previous model`);
   previous=triangles;previousDetail=q.detail;assert.ok(model.children.length<=15);
-  assert.equal(view.bullets.geometry.type,'LatheGeometry');
+  // A white slug inside its own dark rim, one draw (render/shot-pop.js).
+  const c=view.bullets.geometry.attributes.color.array,lum=[];for(let i=0;i<c.length;i+=3)lum.push(c[i]+c[i+1]+c[i+2]);
+  assert.ok(Math.max(...lum)>2.9&&Math.min(...lum)<.05,'core and rim');assert.equal(view.bullets.material.vertexColors,true);
  }
+});
+test('rounds, tracers and casings show while there is something to draw, whatever hid them (the warm-up hides every effect batch)',()=>{
+ const {view,sim}=setup();
+ for(const b of view.batches)b.visible=false;
+ sim.rifleBullets=[{id:1,x:3,z:0,dx:1,dz:0,travel:3}];view.shot();view.update(sim);
+ assert.ok(view.bullets.visible&&view.trails.visible&&view.casings.visible);
+ sim.rifleBullets=[];sim.time=31;view.update(sim);
+ assert.ok(!view.bullets.visible&&!view.trails.visible&&!view.casings.visible);
+});
+test('every preset draws the tracer, longer than the round and lemon-gold with a dark rim',()=>{
+ for(const q of Object.values(RIFLE_QUALITY))assert.equal(q.trail,true);
+ const {view,sim}=setup();sim.rifleBullets=[{id:1,x:5,z:0,dx:1,dz:0,travel:5}];view.update(sim);
+ const m=new THREE.Matrix4(),s=new THREE.Vector3();view.trails.getMatrixAt(0,m);m.decompose(new THREE.Vector3(),new THREE.Quaternion(),s);
+ assert.ok(s.y*.3>=.6,'at least .6 m of tracer');
 });

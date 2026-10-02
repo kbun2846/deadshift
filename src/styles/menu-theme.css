@@ -674,6 +674,22 @@ body[data-controls=touch] #game .brand .online-badge{position:fixed;margin:0}
 #game .title-buttons>button.title-play:not(:disabled):focus-visible{background:#f7f6f2;color:#101413;border-color:#f7f6f2}
 @media(hover:hover){#game .title-buttons>button.title-play:not(:disabled):hover{background:#f7f6f2;color:#101413;border-color:#f7f6f2}}
 #game .title-buttons>button.title-play>.button-label{z-index:2}
+/* QUICK PLAY (owner, 2026-10-01: "make the PLAY and QUICK PLAY buttons
+   bigger, but keep the blood effects"): QUICK PLAY sits under PLAY and is
+   drawn the same way (slate, white when hovered, its lettering over the
+   blood). Both are taller than the other title buttons (.title-big), so their
+   fitted lettering is bigger too; the blood finds them like any title button
+   (title-screen.js lays it out from where the buttons are). The column grew
+   by QUICK PLAY's row and the two buttons' extra height (--title-big-extra),
+   which the word's size formula counts in (so it all still fits; a phone on
+   its side is scaled to fit by menu-fit.js). */
+#game .menu-shell .title-buttons>button.title-big:not(.plain-text){height:58px;min-height:58px}
+#game #intro{--title-big-extra:88px;--title-w:min(760px,90vw,calc((100vh - 400px - var(--title-big-extra)) * 2.4))}
+@supports(height:100dvh){#game #intro{--title-w:min(760px,90vw,calc((100dvh - 400px - var(--title-big-extra)) * 2.4))}}
+@media(max-height:520px){
+ #game .menu-shell .title-buttons>button.title-big:not(.plain-text){height:44px;min-height:44px}
+ #game #intro.menu-shell{--title-big-extra:66px;--title-w:min(760px,90vw,calc((100vh - 250px - var(--title-big-extra)) * 2.4))}
+}
 /* Top-right HUD buttons are icons (map, sound, menu), drawn in the button's
    ink; sound off turns the button pink (the game's accent) with a bar struck
    across the speaker. */
@@ -702,6 +718,41 @@ body[data-controls=touch] #game .top-actions .icon-button svg{width:18px;height:
  #game .menu-shell .title-buttons>.input-choice{margin:5px 0}
  #game .title-version{margin-bottom:6px;font-size:13px}
 }
+/* The short main menu (owner, 2026-10-02: "Keep the main menu short: PLAY
+   (quick play) big, everything else smaller ... make the play and quickplay
+   buttons bigger, but keep the blood effects"). PLAY and QUICK PLAY keep
+   their 58 px (44 on short screens) at the column's full width; TUTORIAL,
+   SKINS, the keyboard / mobile pair and SETTINGS are shorter (30 px, 24 on
+   short screens, so their fitted lettering is about half PLAY's height) and
+   narrower (--title-minor-w, left-aligned under PLAY), with tighter gaps.
+   Their touch targets stay at least 44 px tall: an invisible ::after reaches
+   above and below the face (not clipped: overflow visible; it is not part of
+   the button's box, so the
+   blood, laid out from the boxes in title-screen.js, still sits on the
+   visible face). The blood needs nothing else: it finds the buttons wherever
+   they are, runs off QUICK PLAY's left end onto the narrower buttons below,
+   and the right end's runs drip past them. */
+#game #intro{--title-minor-w:72%;--title-minor-h:30px;--title-minor-gap:8px}
+#game .menu-shell .title-buttons>#quick-play{margin-bottom:18px}
+#game .menu-shell .title-buttons>button:not(.title-big):not(.plain-text),#game .menu-shell .title-buttons>.input-choice{width:var(--title-minor-w);height:var(--title-minor-h);min-height:var(--title-minor-h);margin-top:var(--title-minor-gap);margin-bottom:var(--title-minor-gap)}
+#game .menu-shell .title-buttons>.input-choice #input-keyboard,#game .menu-shell .title-buttons>.input-choice #input-mobile{height:var(--title-minor-h);min-height:var(--title-minor-h);margin-top:0;margin-bottom:0}
+#game .menu-shell .title-buttons>.input-choice::before,#game .menu-shell .title-buttons>.input-choice::after{height:var(--title-minor-h)}
+#game .menu-shell .title-buttons>button:not(.title-big):not(.plain-text)::after,#game .menu-shell .title-buttons>.input-choice button::after{content:'';position:absolute;left:0;right:0;top:calc((var(--title-minor-h) - 44px) / 2);bottom:calc((var(--title-minor-h) - 44px) / 2)}
+/* (Menu buttons clip their content, which would clip that tap area too: these
+   show theirs. The fitted lettering reaches only 4% past the face.) */
+#game .menu-shell .title-buttons>button:not(.title-big):not(.plain-text),#game .menu-shell .title-buttons>.input-choice button{overflow:visible}
+/* (Touch: the gaps make every 44 px tap area its own, a 44 px pitch.) */
+@media(pointer:coarse){#game #intro{--title-minor-gap:14px}}
+@media(max-height:520px){
+ #game #intro{--title-minor-w:86%;--title-minor-h:24px;--title-minor-gap:6px}
+ #game .menu-shell .title-buttons>#quick-play{margin-bottom:12px}
+}
+@media(max-height:520px) and (pointer:coarse){#game #intro{--title-minor-gap:12px}}
+/* Remembered choices (remembered-menus.js): the last mode, map and weapon are
+   marked with the accent where the page has the focus on them. */
+#game .menu-shell [data-page=modes]>button[data-remembered]::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--ui-accent);pointer-events:none}
+#game .weapon-card[data-remembered]{border-color:var(--ui-accent)}
+#game .map-choice[data-remembered] :is(.map-caption,.map-mode){background:var(--ui-accent);color:#171d19}
 /* Robot options (robot-options.js, a preview): the round-settings rows, a
    small SOON tag on each, and the lobby's empty slots. */
 #game .soon-tag{display:inline-block;margin-left:6px;padding:2px 5px;border-radius:3px;background:#9fb0aa33;color:#9fb0aa;font:700 9px/1 var(--hud-font,Arial),sans-serif;letter-spacing:.12em;vertical-align:middle;text-transform:uppercase}
@@ -1419,8 +1470,11 @@ body[data-controls=touch] #game #death-screen .death-hint{display:none!important
    it like the others, title-screen.js). The home page is centred, so a taller
    column would push the word up by half a button: it is let down by that
    half (--title-slot, one button's height and margins), so the word stays
-   where it was and the buttons grow downward. */
-#game .menu-shell [data-page=home].title-home{--title-slot:52px;top:calc(var(--title-slot) / 2)}
+   where it was and the buttons grow downward. (2026-10-01, QUICK PLAY: as
+   padding on top rather than a `top` offset, so menu-fit.js counts it: the
+   offset pushed the last button off short screens. QUICK PLAY's extra height
+   is not in the slot: the column grows both ways by half of it.) */
+#game .menu-shell [data-page=home].title-home{--title-slot:52px;padding-top:var(--title-slot)}
 @media(max-height:520px){#game .menu-shell [data-page=home].title-home{--title-slot:42px}}
 #game .menu-shell [data-page=home].title-home.menu-fitted{top:0}
 /* Nothing from a game shows over the menus (owner, 2026-09-29): the round's

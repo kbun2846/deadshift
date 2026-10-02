@@ -21,9 +21,19 @@ import { weaponFromChoice } from './weapon-grid.js';
 import { weapon as weaponInfo } from '../items.js';
 import { workMaps } from '../maps.js';
 import { setMaintenanceLifted } from '../weapon-maintenance.js';
+import { createMediaMode } from './media-mode.js';
 
 export function installDevWiring(ctx) {
  const { $, sim, view, bots, toast } = ctx;
+ // Media mode (media-mode.js): a clean, good-looking screen for recording.
+ // Its own state, not sim.dev (which the online sessions reset), so it works
+ // for anyone with the tools, online too: only this screen changes.
+ const media = createMediaMode({ body: document.body, root: $('game'), hooks: {
+  setLook: name => ctx.setMediaLook?.(name), online: () => !!ctx.online().active,
+  tier: () => ctx.deviceTier?.(), quality: () => ctx.settings().quality, mobile: () => !!ctx.mobile?.(),
+  changed: () => ctx.changed(),
+ } });
+ view.mediaCamera = () => media.camera();
  const spawnBird = () => view.birds.spawnNext(view.focus, view.birdView())?.name;
  function closeDevPanel() {
   $('dev-panel').classList.add('hidden');
@@ -120,7 +130,8 @@ export function installDevWiring(ctx) {
  const devTools = installDevTools(sim, $('dev-panel'), () => devChanged(), {
   ...hooks,
   onUnlock: () => showDevEntry(true),
-  onLock: () => { showDevEntry(false); devWindow.hide(); clearDevSession(); },
+  onLock: () => { showDevEntry(false); devWindow.hide(); media.disable(); clearDevSession(); },
+  media,
  });
  if ($('dev-open') && $('dev-panel')) $('dev-open').onclick = () => {
   const opening = $('dev-panel').classList.contains('hidden');
@@ -133,6 +144,7 @@ export function installDevWiring(ctx) {
   sim, hooks,
   quality: () => ctx.settings().quality,
   setQuality: name => { $('graphics-preset').value = name; ctx.settingsPanel().applySettings(); },
+  media,
   changed: () => devChanged(),
  });
  // Online, only a peer-to-peer host's sim takes the tools (the sessions reset
@@ -145,8 +157,10 @@ export function installDevWiring(ctx) {
  // O: the floating window, anywhere once unlocked.
  const toggleDevWindow = () => {
   if (devWindow.isOpen) { devWindow.hide(); return; }
-  const off = devOffHere(); if (off) { toast(off); return; }
-  devWindow.show();
+  // (Online, where the rest is the host's, the window still opens on Media:
+  // it changes nothing but this screen.)
+  const off = devOffHere();
+  devWindow.show(off ? { mediaOnly: true, note: off + ' · MEDIA STILL WORKS' } : {});
  };
  let returnFocus = null;
  // What a successful unlock shows (the prompt's, and the admin page's link).
@@ -187,5 +201,7 @@ export function installDevWiring(ctx) {
   toast: text => afterLoading(() => toast(text, 3200)),
  });
  const showDevNotice = enabled => toast(enabled ? 'DEV TOOLS ON' : 'DEV TOOLS OFF');
- return { devTools, devWindow, devDialog, showDevNotice, toggleDevWindow, devOffHere };
+ // H (main.js): media mode on or off, once unlocked.
+ const toggleMedia = () => { if (!devTools.isUnlocked()) return false; const on = media.toggle(); if (!on) toast('MEDIA MODE OFF'); return on; };
+ return { devTools, devWindow, devDialog, showDevNotice, toggleDevWindow, devOffHere, media, toggleMedia };
 }

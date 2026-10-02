@@ -27,6 +27,7 @@
 import { weapon as weaponById } from '../items.js';
 import { teamById } from '../config/match.js';
 import { playerColour } from '../remote-players.js';
+import { gunStandings, ladderText } from '../gungame.js';
 
 const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clock = seconds => { const s = Math.max(0, Math.round(seconds)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
@@ -38,6 +39,8 @@ const num = n => (Number.isFinite(n) ? Math.round(n) : null);
 // them (net/arena.js results.survivor, duel.js outcome.survivor), so they
 // head the list among those tied for the most kills.
 export function sortStatsRows(rows, first = null) {
+ // Gun Game's rows (a `gun` level each): by the ladder (gungame.js).
+ if ((rows || []).some(r => Number.isFinite(r.gun))) return gunStandings(rows);
  const list = [...(rows || [])].sort((a, b) => (b.kills || 0) - (a.kills || 0) || (a.deaths || 0) - (b.deaths || 0) || (b.dealt || 0) - (a.dealt || 0)
   || String(a.name ?? '').toLowerCase().localeCompare(String(b.name ?? '').toLowerCase()));
  const i = first == null ? -1 : list.findIndex(r => r.id === first);
@@ -53,7 +56,7 @@ const stat = (n, word) => `<span class="stats-stat"><i>${n}</i>${word ? ' ' + wo
 // counts as FFA too. Rows are ranked here, so callers may pass any order.
 export function statsTableHTML(rows, { myId = null, mode = null, final = false, first = null } = {}) {
  const list = sortStatsRows(rows, first);
- const medals = !!final && mode !== 'practice' && (mode === 'ffa' || (!mode && !list.some(r => r.team)));
+ const medals = !!final && mode !== 'practice' && (mode === 'ffa' || mode === 'gungame' || (!mode && !list.some(r => r.team)));
  return '<ol class="stats-list">' + list.map((r, i) => {
   const side = teamById(r.team), classes = ['stats-row'];
   if (r.id === myId) classes.push('stats-you');
@@ -63,6 +66,10 @@ export function statsTableHTML(rows, { myId = null, mode = null, final = false, 
   const style = side ? ` style="--team:${side.colour};--tint:${side.colour}26"` : '';
   const bits = [];
   const deaths = num(r.deaths), dealt = num(r.dealt), taken = num(r.taken);
+  // Gun Game: the big number is the place on the ladder ("4/8", the weapon
+  // under the name is the one reached); kills join the line.
+  const ladder = Number.isFinite(r.gun) && r.of > 0;
+  if (ladder) bits.push(stat(num(r.kills) ?? 0, r.kills === 1 ? 'kill' : 'kills'));
   if (deaths !== null) bits.push(stat(deaths, deaths === 1 ? 'death' : 'deaths'));
   if (dealt !== null) bits.push(stat(dealt, 'dealt'));
   if (taken !== null) bits.push(stat(taken, 'taken'));
@@ -72,7 +79,8 @@ export function statsTableHTML(rows, { myId = null, mode = null, final = false, 
   return `<li class="${classes.join(' ')}"${style}${side ? ` data-team="${esc(r.team)}"` : ''}><span class="stats-rank"><span class="stats-fit"><i>${i + 1}</i></span></span>`
    + `<span class="stats-who"><span class="stats-name"><i class="player-swatch" style="--swatch:${playerColour(r.slot).swatch}" aria-hidden="true"></i><span class="stats-fit stats-name-fit"><span class="stats-name-text${r.id === myId ? ' feed-you' : ''}">${esc(r.name)}</span></span>${r.robot ? '<span class="stats-robot">bot</span>' : ''}</span>`
    + (bits.length ? `<span class="stats-line">${bits.join('')}</span>` : '') + '</span>'
-   + `<span class="stats-kills"><span class="stats-fit stats-fit-end"><b>${num(r.kills) ?? 0}</b></span><small>kills</small></span></li>`;
+   + (ladder ? `<span class="stats-kills stats-ladder"><span class="stats-fit stats-fit-end"><b>${esc(ladderText(r.gun, r.of))}</b></span><small>${r.finished ? 'finished' : 'weapon'}</small></span></li>`
+    : `<span class="stats-kills"><span class="stats-fit stats-fit-end"><b>${num(r.kills) ?? 0}</b></span><small>kills</small></span></li>`);
  }).join('') + '</ol>';
 }
 

@@ -11,6 +11,21 @@ import {detectedControls,createInputPreference} from './ui/input-preference.js';
 import './styles/mobile-controls.css';
 import './styles/tutorial.css';
 import './styles/x-ability.css';
+import './styles/dodge.css';
+import './styles/media-mode.css';
+import './styles/target-lock.css';
+import './styles/quick-play.css';
+import { installQuickPlay, quickPlayLeft } from './quick-wiring.js';
+// The living menu and the first-time weapon tips (UI polish, 2026-10-02).
+import './styles/attract.css';
+import './styles/weapon-hints.css';
+import { installAttract } from './attract-wiring.js';
+import { createWeaponHintCard, installTipReset } from './ui/weapon-hint-card.js';
+// The feel pass (feel/feel-layer.js: hit markers, kill feel, streaks, slow
+// motion, low health, the spawn shimmer) and spawn protection.
+import './styles/feel.css';
+import { createFeel } from './feel/feel-layer.js';
+import { grantSpawnGuard } from './spawn-protection.js';
 import {installTouchLayout} from './ui/touch-layout.js';
 import { bindFloatingStick, arrangeTouchCluster, isTap, TOUCH_TAP, MOVE_STICK } from './ui/touch-controls.js';
 import { installMobileSettings } from './ui/mobile-settings.js';
@@ -26,11 +41,12 @@ import { BotMatch } from './bots/bot-match.js';
 import { buzz, HAPTICS } from './ui/haptics.js';
 import { createWeaponHUD } from './ui/weapon-hud.js';
 import { createAimOverlay } from './ui/aim-overlay.js';
+import { createLockMarker } from './ui/lock-marker.js';
 import { createHealthHUD } from './ui/health-hud.js';
 import { createPerfReadout } from './ui/perf-readout.js';
 import { showBusy, hideBusy } from './ui/busy-screen.js';
 import { createDamageFeedback } from './ui/damage-feedback.js';
-import { createDeathScreen, DEATH_MENU_DELAY, RESPAWN_TIME } from './ui/death-screen.js';
+import { createDeathScreen, RESPAWN_TIME } from './ui/death-screen.js';
 import { createSpectate, spectateView, SPECTATE_AFTER } from './ui/spectate.js';
 import { createScoreFlash, rollHTML } from './ui/score-flash.js';
 import { createStatsPanel } from './ui/stats-panel.js';
@@ -43,7 +59,7 @@ import { createMapVote } from './ui/map-vote.js';
 import { pickView, lobbyView } from './render/pick-view.js';
 import { PICK, MODES, SETTINGS as MATCH_SETTINGS, SIDE_COLOURS, TEAMS, teamById, roundsDecided, respawnsClosed, respawnCutoff, respawnFate, cutoffText } from './config/match.js';
 const modeLabel=document.querySelector('.brand .mode');
-import { GAME_KEYS } from './config/controls.js';
+import { GAME_KEYS, KEYBOARD_AIM } from './config/controls.js';
 import { gameCode, displayKeys } from './config/keybinds.js';
 import { NETWORK } from './config/network.js';
 import { bindRifleMouse, weaponAiming,weaponGuarding,ballastInput } from './weapons/rifle-input.js';
@@ -83,6 +99,7 @@ import { createFpsLook, seedFpsLook, fpsMove, fpsAim, installFpsInput } from './
 import { overheadMapLive } from './ui/overhead-map.js';
 import { overheadZones, NO_ZONES } from './ui/overhead-zones.js';
 import { installDevWiring } from './ui/dev-wiring.js';
+import { isMediaHotkey } from './ui/media-mode.js';
 import { openSpot } from './net/spawn-points.js';
 import { hasAuthoredSpawns } from './net/map-spawns.js'; // s2-spawns
 import { createToast } from './ui/toast.js';
@@ -96,6 +113,8 @@ import { installTitle } from './ui/title-screen.js';
 import { createSheathScreen } from './ui/sheath-screen.js';
 import { Critters } from './critters.js';
 import { sameRoomGroup } from './world/city-rooms.js'; // Lumen: rooms of one building
+import './styles/gungame.css';import { createGunGameHud, gunHudView } from './ui/gungame-hud.js'; // Gun Game's ladder line and cue
+import './styles/death-flow.css';import { createKillcam } from './ui/killcam-hud.js';import { createSummaryWatch } from './match-summary.js';import { summaryCardHTML } from './ui/summary-card.js'; // the killcam, NEXT LIFE, your match summary
 
 const $ = id => document.getElementById(id);
 try{migrateGameStorage(localStorage);}catch{}
@@ -159,6 +178,8 @@ const duel=createDuel($('game'),{sim,bots,hooks:{
  pointWon:side=>{const foe=duel.bot;if(duel.config?.mode==='1v1'&&side==='you'&&!deathActive&&foe)startAftermath('d'+duel.score.played,foe.sim.player);},
  // (v0.999a) A side went out: everyone back at full health at fresh spots.
  newRound:()=>newDuelRound(),
+ // (Gun Game) The ladder's next weapon: in hand now, or from your next life.
+ gunWeapon:(w,now)=>{if(now){sim.swapWeapon(w);applyInputPreference();updateHUD();}else nextWeapon=w;},
 }});
 // Menu clacks (ui-sounds.js): muted with the game, at the master and effects levels.
 installUiSounds({muted:()=>!sound.enabled,level:()=>sound.volume.master*sound.volume.effects});
@@ -250,6 +271,8 @@ const deathScreen=createDeathScreen($('game'),{
  // online your vote (again: taken back); a team goes when everyone on it
  // (robots do not vote) has voted, 1V1 at once.
  forfeit:()=>{if(online.active){online.forfeit(!myForfeitVote());syncDeathCard(true);}else duel.forfeit();},
+ // NEXT LIFE (owner, 2026-10-02: "Allow for weapon swaps at each respawn"): the weapon you come back with.
+ nextWeapon:w=>pickNextLife(w),
 });
 // Which death card: practice, online-practice, ffa, duel (1V1: online and
 // SOLO) or team (2V2, 3V3, 4V4, 2V2V2), death-screen.js.
@@ -258,8 +281,10 @@ function deathMode(){
  if(duel.active)return duel.ffa?'ffa':duel.config?.mode==='1v1'?'duel':'team';
  return 'practice';
 }
-function beginDeath(){
+function beginDeath(e=null){
  if(deathActive)return;
+ // The killcam (killcam.js): a killer known now (bots), or from the kill feed (online, multiplayerFrame).
+ {const max=sim.player.maxHp||100,hp0=previousPlayer?.hp>0&&!previousPlayer.dead?previousPlayer.hp/max:lastHp;killcam.start(e,{hp0,wait:respawnWaitNow(),killer:botKiller(e,hp0),fallback:sim.player});}
  // (Your own fall takes the camera from a kill you were watching.)
  endAftermath();
  // 1V1: the zoom onto your body is not slid aside for the card (owner: "a
@@ -301,7 +326,7 @@ let inputMode = 'keyboard', dirty = true, hudTime = 0, fpsTime = 0, renderedFram
 // The last rate measured while playing: Settings > Graphics shows it under FRAME LIMIT
 // (settings open over a paused game or the menu, where the live rate means nothing).
 let playFPS = 0;
-let markerRemaining = 0, coneFlicker = 0;
+let coneFlicker = 0;
 const keys = new Set(), tappedKeys = new Set();
 const touchActionResets=[];
 // The touch AIM button is a switch for Sightline's rifle, in the stance
@@ -389,9 +414,9 @@ const sticks = new Map();
 
 // Development only: `?capture=thumbnail` hands the view and simulation to
 // tools/capture-thumbnail.mjs, which photographs the map card's picture.
-if(import.meta.env.DEV&&params.get('capture')==='thumbnail')window.__capture={view,sim,map,get bots(){return bots;},get duel(){return duel;}};
+if(import.meta.env.DEV&&params.get('capture')==='thumbnail')window.__capture={view,sim,map,get bots(){return bots;},get duel(){return duel;},get targetLock(){return targetLock;}};
 // Development only: the robots, for tools and the console.
-if(import.meta.env.DEV){window.__bots=bots;window.__duel=duel;window.__sim=sim;window.__stanceAim=stanceAim;window.__stanceBodies=()=>stanceBodies();window.__pickStance=(dx,dy)=>pickStanceTarget(dx,dy);window.__weaponPick=()=>weaponPick;}
+if(import.meta.env.DEV){window.__bots=bots;window.__duel=duel;window.__sim=sim;window.__stanceAim=stanceAim;window.__stanceBodies=()=>stanceBodies();window.__pickStance=(dx,dy)=>pickStanceTarget(dx,dy);window.__lockDebug=()=>({candidates:lockCandidates().map(c=>({...c})),dot:{...aimDotPoint()},me:view.screenPoint(sim.player.x,sim.player.z,.6),mode:lockMode(),inputMode});window.__weaponPick=()=>weaponPick;}
 view.onClatter = type => sound.clatter(type);
 view.onBloodSound=(kind,x,z)=>sound.event({type:kind==='step'?'bloodStep':'bloodPool',x,z},hearingLevel(Math.hypot(x-sim.player.x,z-sim.player.z)));
 // Lost the GPU (usually out of memory on a phone). Twice within a minute on
@@ -399,7 +424,8 @@ view.onBloodSound=(kind,x,z)=>sound.event({type:kind==='step'?'bloodStep':'blood
 const contextLosses=[];
 view.onContextLost=()=>{
  const now=performance.now();contextLosses.push(now);while(contextLosses.length&&now-contextLosses[0]>60000)contextLosses.shift();
- if(settings.quality==='extreme'&&contextLosses.length>=2){$('graphics-preset').value='quality';settingsPanel.applySettings();toast('EXTREME IS TOO HEAVY FOR THIS DEVICE · SWITCHED TO QUALITY',4000);}
+ if(mediaQuality==='extreme'&&contextLosses.length>=2){media.lookFailed();toast('EXTREME IS TOO HEAVY FOR THIS DEVICE · MEDIA USES QUALITY',4000);}
+ else if(settings.quality==='extreme'&&contextLosses.length>=2){$('graphics-preset').value='quality';settingsPanel.applySettings();toast('EXTREME IS TOO HEAVY FOR THIS DEVICE · SWITCHED TO QUALITY',4000);}
 };
 view.birds.onFlap = flight => sound.wingbeat(flight.name);
 
@@ -420,6 +446,7 @@ function randomPracticeSpawn(){
 }
 async function start(weapon=sim.weapon,course) {
   if (started) return;
+  attract.stop();/* the living menu's match goes first (attract-wiring.js) */
   if(course!==undefined)tutorialCourse=course;
   sim.weapon=map.training&&tutorialCourse==='basics'?DEFAULT_WEAPON:playableOr(weaponOrDefault(weapon));
   sim.player.stamina=sim.maxStamina;
@@ -434,7 +461,7 @@ async function start(weapon=sim.weapon,course) {
   $('intro').classList.add('hidden'); ['weapon', 'reticle'].forEach(id => $(id).classList.remove('hidden'));
   $('world').focus();
   // 1V1: the URL carries the choices (menu.js); one robot, no targets.
-  {const q=launchParams();if(!map.training&&q.get('mode')==='duel'){duel.begin(readDuel(q.get('duel'))||{});if(duel.placeDuel()||(hasAuthoredSpawns(map)&&randomPracticeSpawn())){view.cutCamera?.();previousPlayer={...sim.player};}/* s2-spawns: you to your base / an FFA point */modeLabel.textContent=(DUEL_MODES[duel.config?.mode]?.name||'1V1');}}
+  {const q=launchParams();if(!map.training&&q.get('mode')==='duel'&&!online.active){/* (not an online game started after a BOTS one on this page: QUICK PLAY's JOIN) */duel.begin(readDuel(q.get('duel'))||{});if(duel.placeDuel()||(hasAuthoredSpawns(map)&&randomPracticeSpawn())){view.cutCamera?.();previousPlayer={...sim.player};}/* s2-spawns: you to your base / an FFA point */modeLabel.textContent=(DUEL_MODES[duel.config?.mode]?.name||'1V1');}}
   if(tutorial){$('tutorial-guide').classList.remove('hidden');updateTutorial();}
   try { await sound.start(); if (paused) sound.suspend(true); }
   catch (error) { console.warn('Audio unavailable:', error); }
@@ -453,8 +480,9 @@ window.addEventListener('keydown',e=>{
  else void playFullscreen(true);
 },true);
 function returnToMenu(){
+  quickPlayLeft();/* QUICK PLAY stops (quick-wiring.js) */
   online.close();perfReadout.reset();devWindow.hide();robotLab.lost(sim);bots.clear();if(deathPick){deathPick=false;weaponPick.hide();}nextWeapon=null;if(duel.active){duel.stop();modeLabel.textContent='PRACTICE';}
-  if(choosing)menuFlow.cancelOnlinePick();choosing=false;lastKiller=null;lastOneShot=false;onlineMenus(false);view.deathView?.clear();
+  if(choosing)menuFlow.cancelOnlinePick();choosing=false;lastKiller=null;lastOneShot=false;onlineMenus(false);view.deathView?.clear();killcam.clear();
   endAftermath();matchEnd.hide();closeStats();clockRoll=null;view.deathAside=true;
   // (Owner, 2026-09-29: leaving right after a game starts, ROUND 1 and other
   // game pop-ups showed over the menu for a moment.) Every in-game pop-up goes now.
@@ -463,11 +491,12 @@ function returnToMenu(){
   releaseInput();reset();sound.suspend(true);
   document.body.classList.remove('playing','paused');
   for(const id of ['pause-panel','settings-panel','map-panel','tutorial-guide','weapon','reticle'])$(id).classList.add('hidden');
-  $('hit-marker').classList.remove('show');markerRemaining=0;
+  feel.clear();
   $('map-toggle').setAttribute('aria-expanded','false');
   $('intro').classList.remove('hidden');
   $('tutorial-entry').hidden=readTutorialComplete();$('tutorial-mode').hidden=false;
   history.replaceState(null,'',location.pathname);accumulator=0;lastTime=null;
+  attract.schedule();/* the living menu (attract-wiring.js) */
 }
 
 function releaseInput() {
@@ -475,7 +504,7 @@ function releaseInput() {
   if(aimToggled)setAimToggle(false);resetStanceAim(stanceAim);
   touchAimPointer=null;
   rifleFiring=false;rifleAiming=false;firePointer=aimPointer=null;sim.shotgun.trigger=false;sim.shotgun.suppress=false;
-  keys.clear(); tappedKeys.clear(); pendingQuickShot=false; pendingSeed = false; pendingLaunch = false; pendingAimPoint = null;
+  keys.clear(); tappedKeys.clear(); arrowPresses.length=0; pendingQuickShot=false; pendingSeed = false; pendingLaunch = false; pendingAimPoint = null;
   touch.moveX = touch.moveZ = touch.aimX = touch.aimZ = 0; touchMove.x = touchMove.z = 0; touch.seeding = false;
   for (const stick of sticks.values()) { stick.pointer = null; stick.knob.style.transform = ''; stick.element.classList.remove('engaged'); }
 }
@@ -492,7 +521,7 @@ function setPaused(value) {
 }
 
 function reset() {
-  damageIndicator.clear();
+  damageIndicator.clear();feel.clear();
   if(deathPick){deathPick=false;weaponPick.hide();}
   if(nextWeapon){sim.weapon=weaponOrDefault(nextWeapon);nextWeapon=null;applyInputPreference();}
   deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');
@@ -518,6 +547,11 @@ function reset() {
 // (v0.999a: the loading wheel over the screen, busy-screen.js, where there was
 // an APPLYING GRAPHICS note over a world that went blank while it was rebuilt.)
 let graphicsChanges=0;
+// Media mode's best look (ui/media-mode.js): the preset drawn with while it is
+// on, or null for the player's own. Never saved; settings.quality is untouched,
+// so turning it off goes back to exactly what was there.
+let mediaQuality=null;
+function setMediaLook(name){mediaQuality=name||null;const want=mediaQuality||settings.quality;if((view.wantedQuality??view.qualityName)!==want)changeGraphics(want);}
 function changeGraphics(name){
  // (Held from now: no frame is queued for the GPU while the note paints.)
  view.wantedQuality=name;view.holdRender=true;graphicsChanges++;showBusy();
@@ -594,6 +628,24 @@ function aimOnTarget(){
  });
 }
 function updateReticle(){$('reticle').classList.toggle('on-target',aimOnTarget());aimOverlay.update({sim,view,running,coneFlicker,aiming:aimingNow(),point:aimDotPoint()});}
+// The lock's marker (ui/lock-marker.js) round the locked target, where it is
+// drawn (between steps); while the lock drifts (the target hidden or
+// dodging) on the drifting aim point instead.
+const lockMarker=createLockMarker($('game'));
+const MOVER_RADIUS=targetRadius({kind:'player'});
+function drawnLockTarget(id){
+ for(const o of view.remotePlayers||[])if(o.id===id)return o;
+ for(const t of sim.targets)if(t.id===id)return t;
+ return null;
+}
+function updateLockMarker(dt){
+ const id=targetLock.id;
+ if(!running||sim.player.dead||id===null||!lockMode()){lockMarker.hide();return;}
+ const steady=targetLock.seen&&targetLock.phase!=='drift'&&targetLock.phase!=='wait',drawn=steady?drawnLockTarget(id):null;
+ const pt=targetLock.point,x=drawn?drawn.x:pt.x,z=drawn?drawn.z:pt.z,r=drawn&&!drawn.kind?MOVER_RADIUS:drawn?targetRadius(drawn):MOVER_RADIUS;
+ const c=view.screenPoint(x,z,.6),cx=c.x,cy=c.y,e=view.screenPoint(x+r,z,.6);
+ lockMarker.show(id,cx,cy,Math.hypot(e.x-cx,e.y-cy),!!drawn,dt);
+}
 
 function updateHUD() {
  {const scores=$('scores-toggle'),want=!(online.active||(duel.active&&started));if(scores&&scores.hidden!==want)scores.hidden=want;}
@@ -625,10 +677,12 @@ function event(e) {
   // fires six times a second and a long blink would just look like flicker.
   if(e.type==='shotgunShot')coneFlicker=.12;
   if(e.type==='rifleShot')coneFlicker=.055;
+  feel.event(e); // (hit markers, the kill's sound, hitstop and kick, low health: before the sound below)
+  summaryWatch.event(e); // (your match summary: attacks, hits, kills, lives)
   // The storm's bites: none of the damage readouts (owner, 2026-09-29), only
   // its own sound (stepStormScreen) and the health bar.
   if(e.type==='playerDamage'&&e.storm){stormDose+=e.damage;return;}
-  if(e.type==='playerDamage'){damageFeedback.add(e.damage,sim.time);if(e.damageType!=='ichorCost')damageIndicator.hit(e,view);buzz(e.damage>=8?HAPTICS.heavy:HAPTICS.hurt,{enabled:settings.vibration,touch:touchPrompts});}
+  if(e.type==='playerDamage'){noteHit(e);damageFeedback.add(e.damage,sim.time);if(e.damageType!=='ichorCost')damageIndicator.hit(e,view);buzz(e.damage>=8?HAPTICS.heavy:HAPTICS.hurt,{enabled:settings.vibration,touch:touchPrompts});}
   if(e.type==='kill'&&e.targetKind!=='player')buzz(HAPTICS.kill,{enabled:settings.vibration,touch:touchPrompts});
   if(e.type==='outgoingDamage')outgoingFeedback.add(e,sim.time);
   // You killed a player (or a robot): KILL where they fell.
@@ -641,12 +695,7 @@ function event(e) {
   }
   if(tutorial){tutorial.event(e,sim);updateTutorial();}
   view.event(e); sound.event(e,heard(e).level); hollow?.event(e,sim.player); // (s3-sound: the crows)
-  if(e.type==='playerDeath'){duel.playerDied();beginDeath();}
-  if (e.type === 'hit' || e.type === 'kill') {
-    const marker = $('hit-marker'), position = view.screenPoint(e.x, e.z);
-    marker.style.left = position.x + 'px'; marker.style.top = position.y + 'px';
-    marker.className = 'hit-marker' + (e.type === 'kill' ? ' kill' : '') + ' show'; markerRemaining = .18;
-  }
+  if(e.type==='playerDeath'){duel.playerDied();beginDeath(e);}
 }
 
 // On touch, a tap anywhere on the world fires at that spot, on either side of
@@ -664,49 +713,88 @@ function touchTapFire(x, y) {
 // aim assist is off in Settings > Mobile) and for keyboard-only aim.
 const targetLock=createTargetLock();
 let pendingSwap=null,swipeFrom=null;
+const arrowPresses=[]; // (arrow keys pressed since the last step)
 function lockMode(){ if(stanceSteering())return false; return touchPrompts ? !!settings.aimAssist : inputMode!=='mouse'; }
 // What can be locked: alive, in sight, on screen and in range. Online, only
 // other players; offline, the practice targets and dummies and the robots.
 // Players and robots are `mover`s (target-lock.js follows them differently),
 // each described with what the lock needs: its velocity, whether it is
-// dodging, inside a building you are not in, or behind a solid obstacle.
+// dodging, inside a building you are not in, behind a solid obstacle, at the
+// screen's edge, or the one that just shot you. Described into reused
+// objects (this runs every step).
+// (Into one reused list: the practice targets first, then from
+// lockPoolMovers on the players and robots.)
+const lockPoolList=[];let lockPoolMovers=0;
 function lockPool(){
- if(online.active)return (online.foes(1)||[]).map(t=>({...t,mover:true}));
- return [...sim.targets.map(t=>({...t,mover:false})),...bots.lockPool().map(t=>({...t,mover:true}))];
+ lockPoolList.length=0;
+ if(!online.active){for(const t of sim.targets)if(!t.friendly&&!t.critter)lockPoolList.push(t);}
+ lockPoolMovers=lockPoolList.length;
+ for(const t of (online.active?online.foes(1):bots.lockPool())||[])lockPoolList.push(t);
+ return lockPoolList;
 }
-function describeLockTarget(t){
- const p=sim.player,w=viewWidth(),h=viewHeight(),m=TARGET_LOCK.margin,at=view.screenPoint(t.x,t.z,.6);
- const offscreen=at.x<m||at.y<m||at.x>w-m||at.y>h-m;
- const out={id:t.id,x:t.x,z:t.z,sx:at.x,sy:at.y,mover:!!t.mover,vx:t.vx||0,vz:t.vz||0,dodging:(t.dodgeRemaining||0)>0,offscreen};
- if(t.mover){
+const lockSlots=[],lockList=[],lockFound={};
+function describeLockTarget(t,mover,out={}){
+ const p=sim.player,w=viewWidth(),h=viewHeight(),m=TARGET_LOCK.margin,slack=TARGET_LOCK.edgeSlack,at=view.screenPoint(t.x,t.z,.6);
+ out.id=t.id;out.x=t.x;out.z=t.z;out.sx=at.x;out.sy=at.y;out.mover=mover;out.vx=t.vx||0;out.vz=t.vz||0;out.dodging=(t.dodgeRemaining||0)>0;
+ // Off screen: well past the edge (a locked target is let go). Edge: near or
+ // a little past it (not picked up, but a locked one is kept a moment).
+ out.offscreen=at.x<-slack||at.y<-slack||at.x>w+slack||at.y>h+slack;
+ out.edge=!out.offscreen&&(at.x<m||at.y<m||at.x>w-m||at.y>h-m);
+ out.inside=false;out.blocked=false;out.threat=mover&&hitFrom(t.x-p.x,t.z-p.z);
+ if(mover){
   const inside=sim.buildingAt(t.x,t.z);out.inside=!!inside&&!sameRoomGroup(inside,sim.interior);
   out.blocked=sim.obstacleBetween(p.x,p.z,t.x,t.z);
  }
  return out;
 }
 function lockCandidates(){
- const p=sim.player,out=[];
- for(const t of lockPool()){
+ const p=sim.player,pool=lockPool();lockList.length=0;
+ for(let i=0;i<pool.length;i++){
+  const t=pool[i];
   if(t.hp!==undefined&&t.hp<=0)continue;
   if(Math.hypot(t.x-p.x,t.z-p.z)>TARGET_LOCK.range)continue;
-  const c=describeLockTarget(t);
-  if(c.offscreen)continue;
+  const c=describeLockTarget(t,i>=lockPoolMovers,lockSlots[lockList.length]||(lockSlots[lockList.length]={}));
+  if(c.offscreen||c.edge)continue;
   // Only what the player can see: not under another building's roof, and
   // from indoors only out through doors and windows (sim.canSeeTarget).
   // Last, as the costliest test (rays through the walls), run every step.
   if(!sim.canSeeTarget(t.x,t.z))continue;
-  out.push(c);
+  lockList.push(c);
  }
- return out;
+ return lockList;
+}
+// Where you were just hit from (playerDamage's bearing toward the source):
+// the one standing that way is the likeliest one you want (TARGET_LOCK.threatBias).
+const recentHits=Array.from({length:4},()=>({dx:0,dz:0,time:-Infinity}));let recentHitSlot=0;
+function noteHit(e){
+ if(!Number.isFinite(e.sourceDX)||e.storm||e.damageType==='ichorCost')return;
+ const h=recentHits[recentHitSlot];recentHitSlot=(recentHitSlot+1)%recentHits.length;h.dx=e.sourceDX;h.dz=e.sourceDZ;h.time=sim.time;
+}
+function hitFrom(dx,dz){
+ const l=Math.hypot(dx,dz);if(!l)return false;
+ const cos=Math.cos(TARGET_LOCK.threatAngle);
+ for(const h of recentHits)if(sim.time-h.time<=TARGET_LOCK.threatTime&&(dx*h.dx+dz*h.dz)/l>=cos)return true;
+ return false;
 }
 // Facing onto a target locks it (no one is ever picked for you): with
 // nothing locked, turning your character (walking, the arrows, the stick) so
 // it faces a player, robot or practice target on screen within a narrow
 // cone locks onto it. Letting go by hand holds that one off until you turn
-// away from it (and a moment passes).
-let releasedId=null,releaseHold=0;
+// away from it (and a moment passes). After a lock ends by itself (a kill, a
+// target lost) nothing is taken until your aim has turned a little
+// (TARGET_LOCK.facingRearm): whoever stood behind the one that fell is not
+// locked for you.
+let releasedId=null,releaseHold=0,facingQuiet=null,lockEnded=0;
+const lockAim={x:0,z:0};
+function aimNow(){const p=sim.player;lockAim.x=p.aimPointX??p.x+p.aimX*4;lockAim.z=p.aimPointZ??p.z+p.aimZ*4;return lockAim;}
 function facingLock(candidates){
- const p=sim.player;let best=null,score=Infinity;
+ const p=sim.player;
+ if(facingQuiet!==null){
+  const turned=Math.abs(Math.atan2(Math.sin(Math.atan2(p.aimZ,p.aimX)-facingQuiet),Math.cos(Math.atan2(p.aimZ,p.aimX)-facingQuiet)));
+  if(turned<TARGET_LOCK.facingRearm)return;
+  facingQuiet=null;
+ }
+ let best=null,score=Infinity;
  for(const c of candidates){
   if(c.blocked||c.inside)continue;
   const dx=c.x-p.x,dz=c.z-p.z,along=dx*p.aimX+dz*p.aimZ;if(along<1)continue;
@@ -717,48 +805,74 @@ function facingLock(candidates){
  }
  // The one let go of is free again once you have turned well off it.
  if(releasedId!==null&&!candidates.some(c=>c.id===releasedId&&Math.abs(Math.atan2((c.z-p.z)*p.aimX-(c.x-p.x)*p.aimZ,(c.x-p.x)*p.aimX+(c.z-p.z)*p.aimZ))<.35))releasedId=null;
- if(best)targetLock.acquire(best,{x:p.aimPointX??p.x+p.aimX*4,z:p.aimPointZ??p.z+p.aimZ*4});
+ if(best)targetLock.acquire(best,aimNow());
 }
-function lockTarget(dt){
- if(!lockMode()||sim.player.dead){targetLock.clear();pendingSwap=null;return null;}
- const candidates=lockCandidates();
- const onMover=()=>targetLock.id!==null&&!!candidates.find(c=>c.id===targetLock.id)?.mover;
- if(pendingSwap){
-  // Directions are from where the cursor is now. Idle: the target that way
-  // from the aim dot. Locked (the dot is on the target): the next target that
-  // way, and with none that way the lock lets go (an arrow then turns the aim
-  // that way as usual); on a player or robot with the keys, it holds (the
-  // held arrow leads them instead).
-  if(targetLock.id===null){
-   const p=sim.player,dot=aimDotPoint();
-   targetLock.select(candidates,{x:dot.x,y:dot.y},pendingSwap.x,pendingSwap.y,{x:p.aimPointX??p.x+p.aimX*4,z:p.aimPointZ??p.z+p.aimZ*4});
-  }else{const was=targetLock.id;targetLock.swap(candidates,pendingSwap.x,pendingSwap.y,onMover()&&!touchPrompts);if(targetLock.id===null){releasedId=was;releaseHold=1.2;}}
-  pendingSwap=null;
- }
+let lockClock=0;
+const pressAt={cursor:{x:0,y:0},origin:{x:0,y:0},aim:null,time:0,keep:false,chord:false};
+const chase={nudgeX:0,nudgeZ:0};
+function lockPress(candidates,dx,dy,key){
+ const p=sim.player,dot=aimDotPoint(),me=view.screenPoint(p.x,p.z,.6);
+ pressAt.cursor.x=dot.x;pressAt.cursor.y=dot.y;pressAt.origin.x=me.x;pressAt.origin.y=me.y;pressAt.aim=aimNow();pressAt.time=lockClock;
+ const current=targetLock.id===null?null:candidates.find(c=>c.id===targetLock.id)||lockedStill(targetLock.id);
+ pressAt.keep=!!current?.mover&&!touchPrompts;pressAt.chord=key;
+ const was=targetLock.id,result=targetLock.press(candidates,dx,dy,pressAt);
+ // Let go by hand: that one is held off, and the one standing behind it in
+ // line is not taken by the facing lock either until you turn.
+ if(result==='released'){releasedId=was;releaseHold=1.2;facingQuiet=Math.atan2(p.aimZ,p.aimX);}
+ if(result==='locked'||result==='switched')facingQuiet=null;
+}
+function lockTarget(dt,arrowsHeld){
+ if(!lockMode()||sim.player.dead){targetLock.clear();pendingSwap=null;arrowPresses.length=0;facingQuiet=null;return null;}
+ lockClock+=dt;
+ const candidates=lockCandidates(),p=sim.player;
+ // Directions are from where the cursor is now (idle: from the aim dot or
+ // from you, whichever fits better), or locked from the target (the next
+ // one that way; with none that way the lock lets go, and an arrow then
+ // turns the aim that way as usual; on a player or robot with the keys it
+ // holds and the held arrow leads them, and a double tap lets go). Arrow
+ // presses that came in since the last step are taken in order, at this
+ // step's time: two arrows together make a diagonal, the same one twice a
+ // double tap (target-lock.js press).
+ if(pendingSwap){lockPress(candidates,pendingSwap.x,pendingSwap.y,false);pendingSwap=null;}
+ for(const a of arrowPresses)lockPress(candidates,a.x,a.y,true);
+ arrowPresses.length=0;
+ // Aiming by hand while idle: the lost target is no longer waited for.
+ if(arrowsHeld&&targetLock.id===null)targetLock.forget();
  releaseHold=Math.max(0,releaseHold-dt);
  if(targetLock.id===null)facingLock(candidates);
  // Held arrows lead a player or robot by hand (keyboard only).
- const chase=!touchPrompts?{nudgeX:(keys.has('ArrowRight')?1:0)-(keys.has('ArrowLeft')?1:0),nudgeZ:(keys.has('ArrowDown')?1:0)-(keys.has('ArrowUp')?1:0)}:null;
- return targetLock.update(candidates,sim.player,dt,lockedStill,chase);
+ chase.nudgeX=touchPrompts?0:(keys.has('ArrowRight')?1:0)-(keys.has('ArrowLeft')?1:0);
+ chase.nudgeZ=touchPrompts?0:(keys.has('ArrowDown')?1:0)-(keys.has('ArrowUp')?1:0);
+ const locked=targetLock.update(candidates,p,dt,lockedStill,chase,aimNow());
+ // A lock that just ended by itself: the facing lock waits for a turn.
+ if(targetLock.ended!==lockEnded){lockEnded=targetLock.ended;if(targetLock.id===null)facingQuiet=Math.atan2(p.aimZ,p.aimX);}
+ return locked;
 }
 // The locked target, if it still exists and is alive and near, seen or not
 // (target-lock.js keeps a practice target through a brief loss of sight, and
-// decides for a player or robot from what describeLockTarget says).
+// decides for a player or robot from what describeLockTarget says). A player
+// or robot you cannot see counts as behind an obstacle: the aim drifts on
+// rather than following someone hidden.
 function lockedStill(id){
- const t=lockPool().find(t=>t.id===id);
+ const pool=lockPool(),i=pool.findIndex(t=>t.id===id),t=pool[i];
  if(!t||(t.hp!==undefined&&t.hp<=0))return null;
- return Math.hypot(t.x-sim.player.x,t.z-sim.player.z)<=TARGET_LOCK.range*1.2?describeLockTarget(t):null;
+ if(Math.hypot(t.x-sim.player.x,t.z-sim.player.z)>TARGET_LOCK.range*1.2)return null;
+ const c=describeLockTarget(t,i>=lockPoolMovers,lockFound);
+ if(c.mover&&!c.offscreen&&!c.blocked&&!sim.canSeeTarget(t.x,t.z))c.blocked=true;
+ return c;
 }
 // Arrow presses, from the cursor: idle, lock onto the target that way; locked,
 // the next target that way, or let go if there is none. Held arrows turn the
-// aim only while idle.
+// aim only while idle. (Queued for the next step: lockTarget.)
 window.addEventListener('keydown',e=>{
  const code=gameCode(e.code);
  if(!running||e.repeat||touchPrompts||!code?.startsWith('Arrow'))return;
- inputMode='keyboard';
+ inputMode='keyboard';lastArrowAt=elapsed;
  if(sim.weapon==='sightline'&&sim.sightline?.crouched)return; // (the arrows steer the laser)
- pendingSwap={x:code==='ArrowRight'?1:code==='ArrowLeft'?-1:0,y:code==='ArrowDown'?1:code==='ArrowUp'?-1:0};
+ if(arrowPresses.length<4)arrowPresses.push({x:code==='ArrowRight'?1:code==='ArrowLeft'?-1:0,y:code==='ArrowDown'?1:code==='ArrowUp'?-1:0});
 });
+// When the arrows were last held (KEYBOARD_AIM.walkTakeover).
+let lastArrowAt=-Infinity;
 let touchAimStart = null;
 
 
@@ -771,7 +885,8 @@ const fpsLook=createFpsLook();
 const fpsOn=()=>!!sim.dev.fps&&!touchPrompts;
 const fpsInput=installFpsInput({world:$('world'),look:fpsLook,active:()=>fpsOn()&&running&&!deathActive,
  onUnlock:()=>setTimeout(()=>{if(fpsOn()&&running&&!deathActive)setPaused(true);},60)});
-const {devTools,devWindow,devDialog,showDevNotice,toggleDevWindow,devOffHere}=installDevWiring({$,sim,view,bots,toast,
+const {devTools,devWindow,devDialog,showDevNotice,toggleDevWindow,devOffHere,media,toggleMedia}=installDevWiring({$,sim,view,bots,toast,
+ setMediaLook,deviceTier:()=>deviceTier.tier,mobile:()=>deviceDefaults.mobile,
  online:()=>online,settings:()=>settings,settingsPanel:()=>settingsPanel,started:()=>started,paused:()=>paused,
  server:()=>import.meta.env.DEV?params.get('server'):null,pause:()=>setPaused(true),
  randomSpot:()=>{const ok=randomPracticeSpawn();if(ok)view.cutCamera?.();return ok;},
@@ -785,7 +900,7 @@ const labPanel=createRobotLabPanel($('game'),{lab:robotLab,bots,sim,toast:text=>
 // button removes) a lab robot instead of firing.
 $('world').addEventListener('pointerdown',e=>{if(!labPanel.placing||online.active)return;e.preventDefault();e.stopImmediatePropagation();const at=view.aim(e.clientX,e.clientY,sim.player);if(Number.isFinite(at.aimPointX))labPanel.place(at.aimPointX,at.aimPointZ,e.button);},true);
 $('world').addEventListener('contextmenu',e=>{if(labPanel.placing)e.preventDefault();});
-if(import.meta.env.DEV){window.__robotLab=robotLab;window.__labPanel=labPanel;}
+if(import.meta.env.DEV){window.__robotLab=robotLab;window.__labPanel=labPanel;window.__media=media;}
 // Where the follow camera last was: leaving it, your ghost carries on from there.
 let labFollowAt=null;
 installTitle({page:document.querySelector('[data-page="home"]'),shell:$('intro'),overlay:document.querySelector('#intro .title-blood')});
@@ -805,10 +920,71 @@ function thumbnail(){
 const online=createOnlinePlay({$,map,sim,createSim:linkedSim,start,toast:text=>toast(text,2600),leave:()=>$('main-menu').click(),
  server:import.meta.env.DEV?params.get('peerhost'):null,gameServer:import.meta.env.DEV?params.get('server'):null,pickWeapon:()=>enterOnline(),adminCard:m=>adminMessages.show(m)});
 const menuFlow=installMenu({$,map,thumbnail,start,openSettings,closeSettings,returnToMenu,tutorialComplete:readTutorialComplete(),online:(request,status)=>online.request(request,status),onlineRooms:()=>online.rooms()});
+// QUICK PLAY (quick-wiring.js, quick-play.js; owner, 2026-10-01): an online
+// match when someone is waiting, else a 1V1 against an adapting Normal bot.
+const quickPlay=(()=>{const server=import.meta.env.DEV?params.get('server'):null,peer=import.meta.env.DEV?params.get('peerhost'):null;
+ return installQuickPlay({$,map,sim,duel,bots,online,start,returnToMenu,toast,gameServer:server,devFlags:(server?'&server='+encodeURIComponent(server):'')+(peer?'&peerhost='+encodeURIComponent(peer):'')});})();
+// The living menu (attract-wiring.js, attract-mode.js; owner, 2026-10-02):
+// bots fighting behind the title and menu pages, started a moment after the
+// menu shows (schedule), stopped the instant a game starts (start), and only
+// where the device can afford it. First-time weapon tips (ui/weapon-hint-card.js).
+const attract=installAttract({map,view,sim,tier:deviceTier,quality:()=>mediaQuality||settings.quality,touch:()=>touchPrompts,
+ blocked:()=>started||online.active||layoutPreview||lobbyScreen.open,force:import.meta.env.DEV?params.get('attract'):null});
+const weaponHints=createWeaponHintCard($('game'));
+installTipReset($('settings-controls'),()=>weaponHints.resetSeen());
+if(import.meta.env.DEV){window.__attract=attract;window.__weaponHints=weaponHints;window.__view??=view;}
 // Multiplayer flow (see AGENTS.md > Multiplayer): pick a weapon over the
 // running game, fight, die, respawn after 5 s or change weapon, leave.
 let choosing=false,lastKiller=null,lastOneShot=false;
 const mpHud=createMultiplayerHud($('game'));
+const feel=createFeel({root:$('game'),markerHost:$('hit-marker'),view,sound,mpHud,player:()=>sim.player,touch:()=>touchPrompts,onNews:n=>summaryWatch.news(n)});
+if(import.meta.env.DEV)window.__feel=feel;
+// (What feel.frame reads each frame: one object, its fields rewritten, nothing allocated.)
+const feelState={sim,online,bots,duel,started:false,paused:false,live:false,elapsed:0,feedNow:0};
+// --- The killcam, NEXT LIFE and your match summary (owner, 2026-10-02; killcam.js, ui/killcam-hud.js, match-summary.js, ui/summary-card.js) ---
+const killcam=createKillcam({root:$('game'),view,weaponName:id=>weaponInfo(id)?.name||id,touch:()=>touchPrompts,skipLabel:()=>displayKeys('SPACE')});
+view.deathKillcam=killcam;
+const summaryWatch=createSummaryWatch({online,duel,bots,sim});
+// Your health share the last frame you were up (the killcam's bar starts at
+// your health before the killing tick, previousPlayer; this when there is none).
+let lastHp=1,pendingNext=null,pendingNextAt=0;
+// The respawn wait from the death (Infinity: none of your own: practice
+// online waits for RESPAWN, the round modes for the next round).
+function respawnWaitNow(){
+ if(online.active){const m=online.match();if(!m||m.elimination||m.mode==='practice')return Infinity;const me=online.me;return me?.dead&&me.respawnIn>0&&Number.isFinite(me.respawnIn)?me.respawnIn:online.lobby().settings?.respawn||MATCH_SETTINGS.respawn.default;}
+ if(duel.active)return duel.ffa?FFA_RESPAWN:Infinity;
+ return map.training?Infinity:RESPAWN_TIME;
+}
+// Seconds to your respawn as they stand now (Infinity: none of your own).
+function respawnLeftNow(){
+ if(online.active){const m=online.match(),me=online.me;return m&&!m.elimination&&m.mode!=='practice'&&me?.dead&&Number.isFinite(me.respawnIn)&&me.respawnIn>0?me.respawnIn:Infinity;}
+ const wait=respawnWaitNow();return Number.isFinite(wait)?wait-deathElapsed:Infinity;
+}
+// Against bots: the bot whose hit killed you, this very tick (not the storm,
+// fire or your own blast, whatever hurt you a moment before).
+// (`hp0`: your health share before that tick: a one-shot from full.)
+function botKiller(e,hp0=lastHp){
+ const by=bots.youHurtBy;if(online.active||!by||!(bots.clock-by.at<.05)||['storm','fire'].includes(e?.damageType))return null;
+ const bot=bots.byId(by.id);return bot?{id:bot.id,name:bot.name,weapon:bot.sim.weapon,oneShot:hp0>=.999}:null;
+}
+// The death card's NEXT LIFE row: which weapon is lit, the ladder's in Gun
+// Game, nothing in the round modes, the tutorial or once respawns close.
+function nextLifeView(){
+ const mode=deathScreen.mode;
+ if(!['practice','online-practice','ffa'].includes(mode)||map.training)return null;
+ if(mode==='ffa'&&['late','closed'].includes(myRespawnFate()))return null;
+ const gun=gunNow();if(gun)return {ladder:gun.weapon,name:gun.name,level:gun.step};
+ if(online.active){const me=online.me;if(!me?.present||!me.dead||me.picking)return null;return {weapon:pendingNext&&elapsed-pendingNextAt<1.5?pendingNext:me.next||me.weapon};}
+ return {weapon:nextWeapon||sim.weapon};
+}
+function pickNextLife(w){
+ const weapon=playableOr(weaponOrDefault(w),null);if(!weapon)return;
+ if(online.active){online.chooseNext(weapon);pendingNext=weapon;pendingNextAt=elapsed;}
+ else nextWeapon=weapon;
+}
+// Your part of the end card (one per match, match-summary.js).
+function summaryHTML(rows,myId,won,rounds){try{return summaryCardHTML(summaryWatch.card({rows,myId,won,rounds}));}catch(error){console.warn('Match summary unavailable:',error);return '';}}
+if(import.meta.env.DEV){window.__killcam=killcam;window.__summary=summaryWatch;}
 // SCORES (touch; keyboard players hold Tab): the same stats panel as Tab,
 // online and against robots (owner, 2026-09-29: the scoreboard only when asked for).
 $('scores-toggle').onclick=()=>{if(statsFrom==='tab')closeStats();else if(!statsFrom)openStats('tab');};
@@ -860,7 +1036,7 @@ pauseWeaponBtn.onclick=()=>{
 // Back from the death screen's weapon grid to the countdown.
 function closeDeathPick(){
  deathPick=false;weaponPick.hide();
- if(deathActive){deathScreen.root.classList.remove('hidden');deathScreen.root.querySelector('.death-actions button:not([hidden])')?.focus();}
+ if(deathActive){deathScreen.root.classList.remove('hidden');deathScreen.focusFirst();}
 }
 function closeSoloPick(){
  if(deathPick){closeDeathPick();return;}
@@ -908,7 +1084,7 @@ function openLobby(){
 function closeLobby(){
  if(!lobbyPanel.open)return;
  lobbyPanel.hide();
- if(lobbyFrom==='death'&&deathActive){deathScreen.root.classList.remove('hidden');deathScreen.root.querySelector('.death-actions button:not([hidden])')?.focus();}
+ if(lobbyFrom==='death'&&deathActive){deathScreen.root.classList.remove('hidden');deathScreen.focusFirst();}
  else if(paused){$('pause-panel').classList.remove('hidden');$('resume').focus();}
  else $('world').focus();
  lobbyFrom=null;
@@ -924,6 +1100,7 @@ function onlineMenus(on){
 // The death screen goes; the body from the last life stays where it fell,
 // settled (it goes at the next death, a map reset or leaving).
 function clearDeath(){
+ killcam.clear();pendingNext=null;
  if(deathActive){deathActive=deathMenuOpen=false;deathElapsed=0;deathScreen.hide();document.body.classList.remove('dying','dead-menu');}
  if(statsFrom==='death')closeStats();
  stopSpectate();
@@ -1038,7 +1215,9 @@ function syncDeathCard(force=false,dt=0){
 // The end of a match (ui/match-end.js): one card online and SOLO.
 const matchEnd=createMatchEnd($('game'),{act:id=>{
  if(id==='ready'){const m=online.match();online.setReady(!(m?.ready||[]).includes(online.myId));}
- else if(id==='leave'||id==='quit')$('main-menu').click();
+ else if(id==='leave'||id==='quit'||id==='menu')$('main-menu').click();
+ // QUICK PLAY AGAIN (quick play's end card): look for a match again.
+ else if(id==='quick-again'){matchEnd.hide();quickPlay.again();}
  else if(id==='lobby')online.endRound();
  // START: a new match, same settings, at once (the old REMATCH).
  else if(id==='start'){matchEnd.hide();clearDeath();reset();running=true;paused=false;sound.suspend(false);$('world').focus();updateHUD();}
@@ -1048,7 +1227,8 @@ const matchEnd=createMatchEnd($('game'),{act:id=>{
 function showSoloEnd(outcome){
  closeStats();
  const {title,detail}=soloOutcome(outcome);
- matchEnd.show({title,detail,rows:statsRows(),myId:'you',mode:outcome.mode,first:outcome.survivor,buttons:[{id:'start',label:'PLAY',primary:true},{id:'settings',label:'CHANGE SETTINGS'},{id:'quit',label:'QUIT'}]});
+ const rows=statsRows();
+ matchEnd.show({title,detail,rows,myId:'you',mode:outcome.mode,first:outcome.survivor,summary:summaryHTML(rows,'you',outcome.winner==='you',!duel.ffa&&!outcome.gungame),buttons:quickPlay.endButtons('solo')||[{id:'start',label:'PLAY',primary:true},{id:'settings',label:'CHANGE SETTINGS'},{id:'quit',label:'QUIT'}]});
 }
 // Online: the card while the host's round is on 'results' (READY n/m, the
 // host's LOBBY, LEAVE); it goes by itself when the round moves on.
@@ -1062,7 +1242,8 @@ function syncMatchEnd(m){
  }
  const myId=online.myId,ready=m.ready||[],people=online.lobby().players.filter(p=>!p.robot).length||1;
  const {title,detail}=onlineOutcome(m.results,{myId,myTeam:online.myTeam});
- matchEnd.show({title,detail,rows:m.results.board||[],myId,mode:m.mode,first:m.results.survivor,buttons:[{id:'ready',label:readyLabel(Math.min(ready.length,people),people),pressed:ready.includes(myId),primary:true},...(online.leads?[{id:'lobby',label:'LOBBY'}]:[]),{id:'leave',label:'LEAVE'}]});
+ const won=m.results.winner?(m.results.winner.team?m.results.winner.team===online.myTeam:m.results.winner.id===myId):false;
+ matchEnd.show({title,detail,rows:m.results.board||[],myId,mode:m.mode,first:m.results.survivor,summary:summaryHTML(m.results.board||[],myId,won,!!m.elimination),buttons:quickPlay.endButtons('online')||[{id:'ready',label:readyLabel(Math.min(ready.length,people),people),pressed:ready.includes(myId),primary:true},...(online.leads?[{id:'lobby',label:'LOBBY'}]:[]),{id:'leave',label:'LEAVE'}]});
 }
 const spectate=createSpectate($('game'));
 let spectatePrev=null;
@@ -1086,7 +1267,7 @@ function spectateAnyone(){
 function respawnClock(ended=false){
  if(!started)return null;
  if(online.active){const m=online.match();return m?.phase==='playing'&&m.timed?{mode:m.mode,left:m.left}:null;}
- return duel.active&&duel.ffa&&(ended||!duel.over)?{mode:'ffa',left:duel.left}:null;
+ return duel.active&&duel.ffa&&(ended||!duel.over)?{mode:duel.gunGame?'gungame':'ffa',left:duel.left}:null;
 }
 // Your respawn against that clock: 'open', 'late' (yours would come after the
 // cutoff), 'closed' or 'none' (config/match.js respawnFate). Online the host's
@@ -1122,6 +1303,16 @@ function stepRespawnCutoff(){
  sound.pulse(1);
 }
 const scoreFlash=createScoreFlash($('game'));
+// Gun Game (ui/gungame-hud.js): the ladder line and the next-weapon cue, from
+// the host's match state online or BOTS's own (duel.js gunState).
+const gunHud=createGunGameHud($('game'),{sound,under:document.querySelector('#game .health-hud')||$('game')});
+// (A kill swapped the weapon in hand mid-life, online: the HUD and touch buttons follow.)
+online.onSwap=()=>{applyInputPreference();updateHUD();};
+function gunNow(){
+ if(!started)return null;
+ if(online.active){const m=online.match();return (m?.phase==='playing'||m?.phase==='results')&&m.gun?gunHudView(m.gun,online.myId,'o'+m.number):null;}
+ return duel.active&&duel.gunState?gunHudView(duel.gunState(),'you','d'+duel.matchId):null;
+}
 // A click or tap on the world while spectating (it shows behind the death
 // screen, which is over it: anywhere but its card): the next teammate.
 $('world').addEventListener('pointerdown',()=>{if(spectate.open&&deathActive)spectate.step(1);});
@@ -1154,12 +1345,12 @@ function updateSpectate(dt=0){
  // (Team modes only: in 1V1 there is nobody on your side to watch.)
  // FFA once you are out for the rest of the match (respawns closed): anyone standing.
  const out=deathActive&&deathMenuOpen&&deathScreen.mode==='ffa'&&['late','closed'].includes(myRespawnFate());
- const watching=(elim&&deathScreen.mode==='team'||out)&&deathActive&&deathMenuOpen&&deathElapsed>=DEATH_MENU_DELAY+SPECTATE_AFTER&&!duel.resultOpen&&!choosing;
+ const watching=(elim&&deathScreen.mode==='team'||out)&&deathActive&&deathMenuOpen&&deathElapsed>=killcam.cardAt+SPECTATE_AFTER&&!duel.resultOpen&&!choosing;
  const mates=watching?(out?spectateAnyone():spectateMates()):[];
  if(mates.length)spectate.update(mates);
  else if(spectate.open)stopSpectate();
  // Down in an elimination round: the world and the game's HUD go dull until you are back.
- document.body.classList.toggle('watching',elim&&deathActive&&deathElapsed>=DEATH_MENU_DELAY);
+ document.body.classList.toggle('watching',elim&&deathActive&&deathElapsed>=killcam.cardAt);
  // (The big score between points: team modes. 1V1 has the aftermath, the
  // stats panel's flip and the top score turning over instead: owner.)
  if(elim&&online.active){
@@ -1199,6 +1390,7 @@ function respawnPractice(){
  clearDeath();
  if(nextWeapon){sim.weapon=weaponOrDefault(nextWeapon);nextWeapon=null;applyInputPreference();}
  sim.respawn({x:map.spawn.x,z:map.spawn.z});randomPracticeSpawn();
+ grantSpawnGuard(sim.player);feel.revive(); // (spawn protection, spawn-protection.js)
  view.cutCamera();previousPlayer={...sim.player};
  running=true;paused=false;sound.suspend(false);$('world').focus();updateHUD();
 }
@@ -1254,8 +1446,9 @@ function netEvents(){
 }
 function multiplayerFrame(){
  const myId=online.myId,lines=online.feed();
- for(const line of lines)if(line.victims.includes(myId)){lastKiller=line.killer&&line.killer!==myId?line.killerName:null;lastOneShot=!!line.oneShot&&!!lastKiller;if(deathActive)deathScreen.setKiller(lastKiller,lastOneShot);}
+ for(const line of lines)if(line.victims.includes(myId)){lastKiller=line.killer&&line.killer!==myId?line.killerName:null;lastOneShot=!!line.oneShot&&!!lastKiller;if(deathActive)deathScreen.setKiller(lastKiller,lastOneShot);if(lastKiller)killcam.killer({id:line.killer,name:line.killerName,weapon:line.weapon,oneShot:lastOneShot});}
  if(lines.length)mpHud.addFeed(lines,myId,elapsed);else mpHud.renderFeed(elapsed);
+ if(lines.length)feel.feed(lines,myId,elapsed,online.match()?.mode); // (streaks, shutdowns, the last kill's slow motion)
  if(mpHud.boardOpen)mpHud.setBoard(online.scoreboard(),myId);
  const me=online.me;
  if(deathActive&&me&&!online.match()?.elimination&&Number.isFinite(me.respawnIn))deathScreen.setTimer(me.respawnIn,online.lobby().settings?.respawn||MATCH_SETTINGS.respawn.default);
@@ -1276,7 +1469,7 @@ function multiplayerFrame(){
  if(modeLabel.textContent!==modeText)modeLabel.textContent=modeText;
 }
 function reviveOnline(){
- clearDeath();endAftermath();lastKiller=null;lastOneShot=false;view.cutCamera();previousPlayer={...sim.player};
+ clearDeath();endAftermath();lastKiller=null;lastOneShot=false;feel.revive();view.cutCamera();previousPlayer={...sim.player};
  applyInputPreference();syncOnlineScreens();
  if(!paused&&!choosing){running=true;$('world').focus();}
  updateHUD();
@@ -1302,7 +1495,7 @@ $('resume').addEventListener('click', () => setPaused(false));
 $('reset').addEventListener('click', () => { reset(); setPaused(false); });
 bindTouchAction($('audio'),{press:toggleAudio});
 const settingsPanel=installSettingsPanel(settings,{
- setQuality:name=>{if((view.wantedQuality??view.qualityName)!==name)changeGraphics(name);},
+ setQuality:name=>{const want=mediaQuality||name;if((view.wantedQuality??view.qualityName)!==want)changeGraphics(want);},
  setMotion:on=>{view.motion=on;},setFps:fps=>{budget.fps=fps;},
  setVolumes:volume=>sound.setVolumes(volume),
  changed:()=>{dirty=true;updateHUD();},
@@ -1464,13 +1657,17 @@ window.addEventListener('keydown', e => {
   if(devDialog.isOpen){devDialog.keydown(e);return;}
   // O: once the tools are unlocked, the floating window, on any screen (not while typing).
   if(e.code==='KeyO'&&!e.repeat&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&devTools.isUnlocked()&&!e.target.matches?.('input,select,textarea,[contenteditable=true]')){e.preventDefault();toggleDevWindow();return;}
+  // H: media mode on or off (ui/media-mode.js), on any screen once the tools are unlocked (not while typing, not if H is bound to a game key).
+  if(isMediaHotkey(e,gameCode)&&devTools.isUnlocked()){e.preventDefault();toggleMedia();return;}
   // The end-of-match card (online and SOLO): the keys work its buttons.
   if(matchEnd.open){navigateMenu(e,matchEnd.root,()=>{});if(['Space','Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();return;}
   if(deathActive){
+   // The killcam: an attack key (or E / Enter) skips to the card.
+   if(!deathMenuOpen&&killcam.skipKey(e,gameCode)){e.preventDefault();return;}
    // Spectating: ← / → (A / D) switch teammate.
    if(spectate.open&&!deathPick&&['ArrowLeft','ArrowRight','KeyA','KeyD'].includes(e.code)){e.preventDefault();if(!e.repeat)spectate.step(e.code==='ArrowLeft'||e.code==='KeyA'?-1:1);return;}
    if(deathPick)navigateMenu(e,weaponPick.root,()=>closeDeathPick());
-   else if(deathMenuOpen)navigateMenu(e,deathScreen.root,()=>{});
+   else if(deathMenuOpen&&!deathScreen.key(e))navigateMenu(e,deathScreen.root,()=>{}); // (1-8 / ← → along the NEXT LIFE row: death-screen.js key)
    if(['Escape','Space','Tab','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
    return;
   }
@@ -1560,7 +1757,6 @@ function frame(time) {
   const dt = lastTime === null ? 0 : Math.min((time - lastTime) / 1000, .1); lastTime = time;
   if (!paused) {
     elapsed += dt;
-    if (markerRemaining > 0) { markerRemaining -= dt; if (markerRemaining <= 0) $('hit-marker').classList.remove('show'); }
     if (coneFlicker > 0) coneFlicker -= dt;
   }
   // Online the world does not stop for your pause menu: everyone else is
@@ -1583,7 +1779,7 @@ function frame(time) {
   if (stepping) {
     // Dev game speed stretches or squeezes time; online sim.dev is reset so it is always 1 there.
     // (Game speed is a solo tool: online it would change everyone's clock.)
-    accumulator += dt * (online.active ? 1 : sim.dev.timeScale || 1);
+    accumulator += dt * (online.active ? 1 : sim.dev.timeScale || 1) * feel.simScale(online.active); // (feel: hitstop / slow motion, solo only)
     while (accumulator >= RULES.step && (running || (online.active && started) || soloWatch)) {
       if (soloWatch) {
         previousPlayer = { ...sim.player };
@@ -1624,7 +1820,8 @@ function frame(time) {
       if (!touchPrompts && sim.weapon === 'sightline' && sim.sightline?.crouched && (stanceKeys.x || stanceKeys.z)) inputMode = 'keyboard';
       const steer = stanceSteering();
       if (!steer && stanceAim.on) resetStanceAim(stanceAim);
-      const locked = lockTarget(RULES.step);
+      if (arrows.active) lastArrowAt = elapsed;
+      const locked = lockTarget(RULES.step, arrows.active);
       if (steer) {
         // The stick (as pushed) or the keys (a diagonal no faster than straight).
         const stick = Math.hypot(touch.moveX, touch.moveZ) > .02, kl = Math.hypot(stanceKeys.x, stanceKeys.z) || 1;
@@ -1651,7 +1848,9 @@ function frame(time) {
         const cursorAim = view.aim(mouse.x, mouse.y, sim.player);
         ({ aimX, aimZ, aimPointX, aimPointZ } = aimsByPoint(sim.weapon) ? aimDamping.apply(cursorAim, sim.player, 1 / 60, muzzleLateral(sim.weapon,sim.sightline?.crouched)) : cursorAim);
       }
-      else if (moveX || moveZ) { aimX = moveX; aimZ = moveZ; digitalAim = true; }
+      // Walking turns the aim (no arrows, no mouse), but not for a while after
+      // the arrows were let go: strafing keeps the aim where they left it.
+      else if ((moveX || moveZ) && elapsed - lastArrowAt > KEYBOARD_AIM.walkTakeover) { aimX = moveX; aimZ = moveZ; digitalAim = true; }
       // The no-mouse lesson: Q fired while aiming with the arrow keys.
       if(tutorial){tutorial.touch=touchPrompts;tutorial.touchAiming=touchAimPointer!==null;tutorial.walking=Math.hypot(touchMove.x,touchMove.z)>.2;if(arrows.active)tutorial.arrowAim=true;if(tappedKeys.has(GAME_KEYS.shoot)&&tutorial.arrowAim&&inputMode==='keyboard')tutorial.event({type:'keyboardShot'},sim);}
       const ballast=ballastInput(rifleFiring,keys,tappedKeys);
@@ -1685,6 +1884,7 @@ function frame(time) {
   // the new spot with the camera cut there, not one frame at the old place or
   // gliding between the two.)
   online.frame({onRespawn:reviveOnline});
+  gunHud.update(gunNow());
   labPanel.sync(!!sim.dev.robotLab&&!online.active&&started);
   // (While the lab runs you only watch: your own HUD, aim and reticle are hidden.)
   if(document.body.classList.contains('lab-watching')!==robotLab.active)document.body.classList.toggle('lab-watching',robotLab.active);
@@ -1716,18 +1916,18 @@ function frame(time) {
     }
     // The aim dot is page markup, not the 3D frame: it follows every display
     // frame, drawn or skipped, so it never lags the pointer.
-    updateReticle();
-    if(running&&!document.hidden){view.setResolutionScale(adaptiveResolution.sample(dt,renderDelta>0,settings.quality,settings.fps));view.setStrain(adaptiveResolution.strained);}
+    updateReticle();updateLockMarker(dt);
+    if(running&&!document.hidden){view.setResolutionScale(adaptiveResolution.sample(dt,renderDelta>0,mediaQuality||settings.quality,settings.fps));view.setStrain(adaptiveResolution.strained);}
     // An automatic preset well short of its frame target steps down at the
     // next start (one smooth for long enough a step lower climbs back).
-    if(running&&!document.hidden&&settings.qualityAuto&&!view.holdRender){
+    if(running&&!document.hidden&&settings.qualityAuto&&!mediaQuality&&!view.holdRender){
      const move=autoWatch.sample(dt,renderDelta>0?1:0,Math.min(settings.fps||60,60),settings.qualityAutoStep);
      if(move){settings.qualityAutoStep=Math.max(-2,Math.min(0,settings.qualityAutoStep+move));try{localStorage.setItem('deadstab-settings',JSON.stringify(settings));}catch{}}
     }
     else adaptiveResolution.reset();
     fpsTime += dt;
     if (fpsTime >= 1) { measuredFPS = Math.round(renderedFrames / fpsTime); fpsTime = 0; renderedFrames = 0; if (running && !paused && measuredFPS) playFPS = measuredFPS; }
-  }
+  } else attract.frame(dt); // (no game: the living menu, attract-wiring.js)
   if(paused)adaptiveResolution.reset();
   if(online.active)multiplayerFrame();
   perfReadout.update(started && !paused ? dt : 0, measuredFPS);
@@ -1737,7 +1937,11 @@ function frame(time) {
   sheathScreen.rush(started&&!paused&&sim.weapon==='sheath'&&sim.sheath.rush>0&&!sim.player.dead);
   hudTime += dt; if (hudTime >= .08) { updateHUD(); hudTime = 0; keepAwake(running && !deathActive); }
   damageFeedback.update(sim,view);outgoingFeedback.update(sim,view);
+  feelState.started=started;feelState.paused=paused;feelState.live=started&&!paused&&!deathActive&&!sim.player.dead&&sim.player.hp>0&&(running||online.active);feelState.elapsed=feelState.feedNow=elapsed;feel.frame(dt,feelState);
+  if(started&&!paused)summaryWatch.frame(dt,feelState.live);
   if(started&&!paused)duel.frame(dt,!sim.player.dead&&sim.player.hp>0);
+  quickPlay.frame();
+  weaponHints.frame(dt,{started,live:started&&running&&!paused&&!deathActive&&!choosing&&!sim.player.dead&&!robotLab.active,weapon:sim.weapon,surface:touchPrompts?'touch':'keyboard',tutorial:!!tutorial,gunGame:!!gunNow()}); // first-time weapon tips
   updateSpectate(dt);
   // 1V1's duel circle (online: the host's, in the match state; SOLO: duel.js's).
   const duelCircle=started?(online.active?online.match()?.circle:duel.circle):null;
@@ -1749,10 +1953,13 @@ function frame(time) {
   if(mapOpen)overheadMap.refresh(sim.player,mapZones);
   {const rp=view.player.position,me=view.screenPoint(rp.x,rp.z);fireIndicator.update(running&&!deathActive?dt:10,me.x,me.y,viewWidth(),viewHeight());
    if(running&&!deathActive)damageIndicator.update(dt,me.x,me.y,viewWidth(),viewHeight());else damageIndicator.clear();}
+  if(!deathActive&&!sim.player.dead&&sim.player.hp>0)lastHp=sim.player.hp/(sim.player.maxHp||100);
   if(deathActive){
    deathElapsed+=dt;
+   killcam.frame(deathElapsed,view.remotePlayers,respawnLeftNow()); // (the killcam: its camera, the bars, the plaque; the card at killcam.cardAt)
+   if(deathMenuOpen)deathScreen.setNext(nextLifeView());
    // (SOLO's last point: the end card comes instead, duel.js.)
-   if(!deathMenuOpen&&!duel.over&&!matchEnd.open&&deathElapsed>=DEATH_MENU_DELAY){
+   if(!deathMenuOpen&&!duel.over&&!matchEnd.open&&deathElapsed>=killcam.cardAt){
     deathMenuOpen=true;document.body.classList.add('dead-menu');damageFeedback.clear();outgoingFeedback.clear();
     deathScreen.show(deathMode());
     // The tutorial keeps its course's weapon (the pause menu hides it too).
@@ -1869,7 +2076,7 @@ bindAction(aimFireButton,()=>{
 // DONE comes back to Settings > Mobile.
 let layoutPreview=false;
 function openLayoutPreview(){
- layoutPreview=true;settingsOpen=false;selectMenus.reset();
+ attract.stop();layoutPreview=true;settingsOpen=false;selectMenus.reset();
  $('settings-panel').classList.add('hidden');$('intro').classList.add('hidden');
  document.body.classList.add('playing','layout-preview');
  applyInputPreference();arrangeTouchCluster();
@@ -1877,7 +2084,7 @@ function openLayoutPreview(){
  if(!touchLayout.start())closeLayoutPreview();
 }
 function closeLayoutPreview(){
- if(!layoutPreview)return;layoutPreview=false;
+ if(!layoutPreview)return;layoutPreview=false;attract.schedule();
  document.body.classList.remove('playing','layout-preview');
  $('intro').classList.remove('hidden');openSettings();menuFlow.openTab('mobile');$('touch-edit-layout').focus();
 }
@@ -1902,5 +2109,6 @@ export function finishLoading(){
  else{
   if(params.get('play')==='1')for(const k of ['play','mode','duel','course','weapon'])params.delete(k);
   $('gamemodes').focus();
+  attract.schedule();/* the living menu, once the menu is on screen (attract-wiring.js) */
  }
 }

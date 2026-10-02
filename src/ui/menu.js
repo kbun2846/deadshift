@@ -19,11 +19,14 @@ import { KEY_ACTIONS, keyName, displayKey, bindLabel } from '../config/keybinds.
 import { installMenuFit } from './menu-fit.js';
 import { createJoinList } from './join-list.js';
 import { PROTOCOL_VERSION } from '../net/protocol.js';
+import { installRememberedMenus } from './remembered-menus.js';
 
 export function installMenu({ $, map, thumbnail, start, openSettings, closeSettings, returnToMenu, tutorialComplete, online, onlineRooms }) {
  let page=document.querySelector('[data-page]:not([hidden])')?.dataset.page||'home';
  // The pages stay in place: a page taller than the screen is scaled to fit it
  // (menu-fit.js), never scrolled (owner, 2026-09-29).
+ // Remembered choices (remembered-menus.js): each page opens on the last one.
+ const remembered=installRememberedMenus($);
  const shell=document.getElementById('intro');
  const menuFit=installMenuFit(shell,{pick:()=>shell?.querySelector(':scope > [data-page]:not([hidden])'),items:()=>shell?shell.querySelectorAll(':scope > [data-page]'):[]});
  let selectedMap=DEFAULT_MAP;
@@ -33,7 +36,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  let onlinePick=null,onlineBack=null;
  // Back: join, host, bots and maps go to gamemodes; gamemodes goes home.
  const back=()=>{if(onlinePick&&page==='weapons'){onlineBack?.();return;}if(page!=='home')show(page==='weapons'?weaponBack:['maps','join','host-setup','duel'].includes(page)?'modes':'home');};
- const show=name=>{if(name==='maps')loadThumbnail();page=name;if(name==='join')joinList?.start();else joinList?.stop();document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);refreshTypography();menuFit.refit();document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();};
+ const show=name=>{if(name==='maps')loadThumbnail();page=name;if(name==='join')joinList?.start();else joinList?.stop();document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==name);refreshTypography();menuFit.refit();document.querySelector(`[data-page="${name}"] button:not(.menu-back):not([hidden])`)?.focus();remembered.focus(name);};
  $('tutorial-entry').hidden=tutorialComplete;$('tutorial-mode').hidden=false;
  $('gamemodes').onclick=()=>show('modes');
  // SKINS (owner, 2026-09-29: "a regular ui with a back arrow that takes back
@@ -148,7 +151,7 @@ export function installMenu({ $, map, thumbnail, start, openSettings, closeSetti
  const previews={static:staticPreview,rifle:riflePreview,shotgun:shotgunPreview};
  const weapons=WEAPONS.map(w=>({...w,preview:previews[w.id]}));
  for(const weapon of weapons){
-  const card=document.createElement('article');card.className='weapon-card';card.dataset.name=weapon.name;
+  const card=document.createElement('article');card.className='weapon-card';card.dataset.name=weapon.name;card.dataset.weapon=weapon.id;
   const select=document.createElement('button');select.className='weapon-choice';select.setAttribute('aria-label','Select '+weapon.name);
   const picture=document.createElement('img');picture.alt=weapon.previewAlt;picture.className='weapon-preview';picture.dataset.weaponArt=weapon.id;
   const title=document.createElement('span');title.className='weapon-name';
